@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "27530b6e-f444-47c4-8aa8-19f77814589b",
+    "Id":  "4d32e02d-7d83-4594-8db0-00c3647bb9dc",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7f6f5014-5569-4597-a809-b4fe0d188e27",
+                        "ScreenId":  "09791527-89a3-40ff-8e0a-718d8845b195",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6229,7 +6229,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "2b397e77-ded8-4794-a08b-b28fc2911a40",
+                        "ScreenId":  "8f5216c6-baf7-4937-99f4-d8c3113fee93",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15613,7 +15613,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "eda02d28-421c-4830-93c1-c70a8246d444",
+                        "ScreenId":  "2677d8e8-6fc3-4900-b681-3260dfd7eba4",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27031,7 +27031,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "b99854f2-e13a-4936-9ff3-d19d454a729d",
+                        "ScreenId":  "51e3ebd0-6b2a-4e93-8ffb-79bb631f5776",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32424,7 +32424,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "34675c69-f5eb-493a-a681-476fc50e53b7",
+                        "ScreenId":  "cfefdb38-ebec-494a-ac28-1b147a9b4e2a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44332,7 +44332,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "6479d2fb-c797-4a92-9537-03652394c92c",
+                        "ScreenId":  "16bc0250-6131-486f-98ac-26142f810960",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -52953,7 +52953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "863399e6-359d-49c3-bb96-fbeb69cc5ebb",
+                        "ScreenId":  "9982e684-53c4-46c5-bee4-50331cef2e4f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -55971,7 +55971,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56023,7 +56023,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56075,7 +56075,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56127,7 +56127,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56219,7 +56219,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56271,7 +56271,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56323,7 +56323,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56375,7 +56375,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56467,7 +56467,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56519,7 +56519,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56571,7 +56571,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56623,7 +56623,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56715,7 +56715,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56767,7 +56767,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56819,7 +56819,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -56871,7 +56871,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -58207,7 +58207,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -58251,7 +58251,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -58319,7 +58319,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -58359,7 +58359,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -58372,7 +58372,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "Turn Telemetry FFB on for this game to see grip use.",
+                                          "Text":  "This game does not report accelerations.",
                                           "TextColor":  "#FF6B7280",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -58391,7 +58391,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66380,7 +66380,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66432,7 +66432,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66484,7 +66484,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66536,7 +66536,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66628,7 +66628,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66680,7 +66680,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66732,7 +66732,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66784,7 +66784,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66876,7 +66876,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66928,7 +66928,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -66980,7 +66980,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -67032,7 +67032,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -67124,7 +67124,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -67176,7 +67176,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -67228,7 +67228,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -67280,7 +67280,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"TyreTemps\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -68616,7 +68616,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -68660,7 +68660,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -68728,7 +68728,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -68768,7 +68768,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -68781,7 +68781,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "Turn Telemetry FFB on for this game to see grip use.",
+                                          "Text":  "This game does not report accelerations.",
                                           "TextColor":  "#FF6B7280",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -68800,7 +68800,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77325,7 +77325,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77393,7 +77393,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77461,7 +77461,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77529,7 +77529,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77645,7 +77645,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77713,7 +77713,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77781,7 +77781,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77849,7 +77849,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -77965,7 +77965,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -78033,7 +78033,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -78101,7 +78101,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -78169,7 +78169,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -78285,7 +78285,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -78353,7 +78353,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -78421,7 +78421,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -78489,7 +78489,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -80177,7 +80177,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -80253,7 +80253,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -80353,7 +80353,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -80393,7 +80393,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -80414,7 +80414,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "Turn Telemetry FFB on for this game to see grip use.",
+                                          "Text":  "This game does not report accelerations.",
                                           "TextColor":  "#FF6B7280",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -80433,7 +80433,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -89510,7 +89510,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -89578,7 +89578,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -89646,7 +89646,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -89714,7 +89714,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -89830,7 +89830,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -89898,7 +89898,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -89966,7 +89966,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90034,7 +90034,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90150,7 +90150,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90218,7 +90218,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90286,7 +90286,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90354,7 +90354,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRL\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearLeftOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90470,7 +90470,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return !(!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90538,7 +90538,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90606,7 +90606,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -90674,7 +90674,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return ((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
+                                                                                           "Expression":  "return (!((1*$prop(\"TrueforcePlugin.Dash.Forza.TempRR\"))\u003e0)\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightInner\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightMiddle\"))\u003e0\u0026\u0026(1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureRearRightOuter\"))\u003e0) \u0026\u0026 (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"TyreTemps\" \u0026\u0026 (((1*$prop(\"TrueforcePlugin.Dash.Forza.TempFL\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.TyreTemperatureFrontLeft\"))\u003e0))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -92362,7 +92362,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -92438,7 +92438,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -92538,7 +92538,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -92578,7 +92578,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -92599,7 +92599,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "Turn Telemetry FFB on for this game to see grip use.",
+                                          "Text":  "This game does not report accelerations.",
                                           "TextColor":  "#FF6B7280",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -92618,7 +92618,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !($prop(\"TrueforcePlugin.Dash.ModeB.On\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"

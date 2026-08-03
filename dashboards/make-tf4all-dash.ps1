@@ -369,7 +369,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $dDelta = '(""+$prop("' + $TRK + 'EstimatedLapTime")||"")!=""'
     $dOpp   = '(1*$prop("' + $SIM + 'OpponentsCount"))>1'
     $dG     = '!isNaN(1*$prop("' + $P + '.Drive.GLat"))'
-    $dFric  = '$prop("' + $P + '.ModeB.On")'
+    # Telemetry FFB gives the better grip number, but it is no longer the
+    # only one: with it off the box runs on measured accelerations, so it
+    # needs whatever the g circle needs.
+    $dFric  = '($prop("' + $P + '.ModeB.On"))||(' + $dG + ')'
 
     # ---------------- CAR FACTS (ours, always available) -------------
     # Tappable exactly like the Car facts tab: the engine row opens the
@@ -592,7 +595,15 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         # ours first, SimHub's as the fallback
         $vJs = 'var v=1*$prop("' + $P + '.Forza.' + $fzTemp[$q] + '");' +
                'if(!(v>0))v=1*$prop("' + $SIM + $tyreProps[$q] + '");'
-        $hasBands = '(1*$prop("' + $SIM + $tyreProps[$q] + 'Middle"))>0'
+        # A real split needs all three bands AND a source that measures
+        # them. SimHub fills Middle from a single per-tyre reading, so
+        # testing Middle alone handed Forza a split it does not have and
+        # left the outer and inner bands grey. Our own Forza temperature
+        # being present is proof this is a title with one value per tyre.
+        $hasBands = '!((1*$prop("' + $P + '.Forza.' + $fzTemp[$q] + '"))>0)' +
+                    '&&(1*$prop("' + $SIM + $tyreProps[$q] + 'Inner"))>0' +
+                    '&&(1*$prop("' + $SIM + $tyreProps[$q] + 'Middle"))>0' +
+                    '&&(1*$prop("' + $SIM + $tyreProps[$q] + 'Outer"))>0'
         # cold -> blue, working -> green, hot -> amber, overheating -> red
         $colJs = $vJs + $tempScale
         $r = New-Rect "d$slot-tt$q" $cx $cy $tyW $tyH $script:TILE @{
@@ -707,11 +718,13 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     $items.Add((AddNote 'gc' 'This game does not report accelerations.' 'GCircle' $dG))
 
-    # ---------------- FRICTION CIRCLE (ours, Mode B) -----------------
-    # Not the g diagram: this is how much of the tyre's grip our own
-    # model believes is in use, which is what shapes the braking feel.
-    # The ring IS the limit, so a dot touching it means the model has
-    # run out of grip. Needs Telemetry FFB running for this game.
+    # ---------------- FRICTION CIRCLE (ours) -------------------------
+    # Not the g diagram: this is how much of the tyre's GRIP is in use.
+    # The ring IS the limit, so a dot touching it means there is nothing
+    # left. With Telemetry FFB running the number comes from its model,
+    # which knows what the tyre is doing and not merely what the car ended
+    # up doing. Without it, the measured load against the hardest this car
+    # has taken, which every game reporting accelerations can feed.
     $vis = KeyVis 'Friction' $dFric
     $items.Add((AddHead 'fc' 'FRICTION CIRCLE' 'Friction'))
     $items.Add((New-Ring "d$slot-fc-lim" $gcx $gcy $gr '#FF6B7280' 2 $vis))
@@ -732,7 +745,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         Text = BindJS 'Text' ($uJs + 'return Math.round(u*100)+"% grip"')
     }
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $items.Add((AddNote 'fc' 'Turn Telemetry FFB on for this game to see grip use.' 'Friction' $dFric))
+    $items.Add((AddNote 'fc' 'This game does not report accelerations.' 'Friction' $dFric))
 
     # ---------------- RELATIVE ---------------------------------------
     # Two cars ahead and two behind with their last lap, from the

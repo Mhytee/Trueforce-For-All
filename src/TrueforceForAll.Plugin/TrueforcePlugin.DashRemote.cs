@@ -216,6 +216,38 @@ namespace TrueforceForAll.Plugin
         // Gear + speed for the Drive tab, stashed from the same frame.
         private volatile string _dashLiveGear = "";
         private volatile float _dashLiveSpeedKmh;
+
+        // Rolling reference for the measured grip circle: the hardest combined
+        // load this car has actually taken. Every car and surface has its own
+        // ceiling, so a fixed number would read 40% in a road car and peg in a
+        // race car. Floored at 0.8 g so a gentle cruise cannot make itself the
+        // reference and report 100%, and it bleeds down slowly so one kerb
+        // strike does not flatten the scale for the rest of the session.
+        private const float DashGripFloorG = 0.8f;
+        private float _dashGripPeakG = DashGripFloorG;
+        private int   _dashGripCarKey;
+
+        /// <summary>Combined lateral/longitudinal load as a fraction of the
+        /// hardest this car has managed. Available whenever the game reports
+        /// accelerations, with or without Telemetry FFB.</summary>
+        private float DashMeasuredGripUse()
+        {
+            if (_telemetryStalled) return 0f;
+            float lat = _lastSwayAccel / 9.81f, lon = _lastSurgeAccel / 9.81f;
+            if (float.IsNaN(lat) || float.IsNaN(lon)) return 0f;
+            float g = (float)Math.Sqrt(lat * lat + lon * lon);
+            // A car change starts the reference over: the old ceiling says
+            // nothing about the new car.
+            int carKey = (_activeCarId ?? "").GetHashCode();
+            if (carKey != _dashGripCarKey)
+            {
+                _dashGripCarKey = carKey;
+                _dashGripPeakG  = DashGripFloorG;
+            }
+            if (g > _dashGripPeakG) _dashGripPeakG = g;
+            else _dashGripPeakG = Math.Max(DashGripFloorG, _dashGripPeakG - 0.00002f);
+            return g / _dashGripPeakG;
+        }
         // Driver inputs for the Drive tab's inputs box. Steer is -2 when the
         // active source reports no steering at all.
         private volatile float _dashLiveThrottle;
@@ -951,7 +983,15 @@ namespace TrueforceForAll.Plugin
             // empty clutch bar rather than losing it.
             this.AttachDelegate("Dash.Clutch",    () => (float?)ForzaUdpSource?.DashExtras?.Clutch01 ?? -1f);
             this.AttachDelegate("Dash.Handbrake", () => (float?)ForzaUdpSource?.DashExtras?.Handbrake01 ?? -1f);
-            this.AttachDelegate("Dash.Drive.Util",  () => ModeBUtilization);
+            // Grip in use, for the friction circle. Telemetry FFB has the
+            // better answer, because its model knows what the tyre is doing
+            // rather than only what the car ended up doing, so it wins when
+            // it is running. With it off the measured accelerations still
+            // say plenty: how hard the car is loaded right now against the
+            // hardest it has been loaded, which needs nothing but the
+            // accelerations the g circle already uses.
+            this.AttachDelegate("Dash.Drive.Util", () =>
+                ActiveGameSupportsModeB && DashSnap().ModeBOn ? ModeBUtilization : DashMeasuredGripUse());
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
 
