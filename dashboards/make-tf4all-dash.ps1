@@ -1794,6 +1794,7 @@ RevStrip $P | ForEach-Object { $s6.Add($_) }
 # =====================================================================
 $s7 = [System.Collections.Generic.List[object]]::new()
 $twoRows = '$prop("' + $P + '.Drive.TwoRows")'
+$revCen  = '$prop("' + $P + '.RevCentered")'
 
 # Gear: the one readout that is always meaningful, in every game.
 # The gear keeps the middle column in both layouts (the bottom boxes
@@ -1806,6 +1807,19 @@ $gear = New-Text 'dr-gear' 300 55 200 210 130 '' $WHITE 1 @{
     Top  = BindJS 'Top'  ('return ' + $twoRows + '?55:130')
 } 'Bold'
 $s7.Add($gear)
+
+# Revs above the gear, in the band between the rev strip and the digits.
+# Centred in whatever that band happens to be: the strip drops to 16 when
+# it is narrowed to this column, and the gear sits lower in the one-row
+# layout, so all four combinations get their own resting place.
+$rpmTop = 'return ' + $twoRows + '?(' + $revCen + '?28:20):(' + $revCen + '?65:57)'
+$rpm = New-Text 'dr-rpm' 300 20 200 28 22 '' $MUTED 1 @{
+    Text = BindJS 'Text' ('var r=1*$prop("' + $P + '.Rpm");' +
+                          'if(!(r>0))r=1*$prop("' + $SIM + 'Rpms");' +
+                          'if(isNaN(r)||r<=0)return "";return Math.round(r)+" rpm"')
+    Top  = BindJS 'Top' $rpmTop
+} 'Bold'
+$s7.Add($rpm)
 # Speed follows SimHub's unit setting when SimHub has the data; from our
 # own frame it is km/h, converted here when the user is set to MPH.
 $spd = New-Text 'dr-speed' 300 268 200 40 26 '' $MUTED 1 @{
@@ -2231,6 +2245,7 @@ foreach ($k in $pvModeB.Keys) {
 # slot-gated and therefore hidden to the preview renderer by default.
 $ovDriveTab = PreviewChrome 78 0
 $ovDriveTab['dr-gear']  = @{ Text = '4' }
+$ovDriveTab['dr-rpm']   = @{ Text = '6420 rpm' }
 $ovDriveTab['dr-speed'] = @{ Text = '148 kph' }
 foreach ($sl in 0, 1, 2, 3) { $ovDriveTab["d$sl-panel"] = @{ Show = $true } }
 # slot 0: car facts

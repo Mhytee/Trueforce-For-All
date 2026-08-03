@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "1530f3b8-d760-4ae0-a258-7fe9ccd32b06",
+    "Id":  "a5d69585-f963-4295-84f6-1a6f5ef28ea8",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "383b4cea-4da0-4a2d-954f-91f7557d3d8b",
+                        "ScreenId":  "520e6a9e-c555-4a9a-9a2c-140f136cc9d1",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6229,7 +6229,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "37659b26-597b-4b88-8d65-2d5d79c06262",
+                        "ScreenId":  "8267aa41-1543-4dc6-a961-728a0a18cd3d",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15613,7 +15613,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "56b3cc6f-50fa-4bd6-a81f-3b670c750b11",
+                        "ScreenId":  "1400e09a-df1f-4687-8811-291a19279fb5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27031,7 +27031,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7d1edf02-6a6e-48da-8220-e75641c60de5",
+                        "ScreenId":  "8a281a28-3ffe-4a9f-9d7d-33d1a96848f0",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32424,7 +32424,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "74f9a8a0-3a19-41f2-b7a8-407da256605b",
+                        "ScreenId":  "6c1134d0-046f-404e-b9d0-cc641771b9e6",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44332,7 +44332,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "da1ecaad-9083-4e00-8623-9e88fbe5e802",
+                        "ScreenId":  "fa242448-4dd0-4eae-b021-4cb5f823187c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -52953,7 +52953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "0f9ec438-8b54-4fb8-98cd-8d304eac7f96",
+                        "ScreenId":  "e59bae80-0be5-4630-8d4f-ba4553a0bd43",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -53004,6 +53004,46 @@
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?55:130"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  22,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  28,
+                                          "Left":  300,
+                                          "Opacity":  100,
+                                          "Top":  20,
+                                          "Visible":  true,
+                                          "Width":  200,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "dr-rpm",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var r=1*$prop(\"TrueforcePlugin.Dash.Rpm\");if(!(r\u003e0))r=1*$prop(\"DataCorePlugin.GameData.NewData.Rpms\");if(isNaN(r)||r\u003c=0)return \"\";return Math.round(r)+\" rpm\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?($prop(\"TrueforcePlugin.Dash.RevCentered\")?28:20):($prop(\"TrueforcePlugin.Dash.RevCentered\")?65:57)"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
