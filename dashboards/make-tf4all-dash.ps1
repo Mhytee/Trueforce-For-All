@@ -1389,15 +1389,22 @@ $twoRows = '$prop("' + $P + '.Drive.TwoRows")'
 # Gear: the one readout that is always meaningful, in every game.
 # The gear keeps the middle column in both layouts (the bottom boxes
 # grow into the top row rather than across it) and just recentres.
+# Our own frame first, SimHub second: a Forza player usually leaves
+# forwarding off, which leaves SimHub's copies empty all session.
 $gear = New-Text 'dr-gear' 300 55 200 210 130 '' $WHITE 1 @{
-    Text = BindJS 'Text' ('var g=""+($prop("' + $SIM + 'Gear")||"");return g==""?"N":g')
+    Text = BindJS 'Text' ('var g=""+($prop("' + $P + '.Gear")||"");' +
+                          'if(g=="")g=""+($prop("' + $SIM + 'Gear")||"");return g==""?"N":g')
     Top  = BindJS 'Top'  ('return ' + $twoRows + '?55:130')
 } 'Bold'
 $s7.Add($gear)
-# Speed, in whichever unit SimHub is set to (change it in SimHub's own
-# settings and this follows).
+# Speed follows SimHub's unit setting when SimHub has the data; from our
+# own frame it is km/h, converted here when the user is set to MPH.
 $spd = New-Text 'dr-speed' 300 268 200 40 26 '' $MUTED 1 @{
-    Text = BindJS 'Text' ('var v=1*$prop("' + $SIM + 'SpeedLocal");var u=""+($prop("' + $SIM + 'SpeedLocalUnit")||"");return isNaN(v)?"--":(Math.round(v)+" "+u)')
+    Text = BindJS 'Text' ('var u=""+($prop("' + $SIM + 'SpeedLocalUnit")||"");' +
+                          'var v=1*$prop("' + $SIM + 'SpeedLocal");' +
+                          'if(!(v>0)){var k=1*$prop("' + $P + '.SpeedKmh");' +
+                          'if(!(k>0))return "--";v=(u=="MPH")?k*0.621371:k;if(u=="")u="KMH";}' +
+                          'return Math.round(v)+" "+u')
     Top  = BindJS 'Top'  ('return ' + $twoRows + '?268:343')
 } 'Bold'
 $s7.Add($spd)

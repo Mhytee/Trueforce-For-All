@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "ae76876a-c628-4a6e-8000-6c69c847fc25",
+    "Id":  "3ead5d31-0bcf-48a5-9819-6c0f4f2b4751",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "aa5a23d0-d36d-4bb1-a447-54c6394e25d1",
+                        "ScreenId":  "779be658-d29d-44d1-8152-06f13116abf5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -5718,7 +5718,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "adbd6a21-fa93-42d5-afe7-1a23dfa88245",
+                        "ScreenId":  "5fe5a036-4bea-430c-b232-f321cc90f033",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14591,7 +14591,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "8dcb9399-22e9-476c-894e-1cc606081277",
+                        "ScreenId":  "533a303a-8fab-47f4-a13b-22f17a1dc6bf",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -25498,7 +25498,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "87234a4e-97d9-425b-9b10-ec8feefb508f",
+                        "ScreenId":  "7b2183d3-4384-4269-a179-00496e8d6026",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -30380,7 +30380,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a69d92cb-bd2d-4830-acc9-730abeff6fd3",
+                        "ScreenId":  "45a41c82-357d-4aae-8c85-1c1c35d5e865",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -41777,7 +41777,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "2dcbf952-8626-47ad-bde5-dd984bed6af1",
+                        "ScreenId":  "79d719e1-1263-45bf-8796-a087887eb076",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -49887,7 +49887,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "75beafba-79cb-4562-9b6f-88ecf9ab98de",
+                        "ScreenId":  "7049efcc-5dcf-4e7f-85c5-672cd786768d",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -49929,7 +49929,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var g=\"\"+($prop(\"DataCorePlugin.GameData.NewData.Gear\")||\"\");return g==\"\"?\"N\":g"
+                                                                                        "Expression":  "var g=\"\"+($prop(\"TrueforcePlugin.Dash.Gear\")||\"\");if(g==\"\")g=\"\"+($prop(\"DataCorePlugin.GameData.NewData.Gear\")||\"\");return g==\"\"?\"N\":g"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -49969,7 +49969,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.SpeedLocal\");var u=\"\"+($prop(\"DataCorePlugin.GameData.NewData.SpeedLocalUnit\")||\"\");return isNaN(v)?\"--\":(Math.round(v)+\" \"+u)"
+                                                                                        "Expression":  "var u=\"\"+($prop(\"DataCorePlugin.GameData.NewData.SpeedLocalUnit\")||\"\");var v=1*$prop(\"DataCorePlugin.GameData.NewData.SpeedLocal\");if(!(v\u003e0)){var k=1*$prop(\"TrueforcePlugin.Dash.SpeedKmh\");if(!(k\u003e0))return \"--\";v=(u==\"MPH\")?k*0.621371:k;if(u==\"\")u=\"KMH\";}return Math.round(v)+\" \"+u"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"

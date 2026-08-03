@@ -4296,6 +4296,14 @@ namespace TrueforceForAll.Plugin
             // in TrueforcePlugin.DashRemote.cs). Stashed post-enrichment so the
             // strip sees the same RPM the effects do.
             _dashLiveRpm = (float)frame.Rpms;
+            // Gear and speed for the Drive tab's centre readout, from the same
+            // enriched frame. These come from whichever source is live, so a
+            // Forza player who never turned on "Also forward to SimHub" still
+            // gets them: SimHub's own properties are empty for that setup, and
+            // the two biggest numbers on the screen would otherwise read N and
+            // "--" while every box around them worked.
+            _dashLiveGear = frame.Gear ?? "";
+            _dashLiveSpeedKmh = (float)frame.SpeedKmh;
 
             // Latch motion for the stationary-spring FFB floor. Speed is
             // universal; steering is stamped only when the active source

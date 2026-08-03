@@ -211,6 +211,9 @@ namespace TrueforceForAll.Plugin
         // Forza a generic SimHub rev bar keys off the limiter, not the
         // redline start.
         private volatile float _dashLiveRpm;
+        // Gear + speed for the Drive tab, stashed from the same frame.
+        private volatile string _dashLiveGear = "";
+        private volatile float _dashLiveSpeedKmh;
         // Redline hysteresis latch for Dash.RevFlash, mirroring the wheel
         // LED latch's 1% dead band. Only touched by the property getter.
         private bool _dashRevFlashLatch;
@@ -911,6 +914,12 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Forza.LastLap",  () => ForzaUdpSource?.DashExtras?.LastLapSec ?? 0f);
             this.AttachDelegate("Dash.Forza.CurLap",   () => ForzaUdpSource?.DashExtras?.CurrentLapSec ?? 0f);
             this.AttachDelegate("Dash.Forza.Position", () => ForzaUdpSource?.DashExtras?.RacePosition ?? 0);
+            // Gear and speed off the live frame, so the Drive tab's centre
+            // works on whichever telemetry source is running rather than
+            // only when SimHub is being fed. Empty gear and a zero speed
+            // read as "no telemetry", which the dash falls back from.
+            this.AttachDelegate("Dash.Gear",     () => _telemetryStalled ? "" : _dashLiveGear);
+            this.AttachDelegate("Dash.SpeedKmh", () => _telemetryStalled ? 0f : _dashLiveSpeedKmh);
             this.AttachDelegate("Dash.Drive.Util",  () => ModeBUtilization);
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
