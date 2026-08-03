@@ -1,4 +1,4 @@
-// Dash remote bridge: exposes plugin state as SimHub properties and
+﻿// Dash remote bridge: exposes plugin state as SimHub properties and
 // registers dash-triggerable actions so a DashStudio dashboard (served to
 // a phone/tablet by SimHub's web dash server) can control TF4ALL while
 // driving. Scope (owner-decided, 2026-07-20): master gain, audio capture
@@ -640,9 +640,9 @@ namespace TrueforceForAll.Plugin
             new DashModeBKnob { Key = "Damper",   Label = "DAMPING",          Min = 0f,    Max = 0.6f, Step = 0.02f, Fmt = "0.00", Get = s => s.ModeBDamper,          Set = (s, v) => s.ModeBDamper = v },
             new DashModeBKnob { Key = "Center",   Label = "CENTERING",        Min = 0f,    Max = 0.5f, Step = 0.02f, Fmt = "0.00", Get = s => s.ModeBCenter,          Set = (s, v) => s.ModeBCenter = v },
             new DashModeBKnob { Key = "Lat",      Label = "CORNERING WEIGHT", Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBLatGain,         Set = (s, v) => s.ModeBLatGain = v },
+            new DashModeBKnob { Key = "Rise",     Label = "WEIGHT BUILDUP",   Min = 0.2f,  Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBRiseGamma,       Set = (s, v) => s.ModeBRiseGamma = v },
+            new DashModeBKnob { Key = "Reversal", Label = "REVERSAL DAMPING", Min = 0f,    Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBReversalDampGain, Set = (s, v) => s.ModeBReversalDampGain = v },
             new DashModeBKnob { Key = "Smooth",   Label = "SMOOTHING MS",     Min = 5f,    Max = 100f, Step = 5f,    Fmt = "0",    Get = s => s.ModeBEmaMs,           Set = (s, v) => s.ModeBEmaMs = v },
-            new DashModeBKnob { Key = "Floor",    Label = "SLIDE LIGHTNESS",  Min = 0.05f, Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBDropFloor,       Set = (s, v) => s.ModeBDropFloor = v },
-            new DashModeBKnob { Key = "Recover",  Label = "LOCKUP RECOVERY MS", Min = 20f, Max = 400f, Step = 10f,   Fmt = "0",    Get = s => s.ModeBLockupRecoverMs, Set = (s, v) => s.ModeBLockupRecoverMs = v },
         };
 
         private void DashNudgeModeB(DashModeBKnob k, float delta)

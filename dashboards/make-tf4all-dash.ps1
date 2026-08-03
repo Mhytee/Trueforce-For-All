@@ -772,9 +772,9 @@ $mbKnobs = @(
     @('Damper',   'Damping',            2),
     @('Center',   'Centering',          2),
     @('Lat',      'Cornering weight',   2),
-    @('Smooth',   'Smoothing ms',       0),
-    @('Floor',    'Slide lightness',    2),
-    @('Recover',  'Lockup recovery ms', 0)
+    @('Rise',     'Weight buildup',     2),
+    @('Reversal', 'Reversal damping',   2),
+    @('Smooth',   'Smoothing ms',       0)
 )
 for ($i = 0; $i -lt $mbKnobs.Count; $i++) {
     $key = $mbKnobs[$i][0]; $label = $mbKnobs[$i][1]; $dec = $mbKnobs[$i][2]
@@ -1114,7 +1114,7 @@ $ovModeB['mb-rl-t']  = @{ Show = $true; Text = 'REV LIGHTS ON' }
 $ovModeB['mb-hint']  = @{ Show = $true }
 $pvModeB = @{
     Strength = '0.50'; MinForce = '0.05'; Damper = '0.07'; Center = '0.25'
-    Lat = '0.60'; Smooth = '40'; Floor = '0.50'; Recover = '30'
+    Lat = '0.60'; Rise = '0.80'; Reversal = '0.50'; Smooth = '40'
 }
 foreach ($k in $pvModeB.Keys) {
     $ovModeB["mb-$k-t"]      = @{ Show = $true }
