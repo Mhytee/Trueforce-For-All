@@ -710,7 +710,13 @@ namespace TrueforceForAll.Core
                     Logger?.Invoke($"[TF4ALL] Forza gear diag: raw={rawGear} shown='{GearString(gearByte)}'"
                         + $" rpm={ReadFloat(buf, OFF_CURRENT_RPM):F0}"
                         + $" max={ReadFloat(buf, OFF_ENGINE_MAX_RPM):F0}"
-                        + $" kmh={speedMs * 3.6f:F0} accel={accelByte} brake={brakeByte}");
+                        + $" kmh={speedMs * 3.6f:F0} accel={accelByte} brake={brakeByte}"
+                        // Tyre temps ride along: the dash colours them against
+                        // Celsius thresholds and Forza's unit for this field is
+                        // not something to take on faith. A warm tyre reading
+                        // ~200 is Fahrenheit; ~90 is Celsius.
+                        + $" tyreFL={ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL):F0}"
+                        + $" tyreRR={ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 12):F0}");
                 }
                 // Steer is a signed byte (read the byte, reinterpret as sbyte)
                 // normalized to ~[-1, 1]. Sign matches Forza's convention
