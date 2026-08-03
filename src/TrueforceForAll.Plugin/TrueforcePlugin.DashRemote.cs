@@ -115,10 +115,12 @@ namespace TrueforceForAll.Plugin
         // obvious next option: PersistantTrackerPlugin.DriverAhead_NN_* and
         // DriverBehind_NN_* carry it without the obsolete leaderboard item.
         internal static readonly string[] DashDriveContentKeys =
-            { "CarFacts", "LapTimes", "TyreTemps", "TyreWear", "Fuel", "Delta", "Scope", "None" };
+            { "CarFacts", "LapTimes", "TyreTemps", "TyreWear", "Fuel", "Delta", "Scope",
+              "Home", "Presets", "GCircle", "Friction", "Relative", "Radar", "None" };
         // Friendly labels for the Settings-tab pickers, index-matched above.
         internal static readonly string[] DashDriveContentLabels =
-            { "Car facts", "Lap times", "Tyre temps", "Tyre wear", "Fuel", "Lap delta", "FFB scope", "Empty" };
+            { "Car facts", "Lap times", "Tyre temps", "Tyre wear", "Fuel", "Lap delta", "FFB scope",
+              "Gains", "Presets", "G circle", "Friction circle", "Relative", "Radar", "Empty" };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.
@@ -875,6 +877,14 @@ namespace TrueforceForAll.Plugin
                 });
             }
             this.AttachDelegate("Dash.Drive.TwoRows", () => Settings?.DashDriveTwoRows != false);
+            // Friction circle: our own Mode B numbers, not the game's. Util is
+            // how much of the tyre's grip the model is using (1 = the limit);
+            // the g pair gives the direction the load is coming from, taken
+            // from the same accelerations the crash duck reads so the box
+            // works on any telemetry source we support.
+            this.AttachDelegate("Dash.Drive.Util",  () => ModeBUtilization);
+            this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
+            this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
 
             this.AttachDelegate("Dash.RevOutsideIn", () => Settings?.DashRevStripOutsideIn == true);
             this.AttachDelegate("Dash.Rpm", () => _telemetryStalled ? 0 : (int)_dashLiveRpm);

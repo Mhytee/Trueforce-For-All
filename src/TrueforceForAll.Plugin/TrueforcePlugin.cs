@@ -4926,6 +4926,11 @@ namespace TrueforceForAll.Plugin
         // Worst (most negative) front-pair signed slip ratio, cached for the FFB
         // thread's braking-lockup gate (issue #38). 0 on scalar/quad-less sources
         // leaves the gate open.
+        /// <summary>Latest Mode B grip utilization (0 = free, 1 = at the
+        /// limit). Display only: the dash friction circle reads it.</summary>
+        internal float ModeBUtilization => _mbLastUtil;
+        private volatile float _mbLastUtil;
+
         private volatile float _lastFrontSlipRatio;
         // Worst front-pair |slip ratio| for the friction-circle law (covers
         // wheelspin as well as lockup). 0 on scalar sources = full lateral share.
@@ -5544,6 +5549,10 @@ namespace TrueforceForAll.Plugin
             double peakBase = _mbAutoCalOn ? 1.0 : _pModeBPeakU;
             double peakDiv = Math.Max(0.2, peakBase * (double)_mbCalPeak);
             double u     = ModeBComposer.UtilizationFloor(_mbGripEma     / peakDiv);
+            // Published for the dash's friction-circle box: how much of the
+            // tyre's grip this model thinks is in use (1.0 = at the limit).
+            // Display only, written once per FFB tick.
+            _mbLastUtil = (float)u;
             // Lateral-demand utilization (issue #38 loop root-cause A/B): weight
             // the front SAT grip reading by |dir| so it tracks LATERAL (cornering)
             // grip, not combined slip. |dir| is ~0 with no lateral slip and ~1 in

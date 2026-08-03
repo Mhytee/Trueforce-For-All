@@ -228,11 +228,15 @@ function RevStrip([string]$P) {
 # applies on the next property poll with no dashboard reload. Top-row
 # boxes additionally gate on Dash.Drive.TwoRows, which is the phone
 # (bottom row only) vs tablet (both rows) choice.
-# Everything except CAR FACTS and SCOPE reads SimHub's own game
-# properties, so no telemetry is plumbed through our plugin for this.
-# Property names are all taken from shipped SimHub dashboards, not
-# guessed. Lap times arrive as TimeSpan strings ("00:01:23.4567890"), so
-# FmtLap trims to milliseconds and drops the leading hours.
+# Our own boxes (car facts, gains, presets, FFB scope, friction circle)
+# read TrueforcePlugin properties; the rest read SimHub's game data, so
+# no telemetry is plumbed through our plugin for them. Property names
+# are taken from shipped SimHub dashboards, never guessed.
+# EVERY game-data box also carries a "no data" line: the games differ
+# wildly in what they report (Forza gives tyres and gear but no
+# opponents, a free-roam session has no lap times), and a silently empty
+# box reads as a broken dash. One data test drives both states, so the
+# values and the notice can never show at once.
 $SIM = 'DataCorePlugin.GameData.NewData.'
 $TRK = 'PersistantTrackerPlugin.'
 
@@ -254,41 +258,69 @@ function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [s
     @($l, $v)
 }
 
-# 2x2 corner grid (tyres), FL FR / RL RR.
-function BoxQuad([string]$name, $x, $y, $w, $h, [string[]]$props, [string]$suffix, [string]$vis, [string]$fmtJs) {
-    $items = [System.Collections.Generic.List[object]]::new()
-    $cw = ($w - 12) / 2
-    $ch = ($h - 10) / 2
-    for ($q = 0; $q -lt 4; $q++) {
-        $cx = $x + ($q % 2) * ($cw + 12)
-        $cy = $y + [math]::Floor($q / 2) * ($ch + 10)
-        $js = 'var v=1*$prop("' + $script:SIM + $props[$q] + '");' + $fmtJs
-        $t = New-Text "$name-q$q" $cx $cy $cw $ch 26 '' $script:WHITE 1 @{
-            Text = BindJS 'Text' $js
-        } 'Bold'
-        $t.Bindings['Visible'] = BindJS 'Visible' $vis
-        $items.Add($t)
-    }
-    $items
+# A rounded outline ring (used by both circle boxes).
+function New-Ring([string]$name, $cx, $cy, $r, [string]$color, [int]$thickness, [string]$vis) {
+    $ring = New-Rect $name ($cx - $r) ($cy - $r) ($r * 2) ($r * 2) $script:CLEAR $null ([int]$r)
+    $ring.BorderStyle.BorderColor = $color
+    $ring.BorderStyle.BorderTop = $thickness; $ring.BorderStyle.BorderBottom = $thickness
+    $ring.BorderStyle.BorderLeft = $thickness; $ring.BorderStyle.BorderRight = $thickness
+    $ring.BorderColor = $color
+    $ring.BorderTop = $thickness; $ring.BorderBottom = $thickness
+    $ring.BorderLeft = $thickness; $ring.BorderRight = $thickness
+    $ring.Bindings['Visible'] = BindJS 'Visible' $vis
+    $ring
 }
 
 function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items = [System.Collections.Generic.List[object]]::new()
     $slotProp = $P + '.Drive.Slot' + $slot
     $rowCond = if ($topRow) { ' && $prop("' + $P + '.Drive.TwoRows")' } else { '' }
-    $isKey = { param([string]$k) 'return (""+$prop("' + $slotProp + '"))=="' + $k + '"' + $rowCond }
-    # Panel: any content except Empty. Drawn once and shared by every option.
-    $notEmpty = 'return (""+$prop("' + $slotProp + '"))!="None"' + $rowCond
-    $panel = New-Rect "d$slot-panel" $x $y $w $h $script:PANEL
-    $panel.Bindings['Visible'] = BindJS 'Visible' $notEmpty
-    $items.Add($panel)
+    $sel = '(""+$prop("' + $slotProp + '"))'
 
     $ix = $x + 14; $iw = $w - 28; $iy = $y + 10
 
-    # --- CAR FACTS (ours) ---
-    $vis = & $isKey 'CarFacts'
-    $t = New-Text "d$slot-cf-h" $ix $iy $iw 22 13 'CAR FACTS' $script:MUTED 0
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    # Shown when this box holds the key (and, where given, the game
+    # actually reports that data).
+    function KeyVis([string]$k, [string]$dataJs) {
+        $base = $script:sel + '=="' + $k + '"' + $script:rowCond
+        if ($dataJs) { 'return ' + $base + ' && (' + $dataJs + ')' } else { 'return ' + $base }
+    }
+    function NoDataVis([string]$k, [string]$dataJs) {
+        'return ' + $script:sel + '=="' + $k + '"' + $script:rowCond + ' && !(' + $dataJs + ')'
+    }
+    $script:sel = $sel; $script:rowCond = $rowCond
+
+    $panel = New-Rect "d$slot-panel" $x $y $w $h $script:PANEL
+    $panel.Bindings['Visible'] = BindJS 'Visible' ('return ' + $sel + '!="None"' + $rowCond)
+    $items.Add($panel)
+
+    # Adds a section header that shows whenever the box holds this key,
+    # data or not, so a "no data" box still says what it is.
+    function AddHead([string]$id, [string]$title, [string]$k) {
+        $t = New-Text "d$script:slotN-$id-h" $script:ixN $script:iyN $script:iwN 22 13 $title $script:MUTED 0
+        $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
+        $t
+    }
+    function AddNote([string]$id, [string]$text, [string]$k, [string]$dataJs) {
+        $t = New-Text "d$script:slotN-$id-nd" $script:ixN ($script:iyN + 54) $script:iwN 60 14 $text $script:GRAY 1
+        $t.Bindings['Visible'] = BindJS 'Visible' (NoDataVis $k $dataJs)
+        $t
+    }
+    $script:slotN = $slot; $script:ixN = $ix; $script:iyN = $iy; $script:iwN = $iw
+
+    # --- data tests, per content type ---
+    $dLap   = '(""+$prop("' + $SIM + 'BestLapTime")||"")!=""&&(""+$prop("' + $SIM + 'BestLapTime")).indexOf("00:00:00")!=0'
+    $dTemp  = '(1*$prop("' + $SIM + 'TyreTemperatureFrontLeft"))>0'
+    $dWear  = '(1*$prop("' + $SIM + 'TyreWearFrontLeft"))>0'
+    $dFuel  = '(1*$prop("' + $SIM + 'MaxFuel"))>0'
+    $dDelta = '(""+$prop("' + $TRK + 'EstimatedLapTime")||"")!=""'
+    $dOpp   = '(1*$prop("' + $SIM + 'OpponentsCount"))>1'
+    $dG     = '!isNaN(1*$prop("' + $P + '.Drive.GLat"))'
+    $dFric  = '$prop("' + $P + '.ModeB.On")'
+
+    # ---------------- CAR FACTS (ours, always available) -------------
+    $vis = KeyVis 'CarFacts' $null
+    $items.Add((AddHead 'cf' 'CAR FACTS' 'CarFacts'))
     $t = New-Text "d$slot-cf-car" $ix ($iy + 24) $iw 34 19 '' $script:WHITE 0 @{
         Text = BindJS 'Text' ('return ""+($prop("' + $P + '.CarName")||"No car")')
     } 'Bold'
@@ -296,80 +328,251 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     BoxLine "d$slot-cf-eng" $ix ($iy + 62) $iw 'Engine' ('return ""+($prop("' + $P + '.EngineLayout")||"Auto")') $vis 17 | ForEach-Object { $items.Add($_) }
     BoxLine "d$slot-cf-red" $ix ($iy + 94) $iw 'Redline' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"--"') $vis 17 | ForEach-Object { $items.Add($_) }
 
-    # --- LAP TIMES ---
-    $vis = & $isKey 'LapTimes'
-    $t = New-Text "d$slot-lt-h" $ix $iy $iw 22 13 'LAP TIMES' $script:MUTED 0
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $t = New-Text "d$slot-lt-cur" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' (FmtLapJs ($script:SIM + 'CurrentLapTime'))
+    # ---------------- GAINS (ours) -----------------------------------
+    $vis = KeyVis 'Home' $null
+    $items.Add((AddHead 'hm' 'GAINS' 'Home'))
+    $t = New-Text "d$slot-hm-mg" $ix ($iy + 22) $iw 46 34 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' ('return (1*$prop("' + $P + '.MasterGain")).toFixed(2)')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxLine "d$slot-lt-last" $ix ($iy + 66) $iw 'Last' (FmtLapJs ($script:SIM + 'LastLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-lt-best" $ix ($iy + 98) $iw 'Best' (FmtLapJs ($script:SIM + 'BestLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-
-    # --- TYRE TEMPS (Forza fills these everywhere, free roam included) ---
-    $vis = & $isKey 'TyreTemps'
-    $t = New-Text "d$slot-tt-h" $ix $iy $iw 22 13 'TYRE TEMPS' $script:MUTED 0
+    $t = New-Text "d$slot-hm-mgl" $ix ($iy + 66) $iw 20 12 'MASTER GAIN' $script:MUTED 0
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxQuad "d$slot-tt" $ix ($iy + 26) $iw ($h - 48) `
-        @('TyreTemperatureFrontLeft', 'TyreTemperatureFrontRight', 'TyreTemperatureRearLeft', 'TyreTemperatureRearRight') `
-        '' $vis 'return isNaN(v)||v<=0?"--":Math.round(v)+"°"' | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-hm-ag" $ix ($iy + 88) $iw 'Audio' ('return $prop("' + $P + '.Fx.Audio.On")?(1*$prop("' + $P + '.AudioGain")).toFixed(2):"off"') $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-hm-on" $ix ($iy + 118) $iw 'Plugin' ('return $prop("' + $P + '.PluginOn")?"on":"off"') $vis 17 | ForEach-Object { $items.Add($_) }
 
-    # --- TYRE WEAR ---
-    $vis = & $isKey 'TyreWear'
-    $t = New-Text "d$slot-tw-h" $ix $iy $iw 22 13 'TYRE WEAR' $script:MUTED 0
+    # ---------------- PRESETS (ours) ---------------------------------
+    $vis = KeyVis 'Presets' $null
+    $items.Add((AddHead 'pr' 'PRESETS' 'Presets'))
+    $t = New-Text "d$slot-pr-gl" $ix ($iy + 26) $iw 18 12 'GAME' $script:MUTED 0
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxQuad "d$slot-tw" $ix ($iy + 26) $iw ($h - 48) `
-        @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight') `
-        '' $vis 'return isNaN(v)?"--":Math.round(v)+"%"' | ForEach-Object { $items.Add($_) }
+    $t = New-Text "d$slot-pr-g" $ix ($iy + 42) $iw 32 18 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.PresetName")||"");return p!=""?p:"(manual tune)"')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $t = New-Text "d$slot-pr-cl" $ix ($iy + 80) $iw 18 12 'CAR' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $t = New-Text "d$slot-pr-c" $ix ($iy + 96) $iw 32 18 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.CarPresetName")||"");return p!=""?p:"(none)"')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
 
-    # --- FUEL ---
-    $vis = & $isKey 'Fuel'
-    $t = New-Text "d$slot-fu-h" $ix $iy $iw 22 13 'FUEL' $script:MUTED 0
+    # ---------------- LAP TIMES --------------------------------------
+    $vis = KeyVis 'LapTimes' $dLap
+    $items.Add((AddHead 'lt' 'LAP TIMES' 'LapTimes'))
+    $t = New-Text "d$slot-lt-cur" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' (FmtLapJs ($SIM + 'CurrentLapTime'))
+    } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    BoxLine "d$slot-lt-last" $ix ($iy + 66) $iw 'Last' (FmtLapJs ($SIM + 'LastLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-lt-best" $ix ($iy + 98) $iw 'Best' (FmtLapJs ($SIM + 'BestLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    $items.Add((AddNote 'lt' 'This game does not report lap times.' 'LapTimes' $dLap))
+
+    # ---------------- TYRE TEMPS (visual) ----------------------------
+    # Four tyre blocks coloured by temperature, so the box reads at a
+    # glance instead of needing four numbers parsed. Bands are broad on
+    # purpose: games disagree on what they report (core vs surface, C vs
+    # F), so this is a relative cue with the number kept for detail.
+    $vis = KeyVis 'TyreTemps' $dTemp
+    $items.Add((AddHead 'tt' 'TYRE TEMPS' 'TyreTemps'))
+    $tyreProps = @('TyreTemperatureFrontLeft', 'TyreTemperatureFrontRight', 'TyreTemperatureRearLeft', 'TyreTemperatureRearRight')
+    $wearProps = @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight')
+    $tyW = 54; $tyH = [math]::Min(74, ($h - 70) / 2); $gapX = 26
+    $cx0 = $ix + ($iw - ($tyW * 2 + $gapX)) / 2
+    $cy0 = $iy + 32
+    for ($q = 0; $q -lt 4; $q++) {
+        $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
+        $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
+        $vJs = 'var v=1*$prop("' + $SIM + $tyreProps[$q] + '");'
+        # cold -> blue, working -> green, hot -> amber, overheating -> red
+        $colJs = $vJs + 'if(isNaN(v)||v<=0)return "' + $script:TILE + '";' +
+                 'return v<60?"#FF3D6FB5":(v<85?"' + $script:GREEN + '":(v<100?"#FFE8A33D":"' + $script:RED + '"))'
+        $r = New-Rect "d$slot-tt$q" $cx $cy $tyW $tyH $script:TILE @{
+            BackgroundColor = BindJS 'BackgroundColor' $colJs
+        } 6
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($r)
+        $tv = New-Text "d$slot-tt$q-v" $cx ($cy + $tyH / 2 - 15) $tyW 30 17 '' '#FF101216' 1 @{
+            Text = BindJS 'Text' ($vJs + 'return isNaN(v)||v<=0?"--":Math.round(v)')
+        } 'Bold'
+        $tv.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($tv)
+    }
+    $items.Add((AddNote 'tt' 'This game does not report tyre temperatures.' 'TyreTemps' $dTemp))
+
+    # ---------------- TYRE WEAR (visual) -----------------------------
+    # Same blocks; here the colour is how much tread is left.
+    $vis = KeyVis 'TyreWear' $dWear
+    $items.Add((AddHead 'tw' 'TYRE WEAR' 'TyreWear'))
+    for ($q = 0; $q -lt 4; $q++) {
+        $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
+        $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
+        $vJs = 'var v=1*$prop("' + $SIM + $wearProps[$q] + '");'
+        $colJs = $vJs + 'if(isNaN(v))return "' + $script:TILE + '";' +
+                 'return v>60?"' + $script:GREEN + '":(v>30?"#FFE8A33D":"' + $script:RED + '")'
+        $r = New-Rect "d$slot-tw$q" $cx $cy $tyW $tyH $script:TILE @{
+            BackgroundColor = BindJS 'BackgroundColor' $colJs
+        } 6
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($r)
+        $tv = New-Text "d$slot-tw$q-v" $cx ($cy + $tyH / 2 - 15) $tyW 30 17 '' '#FF101216' 1 @{
+            Text = BindJS 'Text' ($vJs + 'return isNaN(v)?"--":Math.round(v)+"%"')
+        } 'Bold'
+        $tv.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($tv)
+    }
+    $items.Add((AddNote 'tw' 'This game does not report tyre wear.' 'TyreWear' $dWear))
+
+    # ---------------- FUEL -------------------------------------------
+    $vis = KeyVis 'Fuel' $dFuel
+    $items.Add((AddHead 'fu' 'FUEL' 'Fuel'))
     $t = New-Text "d$slot-fu-lvl" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' ('var v=1*$prop("' + $script:SIM + 'Fuel");return isNaN(v)?"--":v.toFixed(1)')
+        Text = BindJS 'Text' ('var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)?"--":v.toFixed(1)')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     BoxLine "d$slot-fu-laps" $ix ($iy + 66) $iw 'Laps left' ('var v=1*$prop("DataCorePlugin.Computed.Fuel_RemainingLaps");return isNaN(v)||v<=0?"--":v.toFixed(1)') $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-fu-pct" $ix ($iy + 98) $iw 'Tank' ('var v=1*$prop("' + $script:SIM + 'FuelPercent");return isNaN(v)?"--":Math.round(v)+"%"') $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-fu-pct" $ix ($iy + 98) $iw 'Tank' ('var v=1*$prop("' + $SIM + 'FuelPercent");return isNaN(v)?"--":Math.round(v)+"%"') $vis 17 | ForEach-Object { $items.Add($_) }
+    $items.Add((AddNote 'fu' 'This game does not report fuel.' 'Fuel' $dFuel))
 
-    # --- LAP DELTA ---
-    $vis = & $isKey 'Delta'
-    $t = New-Text "d$slot-dl-h" $ix $iy $iw 22 13 'LAP DELTA' $script:MUTED 0
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $deltaJs = 'var v=1*$prop("' + $script:TRK + 'SessionBestLastLapDelta");return isNaN(v)?"--":(v>0?"+":"")+v.toFixed(2)'
+    # ---------------- LAP DELTA --------------------------------------
+    $vis = KeyVis 'Delta' $dDelta
+    $items.Add((AddHead 'dl' 'LAP DELTA' 'Delta'))
     $t = New-Text "d$slot-dl-v" $ix ($iy + 22) $iw 44 32 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' $deltaJs
-        TextColor = BindJS 'TextColor' ('var v=1*$prop("' + $script:TRK + 'SessionBestLastLapDelta");return isNaN(v)?"' + $script:MUTED + '":(v>0?"' + $script:RED + '":"' + $script:GREEN + '")')
+        Text = BindJS 'Text' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"--":(v>0?"+":"")+v.toFixed(2)')
+        TextColor = BindJS 'TextColor' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"' + $script:MUTED + '":(v>0?"' + $script:RED + '":"' + $script:GREEN + '")')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxLine "d$slot-dl-est" $ix ($iy + 70) $iw 'Estimated' (FmtLapJs ($script:TRK + 'EstimatedLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-dl-prev" $ix ($iy + 102) $iw 'Previous' (FmtLapJs ($script:TRK + 'PreviousLap_00')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-dl-est" $ix ($iy + 70) $iw 'Estimated' (FmtLapJs ($TRK + 'EstimatedLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-dl-prev" $ix ($iy + 102) $iw 'Previous' (FmtLapJs ($TRK + 'PreviousLap_00')) $vis 17 | ForEach-Object { $items.Add($_) }
+    $items.Add((AddNote 'dl' 'This game does not report lap deltas.' 'Delta' $dDelta))
 
-    # --- FFB SCOPE (ours; a reduced-column version of the Visualizer
-    # texture lane, so a box costs ~26 items instead of ~160) ---
-    $vis = & $isKey 'Scope'
-    $t = New-Text "d$slot-sc-h" $ix $iy $iw 22 13 'FFB SCOPE' $script:MUTED 0
+    # ---------------- G CIRCLE (game accelerations) ------------------
+    # Classic g-g diagram: the dot is where the car's acceleration
+    # points, the rings are 0.75 g and 1.5 g. Reads the same
+    # accelerations the crash duck uses, so it works on every telemetry
+    # source we support rather than only games with raw g properties.
+    $vis = KeyVis 'GCircle' $dG
+    $items.Add((AddHead 'gc' 'G CIRCLE' 'GCircle'))
+    $gr  = [math]::Min(($iw - 24) / 2, ($h - 66) / 2)
+    $gcx = $ix + $iw / 2
+    $gcy = $iy + 32 + $gr
+    $items.Add((New-Ring "d$slot-gc-r1" $gcx $gcy $gr '#FF39404C' 1 $vis))
+    $items.Add((New-Ring "d$slot-gc-r2" $gcx $gcy ($gr / 2) '#FF2A303A' 1 $vis))
+    $gLatJs = 'var g=1*$prop("' + $P + '.Drive.GLat");if(isNaN(g))g=0;if(g>1.5)g=1.5;if(g<-1.5)g=-1.5;'
+    $gLonJs = 'var g=1*$prop("' + $P + '.Drive.GLong");if(isNaN(g))g=0;if(g>1.5)g=1.5;if(g<-1.5)g=-1.5;'
+    $dot = New-Rect "d$slot-gc-dot" ($gcx - 7) ($gcy - 7) 14 14 $script:GREEN $null 7
+    $dot.Bindings['Left'] = BindJS 'Left' ($gLatJs + 'return ' + ($gcx - 7) + '+g*' + ($gr / 1.5))
+    $dot.Bindings['Top']  = BindJS 'Top'  ($gLonJs + 'return ' + ($gcy - 7) + '-g*' + ($gr / 1.5))
+    $dot.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($dot)
+    $t = New-Text "d$slot-gc-v" $ix ($iy + 22) $iw 20 13 '' $script:MUTED 2 @{
+        Text = BindJS 'Text' ('var a=1*$prop("' + $P + '.Drive.GLat");var b=1*$prop("' + $P + '.Drive.GLong");if(isNaN(a)||isNaN(b))return "";return Math.sqrt(a*a+b*b).toFixed(2)+" g"')
+    }
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $laneY = $iy + 30
-    $laneH = $h - 54
+    $items.Add((AddNote 'gc' 'This game does not report accelerations.' 'GCircle' $dG))
+
+    # ---------------- FRICTION CIRCLE (ours, Mode B) -----------------
+    # Not the g diagram: this is how much of the tyre's grip our own
+    # model believes is in use, which is what shapes the braking feel.
+    # The ring IS the limit, so a dot touching it means the model has
+    # run out of grip. Needs Telemetry FFB running for this game.
+    $vis = KeyVis 'Friction' $dFric
+    $items.Add((AddHead 'fc' 'FRICTION CIRCLE' 'Friction'))
+    $items.Add((New-Ring "d$slot-fc-lim" $gcx $gcy $gr '#FF6B7280' 2 $vis))
+    $items.Add((New-Ring "d$slot-fc-in" $gcx $gcy ($gr * 0.75) '#FF2A303A' 1 $vis))
+    $uJs = 'var u=1*$prop("' + $P + '.Drive.Util");if(isNaN(u))u=0;if(u>1.3)u=1.3;'
+    $dirJs = 'var a=1*$prop("' + $P + '.Drive.GLat");var b=1*$prop("' + $P + '.Drive.GLong");' +
+             'var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m<0.05){a=0;b=0;m=1;}'
+    $fdot = New-Rect "d$slot-fc-dot" ($gcx - 8) ($gcy - 8) 16 16 $script:GREEN @{
+        BackgroundColor = BindJS 'BackgroundColor' ($uJs + 'return u<0.75?"' + $script:GREEN + '":(u<1.0?"#FFE8A33D":"' + $script:RED + '")')
+    } 8
+    $fdot.Bindings['Left'] = BindJS 'Left' ($uJs + $dirJs + 'return ' + ($gcx - 8) + '+(a/m)*u*' + $gr)
+    $fdot.Bindings['Top']  = BindJS 'Top'  ($uJs + $dirJs + 'return ' + ($gcy - 8) + '-(b/m)*u*' + $gr)
+    $fdot.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($fdot)
+    $t = New-Text "d$slot-fc-v" $ix ($iy + 22) $iw 20 13 '' $script:MUTED 2 @{
+        Text = BindJS 'Text' ($uJs + 'return Math.round(u*100)+"% grip"')
+    }
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $items.Add((AddNote 'fc' 'Turn Telemetry FFB on for this game to see grip use.' 'Friction' $dFric))
+
+    # ---------------- RELATIVE ---------------------------------------
+    # Two cars ahead and two behind with their last lap, from the
+    # tracker plugin rather than the obsolete leaderboard item.
+    $vis = KeyVis 'Relative' $dOpp
+    $items.Add((AddHead 'rel' 'RELATIVE' 'Relative'))
+    $relRows = @(
+        @('DriverAhead_01', $script:MUTED), @('DriverAhead_00', $script:WHITE),
+        @('__ME__', $script:GREEN),
+        @('DriverBehind_00', $script:WHITE), @('DriverBehind_01', $script:MUTED)
+    )
+    for ($r = 0; $r -lt $relRows.Count; $r++) {
+        $ry = $iy + 28 + $r * 24
+        $src = $relRows[$r][0]; $col = $relRows[$r][1]
+        if ($src -eq '__ME__') {
+            $posJs = 'var p=1*$prop("' + $SIM + 'Position");return isNaN(p)||p<=0?"-":"P"+p'
+            $valJs = 'return "You"'
+        } else {
+            $posJs = 'var p=1*$prop("' + $TRK + $src + '_Position");return isNaN(p)||p<=0?"-":"P"+p'
+            $valJs = 'var s=""+($prop("' + $TRK + $src + '_LastLapTime")||"");if(s.indexOf(".")>=0)s=s.substring(0,s.indexOf(".")+3);if(s.indexOf("00:")==0)s=s.substring(3);return s==""?"--":s'
+        }
+        $pt = New-Text "d$slot-rel$r-p" $ix $ry 48 22 15 '' $col 0 @{ Text = BindJS 'Text' $posJs } 'Bold'
+        $pt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($pt)
+        $nt = New-Text "d$slot-rel$r-n" ($ix + 52) $ry ($iw - 52) 22 15 '' $col 2 @{ Text = BindJS 'Text' $valJs }
+        $nt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($nt)
+    }
+    $items.Add((AddNote 'rel' 'No other cars in this session.' 'Relative' $dOpp))
+
+    # ---------------- RADAR (SimHub's own proximity item) ------------
+    # One native item that draws itself from the session's opponents, so
+    # it lights up in games reporting car positions and stays quiet in
+    # the ones that do not.
+    $vis = KeyVis 'Radar' $dOpp
+    $items.Add((AddHead 'rd' 'RADAR' 'Radar'))
+    $rdSize = [math]::Min($iw, $h - 52)
+    $radar = [ordered]@{
+        '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RadarItem, SimHub.Plugins'
+        BackgroundColor = $script:CLEAR
+        Height = [double]$rdSize; Left = [double]($ix + ($iw - $rdSize) / 2); Top = [double]($iy + 30)
+        Visible = $true; Width = [double]$rdSize
+        Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
+        Name = "d$slot-rd"
+        Bindings = [ordered]@{ Visible = (BindJS 'Visible' $vis) }
+    }
+    $items.Add($radar)
+    $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
+
+    # ---------------- FFB SCOPE (ours) -------------------------------
+    # The Visualizer tab in miniature: the SAME two lanes, the game's
+    # steering force as a connected line over the Trueforce haptic
+    # envelope, the line reddening on a clip. Sampled every other ring
+    # column so a box costs about half of the full screen.
+    $vis = KeyVis 'Scope' $null
+    $items.Add((AddHead 'sc' 'FFB SCOPE' 'Scope'))
+    $laneY = $iy + 28
+    $laneH = $h - 52
     $mid = $laneY + $laneH / 2
     $zero = New-Rect "d$slot-sc-zero" $ix $mid $iw 2 $script:SCOPE_GRID $null 0
     $zero.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($zero)
-    $cols = 24
+    # Envelope first so the force line draws over it.
+    $cols = 39
     $cw = $iw / $cols
     for ($c = 0; $c -lt $cols; $c++) {
-        # Sample the newest 24 of the plugin's 78 ring columns.
-        $src = 54 + $c
+        $src = $c * 2
         $colJs = 'var v=1*$prop("' + $P + '.Scope.Tex' + $src + '");if(v>1)v=1;if(v<0)v=0;'
         $col = New-Rect "d$slot-sc$c" ($ix + $c * $cw) $mid $cw 2 $script:SCOPE_PURPLE $null 0
-        $col.Bindings['Height'] = BindJS 'Height' ($colJs + 'return 2+v*' + ($laneH - 4))
-        $col.Bindings['Top']    = BindJS 'Top'    ($colJs + 'var hh=2+v*' + ($laneH - 4) + ';return ' + ($mid + 1) + '-hh/2')
+        $col.Bindings['Height'] = BindJS 'Height' ($colJs + 'return 2+v*' + ($laneH - 6))
+        $col.Bindings['Top']    = BindJS 'Top'    ($colJs + 'var hh=2+v*' + ($laneH - 6) + ';return ' + ($mid + 1) + '-hh/2')
         $col.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($col)
     }
+    # Game FFB trace: the same ChartItem the Visualizer uses. Its canvas
+    # has a hardcoded 10 px inner margin, so the item is inset by that.
+    $clipGlowJs = '(1*$prop("' + $P + '.Scope.FfbClipGlow"))'
+    $trace = New-Chart "d$slot-sc-tr" ($ix - 10) ($laneY - 10) ($iw + 20) ($laneH + 20) $script:SCOPE_AMBER 2 90 ('return 1*$prop("' + $P + '.Scope.Ffb77")')
+    $trace.Bindings['LineColor'] = BindJS 'LineColor' ('var g=' + $clipGlowJs + ';if(g<0)g=0;if(g>1)g=1;var r=Math.round(227+g*2).toString(16);var q=Math.round(164-g*92).toString(16);var w=Math.round(69+g*8).toString(16);if(r.length<2)r="0"+r;if(q.length<2)q="0"+q;if(w.length<2)w="0"+w;return "#FF"+r+q+w')
+    $trace.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($trace)
     $items
 }
 
@@ -1346,18 +1549,27 @@ $ovDriveTab['d1-lt-last-l'] = @{ Show = $true }
 $ovDriveTab['d1-lt-last-v'] = @{ Show = $true; Text = '01:25.902' }
 $ovDriveTab['d1-lt-best-l'] = @{ Show = $true }
 $ovDriveTab['d1-lt-best-v'] = @{ Show = $true; Text = '01:23.771' }
-# slot 2: FFB scope
+# slot 2: FFB scope (both lanes, like the Visualizer tab)
 $ovDriveTab['d2-sc-h']    = @{ Show = $true }
 $ovDriveTab['d2-sc-zero'] = @{ Show = $true }
-for ($i = 0; $i -lt 24; $i++) {
-    $v = (0.25 + 0.7 * [math]::Abs([math]::Sin($i / 3.1))) * [math]::Abs([math]::Sin($i / 1.7))
-    $hh = 2 + $v * 154
-    $ovDriveTab["d2-sc$i"] = @{ Show = $true; Top = (335 - $hh / 2); Height = $hh }
+$scLaneH = 212 - 52
+$scMid   = 228 + 10 + 28 + $scLaneH / 2
+for ($i = 0; $i -lt 39; $i++) {
+    $v = (0.25 + 0.7 * [math]::Abs([math]::Sin($i / 5.1))) * [math]::Abs([math]::Sin($i / 2.3))
+    $hh = 2 + $v * ($scLaneH - 6)
+    $ovDriveTab["d2-sc$i"] = @{ Show = $true; Top = ($scMid + 1 - $hh / 2); Height = $hh }
 }
-# slot 3: tyre temps
+$scPts = @()
+for ($i = 0; $i -lt 90; $i++) { $scPts += (0.72 * [math]::Sin($i / 7.5) + 0.24 * [math]::Sin($i / 2.6 + 0.8)) }
+$ovDriveTab['d2-sc-tr'] = @{ Show = $true; Points = $scPts }
+# slot 3: tyre temps as coloured blocks
 $ovDriveTab['d3-tt-h'] = @{ Show = $true }
-$tq = @('86°', '84°', '79°', '81°')
-for ($i = 0; $i -lt 4; $i++) { $ovDriveTab["d3-tt-q$i"] = @{ Show = $true; Text = $tq[$i] } }
+$tq  = @(86, 84, 79, 108)
+$tqc = @($GREEN, $GREEN, $GREEN, $RED)
+for ($i = 0; $i -lt 4; $i++) {
+    $ovDriveTab["d3-tt$i"]    = @{ Show = $true; BackgroundColor = $tqc[$i] }
+    $ovDriveTab["d3-tt$i-v"]  = @{ Show = $true; Text = ([string]$tq[$i]) }
+}
 
 Render-Preview $s1 $ovDrive   (Join-Path $OutDir 'TF4ALL Dash.djson.00.png')
 Render-Preview $s2 $ovFacts   (Join-Path $OutDir 'TF4ALL Dash.djson.01.png')
