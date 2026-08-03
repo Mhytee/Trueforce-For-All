@@ -649,6 +649,25 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # purpose: games disagree on what they report (core vs surface, C vs
     # F), so this is a relative cue with the number kept for detail.
     $vis = KeyVis 'TyreTemps' $dTemp
+    $bandOrder = @(@('Outer', 'Middle', 'Inner'), @('Inner', 'Middle', 'Outer'))
+    # A tyre does not change state at a threshold, so the colour does not
+    # step at one either: it is interpolated between four stops, and the
+    # drift toward the next colour IS the reading. Stops keep the old
+    # breakpoints so a tyre that read amber still does. Games disagree on
+    # units and on core vs surface, so this stays a relative cue.
+    $tempScale = TempColorJs $script:TILE
+    $tempText  = TempTextColorJs $script:MUTED
+    # Everything internal is Celsius (the Forza parse converts its
+    # Fahrenheit on the way in), so the ramp keeps working in Celsius and
+    # only the printed number follows SimHub's unit choice. Both property
+    # paths are probed because the value has moved between them; unknown
+    # falls through to Celsius, which is the unit the number is already in.
+    # TemperatureUnit is the one the stock dashboards read; its values are
+    # "Fahrenheit" and "Celcius" (SimHub's spelling), so testing for an F
+    # covers both. LocalTemperatureUnit is probed after it as a fallback.
+    $tempUnitJs = 'var uu=""+($prop("' + $SIM + 'TemperatureUnit")||"");' +
+                  'if(uu=="")uu=""+($prop("' + $SIM + 'LocalTemperatureUnit")||"");' +
+                  'var uF=uu.toUpperCase().indexOf("F")>=0;'
     # The unit lives in the header: the blocks are too narrow to carry a
     # degree suffix, and a bare number in the wrong unit is worse than none.
     $ttHead = AddHead 'tt' 'TYRE TEMPS' 'TyreTemps'
@@ -672,28 +691,17 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # stands in otherwise. Bands run outer-to-inner on the left of the car
     # and inner-to-outer on the right, so the inner edges face each other
     # the way they do on the car.
-    $bandOrder = @(@('Outer', 'Middle', 'Inner'), @('Inner', 'Middle', 'Outer'))
-    # A tyre does not change state at a threshold, so the colour does not
-    # step at one either: it is interpolated between four stops, and the
-    # drift toward the next colour IS the reading. Stops keep the old
-    # breakpoints so a tyre that read amber still does. Games disagree on
-    # units and on core vs surface, so this stays a relative cue.
-    $tempScale = TempColorJs $script:TILE
-    $tempText  = TempTextColorJs $script:MUTED
-    # Everything internal is Celsius (the Forza parse converts its
-    # Fahrenheit on the way in), so the ramp keeps working in Celsius and
-    # only the printed number follows SimHub's unit choice. Both property
-    # paths are probed because the value has moved between them; unknown
-    # falls through to Celsius, which is the unit the number is already in.
-    $tempUnitJs = 'var uu=""+($prop("' + $SIM + 'LocalTemperatureUnit")||"");' +
-                  'if(uu=="")uu=""+($prop("DataCorePlugin.LocalTemperatureUnit")||"");' +
-                  'var uF=uu.toUpperCase().indexOf("F")>=0;'
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
         $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
         # ours first, SimHub's as the fallback
-        $vJs = 'var v=1*$prop("' + $P + '.Forza.' + $fzTemp[$q] + '");' +
-               'if(!(v>0))v=1*$prop("' + $SIM + $tyreProps[$q] + '");'
+        # Ours is Celsius (the Forza parse converts on the way in);
+        # SimHub's is already in whatever unit the user picked, so it is
+        # the one that may need converting. v ends up Celsius either way,
+        # which is what the ramp is calibrated against.
+        $vJs = 'var v=1*$prop("' + $P + '.Forza.' + $fzTemp[$q] + '");var fs=0;' +
+               'if(!(v>0)){v=1*$prop("' + $SIM + $tyreProps[$q] + '");fs=1;}' +
+               $tempUnitJs + 'if(fs&&uF)v=(v-32)*5/9;'
         # A real split needs all three bands AND a source that measures
         # them. SimHub fills Middle from a single per-tyre reading, so
         # testing Middle alone handed Forza a split it does not have and
@@ -713,7 +721,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $bandW = ($tyW - 4) / 3
         for ($bi = 0; $bi -lt 3; $bi++) {
             $band = $bandOrder[$q % 2][$bi]
-            $bJs = 'var v=1*$prop("' + $SIM + $tyreProps[$q] + $band + '");'
+            # Bands are SimHub's alone, so always its unit.
+            $bJs = 'var v=1*$prop("' + $SIM + $tyreProps[$q] + $band + '");' +
+                   $tempUnitJs + 'if(uF)v=(v-32)*5/9;'
             $b = New-Rect "d$slot-tt$q-$($band.ToLower())" ($cx + $bi * ($bandW + 2)) $cy $bandW $tyH $script:TILE @{
                 BackgroundColor = BindJS 'BackgroundColor' ($bJs + $tempScale)
             } 3
@@ -721,7 +731,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
             $items.Add($b)
         }
         $tv = New-Text "d$slot-tt$q-v" $cx ($cy + $tyH / 2 - 15) $tyW 30 17 '' '#FF101216' 1 @{
-            Text      = BindJS 'Text'      ($vJs + $tempUnitJs +
+            Text      = BindJS 'Text'      ($vJs +
                 'return isNaN(v)||v<=0?"--":Math.round(uF?v*9/5+32:v)')
             TextColor = BindJS 'TextColor' ($vJs + $tempText)
         } 'Bold'
