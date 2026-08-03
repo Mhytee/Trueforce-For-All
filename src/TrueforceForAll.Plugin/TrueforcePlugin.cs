@@ -4875,9 +4875,7 @@ namespace TrueforceForAll.Plugin
         // during a slide (gated on rear breakaway) so the force eases off as the
         // front realigns = a stable equilibrium. Grip driving keeps the narrow
         // window. Default OFF (A/B feel toggle); range is its own slider.
-        private volatile bool _mbTrailSpringOn;      // MBTRAIL / "Trail spring" feel toggle
         private volatile float _pModeBSlideK = 2.0f;  // BOVERCAP: excess reading as a HALF slide
-        private float _pModeBTrailRangeDeg = 6f;     // BTRANGE / "Trail range" slider: full-slide dir-ramp window in degrees (owner 2026-07-25 baseline)
         // Phase lead (anticipation): the synthesized SAT closes a lagged telemetry
         // loop (wheel -> 60Hz telemetry -> force -> wheel), so the restoring spring
         // rings near its target instead of settling like real physics-computed FFB.
@@ -4958,7 +4956,6 @@ namespace TrueforceForAll.Plugin
         // thread, read on SimHub's property thread: a stale read by a tick is
         // harmless for a readout, and 32-bit aligned float reads cannot tear.
         private volatile float _mbOverPeak;      // session high-water mark of _mbOverEma
-        private volatile float _mbDirWindowRad;  // last direction-ramp window actually used
         private float _mbLockRatioEma; // smoothed front slip ratio for the lockup gate
         private float _mbCircleRatioEma; // smoothed front |slip ratio| for the friction circle
         private float _mbRamp;
@@ -5216,9 +5213,6 @@ namespace TrueforceForAll.Plugin
             // live like the road-kick pair above.
             _mbReversalDampOn = s.ModeBReversalDamp;
             _pModeBReversalGain = s.ModeBReversalDampGain;
-            // Trail spring (drift countersteer settle): toggle + range, applied live.
-            _mbTrailSpringOn = s.ModeBTrailSpring;
-            _pModeBTrailRangeDeg = s.ModeBTrailRangeDeg;
             _pModeBSlideK = s.ModeBSlideHalfPoint;
             // Phase lead (anticipation): toggle + lead time, applied live.
             _mbPhaseLeadOn = s.ModeBPhaseLead;
@@ -5362,7 +5356,7 @@ namespace TrueforceForAll.Plugin
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
             "ModeBRoadKick", "ModeBRoadKickGain",
             "ModeBReversalDamp", "ModeBReversalDampGain",
-            "ModeBTrailSpring", "ModeBTrailRangeDeg", "ModeBSlideHalfPoint",
+            "ModeBSlideHalfPoint",
             "ModeBPhaseLead", "ModeBPhaseLeadMs",
             "ModeBCenterDuck", "ModeBCenterDuckAmount",
             "ModeBCenterPd", "ModeBCenterLeadMs",
@@ -5445,8 +5439,6 @@ namespace TrueforceForAll.Plugin
             s.ModeBRoadKickGain       = d.ModeBRoadKickGain;
             s.ModeBReversalDamp       = d.ModeBReversalDamp;
             s.ModeBReversalDampGain   = d.ModeBReversalDampGain;
-            s.ModeBTrailSpring        = d.ModeBTrailSpring;
-            s.ModeBTrailRangeDeg      = d.ModeBTrailRangeDeg;
             s.ModeBSlideHalfPoint     = d.ModeBSlideHalfPoint;
             s.ModeBPhaseLead          = d.ModeBPhaseLead;
             s.ModeBPhaseLeadMs        = d.ModeBPhaseLeadMs;
@@ -5540,22 +5532,18 @@ namespace TrueforceForAll.Plugin
             // v4 rational curve: zero slope at exact center only, near-
             // linear body. BDIRK tunes the softness live (0 = pure linear).
             //
-            // Direction-ramp window: shipped 0.03 rad (~1.7deg) saturates dir to
-            // +-1 almost immediately, so during a slide the force is a constant
-            // shove with no proportional restoring (the wheel slews to the lock,
-            // never settling into a countersteer). Trail spring (MBTRAIL): widen
-            // the window toward BTRANGE as the rear breaks away, so dir stays
-            // PROPORTIONAL across the slide and the force eases off as the front
-            // realigns = a stable equilibrium, like real pneumatic trail. Gated on
-            // _mbOverEma (rear-over-front excess, last tick; decoupled from the
-            // front slip angle so it holds the window open through the catch);
-            // grip driving (excess ~0) keeps the shipped narrow window bit-for-bit.
-            double dirWindow = 0.03;
-            if (_mbTrailSpringOn)
-                dirWindow = ModeBComposer.AdaptiveDirWindow(
-                    0.03, _pModeBTrailRangeDeg * (Math.PI / 180.0),
-                    ModeBComposer.SlideGate01(_mbOverEma, _pModeBSlideK));
-            _mbDirWindowRad = (float)dirWindow;   // ModeB.TrailWindowDeg
+            // Direction-ramp window, fixed at 0.03. The "trail spring" widened it
+            // during a slide so dir would stay proportional rather than saturating;
+            // on-wheel logging 2026-08-02 proved it never once acted, with the front
+            // slip beyond the window in 50 of 50 samples at every setting tried.
+            // Root cause: this 0.03 is not 1.7 deg. FrontSlipAngleRad carries Forza's
+            // TireSlipAngle, which is NORMALISED slip (~1.0 = the tire's peak slip
+            // angle), not radians, so the window is really 3% of peak slip and dir
+            // has always been sign(slip) in anything but a straight line. Retired
+            // 2026-08-02; the full account is in the ModeBComposer header. Nothing
+            // else reads the magnitude, which is why the model is unaffected: force
+            // SIZE comes from u (combined slip), whose units are right.
+            const double dirWindow = 0.03;
             // Phase lead (MBLEAD): push the slip angle forward by its rate so dir
             // anticipates where the wheel is heading, recovering the telemetry-loop
             // lag that otherwise makes the spring ring near its target (worst on a
@@ -5633,7 +5621,6 @@ namespace TrueforceForAll.Plugin
             float overTau = Math.Max(2f, _pModeBEmaMs) * (rawOver > _mbOverEma ? 1f : 4f);
             _mbOverEma += (float)((rawOver - _mbOverEma) * (1.0 - Math.Exp(-dtMs / overTau)));
             if (_mbOverEma > _mbOverPeak) _mbOverPeak = _mbOverEma;   // ModeB.RearExcessPeak
-
             double sat = _satModel.Force01(u, 1.0, load01, _lastSpeedKmh) * dir;
             double trail = Math.Min(Math.Max((double)_lastSpeedKmh, 0.0) / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
             double f01 = ModeBComposer.Compose(
@@ -6041,20 +6028,10 @@ namespace TrueforceForAll.Plugin
                     _pModeBReversalGain = C(value, 0f, 1f);
                     if (Settings != null) { Settings.ModeBReversalDampGain = _pModeBReversalGain; PersistSettings(); }
                     return $"Reversal damping strength = {_pModeBReversalGain:0.00} (0 = off; 1 = force fades to silent on a hard fast catch)";
-                case "MBTRAIL":
-                    _mbTrailSpringOn = value >= 0.5f;
-                    if (Settings != null) { Settings.ModeBTrailSpring = _mbTrailSpringOn; PersistSettings(); }
-                    return _mbTrailSpringOn
-                        ? $"Trail spring ON: during a slide the wheel eases into a stable countersteer instead of slewing to the lock (range {_pModeBTrailRangeDeg:0}deg). Grip driving keeps its normal weight."
-                        : "Trail spring OFF.";
                 case "BOVERCAP":
                     _pModeBSlideK = C(value, 0.25f, 20f);
                     if (Settings != null) { Settings.ModeBSlideHalfPoint = _pModeBSlideK; PersistSettings(); }
                     return $"Slide scale = {_pModeBSlideK:0.00} (the rear-over-front excess that reads as HALF a slide; drives the trail spring and the centering ease together. Soft-saturating, so this is a scale and never a ceiling: lower = everything opens up sooner, higher = it takes a bigger slide)";
-                case "BTRANGE":
-                    _pModeBTrailRangeDeg = C(value, 2f, 20f);
-                    if (Settings != null) { Settings.ModeBTrailRangeDeg = _pModeBTrailRangeDeg; PersistSettings(); }
-                    return $"Trail range = {_pModeBTrailRangeDeg:0} deg (how far the front realigns before the countersteer force fades to a stable point; higher = gentler, wider settle; lower = stiffer, nearer the shipped feel)";
                 case "MBLEAD":
                     _mbPhaseLeadOn = value >= 0.5f;
                     if (Settings != null) { Settings.ModeBPhaseLead = _mbPhaseLeadOn; PersistSettings(); }
@@ -6090,7 +6067,7 @@ namespace TrueforceForAll.Plugin
                     if (Settings != null) { Settings.ModeBCenterLeadMs = _pModeBCenterLeadMs; PersistSettings(); }
                     return $"Direct centering look-ahead = {_pModeBCenterLeadMs:0} ms (how far ahead of the wheel's motion the centering aims; raise if a released wheel still overshoots center, 0 = position only)";
                 default:
-                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBREV/BREVG/MBTRAIL/BTRANGE/BOVERCAP/MBLEAD/BLEAD/MBCDUCK/BCDUCK/BLDEM/BMINF/MBCPD/BCLEAD)";
+                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBREV/BREVG/BOVERCAP/MBLEAD/BLEAD/MBCDUCK/BCDUCK/BLDEM/BMINF/MBCPD/BCLEAD)";
             }
         }
 

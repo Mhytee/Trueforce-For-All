@@ -271,68 +271,6 @@ namespace TrueforceForAll.Core.Tests
         // settling into a countersteer). Widen the ramp during a slide so the force
         // eases off proportionally as the front realigns = a stable equilibrium. ---
 
-        [Fact]
-        public void AdaptiveDirWindow_BaseWhenGripping()
-        {
-            // Gate 0 (no rear breakaway): the shipped narrow window, untouched.
-            Assert.Equal(0.03, ModeBComposer.AdaptiveDirWindow(0.03, 0.14, 0.0), 12);
-        }
-
-        [Fact]
-        public void AdaptiveDirWindow_MaxAtFullSlide()
-        {
-            // Gate 1 (full slide): the wide "trail range" window.
-            Assert.Equal(0.14, ModeBComposer.AdaptiveDirWindow(0.03, 0.14, 1.0), 12);
-        }
-
-        [Fact]
-        public void AdaptiveDirWindow_MonotoneAndBounded()
-        {
-            double prev = 0.03;
-            for (double g = 0.0; g <= 1.0; g += 0.05)
-            {
-                double w = ModeBComposer.AdaptiveDirWindow(0.03, 0.14, g);
-                Assert.InRange(w, 0.03, 0.14);
-                Assert.True(w >= prev - 1e-12, $"non-monotone at gate={g}");
-                prev = w;
-            }
-        }
-
-        [Fact]
-        public void AdaptiveDirWindow_GentleOnset_GripFeelUntouched()
-        {
-            // C1 onset: a whiff of rear slip barely widens the window, so light
-            // trailing-throttle rotation keeps the strong on-center grip feel.
-            double w = ModeBComposer.AdaptiveDirWindow(0.03, 0.14, 0.1);
-            double frac = (w - 0.03) / (0.14 - 0.03);
-            Assert.True(frac < 0.1, $"onset too eager: {frac}");
-        }
-
-        [Fact]
-        public void AdaptiveDirWindow_WiderWindowGivesProportionalDir()
-        {
-            // The point of the fix: at a mid-slide slip angle the narrow (gripping)
-            // window pins dir at full ±1 (bang-bang), while the widened (full-slide)
-            // window leaves dir PROPORTIONAL, so the force still has a restoring
-            // gradient to settle on.
-            double slip = 0.07;   // ~4°, a caught-slide front angle
-            double narrow = ModeBComposer.AdaptiveDirWindow(0.03, 0.14, 0.0);
-            double wide   = ModeBComposer.AdaptiveDirWindow(0.03, 0.14, 1.0);
-            double dirNarrow = ModeBComposer.CenterSoftDir(slip / narrow);
-            double dirWide   = ModeBComposer.CenterSoftDir(slip / wide);
-            Assert.Equal(1.0, dirNarrow, 6);          // saturated: no restoring slope
-            Assert.True(dirWide < 0.9, $"expected proportional dir, got {dirWide}");
-        }
-
-        [Fact]
-        public void AdaptiveDirWindow_DegenerateInputsClampSafely()
-        {
-            // maxWindow below base can't invert the window; gate outside [0,1] clamps.
-            Assert.Equal(0.03, ModeBComposer.AdaptiveDirWindow(0.03, 0.01, 1.0), 12);
-            Assert.Equal(0.14, ModeBComposer.AdaptiveDirWindow(0.03, 0.14, 5.0), 12);
-            Assert.Equal(0.03, ModeBComposer.AdaptiveDirWindow(0.03, 0.14, -1.0), 12);
-        }
-
         // --- Phase lead: cancel the telemetry-loop lag that makes the synthesized
         // SAT spring ring near its target (unlike AC's zero-lag physics FFB). Push
         // the slip angle feeding dir forward by its rate so the force anticipates. ---

@@ -2771,17 +2771,6 @@
                     </Grid>
                     <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Torque left once the front has fully let go. Lower = a more dramatic gone-light cue."/>
 
-                    <CheckBox x:Name="ModeBTrailSpringCheck" Margin="0,0,0,2" Content="Trail spring"
-                              Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="Makes the wheel settle into a countersteer during a slide, the way real steering trail eases the wheel to a stable angle, instead of spinning to full lock and stopping dead. Only acts once the rear steps out, so normal cornering weight is unchanged."/>
-                    <Grid Margin="20,0,0,8">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Trail range:" Style="{StaticResource LabelText}"/>
-                        <Slider     Grid.Column="1" x:Name="ModeBTrailRangeSlider" Minimum="2" Maximum="20" SmallChange="1" LargeChange="2"
-                                    TickFrequency="2" ValueChanged="ModeBTrailRangeSlider_ValueChanged" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="2" x:Name="ModeBTrailRangeText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="6"/>
-                    </Grid>
-
                     <CheckBox x:Name="ModeBCenterDuckCheck" Margin="0,0,0,2" Content="Ease centering in slides"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="Fades centering out when the rear steps out, so it stops pulling the wheel back to straight and fighting the countersteer in a drift, while staying full for normal cornering."/>

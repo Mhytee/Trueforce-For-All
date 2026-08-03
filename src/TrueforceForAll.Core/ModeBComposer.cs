@@ -9,19 +9,32 @@
 //    as a multiplier on the SAT term so the peak-and-drop shape (lightness
 //    past the limit) is preserved, just scaled.
 //
-// RETIRED 2026-08-02: the additive "countersteer force" (BCS), an extra
-// torque gated on the rear's utilization excess over the front. It existed
-// because front-only utilization makes rear breakaway invisible: the front
-// keeps grip, u stays low, and the wheel stays limp exactly when it should
-// warn. The trail spring (AdaptiveDirWindow) closed that gap by a better
-// route, and four on-wheel sessions across four different shapings of the
-// counter term (slide-depth growth, a front-slip handoff, a rear-excess
-// crossfade, and a |dir| center gate) all returned the same verdict: the
-// wheel is smoother the lower it goes. It survived only around 0.1-0.2 of
-// gain, where it was barely perceptible, so it was carrying a slider, three
-// toggles, four access codes and four helper curves to deliver almost
-// nothing. The rear-excess signal itself is NOT retired: it still gates the
-// trail spring and SlideDuck through SlideGate01.
+// RETIRED 2026-08-02, both of the terms that tried to shape slide feel
+// through the direction blend:
+//
+//  * The additive "countersteer force" (BCS), gated on the rear's
+//    utilization excess. Four on-wheel sessions across four shapings all
+//    said the wheel is smoother the lower it goes.
+//
+//  * The "trail spring" (AdaptiveDirWindow), which widened the direction
+//    window during a slide so dir would stay proportional instead of
+//    saturating. Logging proved it never once acted: 50 of 50 samples had
+//    the front slip beyond the window, so dir was pinned at 1 through every
+//    slide, on every setting tried.
+//
+// The root cause of that second one is worth carrying forward. Forza's
+// TireSlipAngle (and so TelemetryFrame.FrontSlipAngleRad, whose name and doc
+// are simply WRONG) is not an angle in radians: it is normalised slip where
+// ~1.0 means the tire is at its peak slip angle. No conversion is applied
+// anywhere. Measured values ran 0.15-1.05 in normal drifting and reached 7.3
+// in a spin, which is impossible for radians (420 deg) and exactly right for
+// a fraction of peak. So the 0.03 direction window is not 1.7 deg, it is 3%
+// of peak slip, and dir has always been effectively sign(slip). Nothing else
+// depends on the magnitude, which is why the model works anyway: the force's
+// size comes from u (combined slip), which IS read correctly.
+//
+// The rear-excess gate is NOT retired: it still drives SlideDuck through
+// SlideGate01, and that path reads combined slip, whose units are right.
 //
 // Pure math, no state — smoothing of every input lives at the integration
 // layer ("smooth the inputs, not the force"). Returns a signed normalized
@@ -55,13 +68,12 @@ namespace TrueforceForAll.Core
         public const double SlideHalfPoint = 2.0;
 
         /// <summary>Normalise a raw rear-over-front excess into the 0..1 slide gate
-        /// that <see cref="AdaptiveDirWindow"/>, <see cref="SlideDuck"/> and the
-        /// counter's activation all run on. One place, so a changed scale can never
-        /// reach two of the three and not the third.
+        /// that <see cref="SlideDuck"/> runs on. One place, so any future
+        /// slide-gated term shares the same scale by construction.
         ///
         /// Soft saturation x/(x+k) rather than a clamp: the signal is unbounded and
         /// wildly heavy-tailed (see <see cref="SlideHalfPoint"/>), so a hard cap
-        /// turned all three consumers into switches, flattening every slide past
+        /// turned its consumers into switches, flattening every slide past
         /// the cap into one identical "full slide" reading. This approaches 1
         /// asymptotically and never clips, so a car whose rear reaches 4 and one
         /// that reaches 8 are both deep slides yet still distinguishable. Each
@@ -214,35 +226,6 @@ namespace TrueforceForAll.Core
             double x = returning / Math.Max(1e-4, refFlux);
             double t = x / (1.0 + x);                              // 0..1, smooth, half at x = 1
             return 1.0 - s * t;
-        }
-
-        /// <summary>Slide-adaptive direction-ramp window for the "trail spring".
-        /// The direction blend (<see cref="CenterSoftDir"/>) saturates to ±1 at
-        /// ±<paramref name="baseWindowRad"/> of slip angle (~0.03 rad / 1.7°
-        /// shipped), so past that the aligning force is a CONSTANT-direction shove
-        /// with no proportional restoring: the wheel is driven to the steering lock
-        /// instead of settling into a countersteer like real pneumatic trail. Real
-        /// trail is a SPRING (torque ∝ slip angle) that eases off as the front
-        /// realigns, so the wheel finds a stable countersteer angle.
-        ///
-        /// Widening the window makes dir = slipAngle / window proportional over a
-        /// wider slip-angle span, restoring that spring: as the driver catches the
-        /// slide and the front comes back into line, the force ramps DOWN smoothly
-        /// to a stable equilibrium at alignment. Done only DURING A SLIDE (gated on
-        /// the rear-breakaway signal, which is decoupled from the front slip angle
-        /// so it holds the window open through the whole catch) and smoothstepped
-        /// for a C1 onset, so grip driving (gate ~0) keeps the shipped narrow,
-        /// strong-on-center feel bit-for-bit.
-        /// <paramref name="baseWindowRad"/>: gripping window (the shipped 0.03).
-        /// <paramref name="maxWindowRad"/>: full-slide window (the "trail range").
-        /// <paramref name="slideGate01"/>: 0 = gripping .. 1 = full slide.</summary>
-        public static double AdaptiveDirWindow(double baseWindowRad, double maxWindowRad, double slideGate01)
-        {
-            double lo = Math.Max(1e-3, baseWindowRad);
-            double hi = Math.Max(lo, maxWindowRad);
-            double g = Math.Min(Math.Max(slideGate01, 0.0), 1.0);
-            double shaped = g * g * (3.0 - 2.0 * g);      // C1 onset: grip stays at the base window
-            return lo + (hi - lo) * shaped;
         }
 
         /// <summary>Slide duck: a multiplier that eases a stability force OUT as the
