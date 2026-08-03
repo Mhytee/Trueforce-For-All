@@ -883,6 +883,34 @@ namespace TrueforceForAll.Plugin
             // from the same accelerations the crash duck reads so the box
             // works on any telemetry source we support.
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
+
+            // ---------- properties: Forza dash extras ----------
+            // A Forza player usually has "Also forward to SimHub" off, which
+            // leaves SimHub's own game properties empty for the whole session,
+            // so the Drive tab's tyre / fuel / lap boxes would sit on their
+            // "not reported" notice while the data is arriving at OUR
+            // listener. These republish what we parse, and the dash prefers
+            // them over SimHub's when they are live. Zero means "this title
+            // does not report it": Motorsport fills tyre temps and lap data,
+            // Horizon leaves parts of it empty, and only the FM2023 packet
+            // carries wear at all.
+            this.AttachDelegate("Dash.Forza.Live",     () => ForzaUdpSource?.DashExtras != null);
+            this.AttachDelegate("Dash.Forza.TempFL",   () => ForzaUdpSource?.DashExtras?.TireTempFL ?? 0f);
+            this.AttachDelegate("Dash.Forza.TempFR",   () => ForzaUdpSource?.DashExtras?.TireTempFR ?? 0f);
+            this.AttachDelegate("Dash.Forza.TempRL",   () => ForzaUdpSource?.DashExtras?.TireTempRL ?? 0f);
+            this.AttachDelegate("Dash.Forza.TempRR",   () => ForzaUdpSource?.DashExtras?.TireTempRR ?? 0f);
+            this.AttachDelegate("Dash.Forza.HasWear",  () => ForzaUdpSource?.DashExtras?.HasWear == true);
+            this.AttachDelegate("Dash.Forza.WearFL",   () => ForzaUdpSource?.DashExtras?.TireWearFL ?? 0f);
+            this.AttachDelegate("Dash.Forza.WearFR",   () => ForzaUdpSource?.DashExtras?.TireWearFR ?? 0f);
+            this.AttachDelegate("Dash.Forza.WearRL",   () => ForzaUdpSource?.DashExtras?.TireWearRL ?? 0f);
+            this.AttachDelegate("Dash.Forza.WearRR",   () => ForzaUdpSource?.DashExtras?.TireWearRR ?? 0f);
+            // Forza reports fuel as a tank fraction, so publish a percentage.
+            this.AttachDelegate("Dash.Forza.FuelPct",  () => (ForzaUdpSource?.DashExtras?.FuelFraction ?? 0f) * 100f);
+            this.AttachDelegate("Dash.Forza.Boost",    () => ForzaUdpSource?.DashExtras?.Boost ?? 0f);
+            this.AttachDelegate("Dash.Forza.BestLap",  () => ForzaUdpSource?.DashExtras?.BestLapSec ?? 0f);
+            this.AttachDelegate("Dash.Forza.LastLap",  () => ForzaUdpSource?.DashExtras?.LastLapSec ?? 0f);
+            this.AttachDelegate("Dash.Forza.CurLap",   () => ForzaUdpSource?.DashExtras?.CurrentLapSec ?? 0f);
+            this.AttachDelegate("Dash.Forza.Position", () => ForzaUdpSource?.DashExtras?.RacePosition ?? 0);
             this.AttachDelegate("Dash.Drive.Util",  () => ModeBUtilization);
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);

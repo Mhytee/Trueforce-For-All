@@ -247,6 +247,18 @@ function FmtLapJs([string]$prop) {
     'return (s==""||s.indexOf("00:00.00")==0)?"--":s'
 }
 
+# Same readout, but preferring our own Forza parse (seconds as a float)
+# and falling back to SimHub's TimeSpan string. Forza players commonly
+# leave forwarding off, so SimHub's copy is empty for them.
+function FmtLapDualJs([string]$fzProp, [string]$simProp) {
+    'var f=1*$prop("' + $fzProp + '");' +
+    'if(f>0){var m=Math.floor(f/60);var s=f-m*60;var ss=s.toFixed(3);if(s<10)ss="0"+ss;return (m>0?(m+":"):"")+ss;}' +
+    'var t=""+($prop("' + $simProp + '")||"");' +
+    'if(t.indexOf(".")>=0)t=t.substring(0,t.indexOf(".")+4);' +
+    'if(t.indexOf("00:")==0)t=t.substring(3);' +
+    'return (t==""||t.indexOf("00:00.00")==0)?"--":t'
+}
+
 # One labelled value line inside a box.
 function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [string]$vis, [int]$size = 20) {
     $l = New-Text "$name-l" $x $y ($w * 0.46) 30 14 $label $script:MUTED 0
@@ -309,10 +321,18 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $script:slotN = $slot; $script:ixN = $ix; $script:iyN = $iy; $script:iwN = $iw
 
     # --- data tests, per content type ---
-    $dLap   = '(""+$prop("' + $SIM + 'BestLapTime")||"")!=""&&(""+$prop("' + $SIM + 'BestLapTime")).indexOf("00:00:00")!=0'
-    $dTemp  = '(1*$prop("' + $SIM + 'TyreTemperatureFrontLeft"))>0'
-    $dWear  = '(1*$prop("' + $SIM + 'TyreWearFrontLeft"))>0'
-    $dFuel  = '(1*$prop("' + $SIM + 'MaxFuel"))>0'
+    # Forza first, SimHub second. A Forza player normally leaves "Also
+    # forward to SimHub" off, so SimHub's own properties stay empty all
+    # session while our UDP listener has the data; every one of these
+    # boxes would otherwise show its "not reported" notice to exactly
+    # the audience the Drive tab was built for. Zero from our parse
+    # still means "this title does not report it" (Horizon leaves parts
+    # of the dash block empty), so the notice still does its job.
+    $fzTempJs = 'function(){var t=1*$prop("' + $P + '.Forza.TempFL");return t>0}'
+    $dLap   = '((1*$prop("' + $P + '.Forza.BestLap"))>0)||((""+$prop("' + $SIM + 'BestLapTime")||"")!=""&&(""+$prop("' + $SIM + 'BestLapTime")).indexOf("00:00:00")!=0)'
+    $dTemp  = '((1*$prop("' + $P + '.Forza.TempFL"))>0)||((1*$prop("' + $SIM + 'TyreTemperatureFrontLeft"))>0)'
+    $dWear  = '($prop("' + $P + '.Forza.HasWear")&&(1*$prop("' + $P + '.Forza.WearFL"))>0)||((1*$prop("' + $SIM + 'TyreWearFrontLeft"))>0)'
+    $dFuel  = '((1*$prop("' + $P + '.Forza.FuelPct"))>0)||((1*$prop("' + $SIM + 'MaxFuel"))>0)'
     $dDelta = '(""+$prop("' + $TRK + 'EstimatedLapTime")||"")!=""'
     $dOpp   = '(1*$prop("' + $SIM + 'OpponentsCount"))>1'
     $dG     = '!isNaN(1*$prop("' + $P + '.Drive.GLat"))'
@@ -389,11 +409,11 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $vis = KeyVis 'LapTimes' $dLap
     $items.Add((AddHead 'lt' 'LAP TIMES' 'LapTimes'))
     $t = New-Text "d$slot-lt-cur" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' (FmtLapJs ($SIM + 'CurrentLapTime'))
+        Text = BindJS 'Text' (FmtLapDualJs ($P + '.Forza.CurLap') ($SIM + 'CurrentLapTime'))
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxLine "d$slot-lt-last" $ix ($iy + 66) $iw 'Last' (FmtLapJs ($SIM + 'LastLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-lt-best" $ix ($iy + 98) $iw 'Best' (FmtLapJs ($SIM + 'BestLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-lt-last" $ix ($iy + 66) $iw 'Last' (FmtLapDualJs ($P + '.Forza.LastLap') ($SIM + 'LastLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-lt-best" $ix ($iy + 98) $iw 'Best' (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
     $items.Add((AddNote 'lt' 'This game does not report lap times.' 'LapTimes' $dLap))
 
     # ---------------- TYRE TEMPS (visual) ----------------------------
@@ -408,10 +428,13 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $tyW = 54; $tyH = [math]::Min(74, ($h - 70) / 2); $gapX = 26
     $cx0 = $ix + ($iw - ($tyW * 2 + $gapX)) / 2
     $cy0 = $iy + 32
+    $fzTemp = @('TempFL', 'TempFR', 'TempRL', 'TempRR')
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
         $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
-        $vJs = 'var v=1*$prop("' + $SIM + $tyreProps[$q] + '");'
+        # ours first, SimHub's as the fallback
+        $vJs = 'var v=1*$prop("' + $P + '.Forza.' + $fzTemp[$q] + '");' +
+               'if(!(v>0))v=1*$prop("' + $SIM + $tyreProps[$q] + '");'
         # cold -> blue, working -> green, hot -> amber, overheating -> red
         $colJs = $vJs + 'if(isNaN(v)||v<=0)return "' + $script:TILE + '";' +
                  'return v<60?"#FF3D6FB5":(v<85?"' + $script:GREEN + '":(v<100?"#FFE8A33D":"' + $script:RED + '"))'
@@ -432,10 +455,14 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Same blocks; here the colour is how much tread is left.
     $vis = KeyVis 'TyreWear' $dWear
     $items.Add((AddHead 'tw' 'TYRE WEAR' 'TyreWear'))
+    $fzWear = @('WearFL', 'WearFR', 'WearRL', 'WearRR')
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
         $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
-        $vJs = 'var v=1*$prop("' + $SIM + $wearProps[$q] + '");'
+        # Forza reports wear 0 = fresh, so invert it into tread-left to
+        # match how SimHub reports it and how the colours below read.
+        $vJs = 'var v=NaN;if($prop("' + $P + '.Forza.HasWear")){var fw=1*$prop("' + $P + '.Forza.' + $fzWear[$q] + '");if(fw>=0)v=100-fw*100;}' +
+               'if(isNaN(v))v=1*$prop("' + $SIM + $wearProps[$q] + '");'
         $colJs = $vJs + 'if(isNaN(v))return "' + $script:TILE + '";' +
                  'return v>60?"' + $script:GREEN + '":(v>30?"#FFE8A33D":"' + $script:RED + '")'
         $r = New-Rect "d$slot-tw$q" $cx $cy $tyW $tyH $script:TILE @{
@@ -454,12 +481,16 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # ---------------- FUEL -------------------------------------------
     $vis = KeyVis 'Fuel' $dFuel
     $items.Add((AddHead 'fu' 'FUEL' 'Fuel'))
+    # Forza reports a tank fraction rather than litres, so the big number
+    # is a percentage there and a level everywhere else.
     $t = New-Text "d$slot-fu-lvl" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' ('var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)?"--":v.toFixed(1)')
+        Text = BindJS 'Text' ('var p=1*$prop("' + $P + '.Forza.FuelPct");if(p>0)return Math.round(p)+"%";' +
+                              'var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)?"--":v.toFixed(1)')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     BoxLine "d$slot-fu-laps" $ix ($iy + 66) $iw 'Laps left' ('var v=1*$prop("DataCorePlugin.Computed.Fuel_RemainingLaps");return isNaN(v)||v<=0?"--":v.toFixed(1)') $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-fu-pct" $ix ($iy + 98) $iw 'Tank' ('var v=1*$prop("' + $SIM + 'FuelPercent");return isNaN(v)?"--":Math.round(v)+"%"') $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-fu-pct" $ix ($iy + 98) $iw 'Tank' ('var p=1*$prop("' + $P + '.Forza.FuelPct");if(p>0)return Math.round(p)+"%";' +
+                              'var v=1*$prop("' + $SIM + 'FuelPercent");return isNaN(v)?"--":Math.round(v)+"%"') $vis 17 | ForEach-Object { $items.Add($_) }
     $items.Add((AddNote 'fu' 'This game does not report fuel.' 'Fuel' $dFuel))
 
     # ---------------- LAP DELTA --------------------------------------

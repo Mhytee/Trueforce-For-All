@@ -125,8 +125,25 @@ namespace TrueforceForAll.Core
         // Forza, not just AC. Low resolution (254 steps lock-to-lock) so the
         // consumer smooths it.
         private const int DASH_STEER  = 76;
+        // Display-only dash fields. The FFB engine has never needed these, but
+        // the TF4ALL Dash's Drive tab does, and a Forza player who has NOT
+        // turned on "Also forward to SimHub" (the shipped default) leaves
+        // SimHub with no Forza telemetry at all, so the dash cannot get them
+        // from SimHub's own properties. Offsets are the documented Forza dash
+        // layout, corroborated by the five fields above already landing where
+        // that layout says they do.
+        private const int DASH_TIRE_TEMP_FL = 24;   // then FR/RL/RR at +28/+32/+36
+        private const int DASH_BOOST        = 40;
+        private const int DASH_FUEL         = 44;
+        private const int DASH_BEST_LAP     = 52;   // seconds, float
+        private const int DASH_LAST_LAP     = 56;
+        private const int DASH_CURRENT_LAP  = 60;
+        private const int DASH_LAP_NUMBER   = 68;   // uint16
+        private const int DASH_RACE_POS     = 70;   // uint8
         // Bytes of dash a parser must be able to address (through Steer).
         private const int DashSpanNeeded = DASH_STEER + 1;
+        // FM2023 appends TireWear[4] after the dash block (absolute offset).
+        private const int OFF_TIRE_WEAR_FL = 311;
 
         private const int DashBaseMotorsport = 232;   // FM7 (311) and FM2023 (331)
         private const int DashBaseHorizon    = 244;   // FH4/FH5/FH6 (324)
@@ -155,6 +172,13 @@ namespace TrueforceForAll.Core
         private int _running;
 
         public Action<string> Logger { get; set; }
+
+        /// <summary>Latest display-only dash fields (tyre temps, fuel, lap
+        /// times, position), or null before the first packet carrying a dash
+        /// block. Reference-atomic snapshot: the receive thread replaces it
+        /// wholesale, readers take it once and read from their copy, so no
+        /// half-updated set can be observed.</summary>
+        public volatile ForzaDashExtras DashExtras;
 
         /// <summary>Most recent IsRaceOn flag FROM A REAL FRAME (all-zero
         /// keepalives don't stamp it: their flag byte is zeroed payload, not
@@ -581,6 +605,35 @@ namespace TrueforceForAll.Core
                 // (+ = right); the spring's downstream invert was tuned on
                 // AC, so the Forza direction is a hardware-verify item.
                 steerNorm = (double)unchecked((sbyte)buf[dashBase + DASH_STEER]) / 127.0;
+
+                // Display-only extras for the dash. Kept out of TelemetryFrame
+                // deliberately: nothing in the force path reads them, and the
+                // frame is the FFB contract. Published as a snapshot the
+                // plugin polls instead.
+                var ex = new ForzaDashExtras
+                {
+                    TireTempFL = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL),
+                    TireTempFR = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 4),
+                    TireTempRL = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 8),
+                    TireTempRR = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 12),
+                    Boost         = ReadFloat(buf, dashBase + DASH_BOOST),
+                    FuelFraction  = ReadFloat(buf, dashBase + DASH_FUEL),
+                    BestLapSec    = ReadFloat(buf, dashBase + DASH_BEST_LAP),
+                    LastLapSec    = ReadFloat(buf, dashBase + DASH_LAST_LAP),
+                    CurrentLapSec = ReadFloat(buf, dashBase + DASH_CURRENT_LAP),
+                    LapNumber     = BitConverter.ToUInt16(buf, dashBase + DASH_LAP_NUMBER),
+                    RacePosition  = buf[dashBase + DASH_RACE_POS],
+                };
+                // Tyre wear only exists on the FM2023-length packet.
+                if (len >= OFF_TIRE_WEAR_FL + 16)
+                {
+                    ex.HasWear = true;
+                    ex.TireWearFL = ReadFloat(buf, OFF_TIRE_WEAR_FL);
+                    ex.TireWearFR = ReadFloat(buf, OFF_TIRE_WEAR_FL + 4);
+                    ex.TireWearRL = ReadFloat(buf, OFF_TIRE_WEAR_FL + 8);
+                    ex.TireWearRR = ReadFloat(buf, OFF_TIRE_WEAR_FL + 12);
+                }
+                DashExtras = ex;
             }
 
             // Forza's accel fields are already m/s² (no g→m/s² conversion
