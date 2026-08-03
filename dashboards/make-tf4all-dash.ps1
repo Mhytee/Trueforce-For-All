@@ -848,7 +848,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $t2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t2)
     }
     $scTop   = $iy + 26
-    $scTotal = $h - 46
+    # Reserves the legend row at the foot of the card. Both lanes shrink
+    # rather than the lower one alone, so they stay equal, and the envelope
+    # lane clears the key instead of running under its text.
+    $scTotal = $h - 64
     $scLane  = ($scTotal - 16) / 2      # two equal lanes with a gap between
     # --- upper lane: the game's FFB force, as a line ---
     $l1y = $scTop
@@ -2103,7 +2106,7 @@ $ovDriveTab['d2-sc-lg1t'] = @{ Show = $true }
 $ovDriveTab['d2-sc-lg2']  = @{ Show = $true }
 $ovDriveTab['d2-sc-lg2t'] = @{ Show = $true }
 foreach ($side in @(-1, 1)) { for ($seg = 0; $seg -lt 12; $seg++) { $ovDriveTab["d2-sc-rail$($side)_$seg"] = @{ Show = $true } } }
-$scLane = ((212 - 46) - 16) / 2
+$scLane = ((212 - 64) - 16) / 2
 $l2mid  = 228 + 10 + 26 + $scLane + 16 + $scLane / 2
 for ($i = 0; $i -lt 39; $i++) {
     $v = (0.25 + 0.7 * [math]::Abs([math]::Sin($i / 5.1))) * [math]::Abs([math]::Sin($i / 2.3))
