@@ -126,6 +126,20 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
+        public void GearByte11_AtWalkingPace_RescalesOnTheFirstShift()
+        {
+            var src = NewSource();
+            // 11 below 30 km/h cannot be 10th gear, so it is neutral, so the
+            // forward gears start at 1. Lands on the first gear change rather
+            // than waiting for a hard pull.
+            for (int i = 0; i < 3; i++)
+                src.ParsePacket(DashPacket(gear: 11, speedMs: 3f, accel: 0,
+                                           rpm: 900f, maxRpm: 10000f), HorizonDashLength);
+            var f = src.ParsePacket(DashPacket(gear: 2, speedMs: 4f, accel: 100), HorizonDashLength);
+            Assert.Equal("2", f.Gear);
+        }
+
+        [Fact]
         public void GearByte11_BetweenGears_HoldsTheGearInsteadOfShowingTen()
         {
             var src = NewSource();

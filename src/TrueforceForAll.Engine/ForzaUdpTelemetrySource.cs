@@ -191,6 +191,7 @@ namespace TrueforceForAll.Core
         // its gear scale mid-session.
         private bool _gearOneIsFirst;
         private int  _gearOneFirstFrames;
+        private int  _gearNeutralLowFrames;
 
         // TEMPORARY: the owner reports 1st reading as N while driving, which
         // neither the sentinel nor the documented 0=R/1=N/2=1st mapping
@@ -638,6 +639,25 @@ namespace TrueforceForAll.Core
                 // under throttle, with the engine well off idle proves 1 is a
                 // driving gear. Several frames in a row, because a single
                 // frame of a coast-down in true neutral could look similar.
+                // The fast proof is byte 11 at low speed. On the documented
+                // scale that byte is 10th gear, which no car is in at walking
+                // pace, so it can only be neutral, and neutral at 11 means the
+                // forward gears start at 1. This lands on the first gear
+                // change, a second or two into driving.
+                if (!_gearOneIsFirst && gearByte == GEAR_NEUTRAL_ALT && speedMs < 8.3f
+                    && ++_gearNeutralLowFrames >= 3)
+                {
+                    _gearOneIsFirst = true;
+                    Log("[Forza-gear] forward gears start at 1 and neutral is 11 for this title "
+                        + "(byte 11 seen below 30 km/h, which cannot be 10th); readout rescaled.");
+                }
+                else if (gearByte != GEAR_NEUTRAL_ALT)
+                {
+                    _gearNeutralLowFrames = 0;
+                }
+                // The slow proof, for a session that never sees a low-speed
+                // shift: neutral cannot pull a car, so byte 1 held under
+                // throttle, at speed, well off idle is a driving gear.
                 if (!_gearOneIsFirst && gearByte == 1 && accelByte > 200
                     && speedMs > 7f && maxRpm > 0f && curRpm > maxRpm * 0.2f)
                 {
