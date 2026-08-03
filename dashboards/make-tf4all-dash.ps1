@@ -1809,11 +1809,13 @@ $gear = New-Text 'dr-gear' 300 55 200 210 130 '' $WHITE 1 @{
 $s7.Add($gear)
 
 # Revs above the gear, in the band between the rev strip and the digits.
-# Centred in whatever that band happens to be: the strip drops to 16 when
-# it is narrowed to this column, and the gear sits lower in the one-row
-# layout, so all four combinations get their own resting place.
-$rpmTop = 'return ' + $twoRows + '?(' + $revCen + '?28:20):(' + $revCen + '?65:57)'
-$rpm = New-Text 'dr-rpm' 300 20 200 28 22 '' $MUTED 1 @{
+# Positioned per band: the strip drops to 16 when it is narrowed to this
+# column, and the gear sits lower in the one-row layout, so all four
+# combinations get their own resting place. Sits 6px below the centre of
+# its band rather than on it, which reads as belonging to the gear
+# instead of floating between it and the strip.
+$rpmTop = 'return ' + $twoRows + '?(' + $revCen + '?34:26):(' + $revCen + '?71:63)'
+$rpm = New-Text 'dr-rpm' 300 26 200 28 22 '' $MUTED 1 @{
     Text = BindJS 'Text' ('var r=1*$prop("' + $P + '.Rpm");' +
                           'if(!(r>0))r=1*$prop("' + $SIM + 'Rpms");' +
                           'if(isNaN(r)||r<=0)return "";return Math.round(r)+" rpm"')
