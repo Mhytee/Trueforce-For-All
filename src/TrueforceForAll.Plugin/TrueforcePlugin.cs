@@ -4321,7 +4321,6 @@ namespace TrueforceForAll.Plugin
                 // deterministic, so composing here too is safe.
                 CtmComposer.Compose(ref frame);
                 _lastFrontCombined = (float)frame.FrontGrip01.Value;
-                _lastRearCombined  = (float)frame.RearGrip01.Value;
 
                 // Braking-lockup gate input (issue #38): the worst (most
                 // negative) front-pair SIGNED slip ratio, cached for the FFB
@@ -4397,10 +4396,9 @@ namespace TrueforceForAll.Plugin
             }
             else if (frame.WheelSlip.HasValue)
             {
-                // Degraded (no quads): rear mirrors front so the rear-excess
-                // counter term stays exactly zero rather than firing on noise.
-                _lastFrontCombined = (float)frame.WheelSlip.Value;   // the source's scalar slip (quad sources take the branch above)
-                _lastRearCombined  = _lastFrontCombined;
+                // Degraded (no quads): the source's scalar slip stands in for the
+                // front pair (quad sources take the branch above).
+                _lastFrontCombined = (float)frame.WheelSlip.Value;
                 _lastFrontSlipRatio = 0f;   // no signed slip on a scalar source: gate stays open
                 _lastFrontSlipRatioAbs = 0f; // friction circle: full lateral share
             }
@@ -4875,7 +4873,6 @@ namespace TrueforceForAll.Plugin
         // during a slide (gated on rear breakaway) so the force eases off as the
         // front realigns = a stable equilibrium. Grip driving keeps the narrow
         // window. Default OFF (A/B feel toggle); range is its own slider.
-        private volatile float _pModeBSlideK = 2.0f;  // BOVERCAP: excess reading as a HALF slide
         // Phase lead (anticipation): the synthesized SAT closes a lagged telemetry
         // loop (wheel -> 60Hz telemetry -> force -> wheel), so the restoring spring
         // rings near its target instead of settling like real physics-computed FFB.
@@ -4911,8 +4908,6 @@ namespace TrueforceForAll.Plugin
         // trail spring. Ease centering out on the same rear-breakaway gate the trail
         // spring uses, so it stays for grip driving and gets out of the way in a
         // slide. Default OFF (A/B feel toggle); duck amount is its own slider.
-        private volatile bool _mbCenterDuckOn;       // MBCDUCK / "Ease centering in slides" feel toggle
-        private float _pModeBCenterDuck = 1f;        // BCDUCK / "Ease amount" slider: 0 = none .. 1 = fully gone at full slide
         private volatile float _lastSurgeAccel;    // m/s², cached in DispatchFrame
         private volatile float _lastSwayAccel;     // m/s² lateral, cached in DispatchFrame
         // Suspension-load feel: front suspension compression over its learned
@@ -4928,7 +4923,6 @@ namespace TrueforceForAll.Plugin
         // (~1.0 = at the limit, load/surface/speed baked in); slip angle
         // keeps exactly one job here: the force DIRECTION.
         private volatile float _lastFrontCombined;
-        private volatile float _lastRearCombined;  // rear pair; == front on degraded sources
         // Worst (most negative) front-pair signed slip ratio, cached for the FFB
         // thread's braking-lockup gate (issue #38). 0 on scalar/quad-less sources
         // leaves the gate open.
@@ -4950,12 +4944,9 @@ namespace TrueforceForAll.Plugin
         private float _mbPrevSlipEma;  // previous smoothed slip angle, for the reversal-rate derivative
         private float _mbSlipRateEma;  // smoothed slip-angle rate (rad/s), reversal softening
         private float _mbGripEma;      // front combined slip (magnitude)
-        private float _mbGripRearEma;  // rear combined slip (magnitude)
-        private float _mbOverEma;      // rear-excess, asymmetric attack/release
         // Diagnostics only (ModeB.* properties). Written on the FFB provider
         // thread, read on SimHub's property thread: a stale read by a tick is
         // harmless for a readout, and 32-bit aligned float reads cannot tear.
-        private volatile float _mbOverPeak;      // session high-water mark of _mbOverEma
         private float _mbLockRatioEma; // smoothed front slip ratio for the lockup gate
         private float _mbCircleRatioEma; // smoothed front |slip ratio| for the friction circle
         private float _mbRamp;
@@ -5213,13 +5204,9 @@ namespace TrueforceForAll.Plugin
             // live like the road-kick pair above.
             _mbReversalDampOn = s.ModeBReversalDamp;
             _pModeBReversalGain = s.ModeBReversalDampGain;
-            _pModeBSlideK = s.ModeBSlideHalfPoint;
             // Phase lead (anticipation): toggle + lead time, applied live.
             _mbPhaseLeadOn = s.ModeBPhaseLead;
             _pModeBPhaseLeadMs = s.ModeBPhaseLeadMs;
-            // Centering slide-duck: toggle + amount, applied live.
-            _mbCenterDuckOn = s.ModeBCenterDuck;
-            _pModeBCenterDuck = s.ModeBCenterDuckAmount;
             // Direct centering (PD spring): toggle + look-ahead, applied live.
             _mbCenterPdOn = s.ModeBCenterPd;
             _pModeBCenterLeadMs = s.ModeBCenterLeadMs < 0f ? 0f
@@ -5284,11 +5271,10 @@ namespace TrueforceForAll.Plugin
         /// 1.25 plus the retuned feel values); generation 4 = the 2026-08-02
         /// countersteer removal plus the measured slide half-point. No SURVIVING
         /// field's target moved between 3 and 4 (the countersteer fields were
-        /// deleted rather than retuned, and ModeBSlideHalfPoint is new so older
-        /// installs deserialize it straight to the target), but the number is
-        /// still bumped: it is monotone by contract, and only the dev builds from
-        /// that day can hold the interim half-point of 1.0 that the entry below
-        /// upgrades.</summary>
+        /// deleted rather than retuned), but the number is still bumped: it is
+        /// monotone by contract and the recipe's SHAPE changed, so an install that
+        /// re-evaluates once on the new build costs nothing and keeps the latch
+        /// honest.</summary>
         private const int ModeBDefaultsGeneration = 4;
 
         /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
@@ -5331,7 +5317,6 @@ namespace TrueforceForAll.Plugin
                 ModeBLockupRecoverMs    = 32f,
                 ModeBRoadKickGain       = 0.6994894f,
                 ModeBPhaseLeadMs        = 20f,
-                ModeBCenterDuckAmount   = 0.90f,
                 ModeBCenterLeadMs       = 30f,
             };
             yield return new TrueforceSettings { ModeBSatGain = 0.90f };
@@ -5340,7 +5325,6 @@ namespace TrueforceForAll.Plugin
             // 0.4 to 62 and forced the soft saturation. Only a machine that ran one
             // of that day's builds can hold a stored 1.0, and it means "the old
             // default" rather than a considered choice.
-            yield return new TrueforceSettings { ModeBSlideHalfPoint = 1.0f };
         }
 
         // The Mode B recipe fields the defaults machinery owns (every tunable +
@@ -5356,9 +5340,7 @@ namespace TrueforceForAll.Plugin
             "ModeBCompressor", "ModeBSuspensionLoad", "ModeBEarlyTorquePeak",
             "ModeBRoadKick", "ModeBRoadKickGain",
             "ModeBReversalDamp", "ModeBReversalDampGain",
-            "ModeBSlideHalfPoint",
             "ModeBPhaseLead", "ModeBPhaseLeadMs",
-            "ModeBCenterDuck", "ModeBCenterDuckAmount",
             "ModeBCenterPd", "ModeBCenterLeadMs",
             "ModeBGripAutoCal", "ModeBFrictionCircle",
             "ModeBLongitudinalGripLearn", "ModeBGripTrim", "ModeBLateralDemand",
@@ -5439,11 +5421,8 @@ namespace TrueforceForAll.Plugin
             s.ModeBRoadKickGain       = d.ModeBRoadKickGain;
             s.ModeBReversalDamp       = d.ModeBReversalDamp;
             s.ModeBReversalDampGain   = d.ModeBReversalDampGain;
-            s.ModeBSlideHalfPoint     = d.ModeBSlideHalfPoint;
             s.ModeBPhaseLead          = d.ModeBPhaseLead;
             s.ModeBPhaseLeadMs        = d.ModeBPhaseLeadMs;
-            s.ModeBCenterDuck         = d.ModeBCenterDuck;
-            s.ModeBCenterDuckAmount   = d.ModeBCenterDuckAmount;
             s.ModeBCenterPd           = d.ModeBCenterPd;
             s.ModeBCenterLeadMs       = d.ModeBCenterLeadMs;
             s.ModeBGripAutoCal        = d.ModeBGripAutoCal;
@@ -5474,9 +5453,6 @@ namespace TrueforceForAll.Plugin
             _mbPrevSlipEma = _lastFrontSlipAngle;   // so the first reversal-rate sample is ~0, not a step
             _mbSlipRateEma = 0f;
             _mbGripEma = _lastFrontCombined;
-            _mbGripRearEma = _lastRearCombined;
-            _mbOverEma = 0f;
-            _mbOverPeak = 0f;      // fresh high-water mark per engage / car change
             _mbLockRatioEma = _lastFrontSlipRatio;
             _mbCircleRatioEma = _lastFrontSlipRatioAbs;
         }
@@ -5523,7 +5499,6 @@ namespace TrueforceForAll.Plugin
                 ? alpha
                 : (float)(1.0 - Math.Exp(-dtMs / (4.0 * Math.Max(2f, _pModeBEmaMs))));
             _mbGripEma += (_lastFrontCombined - _mbGripEma) * gripAlpha;
-            _mbGripRearEma += (_lastRearCombined - _mbGripRearEma) * alpha;
 
             // Direction blend through center, v4. v1 hard sign() = spazz;
             // v2 linear ramp = noise spring at center (buzz + hands-off
@@ -5568,7 +5543,6 @@ namespace TrueforceForAll.Plugin
             double peakBase = _mbAutoCalOn ? 1.0 : _pModeBPeakU;
             double peakDiv = Math.Max(0.2, peakBase * (double)_mbCalPeak);
             double u     = ModeBComposer.UtilizationFloor(_mbGripEma     / peakDiv);
-            double uRear = ModeBComposer.UtilizationFloor(_mbGripRearEma / peakDiv);
             // Lateral-demand utilization (issue #38 loop root-cause A/B): weight
             // the front SAT grip reading by |dir| so it tracks LATERAL (cornering)
             // grip, not combined slip. |dir| is ~0 with no lateral slip and ~1 in
@@ -5593,34 +5567,6 @@ namespace TrueforceForAll.Plugin
                 load01 = r;
             }
 
-            // Per-axle composition (ModeBComposer): cornering weight builds
-            // with lateral g on top of the SAT curve; rear utilization excess
-            // over the front adds counter torque in the (sign-verified) front
-            // slip direction, trail-gated so launch wheelspin stays quiet.
-            // The excess gets its own ASYMMETRIC smoothing on top of the
-            // input EMAs: attack at BEMA (the cue must arrive in time to
-            // catch), release at 4x BEMA so re-grip hands torque back to the
-            // SAT term over ~150 ms instead of stepping (third wheel test:
-            // "no traction then TRACTION").
-            // Speed normalisation of the excess. Both utilizations come from
-            // COMBINED slip, and slip is a ratio against ground speed: slip angle
-            // tends to 90 deg and slip ratio diverges as speed approaches zero, so
-            // the excess inflates like ~1/speed with no physical slide behind it.
-            // On-wheel logging 2026-08-02 measured it at 17 during 4-10 km/h
-            // wheelspin and past 20 through 25-49 km/h, against roughly 4 in real
-            // drifts at 54-124 km/h. Left raw, that garbage held the trail window
-            // fully open and (with the ease amount at 1.0) deleted centering
-            // outright, on a signal the force path's own LowSpeedGate already
-            // treats as invalid. Ramp it in over the measured contamination band
-            // instead: silent at/below 10 km/h, untouched at/above 50, smoothstep
-            // between, so everything the drift tuning was validated on is
-            // bit-for-bit unchanged. Applied to the RAW value, before the EMA:
-            // smooth the inputs, not the force.
-            double rawOver = Math.Max(0.0, uRear - u)
-                           * ModeBComposer.LowSpeedGate(_lastSpeedKmh, 10.0, 50.0);
-            float overTau = Math.Max(2f, _pModeBEmaMs) * (rawOver > _mbOverEma ? 1f : 4f);
-            _mbOverEma += (float)((rawOver - _mbOverEma) * (1.0 - Math.Exp(-dtMs / overTau)));
-            if (_mbOverEma > _mbOverPeak) _mbOverPeak = _mbOverEma;   // ModeB.RearExcessPeak
             double sat = _satModel.Force01(u, 1.0, load01, _lastSpeedKmh) * dir;
             double trail = Math.Min(Math.Max((double)_lastSpeedKmh, 0.0) / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
             double f01 = ModeBComposer.Compose(
@@ -5759,15 +5705,6 @@ namespace TrueforceForAll.Plugin
             // Ramp-gated, menus get a true zero stream: wheel free AND silent.
             float centerGain = _pModeBCenterGain * _mbRamp
                 * (float)Math.Min(_lastSpeedKmh / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
-            // Slide-duck (MBCDUCK): ease centering out as the rear breaks away, so it
-            // stops pulling toward straight while the aligning force is pushing toward
-            // the countersteer angle, but stays full for grip driving where the two
-            // agree. Reads _mbOverEma from the current tick (ComputeModeBForce ran
-            // first); ~0 gripping = untouched.
-            if (_mbCenterDuckOn)
-                centerGain *= (float)ModeBComposer.SlideDuck(
-                    _pModeBCenterDuck,
-                    ModeBComposer.SlideGate01(_mbOverEma, _pModeBSlideK));
             // Velocity damper gain, computed early because the physical-state
             // block below serves both stability terms. Adds a torque opposing
             // wheel motion so the centering force can't ring. Driven by the
@@ -6029,10 +5966,6 @@ namespace TrueforceForAll.Plugin
                     _pModeBReversalGain = C(value, 0f, 1f);
                     if (Settings != null) { Settings.ModeBReversalDampGain = _pModeBReversalGain; PersistSettings(); }
                     return $"Reversal damping strength = {_pModeBReversalGain:0.00} (0 = off; 1 = force fades to silent on a hard fast catch)";
-                case "BOVERCAP":
-                    _pModeBSlideK = C(value, 0.25f, 20f);
-                    if (Settings != null) { Settings.ModeBSlideHalfPoint = _pModeBSlideK; PersistSettings(); }
-                    return $"Slide scale = {_pModeBSlideK:0.00} (the rear-over-front excess that reads as HALF a slide; drives the trail spring and the centering ease together. Soft-saturating, so this is a scale and never a ceiling: lower = everything opens up sooner, higher = it takes a bigger slide)";
                 case "MBLEAD":
                     _mbPhaseLeadOn = value >= 0.5f;
                     if (Settings != null) { Settings.ModeBPhaseLead = _mbPhaseLeadOn; PersistSettings(); }
@@ -6043,16 +5976,6 @@ namespace TrueforceForAll.Plugin
                     _pModeBPhaseLeadMs = C(value, 0f, 120f);
                     if (Settings != null) { Settings.ModeBPhaseLeadMs = _pModeBPhaseLeadMs; PersistSettings(); }
                     return $"Anticipation lead = {_pModeBPhaseLeadMs:0} ms (how far ahead the force anticipates; raise until a released wheel stops ringing, back off if it gets jittery)";
-                case "MBCDUCK":
-                    _mbCenterDuckOn = value >= 0.5f;
-                    if (Settings != null) { Settings.ModeBCenterDuck = _mbCenterDuckOn; PersistSettings(); }
-                    return _mbCenterDuckOn
-                        ? $"Ease centering in slides ON: centering fades out as the rear breaks away (by {_pModeBCenterDuck:0.00}), so it stops fighting the countersteer in a drift but stays full for grip driving."
-                        : "Ease centering in slides OFF.";
-                case "BCDUCK":
-                    _pModeBCenterDuck = C(value, 0f, 1f);
-                    if (Settings != null) { Settings.ModeBCenterDuckAmount = _pModeBCenterDuck; PersistSettings(); }
-                    return $"Centering ease amount = {_pModeBCenterDuck:0.00} (0 = centering never fades; 1 = centering fully gone at full slide)";
                 case "BMINF":
                     _pModeBMinForce = C(value, 0f, 0.5f);
                     if (Settings != null) { Settings.ModeBMinForce = _pModeBMinForce; PersistSettings(); }
@@ -6068,7 +5991,7 @@ namespace TrueforceForAll.Plugin
                     if (Settings != null) { Settings.ModeBCenterLeadMs = _pModeBCenterLeadMs; PersistSettings(); }
                     return $"Direct centering look-ahead = {_pModeBCenterLeadMs:0} ms (how far ahead of the wheel's motion the centering aims; raise if a released wheel still overshoots center, 0 = position only)";
                 default:
-                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBREV/BREVG/BOVERCAP/MBLEAD/BLEAD/MBCDUCK/BCDUCK/BLDEM/BMINF/MBCPD/BCLEAD)";
+                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBREV/BREVG/MBLEAD/BLEAD/BLDEM/BMINF/MBCPD/BCLEAD)";
             }
         }
 

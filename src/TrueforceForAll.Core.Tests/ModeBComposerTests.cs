@@ -308,63 +308,6 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0.10, ModeBComposer.PhaseLeadSlip(0.10, double.NaN, 0.03), 12);
         }
 
-        // --- Slide duck: ease centering OUT as the rear breaks away, so it stays for
-        // grip driving but stops fighting the trail spring's countersteer in a slide. ---
-
-        [Fact]
-        public void SlideDuck_UntouchedWhenGripping()
-        {
-            Assert.Equal(1.0, ModeBComposer.SlideDuck(1.0, 0.0), 12);   // gate 0 = full centering
-        }
-
-        [Fact]
-        public void SlideDuck_FullDuckAtFullSlide()
-        {
-            Assert.Equal(0.0, ModeBComposer.SlideDuck(1.0, 1.0), 12);   // amount 1, full slide = gone
-        }
-
-        [Fact]
-        public void SlideDuck_PartialAmountKeepsSome()
-        {
-            // amount 0.5 at full slide leaves half the centering.
-            Assert.Equal(0.5, ModeBComposer.SlideDuck(0.5, 1.0), 12);
-        }
-
-        [Fact]
-        public void SlideDuck_AmountZeroIsIdentity()
-        {
-            for (double g = 0.0; g <= 1.0; g += 0.1)
-                Assert.Equal(1.0, ModeBComposer.SlideDuck(0.0, g), 12);
-        }
-
-        [Fact]
-        public void SlideDuck_GentleOnset_GripCenteringUntouched()
-        {
-            // C1 onset: a whiff of rear slip barely touches centering.
-            double m = ModeBComposer.SlideDuck(1.0, 0.1);
-            Assert.True(m > 0.95, $"onset too eager: {m}");
-        }
-
-        [Fact]
-        public void SlideDuck_MonotoneAndBounded()
-        {
-            double prev = 1.0;
-            for (double g = 0.0; g <= 1.0; g += 0.05)
-            {
-                double m = ModeBComposer.SlideDuck(1.0, g);
-                Assert.InRange(m, 0.0, 1.0);
-                Assert.True(m <= prev + 1e-12, $"non-monotone at gate={g}");
-                prev = m;
-            }
-        }
-
-        [Fact]
-        public void SlideDuck_ClampsDegenerateInputs()
-        {
-            Assert.Equal(0.0, ModeBComposer.SlideDuck(5.0, 2.0), 12);    // over-range amount + gate clamp
-            Assert.Equal(1.0, ModeBComposer.SlideDuck(-1.0, 1.0), 12);   // negative amount = no duck
-        }
-
         // --- Minimum-force floor (belt-wheel stiction): the last shaping
         // stage. Everything nonzero clears the motor's floor, exact zero
         // stays exact, and the remap is continuous and monotone so gate

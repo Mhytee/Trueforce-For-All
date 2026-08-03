@@ -645,11 +645,8 @@ namespace TrueforceForAll.Plugin
         public float ModeBRoadKickGain       { get; set; } = 0.40f;  // kick strength
         public bool  ModeBReversalDamp       { get; set; } = true;   // fade force while a slide is caught back toward center, so the direction switch stops snapping (MBREV); default ON 2026-08-01 (mountain-drift validation)
         public float ModeBReversalDampGain   { get; set; } = 0.50f;  // reversal-damping strength, 0..1 (BREVG)
-        public float ModeBSlideHalfPoint     { get; set; } = 2.0f;   // rear-over-front excess that reads as a HALF slide (BOVERCAP): the scale for the trail spring and the centering ease alike. Soft-saturating, so this is a scale and not a ceiling; 2.0 comes from the 2026-08-02 on-wheel distribution (p50 0.39, p90 7.45)
         public bool  ModeBPhaseLead          { get; set; } = true;   // lead the force ahead of the wheel to cancel telemetry-loop lag so a released wheel settles instead of oscillating (MBLEAD); default ON 2026-08-01
         public float ModeBPhaseLeadMs        { get; set; } = 40f;    // phase-lead prediction horizon in ms (BLEAD)
-        public bool  ModeBCenterDuck         { get; set; } = true;   // ease centering out as the rear breaks away so it stops fighting the countersteer in a slide (MBCDUCK); default ON 2026-08-01
-        public float ModeBCenterDuckAmount   { get; set; } = 1.0f;   // how much centering fades at full slide, 0..1 (BCDUCK)
         public bool  ModeBCenterPd           { get; set; } = true;   // centering springs on the wheel's OWN position (HID reader) with a velocity look-ahead, so the pull toward straight is fresh and cannot ring (MBCPD); default ON 2026-08-01
         public float ModeBCenterLeadMs       { get; set; } = 40f;    // direct-centering look-ahead in ms (BCLEAD): how far ahead of the wheel's motion the spring aims
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration

@@ -110,5 +110,26 @@ attempts at GAP #2 failed while everything else works: force SIZE comes from
 direction window in slip units instead of the fictional radians/degrees;
 re-derive the base window (0.03 of peak slip is arbitrary, it just happens to
 give sign-like behaviour); only then rebuild a proportional-in-slide term and
-validate it. The rear-excess gate (`SlideGate01`) is sound and stays, since it
-reads combined slip; it still drives `SlideDuck`.
+validate it.
+
+**The rear-axle branch went with them.** The rear-over-front excess, its
+soft-saturating gate (`SlideGate01` / `SlideHalfPoint` / BOVERCAP) and the
+centering ease it fed (`SlideDuck`) existed only to serve those two terms. With
+both gone the gate had no consumer, and the ease was A/B'd on the wheel at full
+authority (BOVERCAP 0.5, matching the hard-cap behaviour it was validated under
+on 2026-08-01) and still could not be told apart. Its effect measured 4 to 11%
+of the total force in a slide at shipped settings, about 25% at full authority,
+and neither registered.
+
+So Mode B is now a PURE FRONT-AXLE model: force size from the front's combined
+slip, direction from the front's slip sign, plus cornering weight, the braking
+laws and the stability terms. Rear breakaway still reaches the driver through
+`AxleSlipEffect`'s rear voice in the texture channel, which is a separate
+shipped effect and untouched. `RearGrip01` itself stays in the telemetry frame
+for that effect and for `EventDeriver`'s breakaway events.
+
+**The lesson worth keeping.** This whole slide-feel cluster was validated as a
+BATCH on 2026-08-01 and never term by term. Isolating them one at a time in a
+single evening found two that were structurally inert and one imperceptible.
+Anything added here in future should be A/B'd on its own before it earns a
+default, a slider, or a line in the release notes.

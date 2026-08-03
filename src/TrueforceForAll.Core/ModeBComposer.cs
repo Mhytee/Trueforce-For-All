@@ -33,8 +33,15 @@
 // depends on the magnitude, which is why the model works anyway: the force's
 // size comes from u (combined slip), which IS read correctly.
 //
-// The rear-excess gate is NOT retired: it still drives SlideDuck through
-// SlideGate01, and that path reads combined slip, whose units are right.
+// RETIRED with them, 2026-08-02: the rear-axle branch entirely. The
+// rear-over-front utilization excess, its soft-saturating gate (SlideGate01 /
+// SlideHalfPoint / BOVERCAP) and the centering ease it fed (SlideDuck) existed
+// only to serve the two terms above. With both gone the gate had no consumer,
+// and the ease itself was A/B'd on the wheel at full authority and could not be
+// told apart either. Mode B is now a PURE FRONT-AXLE model: force size from the
+// front's combined slip, direction from the front's slip sign. Rear breakaway
+// still reaches the driver, through AxleSlipEffect's rear voice in the texture
+// channel, which is a separate shipped effect and unaffected.
 //
 // Pure math, no state — smoothing of every input lives at the integration
 // layer ("smooth the inputs, not the force"). Returns a signed normalized
@@ -50,42 +57,6 @@ namespace TrueforceForAll.Core
         /// stops growing (road cars rarely exceed ~1.5 g; caps runaway on
         /// kerb spikes).</summary>
         public const double LatGCap = 1.5;
-
-        /// <summary>DEFAULT half-way point of the slide gate: the rear-over-front
-        /// excess at which <see cref="SlideGate01"/> reads 0.5. Tunable per install
-        /// (ModeBSlideHalfPoint / BOVERCAP).
-        ///
-        /// Set from measurement, not taste. On-wheel logging 2026-08-02 (551
-        /// half-second buckets above 30 km/h) put the excess at p50 0.39, p90 7.45,
-        /// p99 29.7, max 62.1: two orders of magnitude. No HARD cap can serve that
-        /// range, which is what the previous OverCap = 1.0 tried to be. It pegged
-        /// 38.7% of buckets; a cap of 16 still pegged 3.8% while leaving ordinary
-        /// slides (excess 1 to 5) barely registering. Hence the soft saturation in
-        /// SlideGate01, where this constant is a SCALE rather than a ceiling and
-        /// getting it wrong degrades gracefully instead of clipping. At 2.0 the
-        /// measured p50 lands near the base window, p90 near fully open, and the
-        /// extremes stay distinguishable.</summary>
-        public const double SlideHalfPoint = 2.0;
-
-        /// <summary>Normalise a raw rear-over-front excess into the 0..1 slide gate
-        /// that <see cref="SlideDuck"/> runs on. One place, so any future
-        /// slide-gated term shares the same scale by construction.
-        ///
-        /// Soft saturation x/(x+k) rather than a clamp: the signal is unbounded and
-        /// wildly heavy-tailed (see <see cref="SlideHalfPoint"/>), so a hard cap
-        /// turned its consumers into switches, flattening every slide past
-        /// the cap into one identical "full slide" reading. This approaches 1
-        /// asymptotically and never clips, so a car whose rear reaches 4 and one
-        /// that reaches 8 are both deep slides yet still distinguishable. Each
-        /// consumer smoothsteps this result, which restores the zero slope at the
-        /// bottom (a grazing slide must not snap in) and adds one at the top.
-        /// <paramref name="halfPoint"/>: the excess that reads 0.5.</summary>
-        public static double SlideGate01(double overExcess, double halfPoint = SlideHalfPoint)
-        {
-            if (double.IsNaN(overExcess)) return 0.0;
-            double x = overExcess > 0.0 ? overExcess : 0.0;
-            return x / (x + Math.Max(0.05, halfPoint));
-        }
 
         /// <summary>Center-stable direction blend (sixth wheel test: "at
         /// wheel center sometimes the motor buzzes out... let go at center
@@ -226,34 +197,6 @@ namespace TrueforceForAll.Core
             double x = returning / Math.Max(1e-4, refFlux);
             double t = x / (1.0 + x);                              // 0..1, smooth, half at x = 1
             return 1.0 - s * t;
-        }
-
-        /// <summary>Slide duck: a multiplier that eases a stability force OUT as the
-        /// rear breaks away. Centering pulls toward STRAIGHT, but with the car yawing
-        /// the front slip angle reaches zero at a NONZERO steering angle, so the SAT
-        /// aligning force pushes toward the countersteer instead. Two different
-        /// resting places, and the wheel settles at neither. Fade centering down on
-        /// the rear-breakaway gate so it stays full for grip driving (where both want
-        /// the same place and simply sum) and hands the slide to the aligning force.
-        ///
-        /// NOTE this used to be described as centering "fighting the trail spring".
-        /// That was always a mis-description: the conflicting equilibrium belongs to
-        /// the SAT term, and the trail spring only ever changed that force's SHAPE,
-        /// never where it wanted the wheel. The duck is therefore untouched by the
-        /// trail spring's retirement on 2026-08-02, and the 2026-08-01 on-wheel
-        /// validation that judged the drift recipe "significantly more stable" had
-        /// this working and the trail spring inert, so this is one of the terms that
-        /// actually earned that result.
-        /// <paramref name="amount"/>: 0 = never duck (untouched) .. 1 = fully gone at
-        /// full slide. <paramref name="slideGate01"/>: 0 = gripping .. 1 = full slide.
-        /// Returns the multiplier: 1 gripping, (1 - amount) at full slide,
-        /// smoothstepped so grip driving keeps its centering bit-for-bit.</summary>
-        public static double SlideDuck(double amount, double slideGate01)
-        {
-            double a = Math.Min(Math.Max(amount, 0.0), 1.0);
-            double g = Math.Min(Math.Max(slideGate01, 0.0), 1.0);
-            double shaped = g * g * (3.0 - 2.0 * g);
-            return 1.0 - a * shaped;
         }
 
         /// <summary>Phase-lead the slip angle that drives the direction blend, to

@@ -640,7 +640,7 @@ namespace TrueforceForAll.Plugin
             new DashModeBKnob { Key = "Damper",   Label = "DAMPING",          Min = 0f,    Max = 0.6f, Step = 0.02f, Fmt = "0.00", Get = s => s.ModeBDamper,          Set = (s, v) => s.ModeBDamper = v },
             new DashModeBKnob { Key = "Center",   Label = "CENTERING",        Min = 0f,    Max = 0.5f, Step = 0.02f, Fmt = "0.00", Get = s => s.ModeBCenter,          Set = (s, v) => s.ModeBCenter = v },
             new DashModeBKnob { Key = "Lat",      Label = "CORNERING WEIGHT", Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBLatGain,         Set = (s, v) => s.ModeBLatGain = v },
-            new DashModeBKnob { Key = "Ease",     Label = "SLIDE EASE",       Min = 0f,    Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBCenterDuckAmount, Set = (s, v) => s.ModeBCenterDuckAmount = v },
+            new DashModeBKnob { Key = "Smooth",   Label = "SMOOTHING MS",     Min = 5f,    Max = 100f, Step = 5f,    Fmt = "0",    Get = s => s.ModeBEmaMs,           Set = (s, v) => s.ModeBEmaMs = v },
             new DashModeBKnob { Key = "Floor",    Label = "SLIDE LIGHTNESS",  Min = 0.05f, Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBDropFloor,       Set = (s, v) => s.ModeBDropFloor = v },
             new DashModeBKnob { Key = "Recover",  Label = "LOCKUP RECOVERY MS", Min = 20f, Max = 400f, Step = 10f,   Fmt = "0",    Get = s => s.ModeBLockupRecoverMs, Set = (s, v) => s.ModeBLockupRecoverMs = v },
         };
@@ -714,15 +714,6 @@ namespace TrueforceForAll.Plugin
                 : (Settings?.DashDefaultTab ?? 0);
             _dashTab = Math.Max(0, Math.Min(DashTabCount - 1, startTab));
             RefreshDashTabSlots();
-
-            // ---------- properties: Mode B tuning diagnostics ----------
-            // Read-only support aid. The rear-over-front utilization excess is what
-            // SlideDuck (the centering ease) runs on, normalised through
-            // SlideGate01 by the BOVERCAP half-point, so these two answer "is the
-            // plugin seeing this car slide, and how hard" without a log. Cheap
-            // enough to ship: two delegate reads, no allocation, no logging.
-            this.AttachDelegate("ModeB.RearExcess",     () => Math.Round((double)_mbOverEma, 3));
-            this.AttachDelegate("ModeB.RearExcessPeak", () => Math.Round((double)_mbOverPeak, 3));
 
             // ---------- properties: status ----------
             this.AttachDelegate("Dash.WheelOk", () =>

@@ -614,9 +614,6 @@ namespace TrueforceForAll.Plugin
                     ModeBRecoverText.Text       = mbs.ModeBLockupRecoverMs.ToString("F0");
                     ModeBCenterSlider.Value     = mbs.ModeBCenter;
                     ModeBCenterText.Text        = mbs.ModeBCenter.ToString("F2");
-                    ModeBCenterDuckCheck.IsChecked = mbs.ModeBCenterDuck;
-                    ModeBCenterDuckSlider.Value    = mbs.ModeBCenterDuckAmount;
-                    ModeBCenterDuckText.Text       = mbs.ModeBCenterDuckAmount.ToString("F2");
                     ModeBLatSlider.Value        = mbs.ModeBLatGain;
                     ModeBLatText.Text           = mbs.ModeBLatGain.ToString("F2");
                     ModeBPeakSlider.Value       = mbs.ModeBPeakUtil;
@@ -4390,7 +4387,6 @@ namespace TrueforceForAll.Plugin
             s.ModeBRoadKick           = ModeBRoadKickCheck.IsChecked == true;
             s.ModeBReversalDamp       = ModeBReversalDampCheck.IsChecked == true;
             s.ModeBPhaseLead          = ModeBPhaseLeadCheck.IsChecked == true;
-            s.ModeBCenterDuck         = ModeBCenterDuckCheck.IsChecked == true;
             // One "Adaptive grip & braking feel" master toggle drives the whole
             // learned-limit stack together: per-car grip auto-cal, the friction-
             // circle braking law, and the learned braking-grip radius. They ship
@@ -4436,16 +4432,6 @@ namespace TrueforceForAll.Plugin
             float v = (float)ModeBPhaseLeadSlider.Value;
             _plugin.Settings.ModeBPhaseLeadMs = v;
             ModeBPhaseLeadText.Text = v.ToString("F0");
-            _plugin.ApplyModeBFeel();
-            SchedulePersistDebounced();
-        }
-
-        private void ModeBCenterDuckSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_suppressEvents || _plugin?.Settings == null) return;
-            float v = (float)ModeBCenterDuckSlider.Value;
-            _plugin.Settings.ModeBCenterDuckAmount = v;
-            ModeBCenterDuckText.Text = v.ToString("F2");
             _plugin.ApplyModeBFeel();
             SchedulePersistDebounced();
         }
@@ -10605,7 +10591,7 @@ namespace TrueforceForAll.Plugin
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, MBCDUCK 1/0 centering ease + BCDUCK amount, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -10676,8 +10662,8 @@ namespace TrueforceForAll.Plugin
                         || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
                         || pn == "BLEARN" || pn == "BGTRIM" || pn == "BLDEM"
                         || pn == "MBREV" || pn == "BREVG"
-                        || pn == "BOVERCAP"
-                        || pn == "MBLEAD" || pn == "BLEAD" || pn == "MBCDUCK" || pn == "BCDUCK"
+                       
+                        || pn == "MBLEAD" || pn == "BLEAD"
                         || pn == "BMINF" || pn == "MBCPD" || pn == "BCLEAD")
                     {
                         string st = _plugin.SetModeBParam(pn, mbVal);

@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "32e8965f-cf0f-441e-846a-58622a046854",
+    "Id":  "10f7b6ef-d9c9-45a7-814f-93fee2ca5974",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "079b4e84-20b9-42e4-88cd-4c17420e0229",
+                        "ScreenId":  "42f48256-78f5-4276-9d11-d7647ab599ec",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -5434,7 +5434,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "984d636b-b75d-4081-9dff-32fe806534d3",
+                        "ScreenId":  "16bf5094-bcab-48af-bf5a-b22aca0ebc84",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14023,7 +14023,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "9b1b8c1a-25f7-45b0-ac5b-f8fa48aa9bf0",
+                        "ScreenId":  "3af533a2-e1b9-43fe-8965-4b8f58759298",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -24646,7 +24646,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "d4cd8928-4630-43cd-af9b-1a740abc704a",
+                        "ScreenId":  "f0c396dd-281e-4476-98ba-c3dede93028c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -29244,7 +29244,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "29669862-8449-4f37-b757-388b7bbb8f1b",
+                        "ScreenId":  "8a966f99-3bdb-4126-9c15-ed8d0e420d1f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -40357,7 +40357,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "e441bb0f-1fdc-4b98-b28e-00b3f7a93203",
+                        "ScreenId":  "b3b37eef-b41a-4b5e-a674-891e23397da8",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -42573,7 +42573,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  16,
-                                          "Text":  "Slide ease",
+                                          "Text":  "Smoothing ms",
                                           "TextColor":  "#FFF2F4F8",
                                           "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
@@ -42587,7 +42587,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Ease-t",
+                                          "Name":  "mb-Smooth-t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42631,7 +42631,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Ease-dn-bg",
+                                          "Name":  "mb-Smooth-dn-bg",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42663,7 +42663,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Ease-dn-t",
+                                          "Name":  "mb-Smooth-dn-t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42685,7 +42685,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.DashModeBEaseDown",
+                                          "TriggerAction":  "TrueforcePlugin.DashModeBSmoothDown",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -42699,7 +42699,7 @@
                                           "Top":  182,
                                           "Visible":  true,
                                           "Width":  50,
-                                          "Name":  "mb-Ease-dn",
+                                          "Name":  "mb-Smooth-dn",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42743,7 +42743,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Ease-val-bg",
+                                          "Name":  "mb-Smooth-val-bg",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42775,12 +42775,12 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Ease-val",
+                                          "Name":  "mb-Smooth-val",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.ModeB.Ease\")).toFixed(2)"
+                                                                                        "Expression":  "return (1*$prop(\"TrueforcePlugin.Dash.ModeB.Smooth\")).toFixed(0)"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -42805,7 +42805,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.DashModeBEaseOpen",
+                                          "TriggerAction":  "TrueforcePlugin.DashModeBSmoothOpen",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -42819,7 +42819,7 @@
                                           "Top":  182,
                                           "Visible":  true,
                                           "Width":  82,
-                                          "Name":  "mb-Ease-val-tap",
+                                          "Name":  "mb-Smooth-val-tap",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42863,7 +42863,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Ease-up-bg",
+                                          "Name":  "mb-Smooth-up-bg",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42895,7 +42895,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "mb-Ease-up-t",
+                                          "Name":  "mb-Smooth-up-t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42917,7 +42917,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.DashModeBEaseUp",
+                                          "TriggerAction":  "TrueforcePlugin.DashModeBSmoothUp",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -42931,7 +42931,7 @@
                                           "Top":  182,
                                           "Visible":  true,
                                           "Width":  50,
-                                          "Name":  "mb-Ease-up",
+                                          "Name":  "mb-Smooth-up",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
