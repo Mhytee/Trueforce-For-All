@@ -402,12 +402,13 @@ namespace TrueforceForAll.Plugin
         // without overriding a later user opt-out.
         public bool FeedbackBoxDefaultedOn { get; set; } = false;
 
-        // TF4ALL Remote dash: rev-strip fill direction. false = left to right
-        // (default); true = outside-in, both ends lighting first and
-        // converging on the center like center-converge shift lights.
+        // TF4ALL Remote dash: rev-strip fill direction. false = left to right;
+        // true = outside-in (default), both ends lighting first and converging
+        // on the center, which is what the wheel's own rev lights do and what
+        // most cars with center-converge shift lights do.
         // Surfaced in the Settings tab's "Remote dashboard" section; the dash
         // reads it live (Dash.RevOutsideIn) so a change applies instantly.
-        public bool DashRevStripOutsideIn { get; set; } = false;
+        public bool DashRevStripOutsideIn { get; set; } = true;
 
         // TF4ALL Remote dash: which tab the dash opens on when SimHub starts.
         // Remember-last wins while on (the dash reopens where it was left,
@@ -444,7 +445,10 @@ namespace TrueforceForAll.Plugin
         // whichever screen is open. Reads SimHub's own flag properties, so it
         // only ever lights up in games that report flags (the Forza titles
         // report none, which is why this is opt-in rather than always on).
-        public bool DashFlagsEnabled { get; set; } = false;
+        // On by default: a flag is the one thing on a dash you cannot afford
+        // to miss, and in a game that reports none the band simply never
+        // appears, so it costs those players nothing.
+        public bool DashFlagsEnabled { get; set; } = true;
 
         // TF4ALL Dash rev strip: false spans the full width of every screen
         // (default); true narrows it to the middle column, which on the Drive

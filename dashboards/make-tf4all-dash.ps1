@@ -1879,6 +1879,13 @@ $stDot.Bindings['Left'] = BindJS 'Left' ('var s=1*$prop("' + $P + '.Steer");if(s
 $stDot.Bindings['Visible'] = BindJS 'Visible' $steerVis
 $s7.Add($stDot)
 
+# The whole gear column is the rev strip's span control: tap it to switch
+# between full width and just this column. Added LAST so it sits over the
+# gear, revs, speed and pedals rather than under them, and kept clear of
+# the strip itself at the top and the steering at the foot. Hide-Buttons-
+# UnderOverlay gates it on no overlay being open, like every other button.
+$s7.Add((New-Button 'dr-revspan' 300 40 200 380 'DashRevStripSpanToggle'))
+
 # Four content boxes. Slot order matches the plugin: TL, TR, BL, BR.
 # The top pair simply hides in the one-row layout; the bottom pair grows
 # up into the space it leaves, so nothing is wasted on a phone.
@@ -2140,8 +2147,15 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
 # the factory layout and the screen's own slot as active.
 function PreviewChrome([double]$pct, [int]$activeSlot) {
     $o = @{}
+    # Outside-in, matching the shipped DashRevStripOutsideIn default: the
+    # thresholds and colours are the same pair-index scheme RevStrip binds,
+    # so the thumbnail shows the strip a new user actually gets.
     for ($i = 0; $i -lt 16; $i++) {
-        if ($pct -ge (50 + $i * 3.125)) { $o["rev-seg$i"] = @{ Show = $true } }
+        $pair = [math]::Min($i, 15 - $i)
+        if ($pct -ge (50 + $pair * 6.25)) {
+            $col = if ($pair -lt 4) { $GREEN } elseif ($pair -lt 6) { '#FFE8A33D' } else { $RED }
+            $o["rev-seg$i"] = @{ Show = $true; BackgroundColor = $col }
+        }
     }
     # The factory tab bar exactly as a fresh install shows it: order from
     # DashTabFactoryOrder, minus the tabs DashTabFactoryDisabled starts off

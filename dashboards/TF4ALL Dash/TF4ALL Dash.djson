@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "cdfe4893-c1ba-4015-9e9f-591a565dbeb4",
+    "Id":  "4a4530c8-1a13-4d9d-991a-68c997c0adfc",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "340822d5-2293-4892-914d-66b2bec72301",
+                        "ScreenId":  "00a41681-f4e7-43b9-8efd-3af07da15a66",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6229,7 +6229,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c116e22a-e1e2-4ba1-bed1-37cf23a8ab0d",
+                        "ScreenId":  "444a2c62-4354-4023-a7d0-a01b07b8ea78",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15613,7 +15613,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a8591575-0cf2-4b54-8a51-907af3d3ed7b",
+                        "ScreenId":  "722eeb62-46e5-44b5-b0c8-c1be9cc19229",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27031,7 +27031,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "0fd3c0f6-7443-42d3-b8ff-f8fee0a83c8b",
+                        "ScreenId":  "c1e2a28a-6d8a-404f-b162-fd44013dc28e",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32424,7 +32424,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "ae7f06d4-cfd4-46fc-b1d5-87e4f00bbaf3",
+                        "ScreenId":  "821a0d7c-d32f-4e04-b163-9006ae5c8103",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44332,7 +44332,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7f3085cb-4920-4377-bed1-65ef6e216089",
+                        "ScreenId":  "af6827dd-c687-4f99-8b86-1196400ca819",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -52953,7 +52953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "5ed53c19-8111-4e8d-a1b2-a6dbc901990e",
+                        "ScreenId":  "8eb4ddcf-e265-4612-abf4-cc39c5079eff",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -53464,6 +53464,42 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return $prop(\"TrueforcePlugin.Dash.DrivePedals\") \u0026\u0026 (1*$prop(\"TrueforcePlugin.Dash.Steer\"))\u003e-1.5"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.DashRevStripSpanToggle",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  380,
+                                          "Left":  300,
+                                          "Top":  40,
+                                          "Visible":  true,
+                                          "Width":  200,
+                                          "Name":  "dr-revspan",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\""
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"

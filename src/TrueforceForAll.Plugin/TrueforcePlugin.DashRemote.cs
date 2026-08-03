@@ -1211,6 +1211,22 @@ namespace TrueforceForAll.Plugin
                 if (!Settings.ModeBRevLightsEnabled) TurnOffRpmLeds();
                 RaiseDashRemoteChanged();
             });
+            // Tap the gear column on the Drive tab to switch the rev strip
+            // between full width and the gear column. It is the one dash
+            // setting you want to try rather than reason about, and the
+            // column has no other tap target, so the whole thing is the
+            // control. Also on a Settings checkbox for discoverability.
+            this.AddAction("DashRevStripSpanToggle", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                Settings.DashRevStripCentered = !Settings.DashRevStripCentered;
+                PersistSettings();
+                DashToast(Settings.DashRevStripCentered
+                    ? "REV STRIP OVER THE GEAR"
+                    : "REV STRIP FULL WIDTH");
+                RaiseDashRemoteChanged();
+            });
             foreach (var kb in _dashModeB)
             {
                 var k = kb;   // capture per iteration
