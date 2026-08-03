@@ -22,16 +22,19 @@ $MUTED   = '#FF8B93A7'
 $GRAY    = '#FF6B7280'
 $CLEAR   = '#00FFFFFF'
 
-# Tyre temperature ramp: green, yellow, orange, red, interpolated rather
-# than stepped, because a tyre does not change state at a threshold and
-# the drift toward the next colour IS the reading. Breakpoints match the
-# old stepped scale, so a tyre that read amber still does. One table:
-# the dash formula and the preview renderer are both generated from it,
-# so a thumbnail can never show a colour the dash would not.
+# Tyre temperature ramp: blue, green, yellow, orange, red, interpolated
+# rather than stepped, because a tyre does not change state at a threshold
+# and the drift toward the next colour IS the reading. Breakpoints match
+# the old stepped scale, so a tyre that read amber still does. The blue
+# lead-in keeps cold readable as cold: without it a tyre with no heat in
+# it shows the same green as one in its window. One table: the dash
+# formula and the preview renderer are both generated from it, so a
+# thumbnail can never show a colour the dash would not.
 # Built with the unary comma per row: a bare @(@(..),@(..)) flattens in
 # PowerShell and the rows stop being rows.
 $TEMP_STOPS = @()
-$TEMP_STOPS += , @(60,  55, 214, 122)   # green
+$TEMP_STOPS += , @(40,  61, 111, 181)   # blue, stone cold
+$TEMP_STOPS += , @(60,  55, 214, 122)   # green, in its window
 $TEMP_STOPS += , @(85, 232, 212,  77)   # yellow
 $TEMP_STOPS += , @(100, 232, 163, 61)   # orange
 $TEMP_STOPS += , @(115, 229,  72, 77)   # red
@@ -39,8 +42,9 @@ $TEMP_STOPS += , @(115, 229,  72, 77)   # red
 function TempColorJs([string]$tileColor) {
     $js = 'if(isNaN(v)||v<=0)return "' + $tileColor + '";var s=['
     $js += (($TEMP_STOPS | ForEach-Object { '[' + ($_ -join ',') + ']' }) -join ',')
-    $js += '];var c=s[0];if(v>=s[3][0])c=s[3];' +
-           'else if(v>s[0][0]){for(var i=0;i<3;i++){if(v<=s[i+1][0]){' +
+    # Driven by s.length, so adding or moving a stop needs no edit here.
+    $js += '];var L=s.length-1;var c=s[0];if(v>=s[L][0])c=s[L];' +
+           'else if(v>s[0][0]){for(var i=0;i<L;i++){if(v<=s[i+1][0]){' +
            'var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,' +
            's[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,' +
            's[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}' +
@@ -55,10 +59,11 @@ function TempColorJs([string]$tileColor) {
 function TempColor([double]$v) {
     if ($v -le 0) { return $script:TILE }
     $st = $script:TEMP_STOPS
+    $last = $st.Count - 1
     $c = $st[0]
-    if ($v -ge $st[3][0]) { $c = $st[3] }
+    if ($v -ge $st[$last][0]) { $c = $st[$last] }
     elseif ($v -gt $st[0][0]) {
-        for ($i = 0; $i -lt 3; $i++) {
+        for ($i = 0; $i -lt $last; $i++) {
             if ($v -le $st[$i + 1][0]) {
                 $t = ($v - $st[$i][0]) / ($st[$i + 1][0] - $st[$i][0])
                 # Every element parenthesised: PowerShell's comma binds
