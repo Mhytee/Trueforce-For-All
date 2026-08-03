@@ -5269,9 +5269,10 @@ namespace TrueforceForAll.Plugin
         /// recipe + G PRO/RS50/G923 table; generation 3 = the 2026-08-01
         /// evening re-snapshot of the owner's wheel (strength 0.50 / 0.60 /
         /// 1.25 plus the retuned feel values); generation 4 = the 2026-08-02
-        /// countersteer removal plus the measured slide half-point. No SURVIVING
-        /// field's target moved between 3 and 4 (the countersteer fields were
-        /// deleted rather than retuned), but the number is still bumped: it is
+        /// slide-feel clear-out (countersteer, its growth option, the trail spring
+        /// and the centering ease all removed after on-wheel testing). No SURVIVING
+        /// field's target moved between 3 and 4 (those fields were deleted rather
+        /// than retuned), but the number is still bumped: it is
         /// monotone by contract and the recipe's SHAPE changed, so an install that
         /// re-evaluates once on the new build costs nothing and keeps the latch
         /// honest.</summary>
