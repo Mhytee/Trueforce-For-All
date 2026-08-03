@@ -88,8 +88,10 @@ namespace TrueforceForAll.Plugin
         // here. _dashTabSlots = enabled screen indices in display order
         // (never empty; sanitizer falls back to Drive). Volatile reference
         // swap: rebuilt on the UI/action thread, read per property poll.
+        // Index-matched with RemoteDashTabNames in SettingsControl; add a
+        // screen to one and it goes in the other.
         private static readonly string[] DashTabNames =
-            { "HOME", "CAR FACTS", "EFFECTS", "PRESETS", "VISUALIZER", "TELE-FFB", "DRIVE" };
+            { "GAINS", "CAR FACTS", "EFFECTS", "PRESETS", "VISUALIZER", "TELE-FFB", "DRIVE" };
         // Factory display order: Drive leads (it is the while-driving screen),
         // then Home, and Tele-FFB sits between Effects and Presets. An empty
         // stored DashTabOrder resolves to exactly this. NOTE an existing

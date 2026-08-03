@@ -6320,10 +6320,13 @@ namespace TrueforceForAll.Plugin
         // plugin's GetDashTabFullOrder is the single sanitizer for the
         // stored layout, and RefreshDashTabSlots pushes the result to the
         // dash live, so changes apply with no dashboard reload. Display
-        // names are indexed by SCREEN index (0=Drive .. 5=Tele-FFB) and
-        // shared with the default-tab dropdown.
+        // names are indexed by SCREEN index (0=Gains .. 6=Drive), matching
+        // DashTabNames on the plugin side, and shared with the default-tab
+        // dropdown. Keep it the same LENGTH as that table: a screen missing
+        // here shows as "Tab 6" in the editor, and worse, reads as an invalid
+        // default and gets quietly reset the next time the editor rebuilds.
         private static readonly string[] RemoteDashTabNames =
-            { "Home", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB" };
+            { "Gains", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB", "Drive" };
 
         private static string RemoteDashTabName(int tab) =>
             tab >= 0 && tab < RemoteDashTabNames.Length ? RemoteDashTabNames[tab] : "Tab " + tab;

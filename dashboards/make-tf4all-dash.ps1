@@ -1789,7 +1789,7 @@ $doc = [ordered]@{
     BaseHeight = 480; BaseWidth = 800
     BackgroundColor = $BG
     Screens = @(
-        (New-Screen 'Home' $s1 0),
+        (New-Screen 'Gains' $s1 0),
         (New-Screen 'Car facts' $s2 1),
         (New-Screen 'Effects' $s3 2),
         (New-Screen 'Presets' $s4 3),
@@ -1969,7 +1969,7 @@ function PreviewChrome([double]$pct, [int]$activeSlot) {
         if ($pct -ge (50 + $i * 3.125)) { $o["rev-seg$i"] = @{ Show = $true } }
     }
     # Factory tab order (Drive leads), matching DashTabFactoryOrder.
-    $slotNames = @('DRIVE', 'HOME', 'CAR FACTS', 'EFFECTS', 'TELE-FFB', 'PRESETS', 'VISUALIZER')
+    $slotNames = @('DRIVE', 'GAINS', 'CAR FACTS', 'EFFECTS', 'TELE-FFB', 'PRESETS', 'VISUALIZER')
     $pitch = 784 / $slotNames.Count
     for ($i = 0; $i -lt $slotNames.Count; $i++) {
         $bgc = if ($i -eq $activeSlot) { $TILEON } else { $TILE }
