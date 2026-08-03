@@ -344,45 +344,56 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # live on this screen too, so the flow never leaves the Drive tab.
     $vis = KeyVis 'CarFacts' $null
     $items.Add((AddHead 'cf' 'CAR FACTS' 'CarFacts'))
-    $t = New-Text "d$slot-cf-car" $ix ($iy + 26) $iw 36 19 '' $script:WHITE 0 @{
+    $t = New-Text "d$slot-cf-car" $ix ($iy + 20) $iw 26 18 '' $script:WHITE 0 @{
         Text = BindJS 'Text' ('return ""+($prop("' + $P + '.CarName")||"No car")')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    # Engine and redline share one value column so the two readouts line
-    # up: the redline needs room for its steppers, so that column's right
-    # edge is what the engine value is measured against too.
-    $stepW = 34; $stepGap = 16
-    $valX = $ix + 66; $valW = $iw - 66 - ($stepW * 2 + 8) - $stepGap
-    $t = New-Text "d$slot-cf-engl" $ix ($iy + 72) 62 26 14 'Engine' $script:MUTED 0
+    # Each fact sits on its own lightened sub-panel with a caption, the
+    # value, and its action tile on the right, which is the Car facts
+    # tab's layout at this size rather than a list of label/value rows.
+    $cfP1 = New-Rect "d$slot-cf-p1" $ix ($iy + 48) $iw 52 $script:TILE $null 5
+    $cfP1.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($cfP1)
+    $cfP2 = New-Rect "d$slot-cf-p2" $ix ($iy + 106) $iw 52 $script:TILE $null 5
+    $cfP2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($cfP2)
+    # Engine: caption, value, CHANGE tile on the right, exactly as the tab
+    # arranges it.
+    $chW = 62
+    $t = New-Text "d$slot-cf-engl" ($ix + 10) ($iy + 52) ($iw - 20) 16 10 'ENGINE LAYOUT' $script:MUTED 0
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $t = New-Text "d$slot-cf-eng-v" $valX ($iy + 70) $valW 30 17 '' $script:WHITE 2 @{
+    $t = New-Text "d$slot-cf-eng-v" ($ix + 10) ($iy + 68) ($iw - 20 - $chW - 8) 26 17 '' $script:WHITE 0 @{
         Text = BindJS 'Text' ('return ""+($prop("' + $P + '.EngineLayout")||"Auto")')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $b = New-Button "d$slot-cf-eng-tap" $ix ($iy + 70) $iw 30 'DashEngineLayoutOpen'
-    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    # Redline row with the tab's own controls: minus / plus 50 either
-    # side and the value itself opening the keypad.
-    $t = New-Text "d$slot-cf-redl" $ix ($iy + 112) 62 26 14 'Redline' $script:MUTED 0
+    $r = New-Rect "d$slot-cf-eng-ch-bg" ($ix + $iw - $chW - 8) ($iy + 58) $chW 34 $script:PANEL $null 4
+    $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+    $t = New-Text "d$slot-cf-eng-ch-t" ($ix + $iw - $chW - 8) ($iy + 58) $chW 34 12 'CHANGE' $script:WHITE 1
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $t = New-Text "d$slot-cf-red-v" $valX ($iy + 110) $valW 30 17 '' $script:WHITE 2 @{
+    $b = New-Button "d$slot-cf-eng-tap" ($ix + $iw - $chW - 8) ($iy + 58) $chW 34 'DashEngineLayoutOpen'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    # Redline: same shape, with the tab's minus / plus 50 in place of the
+    # CHANGE tile and the value itself opening the keypad.
+    $stepW = 30
+    $t = New-Text "d$slot-cf-redl" ($ix + 10) ($iy + 110) ($iw - 20) 16 10 'REDLINE  (TAP TO TYPE)' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $rdValW = $iw - 20 - ($stepW * 2 + 6) - 12
+    $t = New-Text "d$slot-cf-red-v" ($ix + 10) ($iy + 126) $rdValW 26 17 '' $script:WHITE 0 @{
         Text = BindJS 'Text' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"--"')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $b = New-Button "d$slot-cf-red-tap" $valX ($iy + 110) $valW 30 'DashRedlineOpen'
+    $b = New-Button "d$slot-cf-red-tap" ($ix + 10) ($iy + 126) $rdValW 26 'DashRedlineOpen'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    foreach ($st in @(@('dn', 'DashRedlineDown', '-', 0), @('up', 'DashRedlineUp', '+', ($stepW + 8)))) {
-        $sx = $ix + $iw - ($stepW * 2 + 8) + $st[3]
-        $r = New-Rect "d$slot-cf-r$($st[0])-bg" $sx ($iy + 110) $stepW 30 $script:TILE
+    foreach ($st in @(@('dn', 'DashRedlineDown', '-', 0), @('up', 'DashRedlineUp', '+', ($stepW + 6)))) {
+        $sx = $ix + $iw - 8 - ($stepW * 2 + 6) + $st[3]
+        $r = New-Rect "d$slot-cf-r$($st[0])-bg" $sx ($iy + 116) $stepW 34 $script:PANEL $null 4
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-        $tt = New-Text "d$slot-cf-r$($st[0])-t" $sx ($iy + 110) $stepW 30 20 $st[2] $script:WHITE 1 $null 'Bold'
+        $tt = New-Text "d$slot-cf-r$($st[0])-t" $sx ($iy + 116) $stepW 34 20 $st[2] $script:WHITE 1 $null 'Bold'
         $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
-        $bb = New-Button "d$slot-cf-r$($st[0])" $sx ($iy + 110) $stepW 30 $st[1]
+        $bb = New-Button "d$slot-cf-r$($st[0])" $sx ($iy + 116) $stepW 34 $st[1]
         $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
     }
     # The tab's provenance line: where the redline came from and the
     # observed ceiling, so a wrong buzz point is diagnosable here too.
-    $t = New-Text "d$slot-cf-info" $ix ($iy + 150) $iw 22 12 '' $script:GRAY 0 @{
+    $t = New-Text "d$slot-cf-info" $ix ($iy + 164) $iw 20 11 '' $script:GRAY 0 @{
         Text = BindJS 'Text' ('var m=1*$prop("' + $P + '.MaxRpm");var s=""+($prop("' + $P + '.RedlineSource")||"");' +
                               'var t=m>0?("MAX "+m):"";if(s!=""&&s!="none")t+=(t!=""?"   ":"")+s.toUpperCase();return t')
     }
@@ -447,25 +458,33 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     }
 
     # ---------------- PRESETS (ours) ---------------------------------
+    # Same shape as the Presets tab: a lightened panel per scope, with its
+    # caption, the bound preset, and a CHANGE tile that opens the picker.
     $vis = KeyVis 'Presets' $null
     $items.Add((AddHead 'pr' 'PRESETS' 'Presets'))
-    $t = New-Text "d$slot-pr-gl" $ix ($iy + 26) $iw 18 12 'GAME' $script:MUTED 0
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $t = New-Text "d$slot-pr-g" $ix ($iy + 42) $iw 32 18 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.PresetName")||"");return p!=""?p:"(manual tune)"')
-    } 'Bold'
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $t = New-Text "d$slot-pr-cl" $ix ($iy + 80) $iw 18 12 'CAR' $script:MUTED 0
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $t = New-Text "d$slot-pr-c" $ix ($iy + 96) $iw 32 18 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.CarPresetName")||"");return p!=""?p:"(none)"')
-    } 'Bold'
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    # Each row opens its own picker, same as the Presets tab.
-    $b = New-Button "d$slot-pr-g-tap" $ix ($iy + 24) $iw 50 'DashPresetOpenGame'
-    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    $b = New-Button "d$slot-pr-c-tap" $ix ($iy + 78) $iw 50 'DashPresetOpenCar'
-    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    $prRows = @(
+        @('g', 'GAME PRESET', ($P + '.PresetName'),    'DashPresetOpenGame', '(manual tune)', 26),
+        @('c', 'CAR PRESET',  ($P + '.CarPresetName'), 'DashPresetOpenCar',  '(none saved)',  92)
+    )
+    $chW = 62
+    foreach ($pr in $prRows) {
+        $prid = $pr[0]; $prLabel = $pr[1]; $prProp = $pr[2]
+        $prAct = $pr[3]; $prEmpty = $pr[4]; $prY = $iy + $pr[5]
+        $r = New-Rect "d$slot-pr-$prid-p" $ix $prY $iw 58 $script:TILE $null 5
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+        $t = New-Text "d$slot-pr-$prid-l" ($ix + 10) ($prY + 6) ($iw - 20) 16 10 $prLabel $script:MUTED 0
+        $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+        $t = New-Text "d$slot-pr-$prid" ($ix + 10) ($prY + 22) ($iw - 20 - $chW - 8) 30 16 '' $script:WHITE 0 @{
+            Text = BindJS 'Text' ('var p=""+($prop("' + $prProp + '")||"");return p!=""?p:"' + $prEmpty + '"')
+        } 'Bold'
+        $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+        $r = New-Rect "d$slot-pr-$prid-ch-bg" ($ix + $iw - $chW - 8) ($prY + 12) $chW 34 $script:PANEL $null 4
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+        $t = New-Text "d$slot-pr-$prid-ch-t" ($ix + $iw - $chW - 8) ($prY + 12) $chW 34 12 'CHANGE' $script:WHITE 1
+        $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+        $b = New-Button "d$slot-pr-$prid-tap" ($ix + $iw - $chW - 8) ($prY + 12) $chW 34 $prAct
+        $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    }
 
     # ---------------- LAP TIMES --------------------------------------
     $vis = KeyVis 'LapTimes' $dLap
@@ -782,9 +801,12 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # 0.98 of the lane is where the trace clips, but a 2px dash drawn
     # centred on that line half-hangs out of the panel. Pull it in by the
     # dash height so the rails stay inside the lightened area.
-    $railOff = [math]::Min(($scLane / 2) * 0.98, ($scLane / 2) - 4)
+    # Centre each dash ON its line (hence the -1 for the 2px height),
+    # otherwise both are drawn downward from it and the bottom one eats
+    # its own gap while the top one keeps a full one.
+    $railOff = [math]::Min(($scLane / 2) * 0.98, ($scLane / 2) - 5)
     foreach ($side in @(-1, 1)) {
-        $ry = $l1mid + 1 - $side * $railOff
+        $ry = $l1mid - $side * $railOff - 1
         for ($seg = 0; $seg -lt 12; $seg++) {
             $rx = $ix + $seg * ($iw / 12)
             $rail = New-Rect "d$slot-sc-rail$($side)_$seg" $rx $ry ($iw / 24) 2 '#66E5484D' $null 0
@@ -1907,8 +1929,12 @@ foreach ($sl in 0, 1, 2, 3) { $ovDriveTab["d$sl-panel"] = @{ Show = $true } }
 # slot 0: car facts
 $ovDriveTab['d0-cf-h']      = @{ Show = $true }
 $ovDriveTab['d0-cf-car']    = @{ Show = $true; Text = '1985 Sprinter Trueno' }
-$ovDriveTab['d0-cf-eng-l']  = @{ Show = $true }
+$ovDriveTab['d0-cf-p1']     = @{ Show = $true }
+$ovDriveTab['d0-cf-p2']     = @{ Show = $true }
+$ovDriveTab['d0-cf-engl']   = @{ Show = $true }
 $ovDriveTab['d0-cf-eng-v']  = @{ Show = $true; Text = 'Inline 4' }
+$ovDriveTab['d0-cf-eng-ch-bg'] = @{ Show = $true }
+$ovDriveTab['d0-cf-eng-ch-t']  = @{ Show = $true }
 $ovDriveTab['d0-cf-redl']   = @{ Show = $true }
 $ovDriveTab['d0-cf-red-v']  = @{ Show = $true; Text = '7800 rpm' }
 $ovDriveTab['d0-cf-rdn-bg'] = @{ Show = $true }
