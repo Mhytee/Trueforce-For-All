@@ -355,8 +355,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # side and the value itself opening the keypad.
     $t = New-Text "d$slot-cf-redl" $ix ($iy + 96) 62 26 14 'Redline' $script:MUTED 0
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $stepW = 34
-    $valX = $ix + 66; $valW = $iw - 66 - ($stepW * 2 + 8)
+    # Gap between the value and the steppers so the number is not jammed
+    # against the minus tile.
+    $stepW = 34; $stepGap = 16
+    $valX = $ix + 66; $valW = $iw - 66 - ($stepW * 2 + 8) - $stepGap
     $t = New-Text "d$slot-cf-red-v" $valX ($iy + 94) $valW 30 17 '' $script:WHITE 2 @{
         Text = BindJS 'Text' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"--"')
     } 'Bold'
@@ -381,52 +383,77 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
 
     # ---------------- GAINS (ours) -----------------------------------
-    # Live like the Home tab: steppers on master gain, the value opens
-    # the keypad, and the audio and plugin rows toggle.
+    # Shaped like the Home tab rather than a list of rows: a caption, the
+    # value large and centred with a tap zone hugging the digits, and a
+    # wide minus / plus pair beneath. Both gains get that treatment, and
+    # the two toggles are full-width tiles that colour with their state,
+    # exactly as the tab's PLUGIN and AUDIO HAPTICS tiles do.
     $vis = KeyVis 'Home' $null
     $items.Add((AddHead 'hm' 'GAINS' 'Home'))
-    $t = New-Text "d$slot-hm-mg" $ix ($iy + 22) ($iw - 108) 46 34 '' $script:WHITE 1 @{
+    $half = ($iw - 8) / 2
+    # Master gain is the hero, as on the tab: caption, big centred value
+    # with the tap zone hugging the digits, wide minus / plus underneath.
+    $t = New-Text "d$slot-hm-mg-l" $ix ($iy + 20) $iw 14 11 'MASTER GAIN' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $t = New-Text "d$slot-hm-mg" $ix ($iy + 34) $iw 34 30 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('return (1*$prop("' + $P + '.MasterGain")).toFixed(2)')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $b = New-Button "d$slot-hm-mg-tap" $ix ($iy + 22) ($iw - 108) 46 'DashMasterGainOpen'
+    # Dead space beside the number must not open the keypad (tab rule).
+    $b = New-Button "d$slot-hm-mg-tap" ($ix + $iw / 2 - 44) ($iy + 34) 88 34 'DashMasterGainOpen'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    foreach ($st in @(@('dn', 'DashMasterGainDown', '-', 0), @('up', 'DashMasterGainUp', '+', 52))) {
-        $sx = $ix + $iw - 100 + $st[3]
-        $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($iy + 22) 46 46 $script:TILE
+    foreach ($st in @(@('mgdn', 'DashMasterGainDown', '-', 0), @('mgup', 'DashMasterGainUp', '+', $half + 8))) {
+        $sx = $ix + $st[3]
+        $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($iy + 70) $half 28 $script:TILE
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-        $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($iy + 22) 46 46 26 $st[2] $script:WHITE 1 $null 'Bold'
+        $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($iy + 70) $half 28 22 $st[2] $script:WHITE 1 $null 'Bold'
         $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
-        $bb = New-Button "d$slot-hm-$($st[0])" $sx ($iy + 22) 46 46 $st[1]
+        $bb = New-Button "d$slot-hm-$($st[0])" $sx ($iy + 70) $half 28 $st[1]
         $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
     }
-    $t = New-Text "d$slot-hm-mgl" $ix ($iy + 68) $iw 18 12 'MASTER GAIN' $script:MUTED 0
+    # Audio gain gets the same controls on one row: it is the secondary
+    # gain here, and two hero blocks do not fit a card this size.
+    $agStep = 34
+    $t = New-Text "d$slot-hm-ag-l" $ix ($iy + 104) 54 26 11 'AUDIO' $script:MUTED 0
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    # Audio row with the Home tab's full set: the label toggles it, the
-    # value opens the keypad, and it gets its own steppers.
-    $t = New-Text "d$slot-hm-agl" $ix ($iy + 90) 58 26 14 'Audio' $script:MUTED 0
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $b = New-Button "d$slot-hm-ag-tgl" $ix ($iy + 88) 58 30 'DashFxAudioToggle'
-    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    $agValX = $ix + 62; $agValW = $iw - 62 - 92
-    $t = New-Text "d$slot-hm-ag-v" $agValX ($iy + 88) $agValW 30 17 '' $script:WHITE 2 @{
+    $agValW = $iw - 54 - ($agStep * 2 + 8) - 14
+    $t = New-Text "d$slot-hm-ag" ($ix + 54) ($iy + 102) $agValW 28 19 '' $script:WHITE 2 @{
         Text = BindJS 'Text' ('return $prop("' + $P + '.Fx.Audio.On")?(1*$prop("' + $P + '.AudioGain")).toFixed(2):"off"')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $b = New-Button "d$slot-hm-ag-tap" $agValX ($iy + 88) $agValW 30 'DashAudioGainOpen'
+    $b = New-Button "d$slot-hm-ag-tap" ($ix + 54) ($iy + 102) $agValW 28 'DashAudioGainOpen'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    foreach ($st in @(@('adn', 'DashAudioGainDown', '-', 0), @('aup', 'DashAudioGainUp', '+', 46))) {
-        $sx = $ix + $iw - 88 + $st[3]
-        $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($iy + 88) 40 30 $script:TILE
+    foreach ($st in @(@('agdn', 'DashAudioGainDown', '-', 0), @('agup', 'DashAudioGainUp', '+', $agStep + 8))) {
+        $sx = $ix + $iw - ($agStep * 2 + 8) + $st[3]
+        $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($iy + 102) $agStep 28 $script:TILE
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-        $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($iy + 88) 40 30 20 $st[2] $script:WHITE 1 $null 'Bold'
+        $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($iy + 102) $agStep 28 20 $st[2] $script:WHITE 1 $null 'Bold'
         $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
-        $bb = New-Button "d$slot-hm-$($st[0])" $sx ($iy + 88) 40 30 $st[1]
+        $bb = New-Button "d$slot-hm-$($st[0])" $sx ($iy + 102) $agStep 28 $st[1]
         $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
     }
-    BoxLine "d$slot-hm-on" $ix ($iy + 124) $iw 'Plugin' ('return $prop("' + $P + '.PluginOn")?"on":"off"') $vis 17 | ForEach-Object { $items.Add($_) }
-    $b = New-Button "d$slot-hm-on-tap" $ix ($iy + 122) $iw 30 'DashPluginToggle'
-    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    # State tiles side by side, the tab's own pattern: each tile carries
+    # its state in both its colour and its caption.
+    # Parenthesised on purpose: PowerShell's comma binds tighter than +,
+    # so a bare concatenation here swallows the element after it.
+    $toggles = @(
+        @('on',  'DashPluginToggle',  ($P + '.PluginOn'),    'PLUGIN ON', 'PLUGIN OFF', 0),
+        @('aud', 'DashFxAudioToggle', ($P + '.Fx.Audio.On'), 'AUDIO ON',  'AUDIO OFF',  ($half + 8))
+    )
+    foreach ($tg in $toggles) {
+        $tid = $tg[0]; $tact = $tg[1]; $tprop = $tg[2]; $tOn = $tg[3]; $tOff = $tg[4]
+        $tx = $ix + $tg[5]
+        $r = New-Rect "d$slot-hm-$tid-bg" $tx ($iy + 138) $half 30 $script:TILE @{
+            BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $tprop + '")?"' + $script:TILEON + '":"' + $script:TILE + '"')
+        }
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+        $t = New-Text "d$slot-hm-$tid-t" $tx ($iy + 138) $half 30 12 '' $script:WHITE 1 @{
+            Text = BindJS 'Text' ('return $prop("' + $tprop + '")?"' + $tOn + '":"' + $tOff + '"')
+        } 'Bold'
+        $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+        $b = New-Button "d$slot-hm-$tid" $tx ($iy + 138) $half 30 $tact
+        $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    }
 
     # ---------------- PRESETS (ours) ---------------------------------
     $vis = KeyVis 'Presets' $null
@@ -750,6 +777,12 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # --- upper lane: the game's FFB force, as a line ---
     $l1y = $scTop
     $l1mid = $l1y + $scLane / 2
+    # Each lane sits on its own lightened panel over the darker card, the
+    # same figure-on-ground the full screen uses. Without it the two
+    # traces float on one flat background and read as a single lane.
+    $p1 = New-Rect "d$slot-sc-p1" $ix $l1y $iw $scLane $script:TILE $null 4
+    $p1.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($p1)
     $z1 = New-Rect "d$slot-sc-z1" $ix $l1mid $iw 2 $script:SCOPE_GRID $null 0
     $z1.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($z1)
@@ -773,6 +806,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # --- lower lane: the Trueforce haptic envelope, as columns ---
     $l2y = $scTop + $scLane + 16
     $l2mid = $l2y + $scLane / 2
+    $p2 = New-Rect "d$slot-sc-p2" $ix $l2y $iw $scLane $script:TILE $null 4
+    $p2.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($p2)
     $z2 = New-Rect "d$slot-sc-z2" $ix $l2mid $iw 2 $script:SCOPE_GRID $null 0
     $z2.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($z2)
@@ -1897,6 +1933,8 @@ $ovDriveTab['d1-lt-best-v'] = @{ Show = $true; Text = '01:23.771' }
 # Geometry mirrors DriveBox: box y=228 h=212 -> inner y 238, lanes of 75
 # with a 16 px gap, force line on top and haptic envelope below.
 $ovDriveTab['d2-sc-h']  = @{ Show = $true }
+$ovDriveTab['d2-sc-p1'] = @{ Show = $true }
+$ovDriveTab['d2-sc-p2'] = @{ Show = $true }
 $ovDriveTab['d2-sc-z1'] = @{ Show = $true }
 $ovDriveTab['d2-sc-z2'] = @{ Show = $true }
 # Badges at rest: grey chrome, glow layers stay hidden at Opacity 0.
