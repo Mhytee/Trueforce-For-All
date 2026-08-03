@@ -465,6 +465,11 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Telemetry FFB gives the better grip number, but it is no longer the
     # only one: with it off the box runs on measured accelerations, so it
     # needs whatever the g circle needs.
+    # SimHub's CarDamage1-5. Forza's packet carries no damage at all, so
+    # this is one of the few boxes with no telemetry of our own behind it.
+    # A panel reporting a number at all counts as reported, zero included,
+    # because a pristine car is a real reading.
+    $dDmg   = '(""+$prop("' + $SIM + 'CarDamage1")||"")!=""'
     $dFric  = '($prop("' + $P + '.ModeB.On"))||(' + $dG + ')'
 
     # ---------------- CAR FACTS (ours, always available) -------------
@@ -647,7 +652,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # ---------------- LAP TIMES --------------------------------------
     $vis = KeyVis 'LapTimes' $dLap
     $items.Add((AddHead 'lt' 'LAP TIMES' 'LapTimes'))
-    $t = New-Text "d$slot-lt-cur" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
+    # Centred: it is the one number you glance at, and left-aligning it
+    # against right-aligned rows underneath read as two different columns.
+    $t = New-Text "d$slot-lt-cur" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 1 @{
         Text = BindJS 'Text' (FmtLapDualJs ($P + '.Forza.CurLap') ($SIM + 'CurrentLapTime'))
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
@@ -784,26 +791,49 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddHead 'fu' 'FUEL' 'Fuel'))
     # Forza reports a tank fraction rather than litres, so the big number
     # is a percentage there and a level everywhere else.
-    $t = New-Text "d$slot-fu-lvl" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' ('var p=1*$prop("' + $P + '.Forza.FuelPct");if(p>0)return Math.round(p)+"%";' +
-                              'var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)?"--":v.toFixed(1)')
+    # Tank fraction, ours first. Drives both the readout and the bar, so
+    # they can never disagree about how much is left.
+    $fuPct = 'var p=1*$prop("' + $P + '.Forza.FuelPct");' +
+             'if(!(p>0))p=1*$prop("' + $SIM + 'FuelPercent");' +
+             'if(isNaN(p))p=-1;if(p>100)p=100;'
+    $t = New-Text "d$slot-fu-lvl" $ix ($iy + 20) $iw 52 42 '' $script:WHITE 1 @{
+        Text = BindJS 'Text' ($fuPct + 'return p<0?"--":Math.round(p)+"%"')
+        TextColor = BindJS 'TextColor' ($fuPct +
+            'return p<0?"' + $script:MUTED + '":(p<10?"' + $script:RED +
+            '":(p<25?"#FFE8A33D":"' + $script:WHITE + '"))')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxLine "d$slot-fu-laps" $ix ($iy + 66) $iw 'Laps left' ('var v=1*$prop("DataCorePlugin.Computed.Fuel_RemainingLaps");return isNaN(v)||v<=0?"--":v.toFixed(1)') $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-fu-pct" $ix ($iy + 98) $iw 'Tank' ('var p=1*$prop("' + $P + '.Forza.FuelPct");if(p>0)return Math.round(p)+"%";' +
-                              'var v=1*$prop("' + $SIM + 'FuelPercent");return isNaN(v)?"--":Math.round(v)+"%"') $vis 17 | ForEach-Object { $items.Add($_) }
+    # A bar reads at a glance where a number has to be parsed, and it is the
+    # cheapest way to fill a box that was two thirds empty.
+    $fuBarY = $iy + 80
+    $r = New-Rect "d$slot-fu-bar-bg" $ix $fuBarY $iw 18 $script:TILE $null 5
+    $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+    $r = New-Rect "d$slot-fu-bar" $ix $fuBarY 2 18 $script:GREEN @{
+        BackgroundColor = BindJS 'BackgroundColor' ($fuPct +
+            'return p<10?"' + $script:RED + '":(p<25?"#FFE8A33D":"' + $script:GREEN + '")')
+    } 5
+    $r.Bindings['Width'] = BindJS 'Width' ($fuPct + 'if(p<0)p=0;return Math.max(2,' + $iw + '*p/100)')
+    $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+    BoxLine "d$slot-fu-laps" $ix ($iy + 110) $iw 'Laps left' ('var v=1*$prop("DataCorePlugin.Computed.Fuel_RemainingLaps");return isNaN(v)||v<=0?"--":v.toFixed(1)') $vis 17 | ForEach-Object { $items.Add($_) }
+    # Litres where the game reports them; Forza only ever gives a fraction.
+    BoxLine "d$slot-fu-lit" $ix ($iy + 142) $iw 'In tank' ('var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)||v<=0?"--":v.toFixed(1)+" L"') $vis 17 | ForEach-Object { $items.Add($_) }
     $items.Add((AddNote 'fu' 'This game does not report fuel.' 'Fuel' $dFuel))
 
     # ---------------- LAP DELTA --------------------------------------
     $vis = KeyVis 'Delta' $dDelta
     $items.Add((AddHead 'dl' 'LAP DELTA' 'Delta'))
-    $t = New-Text "d$slot-dl-v" $ix ($iy + 22) $iw 44 32 '' $script:WHITE 0 @{
+    $t = New-Text "d$slot-dl-v" $ix ($iy + 22) $iw 44 32 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"--":(v>0?"+":"")+v.toFixed(2)')
         TextColor = BindJS 'TextColor' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"' + $script:MUTED + '":(v>0?"' + $script:RED + '":"' + $script:GREEN + '")')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxLine "d$slot-dl-est" $ix ($iy + 70) $iw 'Estimated' (FmtLapJs ($TRK + 'EstimatedLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-dl-prev" $ix ($iy + 102) $iw 'Previous' (FmtLapJs ($TRK + 'PreviousLap_00')) $vis 17 | ForEach-Object { $items.Add($_) }
+    # Estimated, last and best: the delta on its own says how you are doing
+    # against the best, and these say what it is measuring between. Last and
+    # best come from our frame first, so a Forza player without forwarding
+    # still gets two of the three (the estimate is the tracker's alone).
+    BoxLine "d$slot-dl-est"  $ix ($iy + 74)  $iw 'Estimated' (FmtLapJs ($TRK + 'EstimatedLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-dl-last" $ix ($iy + 106) $iw 'Last' (FmtLapDualJs ($P + '.Forza.LastLap') ($SIM + 'LastLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-dl-best" $ix ($iy + 138) $iw 'Best' (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
     $items.Add((AddNote 'dl' 'This game does not report lap deltas.' 'Delta' $dDelta))
 
     # ---------------- G CIRCLE (game accelerations) ------------------
@@ -926,6 +956,41 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     }
     $items.Add($radar)
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
+
+    # ---------------- DAMAGE -----------------------------------------
+    # Laid out as the car: front above, rear below, left and right either
+    # side of the centre panel. SimHub numbers these 1 to 5 and the mapping
+    # is the game's, so the labels stay generic rather than claiming a
+    # precision the source does not have.
+    $vis = KeyVis 'Damage' $dDmg
+    $items.Add((AddHead 'dm' 'DAMAGE' 'Damage'))
+    $dmW = 62; $dmH = 40
+    $dmCx = $ix + $iw / 2
+    $dmCy = ($iy + 34 + $y + $h - 12) / 2
+    # 0 is pristine, so an undamaged car is quiet chrome rather than a wall
+    # of green competing with the tyre box for attention.
+    $dmScale = 'if(isNaN(v)||v<1)return "' + $script:TILE + '";' +
+               'return v<25?"' + $script:GREEN + '":(v<60?"#FFE8A33D":"' + $script:RED + '")'
+    foreach ($dm in @(
+        @('f',  1,  0, -1), @('r',  2, 0, 1),
+        @('l',  3, -1,  0), @('rt', 4, 1, 0),
+        @('c',  5,  0,  0))) {
+        $dk = $dm[0]; $dn = $dm[1]; $dxo = $dm[2]; $dyo = $dm[3]
+        $dx = $dmCx - $dmW / 2 + $dxo * ($dmW + 6)
+        $dy = $dmCy - $dmH / 2 + $dyo * ($dmH + 6)
+        $dJs = 'var v=1*$prop("' + $SIM + 'CarDamage' + $dn + '");'
+        $r = New-Rect "d$slot-dm-$dk" $dx $dy $dmW $dmH $script:TILE @{
+            BackgroundColor = BindJS 'BackgroundColor' ($dJs + $dmScale)
+        } 5
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+        $t = New-Text "d$slot-dm-$dk-v" $dx ($dy + $dmH / 2 - 11) $dmW 22 15 '' $script:WHITE 1 @{
+            Text = BindJS 'Text' ($dJs + 'return isNaN(v)?"--":(v<1?"OK":Math.round(v))')
+            TextColor = BindJS 'TextColor' ($dJs +
+                'return (isNaN(v)||v<1)?"' + $script:MUTED + '":"#FF101216"')
+        } 'Bold'
+        $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    }
+    $items.Add((AddNote 'dm' 'This game does not report damage.' 'Damage' $dDmg))
 
     # ---------------- INPUTS (pedals + steering) ---------------------
     # What the driver did, next to what the wheel did. All four controls

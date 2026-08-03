@@ -127,11 +127,13 @@ namespace TrueforceForAll.Plugin
         // DriverBehind_NN_* carry it without the obsolete leaderboard item.
         internal static readonly string[] DashDriveContentKeys =
             { "CarFacts", "LapTimes", "TyreTemps", "TyreWear", "Fuel", "Delta", "Scope",
-              "Home", "Presets", "GCircle", "Friction", "Relative", "Radar", "Inputs", "None" };
+              "Home", "Presets", "GCircle", "Friction", "Relative", "Radar", "Inputs",
+              "Damage", "None" };
         // Friendly labels for the Settings-tab pickers, index-matched above.
         internal static readonly string[] DashDriveContentLabels =
             { "Car facts", "Lap times", "Tyre temps", "Tyre wear", "Fuel", "Lap delta", "Visualizer",
-              "Gains", "Presets", "G circle", "Friction circle", "Relative", "Radar", "Inputs", "Empty" };
+              "Gains", "Presets", "G circle", "Friction circle", "Relative", "Radar", "Inputs",
+              "Damage", "Empty" };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.
