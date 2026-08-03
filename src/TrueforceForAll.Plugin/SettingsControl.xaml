@@ -3032,6 +3032,35 @@
                     <StackPanel x:Name="RemoteDashTabsPanel"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="Untick a tab to hide it on the dash; use the arrows to change the order. Changes apply instantly, no dashboard reload needed. At least one tab always stays on."/>
+
+                    <!-- Drive tab: which of the four boxes around the gear shows
+                         what, plus the one-row / two-row choice. Combo items are
+                         filled in code from the plugin's content list so a new
+                         box type needs no XAML change. -->
+                    <TextBlock Text="Drive tab boxes:" Style="{StaticResource LabelText}" Margin="0,16,0,4"/>
+                    <RadioButton x:Name="RemoteDashDriveTwoRowsRadio" GroupName="RemoteDashDriveRows"
+                                 Content="Two rows (tablet)" Checked="RemoteDashDriveRows_Changed"
+                                 ToolTip="All four boxes, two above and two below."/>
+                    <RadioButton x:Name="RemoteDashDriveOneRowRadio" GroupName="RemoteDashDriveRows"
+                                 Content="Bottom row only (phone)" Margin="0,4,0,0" Checked="RemoteDashDriveRows_Changed"
+                                 ToolTip="Just the bottom two boxes, with a bigger gear readout above them."/>
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" x:Name="RemoteDashDriveSlot0Label" Text="Top left:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                        <ComboBox   Grid.Row="0" Grid.Column="1" x:Name="RemoteDashDriveSlot0Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" x:Name="RemoteDashDriveSlot1Label" Text="Top right:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                        <ComboBox   Grid.Row="1" Grid.Column="1" x:Name="RemoteDashDriveSlot1Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Bottom left:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                        <ComboBox   Grid.Row="2" Grid.Column="1" x:Name="RemoteDashDriveSlot2Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Bottom right:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                        <ComboBox   Grid.Row="3" Grid.Column="1" x:Name="RemoteDashDriveSlot3Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tyre and fuel readouts come from the game, so what they show depends on what that game reports."/>
                 </StackPanel>
             </Expander>
 

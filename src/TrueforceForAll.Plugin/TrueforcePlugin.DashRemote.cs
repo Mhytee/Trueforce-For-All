@@ -78,7 +78,7 @@ namespace TrueforceForAll.Plugin
         // exactly one screen enabled, SimHub's swipe/NextScreen is inert.
         // Seeded at Init from Settings (DashLastTab or DashDefaultTab per
         // the remember-last-tab pref); tab taps write back DashLastTab.
-        private const int DashTabCount = 6;
+        private const int DashTabCount = 7;
         private volatile int _dashTab;
 
         // Tab-bar SLOT indirection so users can hide and reorder tabs from
@@ -89,11 +89,63 @@ namespace TrueforceForAll.Plugin
         // (never empty; sanitizer falls back to Drive). Volatile reference
         // swap: rebuilt on the UI/action thread, read per property poll.
         private static readonly string[] DashTabNames =
-            { "HOME", "CAR FACTS", "EFFECTS", "PRESETS", "VISUALIZER", "TELE-FFB" };
-        // Factory display order: Tele-FFB sits between Effects and Presets.
-        // An empty stored DashTabOrder resolves to exactly this.
-        private static readonly int[] DashTabFactoryOrder = { 0, 1, 2, 5, 3, 4 };
+            { "HOME", "CAR FACTS", "EFFECTS", "PRESETS", "VISUALIZER", "TELE-FFB", "DRIVE" };
+        // Factory display order: Drive leads (it is the while-driving screen),
+        // then Home, and Tele-FFB sits between Effects and Presets. An empty
+        // stored DashTabOrder resolves to exactly this. NOTE an existing
+        // install keeps its saved order and picks Drive up at the END, since
+        // the sanitizer appends unknown-to-the-stored-list tabs rather than
+        // reordering what the user chose.
+        private static readonly int[] DashTabFactoryOrder = { 6, 0, 1, 2, 5, 3, 4 };
         private volatile int[] _dashTabSlots = new int[0];
+
+        // ------------------------------------------------------------------
+        // Drive screen: four corner boxes around the gear readout. The dash
+        // emits EVERY content widget into EVERY slot and shows one, gated on
+        // Dash.Drive.Slot<i>; the plugin just publishes which key each slot
+        // holds. That keeps swapping instant (no dash regeneration) at the
+        // cost of item count, which is why the scope option renders a reduced
+        // column count in a box rather than the full Visualizer trace.
+        // Everything except CarFacts and Scope binds to SimHub's own game
+        // properties, so no telemetry is plumbed through this plugin for it.
+        // ------------------------------------------------------------------
+        // Damage is deliberately absent: no shipped SimHub dashboard binds a
+        // damage property, so the names are unverified, and Forza's damage
+        // model is thin anyway. A relative (drivers ahead / behind) box is the
+        // obvious next option: PersistantTrackerPlugin.DriverAhead_NN_* and
+        // DriverBehind_NN_* carry it without the obsolete leaderboard item.
+        internal static readonly string[] DashDriveContentKeys =
+            { "CarFacts", "LapTimes", "TyreTemps", "TyreWear", "Fuel", "Delta", "Scope", "None" };
+        // Friendly labels for the Settings-tab pickers, index-matched above.
+        internal static readonly string[] DashDriveContentLabels =
+            { "Car facts", "Lap times", "Tyre temps", "Tyre wear", "Fuel", "Lap delta", "FFB scope", "Empty" };
+        // Slot order: top-left, top-right, bottom-left, bottom-right. The
+        // bottom pair is what a phone sees when two-row layout is off, so the
+        // two most useful boxes live there.
+        private static readonly string[] DashDriveFactorySlots =
+            { "CarFacts", "LapTimes", "Scope", "TyreTemps" };
+        internal const int DashDriveSlotCount = 4;
+        // Cached sanitized slots, refreshed alongside the tab slot map so the
+        // property getters never re-walk settings per poll.
+        private volatile string[] _dashDriveSlots = (string[])DashDriveFactorySlots.Clone();
+
+        /// <summary>The four Drive-screen slot contents, sanitized: an unknown
+        /// or missing entry falls back to that slot's factory default, so an
+        /// empty stored list is exactly the shipped layout.</summary>
+        internal string[] GetDashDriveSlots()
+        {
+            var outp = new string[DashDriveSlotCount];
+            var stored = Settings?.DashDriveSlots;
+            for (int i = 0; i < DashDriveSlotCount; i++)
+            {
+                string v = stored != null && i < stored.Count ? stored[i] : null;
+                outp[i] = !string.IsNullOrEmpty(v)
+                          && Array.IndexOf(DashDriveContentKeys, v) >= 0
+                    ? v
+                    : DashDriveFactorySlots[i];
+            }
+            return outp;
+        }
 
         /// <summary>Full tab order (screen indices, disabled tabs included),
         /// sanitized. Shared by the dash slot map and the Settings-tab
@@ -128,6 +180,10 @@ namespace TrueforceForAll.Plugin
         /// one.</summary>
         internal void RefreshDashTabSlots()
         {
+            // Drive-screen box assignments ride the same refresh, so every
+            // caller that reacts to a settings change (editor, restore,
+            // import, account switch) picks both up.
+            _dashDriveSlots = GetDashDriveSlots();
             var order = GetDashTabFullOrder();
             var disabled = Settings?.DashTabsDisabled;
             if (disabled != null && disabled.Count > 0)
@@ -805,6 +861,21 @@ namespace TrueforceForAll.Plugin
             });
 
             // ---------- properties: rev strip (polled at display rate) ----------
+            // ---------- properties: Drive screen slots ----------
+            // Each box on the Drive screen renders every content option and
+            // shows the one whose key matches its slot property, so a change
+            // in Settings applies on the next poll with no dash reload.
+            for (int sl = 0; sl < DashDriveSlotCount; sl++)
+            {
+                int idx = sl;
+                this.AttachDelegate("Dash.Drive.Slot" + idx, () =>
+                {
+                    var slots = _dashDriveSlots;
+                    return idx < slots.Length ? slots[idx] : "None";
+                });
+            }
+            this.AttachDelegate("Dash.Drive.TwoRows", () => Settings?.DashDriveTwoRows != false);
+
             this.AttachDelegate("Dash.RevOutsideIn", () => Settings?.DashRevStripOutsideIn == true);
             this.AttachDelegate("Dash.Rpm", () => _telemetryStalled ? 0 : (int)_dashLiveRpm);
             this.AttachDelegate("Dash.RpmPct", () =>

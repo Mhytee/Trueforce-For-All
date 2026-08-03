@@ -420,6 +420,23 @@ namespace TrueforceForAll.Plugin
         public int  DashDefaultTab      { get; set; } = 0;
         public int  DashLastTab         { get; set; } = 0;
 
+        // TF4ALL Dash "Drive" screen: what each of the four corner boxes shows,
+        // in slot order (top-left, top-right, bottom-left, bottom-right), plus
+        // whether both rows are used. Values are content keys from
+        // TrueforcePlugin.DashDriveContentKeys; an unknown or missing entry
+        // falls back to that slot's factory default, so an empty list means
+        // "the shipped Forza-friendly layout" and a content type added by an
+        // update needs no migration.
+        // MUST default EMPTY for the same loader reason as DashTabOrder above.
+        // Defaults (Forza-first, since that is where Telemetry FFB runs):
+        // car facts, lap times, the FFB scope, tyre temps. Standings are
+        // deliberately absent: SimHub's leaderboard item is obsolete and needs
+        // map/coordinate data no Forza title provides.
+        // TwoRows false uses only the bottom pair, which is the phone layout
+        // (the bottom boxes grow to full height); true is the tablet layout.
+        public List<string> DashDriveSlots { get; set; } = new List<string>();
+        public bool DashDriveTwoRows { get; set; } = true;
+
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
         // user's display order; DashTabsDisabled hides tabs without losing

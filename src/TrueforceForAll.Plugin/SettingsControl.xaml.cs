@@ -500,6 +500,7 @@ namespace TrueforceForAll.Plugin
                 // Populates the default-tab combo too (enabled tabs only, in
                 // the user's order) and re-selects the stored default.
                 RebuildRemoteDashTabsEditor();
+                RefreshRemoteDashDriveEditor();
                 if (AutoSubmitCarFactsCheck != null)
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
@@ -6330,6 +6331,86 @@ namespace TrueforceForAll.Plugin
         // Layout signature of the last-built editor; unchanged signature =
         // skip the rebuild (see below).
         private string _remoteDashTabsSignature;
+
+        private ComboBox[] RemoteDashDriveCombos() => new[]
+        {
+            RemoteDashDriveSlot0Combo, RemoteDashDriveSlot1Combo,
+            RemoteDashDriveSlot2Combo, RemoteDashDriveSlot3Combo,
+        };
+
+        /// <summary>Fill the Drive-tab box pickers from the plugin's content
+        /// list and select what each slot currently holds. Items are built
+        /// once (the list is static); only the selection is re-applied on
+        /// later refreshes, so an open dropdown is never rebuilt underneath
+        /// the user.</summary>
+        private void RefreshRemoteDashDriveEditor()
+        {
+            var combos = RemoteDashDriveCombos();
+            if (combos[0] == null || _plugin == null) return;
+            bool prevSuppress = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                var keys   = TrueforcePlugin.DashDriveContentKeys;
+                var labels = TrueforcePlugin.DashDriveContentLabels;
+                var slots  = _plugin.GetDashDriveSlots();
+                for (int i = 0; i < combos.Length; i++)
+                {
+                    var cb = combos[i];
+                    if (cb == null) continue;
+                    if (cb.Items.Count != keys.Length)
+                    {
+                        cb.Items.Clear();
+                        for (int k = 0; k < keys.Length; k++)
+                            cb.Items.Add(new ComboBoxItem { Content = labels[k], Tag = keys[k] });
+                    }
+                    string want = i < slots.Length ? slots[i] : "None";
+                    foreach (ComboBoxItem it in cb.Items)
+                        if ((it.Tag as string) == want) { cb.SelectedItem = it; break; }
+                }
+                bool twoRows = _plugin.Settings?.DashDriveTwoRows != false;
+                if (RemoteDashDriveTwoRowsRadio != null) RemoteDashDriveTwoRowsRadio.IsChecked = twoRows;
+                if (RemoteDashDriveOneRowRadio != null) RemoteDashDriveOneRowRadio.IsChecked = !twoRows;
+                // The top pair is not drawn in the one-row layout, so its
+                // pickers would be lying about what the dash shows.
+                if (RemoteDashDriveSlot0Combo != null) RemoteDashDriveSlot0Combo.IsEnabled = twoRows;
+                if (RemoteDashDriveSlot1Combo != null) RemoteDashDriveSlot1Combo.IsEnabled = twoRows;
+                if (RemoteDashDriveSlot0Label != null) RemoteDashDriveSlot0Label.Opacity = twoRows ? 1.0 : 0.5;
+                if (RemoteDashDriveSlot1Label != null) RemoteDashDriveSlot1Label.Opacity = twoRows ? 1.0 : 0.5;
+            }
+            finally { _suppressEvents = prevSuppress; }
+        }
+
+        private void RemoteDashDriveRows_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashDriveTwoRows = RemoteDashDriveTwoRowsRadio?.IsChecked == true;
+            SaveRemoteDashDriveLayout();
+        }
+
+        private void RemoteDashDriveSlot_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var combos = RemoteDashDriveCombos();
+            var list = new List<string>(combos.Length);
+            foreach (var cb in combos)
+                list.Add((cb?.SelectedItem as ComboBoxItem)?.Tag as string ?? "None");
+            _plugin.Settings.DashDriveSlots = list;
+            SaveRemoteDashDriveLayout();
+        }
+
+        private void SaveRemoteDashDriveLayout()
+        {
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist Drive tab layout failed: " + ex.Message);
+            }
+            // Republish the cached slot map so the dash follows immediately.
+            _plugin.RefreshDashTabSlots();
+            RefreshRemoteDashDriveEditor();
+        }
 
         private void RebuildRemoteDashTabsEditor()
         {

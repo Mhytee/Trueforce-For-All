@@ -222,22 +222,173 @@ function RevStrip([string]$P) {
 # Hidden while any overlay is up: the viewer gives item visuals
 # pointer-events:none, so an overlay backdrop would NOT shield these
 # buttons from taps; display:none (a Visible binding) does.
+# ---- Drive screen content boxes -------------------------------------
+# Each of the four boxes renders EVERY content option and shows the one
+# whose key matches Dash.Drive.Slot<n>, so swapping a box in Settings
+# applies on the next property poll with no dashboard reload. Top-row
+# boxes additionally gate on Dash.Drive.TwoRows, which is the phone
+# (bottom row only) vs tablet (both rows) choice.
+# Everything except CAR FACTS and SCOPE reads SimHub's own game
+# properties, so no telemetry is plumbed through our plugin for this.
+# Property names are all taken from shipped SimHub dashboards, not
+# guessed. Lap times arrive as TimeSpan strings ("00:01:23.4567890"), so
+# FmtLap trims to milliseconds and drops the leading hours.
+$SIM = 'DataCorePlugin.GameData.NewData.'
+$TRK = 'PersistantTrackerPlugin.'
+
+function FmtLapJs([string]$prop) {
+    'var s=""+($prop("' + $prop + '")||"");' +
+    'if(s.indexOf(".")>=0)s=s.substring(0,s.indexOf(".")+4);' +
+    'if(s.indexOf("00:")==0)s=s.substring(3);' +
+    'return (s==""||s.indexOf("00:00.00")==0)?"--":s'
+}
+
+# One labelled value line inside a box.
+function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [string]$vis, [int]$size = 20) {
+    $l = New-Text "$name-l" $x $y ($w * 0.46) 30 14 $label $script:MUTED 0
+    $l.Bindings['Visible'] = BindJS 'Visible' $vis
+    $v = New-Text "$name-v" ($x + $w * 0.46) $y ($w * 0.54) 30 $size '' $script:WHITE 2 @{
+        Text = BindJS 'Text' $valueJs
+    } 'Bold'
+    $v.Bindings['Visible'] = BindJS 'Visible' $vis
+    @($l, $v)
+}
+
+# 2x2 corner grid (tyres), FL FR / RL RR.
+function BoxQuad([string]$name, $x, $y, $w, $h, [string[]]$props, [string]$suffix, [string]$vis, [string]$fmtJs) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $cw = ($w - 12) / 2
+    $ch = ($h - 10) / 2
+    for ($q = 0; $q -lt 4; $q++) {
+        $cx = $x + ($q % 2) * ($cw + 12)
+        $cy = $y + [math]::Floor($q / 2) * ($ch + 10)
+        $js = 'var v=1*$prop("' + $script:SIM + $props[$q] + '");' + $fmtJs
+        $t = New-Text "$name-q$q" $cx $cy $cw $ch 26 '' $script:WHITE 1 @{
+            Text = BindJS 'Text' $js
+        } 'Bold'
+        $t.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($t)
+    }
+    $items
+}
+
+function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $slotProp = $P + '.Drive.Slot' + $slot
+    $rowCond = if ($topRow) { ' && $prop("' + $P + '.Drive.TwoRows")' } else { '' }
+    $isKey = { param([string]$k) 'return (""+$prop("' + $slotProp + '"))=="' + $k + '"' + $rowCond }
+    # Panel: any content except Empty. Drawn once and shared by every option.
+    $notEmpty = 'return (""+$prop("' + $slotProp + '"))!="None"' + $rowCond
+    $panel = New-Rect "d$slot-panel" $x $y $w $h $script:PANEL
+    $panel.Bindings['Visible'] = BindJS 'Visible' $notEmpty
+    $items.Add($panel)
+
+    $ix = $x + 14; $iw = $w - 28; $iy = $y + 10
+
+    # --- CAR FACTS (ours) ---
+    $vis = & $isKey 'CarFacts'
+    $t = New-Text "d$slot-cf-h" $ix $iy $iw 22 13 'CAR FACTS' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $t = New-Text "d$slot-cf-car" $ix ($iy + 24) $iw 34 19 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' ('return ""+($prop("' + $P + '.CarName")||"No car")')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    BoxLine "d$slot-cf-eng" $ix ($iy + 62) $iw 'Engine' ('return ""+($prop("' + $P + '.EngineLayout")||"Auto")') $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-cf-red" $ix ($iy + 94) $iw 'Redline' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"--"') $vis 17 | ForEach-Object { $items.Add($_) }
+
+    # --- LAP TIMES ---
+    $vis = & $isKey 'LapTimes'
+    $t = New-Text "d$slot-lt-h" $ix $iy $iw 22 13 'LAP TIMES' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $t = New-Text "d$slot-lt-cur" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' (FmtLapJs ($script:SIM + 'CurrentLapTime'))
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    BoxLine "d$slot-lt-last" $ix ($iy + 66) $iw 'Last' (FmtLapJs ($script:SIM + 'LastLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-lt-best" $ix ($iy + 98) $iw 'Best' (FmtLapJs ($script:SIM + 'BestLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+
+    # --- TYRE TEMPS (Forza fills these everywhere, free roam included) ---
+    $vis = & $isKey 'TyreTemps'
+    $t = New-Text "d$slot-tt-h" $ix $iy $iw 22 13 'TYRE TEMPS' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    BoxQuad "d$slot-tt" $ix ($iy + 26) $iw ($h - 48) `
+        @('TyreTemperatureFrontLeft', 'TyreTemperatureFrontRight', 'TyreTemperatureRearLeft', 'TyreTemperatureRearRight') `
+        '' $vis 'return isNaN(v)||v<=0?"--":Math.round(v)+"°"' | ForEach-Object { $items.Add($_) }
+
+    # --- TYRE WEAR ---
+    $vis = & $isKey 'TyreWear'
+    $t = New-Text "d$slot-tw-h" $ix $iy $iw 22 13 'TYRE WEAR' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    BoxQuad "d$slot-tw" $ix ($iy + 26) $iw ($h - 48) `
+        @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight') `
+        '' $vis 'return isNaN(v)?"--":Math.round(v)+"%"' | ForEach-Object { $items.Add($_) }
+
+    # --- FUEL ---
+    $vis = & $isKey 'Fuel'
+    $t = New-Text "d$slot-fu-h" $ix $iy $iw 22 13 'FUEL' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $t = New-Text "d$slot-fu-lvl" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' ('var v=1*$prop("' + $script:SIM + 'Fuel");return isNaN(v)?"--":v.toFixed(1)')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    BoxLine "d$slot-fu-laps" $ix ($iy + 66) $iw 'Laps left' ('var v=1*$prop("DataCorePlugin.Computed.Fuel_RemainingLaps");return isNaN(v)||v<=0?"--":v.toFixed(1)') $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-fu-pct" $ix ($iy + 98) $iw 'Tank' ('var v=1*$prop("' + $script:SIM + 'FuelPercent");return isNaN(v)?"--":Math.round(v)+"%"') $vis 17 | ForEach-Object { $items.Add($_) }
+
+    # --- LAP DELTA ---
+    $vis = & $isKey 'Delta'
+    $t = New-Text "d$slot-dl-h" $ix $iy $iw 22 13 'LAP DELTA' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $deltaJs = 'var v=1*$prop("' + $script:TRK + 'SessionBestLastLapDelta");return isNaN(v)?"--":(v>0?"+":"")+v.toFixed(2)'
+    $t = New-Text "d$slot-dl-v" $ix ($iy + 22) $iw 44 32 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' $deltaJs
+        TextColor = BindJS 'TextColor' ('var v=1*$prop("' + $script:TRK + 'SessionBestLastLapDelta");return isNaN(v)?"' + $script:MUTED + '":(v>0?"' + $script:RED + '":"' + $script:GREEN + '")')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    BoxLine "d$slot-dl-est" $ix ($iy + 70) $iw 'Estimated' (FmtLapJs ($script:TRK + 'EstimatedLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-dl-prev" $ix ($iy + 102) $iw 'Previous' (FmtLapJs ($script:TRK + 'PreviousLap_00')) $vis 17 | ForEach-Object { $items.Add($_) }
+
+    # --- FFB SCOPE (ours; a reduced-column version of the Visualizer
+    # texture lane, so a box costs ~26 items instead of ~160) ---
+    $vis = & $isKey 'Scope'
+    $t = New-Text "d$slot-sc-h" $ix $iy $iw 22 13 'FFB SCOPE' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $laneY = $iy + 30
+    $laneH = $h - 54
+    $mid = $laneY + $laneH / 2
+    $zero = New-Rect "d$slot-sc-zero" $ix $mid $iw 2 $script:SCOPE_GRID $null 0
+    $zero.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($zero)
+    $cols = 24
+    $cw = $iw / $cols
+    for ($c = 0; $c -lt $cols; $c++) {
+        # Sample the newest 24 of the plugin's 78 ring columns.
+        $src = 54 + $c
+        $colJs = 'var v=1*$prop("' + $P + '.Scope.Tex' + $src + '");if(v>1)v=1;if(v<0)v=0;'
+        $col = New-Rect "d$slot-sc$c" ($ix + $c * $cw) $mid $cw 2 $script:SCOPE_PURPLE $null 0
+        $col.Bindings['Height'] = BindJS 'Height' ($colJs + 'return 2+v*' + ($laneH - 4))
+        $col.Bindings['Top']    = BindJS 'Top'    ($colJs + 'var hh=2+v*' + ($laneH - 4) + ';return ' + ($mid + 1) + '-hh/2')
+        $col.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($col)
+    }
+    $items
+}
+
 function TabBar([string]$P) {
     $overlayClosed = '(""+$prop("' + $P + '.Overlay"))==""'
-    # Enabled-slot count, summed from the six .On props inside the formula
+    # Enabled-slot count, summed from the seven .On props inside the formula
     # itself (no extra plugin property needed). Slots pack left, so the
     # visible slots are exactly 0..n-1 and each slot's Left/Width bind to
     # pitch = usable width / n: hiding a tab makes the rest stretch to
-    # fill the bar. Plugin missing -> n falls back to 6 (bar is hidden
+    # fill the bar. Plugin missing -> n falls back to 7 (bar is hidden
     # then anyway, .On reads null).
-    $countJs = '($prop("' + $P + '.TabSlot0.On")?1:0)+($prop("' + $P + '.TabSlot1.On")?1:0)+($prop("' + $P + '.TabSlot2.On")?1:0)+($prop("' + $P + '.TabSlot3.On")?1:0)+($prop("' + $P + '.TabSlot4.On")?1:0)+($prop("' + $P + '.TabSlot5.On")?1:0)'
+    $countJs = '($prop("' + $P + '.TabSlot0.On")?1:0)+($prop("' + $P + '.TabSlot1.On")?1:0)+($prop("' + $P + '.TabSlot2.On")?1:0)+($prop("' + $P + '.TabSlot3.On")?1:0)+($prop("' + $P + '.TabSlot4.On")?1:0)+($prop("' + $P + '.TabSlot5.On")?1:0)+($prop("' + $P + '.TabSlot6.On")?1:0)'
     $items = [System.Collections.Generic.List[object]]::new()
-    for ($i = 0; $i -lt 6; $i++) {
-        $x = 10 + $i * 131
+    for ($i = 0; $i -lt 7; $i++) {
+        $x = 10 + $i * 112
         $slot = $P + '.TabSlot' + $i
         $vis = 'return ' + $overlayClosed + ' && $prop("' + $slot + '.On")'
-        $leftJs  = 'var n=' + $countJs + ';if(n<1)n=6;return 10+' + $i + '*(784/n)'
-        $widthJs = 'var n=' + $countJs + ';if(n<1)n=6;return (784/n)-4'
+        $leftJs  = 'var n=' + $countJs + ';if(n<1)n=7;return 10+' + $i + '*(784/n)'
+        $widthJs = 'var n=' + $countJs + ';if(n<1)n=7;return (784/n)-4'
         $bg = New-Rect "tab$i-bg" $x 446 127 32 $TILE @{
             BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $slot + '.Active")?"' + $TILEON + '":"' + $TILE + '"')
             Left  = BindJS 'Left'  $leftJs
@@ -813,6 +964,48 @@ ToastBar $P | ForEach-Object { $s6.Add($_) }
 RevStrip $P | ForEach-Object { $s6.Add($_) }
 
 # =====================================================================
+# Screen 7: DRIVE (gear + four swappable info boxes)
+# The while-driving screen: gear big in the middle, four boxes whose
+# contents the user picks in Settings. Two-row is the tablet layout;
+# turning it off hides the top pair and grows the gear into that space,
+# which is the phone layout. The gear moves via Left/Top/Width/Height
+# bindings rather than a second set of items, and the boxes never move,
+# so nothing inside them needs repositioning.
+# =====================================================================
+$s7 = [System.Collections.Generic.List[object]]::new()
+$twoRows = '$prop("' + $P + '.Drive.TwoRows")'
+
+# Gear: the one readout that is always meaningful, in every game.
+$gearLeft   = 'return ' + $twoRows + '?300:10'
+$gearWidth  = 'return ' + $twoRows + '?200:780'
+$gear = New-Text 'dr-gear' 300 55 200 210 130 '' $WHITE 1 @{
+    Text   = BindJS 'Text'   ('var g=""+($prop("' + $SIM + 'Gear")||"");return g==""?"N":g')
+    Left   = BindJS 'Left'   $gearLeft
+    Width  = BindJS 'Width'  $gearWidth
+    Top    = BindJS 'Top'    ('return ' + $twoRows + '?55:20')
+    Height = BindJS 'Height' ('return ' + $twoRows + '?210:170')
+} 'Bold'
+$s7.Add($gear)
+# Speed, in whichever unit the user set in SimHub.
+$spd = New-Text 'dr-speed' 300 268 200 40 26 '' $MUTED 1 @{
+    Text  = BindJS 'Text'  ('var v=1*$prop("' + $SIM + 'SpeedLocal");var u=""+($prop("' + $SIM + 'SpeedLocalUnit")||"");return isNaN(v)?"--":(Math.round(v)+" "+u)')
+    Left  = BindJS 'Left'  $gearLeft
+    Width = BindJS 'Width' $gearWidth
+    Top   = BindJS 'Top'   ('return ' + $twoRows + '?268:192')
+} 'Bold'
+$s7.Add($spd)
+
+# Four content boxes. Slot order matches the plugin: TL, TR, BL, BR.
+DriveBox $P 0 10  16  282 206 $true  | ForEach-Object { $s7.Add($_) }
+DriveBox $P 1 508 16  282 206 $true  | ForEach-Object { $s7.Add($_) }
+DriveBox $P 2 10  228 282 212 $false | ForEach-Object { $s7.Add($_) }
+DriveBox $P 3 508 228 282 212 $false | ForEach-Object { $s7.Add($_) }
+
+TabBar $P | ForEach-Object { $s7.Add($_) }
+ToastBar $P | ForEach-Object { $s7.Add($_) }
+RevStrip $P | ForEach-Object { $s7.Add($_) }
+
+# =====================================================================
 # Assemble document
 # =====================================================================
 # Each screen is enabled ONLY while Dash.Tab holds its index, so the
@@ -861,9 +1054,9 @@ $meta = [ordered]@{
     Category = 'TF4ALL'; Title = 'TF4ALL Dash'
     Description = 'Control panel and rev lights for Trueforce For All: gains, effects, car facts and presets from a phone or tablet'
     Author = 'Mhytee'
-    ScreenCount = 6.0
-    InGameScreensIndexs = @(0, 1, 2, 3, 4, 5)
-    IdleScreensIndexs = @(0, 1, 2, 3, 4, 5)
+    ScreenCount = 7.0
+    InGameScreensIndexs = @(0, 1, 2, 3, 4, 5, 6)
+    IdleScreensIndexs = @(0, 1, 2, 3, 4, 5, 6)
     MainPreviewIndex = 0
     IsOverlay = $false
     Width = 800.0; Height = 480.0
@@ -884,7 +1077,8 @@ $doc = [ordered]@{
         (New-Screen 'Effects' $s3 2),
         (New-Screen 'Presets' $s4 3),
         (New-Screen 'Visualizer' $s5 4),
-        (New-Screen 'Tele-FFB' $s6 5)
+        (New-Screen 'Tele-FFB' $s6 5),
+        (New-Screen 'Drive' $s7 6)
     )
     SnapToGrid = $false; HideLabels = $false
     ShowForeground = $true; ForegroundOpacity = 50.0
@@ -1032,12 +1226,17 @@ function PreviewChrome([double]$pct, [int]$activeSlot) {
     for ($i = 0; $i -lt 16; $i++) {
         if ($pct -ge (50 + $i * 3.125)) { $o["rev-seg$i"] = @{ Show = $true } }
     }
-    $slotNames = @('HOME', 'CAR FACTS', 'EFFECTS', 'TELE-FFB', 'PRESETS', 'VISUALIZER')
-    for ($i = 0; $i -lt 6; $i++) {
+    # Factory tab order (Drive leads), matching DashTabFactoryOrder.
+    $slotNames = @('DRIVE', 'HOME', 'CAR FACTS', 'EFFECTS', 'TELE-FFB', 'PRESETS', 'VISUALIZER')
+    $pitch = 784 / $slotNames.Count
+    for ($i = 0; $i -lt $slotNames.Count; $i++) {
         $bgc = if ($i -eq $activeSlot) { $TILEON } else { $TILE }
         $txc = if ($i -eq $activeSlot) { $WHITE } else { $MUTED }
-        $o["tab$i-bg"] = @{ Show = $true; BackgroundColor = $bgc }
-        $o["tab$i-t"]  = @{ Show = $true; Text = $slotNames[$i]; TextColor = $txc }
+        # Slot geometry is Left/Width-bound at runtime; the preview renderer
+        # reads static values, so restate the packed positions here.
+        $left = 10 + $i * $pitch
+        $o["tab$i-bg"] = @{ Show = $true; BackgroundColor = $bgc; Left = $left; Width = ($pitch - 4) }
+        $o["tab$i-t"]  = @{ Show = $true; Text = $slotNames[$i]; TextColor = $txc; Left = $left; Width = ($pitch - 4) }
     }
     $o
 }
@@ -1046,7 +1245,7 @@ $pvGame   = 'Assetto Corsa'
 $pvCar    = 'Mazda MX-5 Cup'
 $pvPreset = 'Assetto Corsa (default)'
 
-$ovDrive = PreviewChrome 78 0
+$ovDrive = PreviewChrome 78 1
 $ovDrive['wheel']    = @{ Text = 'WHEEL OK'; TextColor = $GREEN }
 $ovDrive['gamecar']  = @{ Text = "$pvGame  -  $pvCar" }
 $ovDrive['preset']   = @{ Text = "PRESET  $pvPreset" }
@@ -1058,13 +1257,13 @@ $ovDrive['plug-t']   = @{ Text = 'PLUGIN ON' }
 $ovDrive['aud-bg']   = @{ BackgroundColor = $TILEON }
 $ovDrive['aud-t']    = @{ Text = 'AUDIO HAPTICS ON' }
 
-$ovFacts = PreviewChrome 78 1
+$ovFacts = PreviewChrome 78 2
 $ovFacts['cf-car']       = @{ Text = $pvCar }
 $ovFacts['cf-eng-value'] = @{ Text = 'Inline 4  (community)' }
 $ovFacts['cf-rl-value']  = @{ Text = '7200 rpm' }
 $ovFacts['cf-info']      = @{ Text = 'MAX RPM  7500      REDLINE SOURCE  community' }
 
-$ovFx = PreviewChrome 78 2
+$ovFx = PreviewChrome 78 3
 $pvGains = @{
     Engine = '0.850'; Bumps = '0.600'; Traction = '0.550'; AxleSlip = '0.450'
     Kerb = '0.700'; Lockup = '0.500'; Shift = '0.400'; Abs = '0.350'
@@ -1076,7 +1275,7 @@ foreach ($e in $effects) {
     if ($e[2]) { $ovFx["fx-$key-gain"] = @{ Text = $pvGains[$key] } }
 }
 
-$ovPresets = PreviewChrome 78 4
+$ovPresets = PreviewChrome 78 5
 $ovPresets['pr-car']        = @{ Text = "$pvGame  -  $pvCar" }
 $ovPresets['pr-game-value'] = @{ Text = $pvPreset }
 $ovPresets['pr-carp-value'] = @{ Text = '(none saved for this car)' }
@@ -1086,7 +1285,7 @@ $ovPresets['pr-carp-value'] = @{ Text = '(none saved for this car)' }
 # column bindings use). Wave amplitude deliberately exceeds 1 so the
 # preview shows the clip feature: the pinned sections read at the rails
 # with the marker strips lit over them.
-$ovScope = PreviewChrome 78 5
+$ovScope = PreviewChrome 78 6
 $ffbPts = @(); $clipPosPts = @(); $clipNegPts = @()
 for ($i = 0; $i -lt 120; $i++) {
     $v = 0.88 * [math]::Sin($i / 8.5) + 0.36 * [math]::Sin($i / 2.9 + 1.3)
@@ -1105,7 +1304,7 @@ for ($i = 0; $i -lt 78; $i++) {
 
 # Tele-FFB: gated content hides behind Visible bindings, so the preview
 # shows the supported-game state via Show overrides + the owner recipe.
-$ovModeB = PreviewChrome 78 3
+$ovModeB = PreviewChrome 78 4
 $ovModeB['mb-game']  = @{ Text = 'Forza Horizon 6' }
 $ovModeB['mb-en-bg'] = @{ Show = $true; BackgroundColor = $TILEON }
 $ovModeB['mb-en-t']  = @{ Show = $true; Text = 'TELEMETRY FFB ON' }
@@ -1126,13 +1325,48 @@ foreach ($k in $pvModeB.Keys) {
     $ovModeB["mb-$k-up-t"]   = @{ Show = $true }
 }
 
+# Drive tab: show the factory box assignment (car facts / lap times /
+# scope / tyre temps) in the two-row layout, since every box item is
+# slot-gated and therefore hidden to the preview renderer by default.
+$ovDriveTab = PreviewChrome 78 0
+$ovDriveTab['dr-gear']  = @{ Text = '4' }
+$ovDriveTab['dr-speed'] = @{ Text = '148 kph' }
+foreach ($sl in 0, 1, 2, 3) { $ovDriveTab["d$sl-panel"] = @{ Show = $true } }
+# slot 0: car facts
+$ovDriveTab['d0-cf-h']     = @{ Show = $true }
+$ovDriveTab['d0-cf-car']   = @{ Show = $true; Text = '1985 Sprinter Trueno' }
+$ovDriveTab['d0-cf-eng-l'] = @{ Show = $true }
+$ovDriveTab['d0-cf-eng-v'] = @{ Show = $true; Text = 'Inline 4' }
+$ovDriveTab['d0-cf-red-l'] = @{ Show = $true }
+$ovDriveTab['d0-cf-red-v'] = @{ Show = $true; Text = '7800 rpm' }
+# slot 1: lap times
+$ovDriveTab['d1-lt-h']      = @{ Show = $true }
+$ovDriveTab['d1-lt-cur']    = @{ Show = $true; Text = '01:24.318' }
+$ovDriveTab['d1-lt-last-l'] = @{ Show = $true }
+$ovDriveTab['d1-lt-last-v'] = @{ Show = $true; Text = '01:25.902' }
+$ovDriveTab['d1-lt-best-l'] = @{ Show = $true }
+$ovDriveTab['d1-lt-best-v'] = @{ Show = $true; Text = '01:23.771' }
+# slot 2: FFB scope
+$ovDriveTab['d2-sc-h']    = @{ Show = $true }
+$ovDriveTab['d2-sc-zero'] = @{ Show = $true }
+for ($i = 0; $i -lt 24; $i++) {
+    $v = (0.25 + 0.7 * [math]::Abs([math]::Sin($i / 3.1))) * [math]::Abs([math]::Sin($i / 1.7))
+    $hh = 2 + $v * 154
+    $ovDriveTab["d2-sc$i"] = @{ Show = $true; Top = (335 - $hh / 2); Height = $hh }
+}
+# slot 3: tyre temps
+$ovDriveTab['d3-tt-h'] = @{ Show = $true }
+$tq = @('86°', '84°', '79°', '81°')
+for ($i = 0; $i -lt 4; $i++) { $ovDriveTab["d3-tt-q$i"] = @{ Show = $true; Text = $tq[$i] } }
+
 Render-Preview $s1 $ovDrive   (Join-Path $OutDir 'TF4ALL Dash.djson.00.png')
 Render-Preview $s2 $ovFacts   (Join-Path $OutDir 'TF4ALL Dash.djson.01.png')
 Render-Preview $s3 $ovFx      (Join-Path $OutDir 'TF4ALL Dash.djson.02.png')
 Render-Preview $s4 $ovPresets (Join-Path $OutDir 'TF4ALL Dash.djson.03.png')
 Render-Preview $s5 $ovScope   (Join-Path $OutDir 'TF4ALL Dash.djson.04.png')
 Render-Preview $s6 $ovModeB   (Join-Path $OutDir 'TF4ALL Dash.djson.05.png')
+Render-Preview $s7 $ovDriveTab (Join-Path $OutDir 'TF4ALL Dash.djson.06.png')
 Copy-Item (Join-Path $OutDir 'TF4ALL Dash.djson.00.png') (Join-Path $OutDir 'TF4ALL Dash.djson.png') -Force
 
-$itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count + $s5.Count + $s6.Count
-Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count) visualizer=$($s5.Count) teleffb=$($s6.Count); previews: main + 6 screens)"
+$itemCount = $s1.Count + $s2.Count + $s3.Count + $s4.Count + $s5.Count + $s6.Count + $s7.Count
+Write-Host "Wrote $OutDir  (items: $itemCount; drive=$($s1.Count) carfacts=$($s2.Count) effects=$($s3.Count) presets=$($s4.Count) visualizer=$($s5.Count) teleffb=$($s6.Count) drivetab=$($s7.Count); previews: main + 7 screens)"
