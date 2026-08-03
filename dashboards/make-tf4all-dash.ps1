@@ -51,8 +51,7 @@ function TempRampJs([string]$emptyReturn) {
            'else if(v>s[0][0]){for(var i=0;i<L;i++){if(v<=s[i+1][0]){' +
            'var t=(v-s[i][0])/(s[i+1][0]-s[i][0]);c=[0,' +
            's[i][1]+(s[i+1][1]-s[i][1])*t,s[i][2]+(s[i+1][2]-s[i][2])*t,' +
-           's[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}' +
-           'break;}}}'
+           's[i][3]+(s[i+1][3]-s[i][3])*t];break;}}}'
     $js
 }
 
@@ -650,7 +649,12 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # purpose: games disagree on what they report (core vs surface, C vs
     # F), so this is a relative cue with the number kept for detail.
     $vis = KeyVis 'TyreTemps' $dTemp
-    $items.Add((AddHead 'tt' 'TYRE TEMPS' 'TyreTemps'))
+    # The unit lives in the header: the blocks are too narrow to carry a
+    # degree suffix, and a bare number in the wrong unit is worse than none.
+    $ttHead = AddHead 'tt' 'TYRE TEMPS' 'TyreTemps'
+    $ttHead.Bindings['Text'] = BindJS 'Text' ($tempUnitJs +
+        'return "TYRE TEMPS  "+(uF?"°F":"°C")')
+    $items.Add($ttHead)
     $tyreProps = @('TyreTemperatureFrontLeft', 'TyreTemperatureFrontRight', 'TyreTemperatureRearLeft', 'TyreTemperatureRearRight')
     $wearProps = @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight')
     $tyW = 54; $tyH = [math]::Min(74, ($h - 70) / 2); $gapX = 26
@@ -676,6 +680,14 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # units and on core vs surface, so this stays a relative cue.
     $tempScale = TempColorJs $script:TILE
     $tempText  = TempTextColorJs $script:MUTED
+    # Everything internal is Celsius (the Forza parse converts its
+    # Fahrenheit on the way in), so the ramp keeps working in Celsius and
+    # only the printed number follows SimHub's unit choice. Both property
+    # paths are probed because the value has moved between them; unknown
+    # falls through to Celsius, which is the unit the number is already in.
+    $tempUnitJs = 'var uu=""+($prop("' + $SIM + 'LocalTemperatureUnit")||"");' +
+                  'if(uu=="")uu=""+($prop("DataCorePlugin.LocalTemperatureUnit")||"");' +
+                  'var uF=uu.toUpperCase().indexOf("F")>=0;'
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
         $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
@@ -709,7 +721,8 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
             $items.Add($b)
         }
         $tv = New-Text "d$slot-tt$q-v" $cx ($cy + $tyH / 2 - 15) $tyW 30 17 '' '#FF101216' 1 @{
-            Text      = BindJS 'Text'      ($vJs + 'return isNaN(v)||v<=0?"--":Math.round(v)')
+            Text      = BindJS 'Text'      ($vJs + $tempUnitJs +
+                'return isNaN(v)||v<=0?"--":Math.round(uF?v*9/5+32:v)')
             TextColor = BindJS 'TextColor' ($vJs + $tempText)
         } 'Bold'
         $tv.Bindings['Visible'] = BindJS 'Visible' $vis
@@ -1948,8 +1961,8 @@ foreach ($scr in $doc.Screens) {
         foreach ($bk in $it.Bindings.Keys) {
             $ex = [string]$it.Bindings[$bk].Formula.Expression
             $q = ([regex]::Matches($ex, '"')).Count
-            $op = ([regex]::Matches($ex, '[\(\[]')).Count
-            $cl = ([regex]::Matches($ex, '[\)\]]')).Count
+            $op = ([regex]::Matches($ex, '[\(\[\{]')).Count
+            $cl = ([regex]::Matches($ex, '[\)\]\}]')).Count
             if (($q % 2) -ne 0 -or $op -ne $cl) {
                 $bad += "$($it.Name).$bk : $ex"
             }
