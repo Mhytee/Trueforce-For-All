@@ -6368,6 +6368,8 @@ namespace TrueforceForAll.Plugin
                     foreach (ComboBoxItem it in cb.Items)
                         if ((it.Tag as string) == want) { cb.SelectedItem = it; break; }
                 }
+                if (RemoteDashFlagsCheck != null)
+                    RemoteDashFlagsCheck.IsChecked = _plugin.Settings?.DashFlagsEnabled == true;
                 bool twoRows = _plugin.Settings?.DashDriveTwoRows != false;
                 if (RemoteDashDriveTwoRowsRadio != null) RemoteDashDriveTwoRowsRadio.IsChecked = twoRows;
                 if (RemoteDashDriveOneRowRadio != null) RemoteDashDriveOneRowRadio.IsChecked = !twoRows;
@@ -6379,6 +6381,18 @@ namespace TrueforceForAll.Plugin
                 if (RemoteDashDriveSlot1Label != null) RemoteDashDriveSlot1Label.Opacity = twoRows ? 1.0 : 0.5;
             }
             finally { _suppressEvents = prevSuppress; }
+        }
+
+        private void RemoteDashFlags_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashFlagsEnabled = RemoteDashFlagsCheck?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist DashFlagsEnabled failed: " + ex.Message);
+            }
         }
 
         private void RemoteDashDriveRows_Changed(object sender, RoutedEventArgs e)

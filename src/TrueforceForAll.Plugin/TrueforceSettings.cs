@@ -437,6 +437,12 @@ namespace TrueforceForAll.Plugin
         public List<string> DashDriveSlots { get; set; } = new List<string>();
         public bool DashDriveTwoRows { get; set; } = true;
 
+        // TF4ALL Dash: show a coloured race-flag band across the top of
+        // whichever screen is open. Reads SimHub's own flag properties, so it
+        // only ever lights up in games that report flags (the Forza titles
+        // report none, which is why this is opt-in rather than always on).
+        public bool DashFlagsEnabled { get; set; } = false;
+
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
         // user's display order; DashTabsDisabled hides tabs without losing

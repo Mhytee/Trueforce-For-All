@@ -882,6 +882,7 @@ namespace TrueforceForAll.Plugin
             // the g pair gives the direction the load is coming from, taken
             // from the same accelerations the crash duck reads so the box
             // works on any telemetry source we support.
+            this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.Drive.Util",  () => ModeBUtilization);
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);

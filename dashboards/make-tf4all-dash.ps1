@@ -319,6 +319,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $dFric  = '$prop("' + $P + '.ModeB.On")'
 
     # ---------------- CAR FACTS (ours, always available) -------------
+    # Tappable exactly like the Car facts tab: the engine row opens the
+    # layout picker, the redline row opens the keypad. Both overlays
+    # live on this screen too, so the flow never leaves the Drive tab.
     $vis = KeyVis 'CarFacts' $null
     $items.Add((AddHead 'cf' 'CAR FACTS' 'CarFacts'))
     $t = New-Text "d$slot-cf-car" $ix ($iy + 24) $iw 34 19 '' $script:WHITE 0 @{
@@ -326,19 +329,40 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     BoxLine "d$slot-cf-eng" $ix ($iy + 62) $iw 'Engine' ('return ""+($prop("' + $P + '.EngineLayout")||"Auto")') $vis 17 | ForEach-Object { $items.Add($_) }
+    $b = New-Button "d$slot-cf-eng-tap" $ix ($iy + 60) $iw 32 'DashEngineLayoutOpen'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
     BoxLine "d$slot-cf-red" $ix ($iy + 94) $iw 'Redline' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"--"') $vis 17 | ForEach-Object { $items.Add($_) }
+    $b = New-Button "d$slot-cf-red-tap" $ix ($iy + 92) $iw 32 'DashRedlineOpen'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
 
     # ---------------- GAINS (ours) -----------------------------------
+    # Live like the Home tab: steppers on master gain, the value opens
+    # the keypad, and the audio and plugin rows toggle.
     $vis = KeyVis 'Home' $null
     $items.Add((AddHead 'hm' 'GAINS' 'Home'))
-    $t = New-Text "d$slot-hm-mg" $ix ($iy + 22) $iw 46 34 '' $script:WHITE 0 @{
+    $t = New-Text "d$slot-hm-mg" $ix ($iy + 22) ($iw - 108) 46 34 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('return (1*$prop("' + $P + '.MasterGain")).toFixed(2)')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $t = New-Text "d$slot-hm-mgl" $ix ($iy + 66) $iw 20 12 'MASTER GAIN' $script:MUTED 0
+    $b = New-Button "d$slot-hm-mg-tap" $ix ($iy + 22) ($iw - 108) 46 'DashMasterGainOpen'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    foreach ($st in @(@('dn', 'DashMasterGainDown', '-', 0), @('up', 'DashMasterGainUp', '+', 52))) {
+        $sx = $ix + $iw - 100 + $st[3]
+        $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($iy + 22) 46 46 $script:TILE
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+        $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($iy + 22) 46 46 26 $st[2] $script:WHITE 1 $null 'Bold'
+        $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
+        $bb = New-Button "d$slot-hm-$($st[0])" $sx ($iy + 22) 46 46 $st[1]
+        $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
+    }
+    $t = New-Text "d$slot-hm-mgl" $ix ($iy + 68) $iw 18 12 'MASTER GAIN' $script:MUTED 0
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     BoxLine "d$slot-hm-ag" $ix ($iy + 88) $iw 'Audio' ('return $prop("' + $P + '.Fx.Audio.On")?(1*$prop("' + $P + '.AudioGain")).toFixed(2):"off"') $vis 17 | ForEach-Object { $items.Add($_) }
+    $b = New-Button "d$slot-hm-ag-tap" $ix ($iy + 86) $iw 30 'DashFxAudioToggle'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
     BoxLine "d$slot-hm-on" $ix ($iy + 118) $iw 'Plugin' ('return $prop("' + $P + '.PluginOn")?"on":"off"') $vis 17 | ForEach-Object { $items.Add($_) }
+    $b = New-Button "d$slot-hm-on-tap" $ix ($iy + 116) $iw 30 'DashPluginToggle'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
 
     # ---------------- PRESETS (ours) ---------------------------------
     $vis = KeyVis 'Presets' $null
@@ -355,6 +379,11 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.CarPresetName")||"");return p!=""?p:"(none)"')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    # Each row opens its own picker, same as the Presets tab.
+    $b = New-Button "d$slot-pr-g-tap" $ix ($iy + 24) $iw 50 'DashPresetOpenGame'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    $b = New-Button "d$slot-pr-c-tap" $ix ($iy + 78) $iw 50 'DashPresetOpenCar'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
 
     # ---------------- LAP TIMES --------------------------------------
     $vis = KeyVis 'LapTimes' $dLap
@@ -541,39 +570,77 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add($radar)
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
 
-    # ---------------- FFB SCOPE (ours) -------------------------------
-    # The Visualizer tab in miniature: the SAME two lanes, the game's
-    # steering force as a connected line over the Trueforce haptic
-    # envelope, the line reddening on a clip. Sampled every other ring
-    # column so a box costs about half of the full screen.
+    # ---------------- VISUALIZER (ours) ------------------------------
+    # The Visualizer tab in miniature, laid out the SAME way: the game's
+    # steering force on its own lane up top, the Trueforce haptic
+    # envelope on its own lane underneath, never stacked on each other.
+    # The force line reddens on a clip exactly as the full screen does.
+    # Sampled every other ring column so a box costs about half.
     $vis = KeyVis 'Scope' $null
-    $items.Add((AddHead 'sc' 'FFB SCOPE' 'Scope'))
-    $laneY = $iy + 28
-    $laneH = $h - 52
-    $mid = $laneY + $laneH / 2
-    $zero = New-Rect "d$slot-sc-zero" $ix $mid $iw 2 $script:SCOPE_GRID $null 0
-    $zero.Bindings['Visible'] = BindJS 'Visible' $vis
-    $items.Add($zero)
-    # Envelope first so the force line draws over it.
+    $items.Add((AddHead 'sc' 'VISUALIZER' 'Scope'))
+    $scTop   = $iy + 26
+    $scTotal = $h - 46
+    $scLane  = ($scTotal - 16) / 2      # two equal lanes with a gap between
+    # --- upper lane: the game's FFB force, as a line ---
+    $l1y = $scTop
+    $l1mid = $l1y + $scLane / 2
+    $z1 = New-Rect "d$slot-sc-z1" $ix $l1mid $iw 2 $script:SCOPE_GRID $null 0
+    $z1.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($z1)
+    $clipGlowJs = '(1*$prop("' + $P + '.Scope.FfbClipGlow"))'
+    $trace = New-Chart "d$slot-sc-tr" ($ix - 10) ($l1y - 10) ($iw + 20) ($scLane + 20) $script:SCOPE_AMBER 2 90 ('return 1*$prop("' + $P + '.Scope.Ffb77")')
+    $trace.Bindings['LineColor'] = BindJS 'LineColor' ('var g=' + $clipGlowJs + ';if(g<0)g=0;if(g>1)g=1;var r=Math.round(227+g*2).toString(16);var q=Math.round(164-g*92).toString(16);var w=Math.round(69+g*8).toString(16);if(r.length<2)r="0"+r;if(q.length<2)q="0"+q;if(w.length<2)w="0"+w;return "#FF"+r+q+w')
+    $trace.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($trace)
+    # --- lower lane: the Trueforce haptic envelope, as columns ---
+    $l2y = $scTop + $scLane + 16
+    $l2mid = $l2y + $scLane / 2
+    $z2 = New-Rect "d$slot-sc-z2" $ix $l2mid $iw 2 $script:SCOPE_GRID $null 0
+    $z2.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($z2)
     $cols = 39
     $cw = $iw / $cols
     for ($c = 0; $c -lt $cols; $c++) {
         $src = $c * 2
         $colJs = 'var v=1*$prop("' + $P + '.Scope.Tex' + $src + '");if(v>1)v=1;if(v<0)v=0;'
-        $col = New-Rect "d$slot-sc$c" ($ix + $c * $cw) $mid $cw 2 $script:SCOPE_PURPLE $null 0
-        $col.Bindings['Height'] = BindJS 'Height' ($colJs + 'return 2+v*' + ($laneH - 6))
-        $col.Bindings['Top']    = BindJS 'Top'    ($colJs + 'var hh=2+v*' + ($laneH - 6) + ';return ' + ($mid + 1) + '-hh/2')
+        $col = New-Rect "d$slot-sc$c" ($ix + $c * $cw) $l2mid $cw 2 $script:SCOPE_PURPLE $null 0
+        $col.Bindings['Height'] = BindJS 'Height' ($colJs + 'return 2+v*' + ($scLane - 4))
+        $col.Bindings['Top']    = BindJS 'Top'    ($colJs + 'var hh=2+v*' + ($scLane - 4) + ';return ' + ($l2mid + 1) + '-hh/2')
         $col.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($col)
     }
-    # Game FFB trace: the same ChartItem the Visualizer uses. Its canvas
-    # has a hardcoded 10 px inner margin, so the item is inset by that.
-    $clipGlowJs = '(1*$prop("' + $P + '.Scope.FfbClipGlow"))'
-    $trace = New-Chart "d$slot-sc-tr" ($ix - 10) ($laneY - 10) ($iw + 20) ($laneH + 20) $script:SCOPE_AMBER 2 90 ('return 1*$prop("' + $P + '.Scope.Ffb77")')
-    $trace.Bindings['LineColor'] = BindJS 'LineColor' ('var g=' + $clipGlowJs + ';if(g<0)g=0;if(g>1)g=1;var r=Math.round(227+g*2).toString(16);var q=Math.round(164-g*92).toString(16);var w=Math.round(69+g*8).toString(16);if(r.length<2)r="0"+r;if(q.length<2)q="0"+q;if(w.length<2)w="0"+w;return "#FF"+r+q+w')
-    $trace.Bindings['Visible'] = BindJS 'Visible' $vis
-    $items.Add($trace)
     $items
+}
+
+# A bottom box has two geometries: the two-row layout, and the taller
+# one-row layout that reclaims the hidden top row. Rather than emit both
+# sets of items, generate the box twice and merge, so any position or
+# size that differs becomes one binding that picks by Dash.Drive.TwoRows.
+# Items whose geometry is already a formula (the visualizer columns, the
+# circle dots) keep both formulas, selected the same way.
+function DriveBoxDual([string]$P, [int]$slot, $x, $w, $yTwo, $hTwo, $yOne, $hOne) {
+    $a = @(DriveBox $P $slot $x $yTwo $w $hTwo $false)
+    $b = @(DriveBox $P $slot $x $yOne $w $hOne $false)
+    $tr = '$prop("' + $P + '.Drive.TwoRows")'
+    for ($i = 0; $i -lt $a.Count; $i++) {
+        $ia = $a[$i]; $ib = $b[$i]
+        foreach ($pn in 'Top', 'Height', 'Left', 'Width') {
+            if (-not $ia.Contains($pn)) { continue }
+            $hasA = $ia.Bindings -and $ia.Bindings.Contains($pn)
+            $hasB = $ib.Bindings -and $ib.Bindings.Contains($pn)
+            if ($hasA -or $hasB) {
+                # At least one side is a formula: wrap both bodies so the
+                # multi-statement ones stay valid.
+                $ea = if ($hasA) { '(function(){' + [string]$ia.Bindings[$pn].Formula.Expression + '})()' } else { [string]$ia.$pn }
+                $eb = if ($hasB) { '(function(){' + [string]$ib.Bindings[$pn].Formula.Expression + '})()' } else { [string]$ib.$pn }
+                if ($ea -ne $eb) { $ia.Bindings[$pn] = BindJS $pn ('return ' + $tr + '?' + $ea + ':' + $eb) }
+            }
+            elseif ([string]$ia.$pn -ne [string]$ib.$pn) {
+                $ia.Bindings[$pn] = BindJS $pn ('return ' + $tr + '?' + $ia.$pn + ':' + $ib.$pn)
+            }
+        }
+    }
+    $a
 }
 
 function TabBar([string]$P) {
@@ -615,6 +682,44 @@ function TabBar([string]$P) {
         $items.Add($b)
     }
     $items
+}
+
+# Race flags (Dash.FlagsOn, off by default). A band across the top of
+# whichever screen is showing, coloured like the flag being waved, so a
+# glance at a wheel-mounted phone tells you what the marshals are doing.
+# Reads SimHub's own flag properties, so it lights up in the games that
+# report flags and stays silent in the ones that do not (Forza reports
+# none, which is exactly why this is a toggle rather than always on).
+# Drawn above the toast but below the rev strip.
+function FlagBar([string]$P) {
+    $F = 'DataCorePlugin.GameData.NewData.Flag_'
+    $any = '$prop("' + $P + '.FlagsOn") && (' +
+           '$prop("' + $F + 'Yellow")||$prop("' + $F + 'Blue")||$prop("' + $F + 'Black")' +
+           '||$prop("' + $F + 'White")||$prop("' + $F + 'Checkered"))'
+    $vis = 'return ' + $any
+    # Colour follows the flag, checkered reads as white.
+    $colJs = 'if($prop("' + $F + 'Yellow"))return "#F2E8C33D";' +
+             'if($prop("' + $F + 'Blue"))return "#F23D7FE8";' +
+             'if($prop("' + $F + 'Black"))return "#F21A1A1A";' +
+             'if($prop("' + $F + 'White")||$prop("' + $F + 'Checkered"))return "#F2E8EAEE";' +
+             'return "#00FFFFFF"'
+    $txtJs = 'if($prop("' + $F + 'Black")||$prop("' + $F + 'Blue"))return "' + $script:WHITE + '";return "#FF101216"'
+    $nameJs = 'var n=""+($prop("' + $F + 'Name")||"");if(n!="")return n.toUpperCase();' +
+              'if($prop("' + $F + 'Yellow"))return "YELLOW FLAG";' +
+              'if($prop("' + $F + 'Blue"))return "BLUE FLAG";' +
+              'if($prop("' + $F + 'Black"))return "BLACK FLAG";' +
+              'if($prop("' + $F + 'Checkered"))return "CHEQUERED FLAG";' +
+              'if($prop("' + $F + 'White"))return "WHITE FLAG";return ""'
+    $bg = New-Rect 'flag-bg' 0 14 800 48 $script:CLEAR @{
+        BackgroundColor = BindJS 'BackgroundColor' $colJs
+    } 0
+    $bg.Bindings['Visible'] = BindJS 'Visible' $vis
+    $t = New-Text 'flag-t' 0 14 800 48 24 '' $script:WHITE 1 @{
+        Text      = BindJS 'Text'      $nameJs
+        TextColor = BindJS 'TextColor' $txtJs
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis
+    @($bg, $t)
 }
 
 # Transient feedback bar (Dash.Toast): the plugin stamps a message when an
@@ -745,6 +850,7 @@ $s1.Add((New-Button 'aud-btn' 408 372 376 66 'DashFxAudioToggle'))
 
 TabBar $P | ForEach-Object { $s1.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
+FlagBar $P | ForEach-Object { $s1.Add($_) }
 ToastBar $P | ForEach-Object { $s1.Add($_) }
 RevStrip $P | ForEach-Object { $s1.Add($_) }
 
@@ -820,25 +926,32 @@ $layouts = @(
     @('Rotary3',          'Rotary 3'),
     @('Rotary4',          'Rotary 4')
 )
-$s2.Add((OnOverlay (New-Rect 'lp-backdrop' 0 0 800 480 $BACKDROP $null 0) 'layout'))
-$s2.Add((OnOverlay (New-Text 'lp-title' 0 12 800 32 20 'ENGINE LAYOUT' $WHITE 1 $null 'Bold') 'layout'))
-for ($i = 0; $i -lt $layouts.Count; $i++) {
-    $enum = $layouts[$i][0]; $label = $layouts[$i][1]
-    $c = $i % 4; $r = [math]::Floor($i / 4)
-    $x = 8 + $c * 198; $y = 44 + $r * 56
-    $bgBind = @{ BackgroundColor = BindJS 'BackgroundColor' ('return (""+$prop("' + $P + '.EnginePin"))=="' + $enum + '"?"' + $TILEON + '":"' + $TILE + '"') }
-    $s2.Add((OnOverlay (New-Rect  "lp-$enum-bg" $x $y 190 50 $TILE $bgBind) 'layout'))
-    $s2.Add((OnOverlay (New-Text  "lp-$enum-t"  $x $y 190 50 16 $label $WHITE 1) 'layout'))
-    $s2.Add((OnOverlay (New-Button "lp-$enum"   $x $y 190 50 "DashEngineLayoutSet_$enum") 'layout'))
+# Shared so the Drive tab's car-facts box can open the same picker.
+function EngineLayoutOverlay([string]$P) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $items.Add((OnOverlay (New-Rect 'lp-backdrop' 0 0 800 480 $script:BACKDROP $null 0) 'layout'))
+    $items.Add((OnOverlay (New-Text 'lp-title' 0 12 800 32 20 'ENGINE LAYOUT' $script:WHITE 1 $null 'Bold') 'layout'))
+    for ($i = 0; $i -lt $script:layouts.Count; $i++) {
+        $enum = $script:layouts[$i][0]; $label = $script:layouts[$i][1]
+        $c = $i % 4; $r = [math]::Floor($i / 4)
+        $x = 8 + $c * 198; $y = 44 + $r * 56
+        $bgBind = @{ BackgroundColor = BindJS 'BackgroundColor' ('return (""+$prop("' + $P + '.EnginePin"))=="' + $enum + '"?"' + $script:TILEON + '":"' + $script:TILE + '"') }
+        $items.Add((OnOverlay (New-Rect  "lp-$enum-bg" $x $y 190 50 $script:TILE $bgBind) 'layout'))
+        $items.Add((OnOverlay (New-Text  "lp-$enum-t"  $x $y 190 50 16 $label $script:WHITE 1) 'layout'))
+        $items.Add((OnOverlay (New-Button "lp-$enum"   $x $y 190 50 "DashEngineLayoutSet_$enum") 'layout'))
+    }
+    # cancel occupies the last free grid slot (28 layouts fill 7 rows exactly, so add a bar)
+    $items.Add((OnOverlay (New-Rect 'lp-cancel-bg' 8 438 782 36 $script:TILE) 'layout'))
+    $items.Add((OnOverlay (New-Text 'lp-cancel-t' 8 438 782 36 16 'CANCEL' $script:RED 1 $null 'Bold') 'layout'))
+    $items.Add((OnOverlay (New-Button 'lp-cancel' 8 438 782 36 'DashEngineLayoutClose') 'layout'))
+    $items
 }
-# cancel occupies the last free grid slot (28 layouts fill 7 rows exactly, so add a bar)
-$s2.Add((OnOverlay (New-Rect 'lp-cancel-bg' 8 438 782 36 $TILE) 'layout'))
-$s2.Add((OnOverlay (New-Text 'lp-cancel-t' 8 438 782 36 16 'CANCEL' $RED 1 $null 'Bold') 'layout'))
-$s2.Add((OnOverlay (New-Button 'lp-cancel' 8 438 782 36 'DashEngineLayoutClose') 'layout'))
+EngineLayoutOverlay $P | ForEach-Object { $s2.Add($_) }
 
 TabBar $P | ForEach-Object { $s2.Add($_) }
 # ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----
 KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
+FlagBar $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
 RevStrip $P | ForEach-Object { $s2.Add($_) }
 
@@ -942,6 +1055,7 @@ $s3.Add((OnOverlay (New-Button 'ss-both' 220 248 360 64 'DashTuneSaveBoth') 'sav
 $s3.Add((OnOverlay (New-Rect 'ss-cancel-bg' 220 372 360 44 $TILE) 'savescope'))
 $s3.Add((OnOverlay (New-Text 'ss-cancel-t' 220 372 360 44 15 'CANCEL' $RED 1 $null 'Bold') 'savescope'))
 $s3.Add((OnOverlay (New-Button 'ss-cancel' 220 372 360 44 'DashTuneSaveCancel') 'savescope'))
+FlagBar $P | ForEach-Object { $s3.Add($_) }
 ToastBar $P | ForEach-Object { $s3.Add($_) }
 RevStrip $P | ForEach-Object { $s3.Add($_) }
 
@@ -975,6 +1089,7 @@ $s4.Add((New-Button 'pr-carp-btn' 648 260 120 84 'DashPresetOpenCar'))
 
 TabBar $P | ForEach-Object { $s4.Add($_) }
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
+FlagBar $P | ForEach-Object { $s4.Add($_) }
 ToastBar $P | ForEach-Object { $s4.Add($_) }
 RevStrip $P | ForEach-Object { $s4.Add($_) }
 
@@ -1079,6 +1194,7 @@ for ($i = 0; $i -lt 78; $i++) {
 $s5.Add((New-Text 'sc-hint' 16 428 768 16 12 'Scrolls left, about 2.5 seconds of history. Red = FFB clipping. Yellow = spike reduction.' $GRAY 0))
 
 TabBar $P | ForEach-Object { $s5.Add($_) }
+FlagBar $P | ForEach-Object { $s5.Add($_) }
 ToastBar $P | ForEach-Object { $s5.Add($_) }
 RevStrip $P | ForEach-Object { $s5.Add($_) }
 
@@ -1163,6 +1279,7 @@ $s6.Add($mbNote2)
 
 TabBar $P | ForEach-Object { $s6.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s6.Add($_) }
+FlagBar $P | ForEach-Object { $s6.Add($_) }
 ToastBar $P | ForEach-Object { $s6.Add($_) }
 RevStrip $P | ForEach-Object { $s6.Add($_) }
 
@@ -1179,32 +1296,36 @@ $s7 = [System.Collections.Generic.List[object]]::new()
 $twoRows = '$prop("' + $P + '.Drive.TwoRows")'
 
 # Gear: the one readout that is always meaningful, in every game.
-$gearLeft   = 'return ' + $twoRows + '?300:10'
-$gearWidth  = 'return ' + $twoRows + '?200:780'
+# The gear keeps the middle column in both layouts (the bottom boxes
+# grow into the top row rather than across it) and just recentres.
 $gear = New-Text 'dr-gear' 300 55 200 210 130 '' $WHITE 1 @{
-    Text   = BindJS 'Text'   ('var g=""+($prop("' + $SIM + 'Gear")||"");return g==""?"N":g')
-    Left   = BindJS 'Left'   $gearLeft
-    Width  = BindJS 'Width'  $gearWidth
-    Top    = BindJS 'Top'    ('return ' + $twoRows + '?55:20')
-    Height = BindJS 'Height' ('return ' + $twoRows + '?210:170')
+    Text = BindJS 'Text' ('var g=""+($prop("' + $SIM + 'Gear")||"");return g==""?"N":g')
+    Top  = BindJS 'Top'  ('return ' + $twoRows + '?55:130')
 } 'Bold'
 $s7.Add($gear)
-# Speed, in whichever unit the user set in SimHub.
+# Speed, in whichever unit SimHub is set to (change it in SimHub's own
+# settings and this follows).
 $spd = New-Text 'dr-speed' 300 268 200 40 26 '' $MUTED 1 @{
-    Text  = BindJS 'Text'  ('var v=1*$prop("' + $SIM + 'SpeedLocal");var u=""+($prop("' + $SIM + 'SpeedLocalUnit")||"");return isNaN(v)?"--":(Math.round(v)+" "+u)')
-    Left  = BindJS 'Left'  $gearLeft
-    Width = BindJS 'Width' $gearWidth
-    Top   = BindJS 'Top'   ('return ' + $twoRows + '?268:192')
+    Text = BindJS 'Text' ('var v=1*$prop("' + $SIM + 'SpeedLocal");var u=""+($prop("' + $SIM + 'SpeedLocalUnit")||"");return isNaN(v)?"--":(Math.round(v)+" "+u)')
+    Top  = BindJS 'Top'  ('return ' + $twoRows + '?268:343')
 } 'Bold'
 $s7.Add($spd)
 
 # Four content boxes. Slot order matches the plugin: TL, TR, BL, BR.
+# The top pair simply hides in the one-row layout; the bottom pair grows
+# up into the space it leaves, so nothing is wasted on a phone.
 DriveBox $P 0 10  16  282 206 $true  | ForEach-Object { $s7.Add($_) }
 DriveBox $P 1 508 16  282 206 $true  | ForEach-Object { $s7.Add($_) }
-DriveBox $P 2 10  228 282 212 $false | ForEach-Object { $s7.Add($_) }
-DriveBox $P 3 508 228 282 212 $false | ForEach-Object { $s7.Add($_) }
+DriveBoxDual $P 2 10  282 228 212 16 424 | ForEach-Object { $s7.Add($_) }
+DriveBoxDual $P 3 508 282 228 212 16 424 | ForEach-Object { $s7.Add($_) }
 
 TabBar $P | ForEach-Object { $s7.Add($_) }
+# The interactive boxes reuse the same overlays their full tabs use, so
+# a tap on Drive never bounces the user to another screen.
+KeypadOverlay $P | ForEach-Object { $s7.Add($_) }
+EngineLayoutOverlay $P | ForEach-Object { $s7.Add($_) }
+PresetOverlay $P | ForEach-Object { $s7.Add($_) }
+FlagBar $P | ForEach-Object { $s7.Add($_) }
 ToastBar $P | ForEach-Object { $s7.Add($_) }
 RevStrip $P | ForEach-Object { $s7.Add($_) }
 
@@ -1549,15 +1670,18 @@ $ovDriveTab['d1-lt-last-l'] = @{ Show = $true }
 $ovDriveTab['d1-lt-last-v'] = @{ Show = $true; Text = '01:25.902' }
 $ovDriveTab['d1-lt-best-l'] = @{ Show = $true }
 $ovDriveTab['d1-lt-best-v'] = @{ Show = $true; Text = '01:23.771' }
-# slot 2: FFB scope (both lanes, like the Visualizer tab)
-$ovDriveTab['d2-sc-h']    = @{ Show = $true }
-$ovDriveTab['d2-sc-zero'] = @{ Show = $true }
-$scLaneH = 212 - 52
-$scMid   = 228 + 10 + 28 + $scLaneH / 2
+# slot 2: the Visualizer in miniature, two lanes exactly like the tab.
+# Geometry mirrors DriveBox: box y=228 h=212 -> inner y 238, lanes of 75
+# with a 16 px gap, force line on top and haptic envelope below.
+$ovDriveTab['d2-sc-h']  = @{ Show = $true }
+$ovDriveTab['d2-sc-z1'] = @{ Show = $true }
+$ovDriveTab['d2-sc-z2'] = @{ Show = $true }
+$scLane = ((212 - 46) - 16) / 2
+$l2mid  = 228 + 10 + 26 + $scLane + 16 + $scLane / 2
 for ($i = 0; $i -lt 39; $i++) {
     $v = (0.25 + 0.7 * [math]::Abs([math]::Sin($i / 5.1))) * [math]::Abs([math]::Sin($i / 2.3))
-    $hh = 2 + $v * ($scLaneH - 6)
-    $ovDriveTab["d2-sc$i"] = @{ Show = $true; Top = ($scMid + 1 - $hh / 2); Height = $hh }
+    $hh = 2 + $v * ($scLane - 4)
+    $ovDriveTab["d2-sc$i"] = @{ Show = $true; Top = ($l2mid + 1 - $hh / 2); Height = $hh }
 }
 $scPts = @()
 for ($i = 0; $i -lt 90; $i++) { $scPts += (0.72 * [math]::Sin($i / 7.5) + 0.24 * [math]::Sin($i / 2.6 + 0.8)) }

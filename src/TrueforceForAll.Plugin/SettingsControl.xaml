@@ -3061,6 +3061,12 @@
                     </Grid>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tyre and fuel readouts come from the game, so what they show depends on what that game reports."/>
+
+                    <CheckBox x:Name="RemoteDashFlagsCheck" Content="Show race flags on the dash" Margin="0,14,0,0"
+                              Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
+                              ToolTip="A coloured band across the top of the dash whenever a flag is out."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="Shows yellow, blue, black, white and chequered flags across whichever tab is open. Only games that report flags can drive it, which the Forza titles do not, so it stays off by default."/>
                 </StackPanel>
             </Expander>
 
