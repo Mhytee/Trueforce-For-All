@@ -116,11 +116,11 @@ namespace TrueforceForAll.Plugin
         // DriverBehind_NN_* carry it without the obsolete leaderboard item.
         internal static readonly string[] DashDriveContentKeys =
             { "CarFacts", "LapTimes", "TyreTemps", "TyreWear", "Fuel", "Delta", "Scope",
-              "Home", "Presets", "GCircle", "Friction", "Relative", "Radar", "None" };
+              "Home", "Presets", "GCircle", "Friction", "Relative", "Radar", "Inputs", "None" };
         // Friendly labels for the Settings-tab pickers, index-matched above.
         internal static readonly string[] DashDriveContentLabels =
-            { "Car facts", "Lap times", "Tyre temps", "Tyre wear", "Fuel", "Lap delta", "FFB scope",
-              "Gains", "Presets", "G circle", "Friction circle", "Relative", "Radar", "Empty" };
+            { "Car facts", "Lap times", "Tyre temps", "Tyre wear", "Fuel", "Lap delta", "Visualizer",
+              "Gains", "Presets", "G circle", "Friction circle", "Relative", "Radar", "Inputs", "Empty" };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.
@@ -214,6 +214,10 @@ namespace TrueforceForAll.Plugin
         // Gear + speed for the Drive tab, stashed from the same frame.
         private volatile string _dashLiveGear = "";
         private volatile float _dashLiveSpeedKmh;
+        // Driver inputs for the Drive tab's inputs box. Steer is -2 when the
+        // active source reports no steering at all.
+        private volatile float _dashLiveThrottle;
+        private volatile float _dashLiveSteer = -2f;
         // Redline hysteresis latch for Dash.RevFlash, mirroring the wheel
         // LED latch's 1% dead band. Only touched by the property getter.
         private bool _dashRevFlashLatch;
@@ -920,6 +924,13 @@ namespace TrueforceForAll.Plugin
             // read as "no telemetry", which the dash falls back from.
             this.AttachDelegate("Dash.Gear",     () => _telemetryStalled ? "" : _dashLiveGear);
             this.AttachDelegate("Dash.SpeedKmh", () => _telemetryStalled ? 0f : _dashLiveSpeedKmh);
+            // Inputs box. Throttle and steering come off the frame (so they
+            // work on every source we support); brake rides the Forza extras
+            // because the force path never needed it and it is not on the
+            // frame. Steering has no SimHub equivalent at all.
+            this.AttachDelegate("Dash.Throttle", () => _telemetryStalled ? 0f : _dashLiveThrottle);
+            this.AttachDelegate("Dash.Steer",    () => _telemetryStalled ? -2f : _dashLiveSteer);
+            this.AttachDelegate("Dash.Brake",    () => ForzaUdpSource?.DashExtras?.Brake01 ?? 0f);
             this.AttachDelegate("Dash.Drive.Util",  () => ModeBUtilization);
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);

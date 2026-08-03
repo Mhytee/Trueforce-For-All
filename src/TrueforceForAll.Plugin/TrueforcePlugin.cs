@@ -4304,6 +4304,13 @@ namespace TrueforceForAll.Plugin
             // "--" while every box around them worked.
             _dashLiveGear = frame.Gear ?? "";
             _dashLiveSpeedKmh = (float)frame.SpeedKmh;
+            // Driver inputs for the Drive tab's inputs box. Steering is the
+            // interesting one: SimHub has no universal steering property (see
+            // TelemetryFrame.SteeringAngle), so this is the only place the
+            // dash can get it. -2 means "this source does not report it",
+            // which the box shows as a dash rather than a centred wheel.
+            _dashLiveThrottle = (float)frame.Throttle01;
+            _dashLiveSteer = frame.SteeringAngle.HasValue ? (float)frame.SteeringAngle.Value : -2f;
 
             // Latch motion for the stationary-spring FFB floor. Speed is
             // universal; steering is stamped only when the active source

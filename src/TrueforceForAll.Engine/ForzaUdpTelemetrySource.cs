@@ -616,6 +616,7 @@ namespace TrueforceForAll.Core
                     TireTempFR = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 4),
                     TireTempRL = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 8),
                     TireTempRR = ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 12),
+                    Brake01       = brakeByte / 255.0f,
                     Boost         = ReadFloat(buf, dashBase + DASH_BOOST),
                     FuelFraction  = ReadFloat(buf, dashBase + DASH_FUEL),
                     BestLapSec    = ReadFloat(buf, dashBase + DASH_BEST_LAP),

@@ -619,6 +619,59 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add($radar)
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
 
+    # ---------------- INPUTS (pedals + steering) ---------------------
+    # What the driver did, next to what the wheel did. Throttle and brake
+    # prefer SimHub's own properties (every game it reads reports them)
+    # and fall back to our parse for the Forza-without-forwarding case.
+    # Steering has NO SimHub equivalent (it exposes no universal steering
+    # field), so that bar is ours alone and simply hides when the active
+    # source does not report it.
+    $vis = KeyVis 'Inputs' $null
+    $items.Add((AddHead 'in' 'INPUTS' 'Inputs'))
+    $barW = 46; $barGap = 20
+    $barH = [math]::Max(60, $h - 118)
+    $barY = $iy + 30
+    $barX0 = $ix + ($iw - ($barW * 2 + $barGap)) / 2
+    $pedals = @(
+        @('thr', 'Throttle', $script:GREEN, 'var v=1*$prop("' + $SIM + 'Throttle");if(!(v>0))v=100*(1*$prop("' + $P + '.Throttle"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;'),
+        @('brk', 'Brake',    $script:RED,   'var v=1*$prop("' + $SIM + 'Brake");if(!(v>0))v=100*(1*$prop("' + $P + '.Brake"));if(isNaN(v))v=0;if(v>100)v=100;if(v<0)v=0;')
+    )
+    for ($pi = 0; $pi -lt $pedals.Count; $pi++) {
+        $pkey = $pedals[$pi][0]; $plabel = $pedals[$pi][1]
+        $pcol = $pedals[$pi][2]; $pJs = $pedals[$pi][3]
+        $px = $barX0 + $pi * ($barW + $barGap)
+        $trough = New-Rect "d$slot-in-$pkey-bg" $px $barY $barW $barH $script:TILE $null 5
+        $trough.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($trough)
+        # Fill grows from the bottom, so Top moves as Height does.
+        $fill = New-Rect "d$slot-in-$pkey" $px ($barY + $barH) $barW 2 $pcol $null 5
+        $fill.Bindings['Height'] = BindJS 'Height' ($pJs + 'return Math.max(2,' + $barH + '*v/100)')
+        $fill.Bindings['Top']    = BindJS 'Top'    ($pJs + 'return ' + ($barY + $barH) + '-Math.max(2,' + $barH + '*v/100)')
+        $fill.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($fill)
+        $t = New-Text "d$slot-in-$pkey-l" $px ($barY + $barH + 4) $barW 18 12 $plabel $script:MUTED 1
+        $t.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($t)
+    }
+    # Steering: centre-origin bar. Hidden entirely when the source has no
+    # steering to report, rather than sitting convincingly at centre.
+    $steerJs = 'var s=1*$prop("' + $P + '.Steer");'
+    $steerHas = 'return (' + ($isKeyBase = $sel + '=="Inputs"' + $rowCond) + ') && (1*$prop("' + $P + '.Steer"))>-1.5'
+    $stY = $barY + $barH + 26
+    $stTrough = New-Rect "d$slot-in-st-bg" $ix $stY $iw 10 $script:TILE $null 5
+    $stTrough.Bindings['Visible'] = BindJS 'Visible' $steerHas
+    $items.Add($stTrough)
+    $stTick = New-Rect "d$slot-in-st-tick" ($ix + $iw / 2 - 1) ($stY - 3) 2 16 '#FF39404C' $null 0
+    $stTick.Bindings['Visible'] = BindJS 'Visible' $steerHas
+    $items.Add($stTick)
+    $stDot = New-Rect "d$slot-in-st" ($ix + $iw / 2 - 7) ($stY - 2) 14 14 $script:WHITE $null 7
+    $stDot.Bindings['Left'] = BindJS 'Left' ($steerJs + 'if(s<-1)s=-1;if(s>1)s=1;return ' + ($ix + $iw / 2 - 7) + '+s*' + (($iw - 14) / 2))
+    $stDot.Bindings['Visible'] = BindJS 'Visible' $steerHas
+    $items.Add($stDot)
+    $t = New-Text "d$slot-in-st-l" $ix ($stY + 16) $iw 18 12 'Steering' $script:MUTED 1
+    $t.Bindings['Visible'] = BindJS 'Visible' $steerHas
+    $items.Add($t)
+
     # ---------------- VISUALIZER (ours) ------------------------------
     # The Visualizer tab in miniature, laid out the SAME way: the game's
     # steering force on its own lane up top, the Trueforce haptic
@@ -1793,6 +1846,9 @@ for ($i = 0; $i -lt 39; $i++) {
 $scPts = @()
 for ($i = 0; $i -lt 90; $i++) { $scPts += (0.72 * [math]::Sin($i / 7.5) + 0.24 * [math]::Sin($i / 2.6 + 0.8)) }
 $ovDriveTab['d2-sc-tr'] = @{ Show = $true; Points = $scPts }
+# The preview shows the SHIPPED defaults, so boxes that are not part of
+# the default set (inputs, circles, relative, radar) have no override
+# here and correctly stay hidden in the thumbnail.
 # slot 3: tyre temps as coloured blocks
 $ovDriveTab['d3-tt-h'] = @{ Show = $true }
 $tq  = @(86, 84, 79, 108)

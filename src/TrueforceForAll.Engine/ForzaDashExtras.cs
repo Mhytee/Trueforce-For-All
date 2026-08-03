@@ -29,6 +29,11 @@ namespace TrueforceForAll.Core
         public bool HasWear;
         public float TireWearFL, TireWearFR, TireWearRL, TireWearRR;
 
+        /// <summary>Brake pedal, 0..1. Throttle and steering already travel on
+        /// <see cref="TelemetryFrame"/> because the force path uses them;
+        /// brake does not, so it rides here for the dash's inputs box.</summary>
+        public float Brake01;
+
         public float Boost;
         /// <summary>Forza reports fuel as a 0..1 fraction of the tank, not
         /// litres.</summary>
