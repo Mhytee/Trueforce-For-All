@@ -351,9 +351,27 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     BoxLine "d$slot-cf-eng" $ix ($iy + 62) $iw 'Engine' ('return ""+($prop("' + $P + '.EngineLayout")||"Auto")') $vis 17 | ForEach-Object { $items.Add($_) }
     $b = New-Button "d$slot-cf-eng-tap" $ix ($iy + 60) $iw 32 'DashEngineLayoutOpen'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
-    BoxLine "d$slot-cf-red" $ix ($iy + 94) $iw 'Redline' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"--"') $vis 17 | ForEach-Object { $items.Add($_) }
-    $b = New-Button "d$slot-cf-red-tap" $ix ($iy + 92) $iw 32 'DashRedlineOpen'
+    # Redline row with the tab's own controls: minus / plus 50 either
+    # side and the value itself opening the keypad.
+    $t = New-Text "d$slot-cf-redl" $ix ($iy + 96) 62 26 14 'Redline' $script:MUTED 0
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $stepW = 34
+    $valX = $ix + 66; $valW = $iw - 66 - ($stepW * 2 + 8)
+    $t = New-Text "d$slot-cf-red-v" $valX ($iy + 94) $valW 30 17 '' $script:WHITE 2 @{
+        Text = BindJS 'Text' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"--"')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    $b = New-Button "d$slot-cf-red-tap" $valX ($iy + 94) $valW 30 'DashRedlineOpen'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
+    foreach ($st in @(@('dn', 'DashRedlineDown', '-', 0), @('up', 'DashRedlineUp', '+', $stepW + 8))) {
+        $sx = $ix + $iw - ($stepW * 2 + 8) + $st[3]
+        $r = New-Rect "d$slot-cf-r$($st[0])-bg" $sx ($iy + 94) $stepW 30 $script:TILE
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+        $tt = New-Text "d$slot-cf-r$($st[0])-t" $sx ($iy + 94) $stepW 30 20 $st[2] $script:WHITE 1 $null 'Bold'
+        $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
+        $bb = New-Button "d$slot-cf-r$($st[0])" $sx ($iy + 94) $stepW 30 $st[1]
+        $bb.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($bb)
+    }
 
     # ---------------- GAINS (ours) -----------------------------------
     # Live like the Home tab: steppers on master gain, the value opens
@@ -609,6 +627,33 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Sampled every other ring column so a box costs about half.
     $vis = KeyVis 'Scope' $null
     $items.Add((AddHead 'sc' 'VISUALIZER' 'Scope'))
+    # CLIP and SPIKE badges, same contract as the full screen: grey at
+    # rest, with a coloured layer and light text crossfading in on the
+    # plugin-computed glow (1 at the event, decaying to 0).
+    $badges = @(
+        @('clip',  'CLIP',  $script:RED,    'Scope.FfbClipGlow', $script:WHITE),
+        @('spike', 'SPIKE', '#FFE8C33D',    'Scope.SpikeGlow',   '#FF101216')
+    )
+    for ($bi = 0; $bi -lt $badges.Count; $bi++) {
+        $bid = $badges[$bi][0]; $blabel = $badges[$bi][1]
+        $bcol = $badges[$bi][2]; $bprop = $badges[$bi][3]; $btxt = $badges[$bi][4]
+        $bw = 50; $bx = $ix + $iw - ($badges.Count - $bi) * ($bw + 6) + 6
+        $glowJs = '(1*$prop("' + $P + '.' + $bprop + '"))'
+        $r = New-Rect "d$slot-sc-$bid-bg" $bx ($iy + 2) $bw 18 $script:TILE $null 4
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+        $g = New-Rect "d$slot-sc-$bid-glow" $bx ($iy + 2) $bw 18 $bcol @{
+            Opacity = BindJS 'Opacity' ('return 100*' + $glowJs)
+        } 4
+        $g.Opacity = 0.0
+        $g.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($g)
+        $t1 = New-Text "d$slot-sc-$bid-t" $bx ($iy + 2) $bw 18 11 $blabel $script:GRAY 1 $null 'Bold'
+        $t1.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t1)
+        $t2 = New-Text "d$slot-sc-$bid-t2" $bx ($iy + 2) $bw 18 11 $blabel $btxt 1 @{
+            Opacity = BindJS 'Opacity' ('return 100*' + $glowJs)
+        } 'Bold'
+        $t2.Opacity = 0.0
+        $t2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t2)
+    }
     $scTop   = $iy + 26
     $scTotal = $h - 46
     $scLane  = ($scTotal - 16) / 2      # two equal lanes with a gap between
@@ -639,6 +684,21 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $col.Bindings['Top']    = BindJS 'Top'    ($colJs + 'var hh=2+v*' + ($scLane - 4) + ';return ' + ($l2mid + 1) + '-hh/2')
         $col.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($col)
+    }
+
+    # In the taller one-row layout a text stack would otherwise sit at the
+    # top of a half-empty card, which reads as misaligned beside the boxes
+    # that do fill their space. Nudge the text groups down so each card is
+    # vertically centred. Visual content (tyres, both circles, radar, the
+    # visualizer lanes) already sizes itself from the box height and is
+    # deliberately left alone, as is the panel.
+    $textDy = [math]::Max(0, ($h - 212) / 2)
+    if ($textDy -gt 0) {
+        foreach ($it in $items) {
+            if ([string]$it.Name -match "^d$slot-(cf|hm|pr|lt|fu|dl|rel)") {
+                $it.Top = [double]$it.Top + $textDy
+            }
+        }
     }
     $items
 }
@@ -1688,12 +1748,16 @@ $ovDriveTab['dr-gear']  = @{ Text = '4' }
 $ovDriveTab['dr-speed'] = @{ Text = '148 kph' }
 foreach ($sl in 0, 1, 2, 3) { $ovDriveTab["d$sl-panel"] = @{ Show = $true } }
 # slot 0: car facts
-$ovDriveTab['d0-cf-h']     = @{ Show = $true }
-$ovDriveTab['d0-cf-car']   = @{ Show = $true; Text = '1985 Sprinter Trueno' }
-$ovDriveTab['d0-cf-eng-l'] = @{ Show = $true }
-$ovDriveTab['d0-cf-eng-v'] = @{ Show = $true; Text = 'Inline 4' }
-$ovDriveTab['d0-cf-red-l'] = @{ Show = $true }
-$ovDriveTab['d0-cf-red-v'] = @{ Show = $true; Text = '7800 rpm' }
+$ovDriveTab['d0-cf-h']      = @{ Show = $true }
+$ovDriveTab['d0-cf-car']    = @{ Show = $true; Text = '1985 Sprinter Trueno' }
+$ovDriveTab['d0-cf-eng-l']  = @{ Show = $true }
+$ovDriveTab['d0-cf-eng-v']  = @{ Show = $true; Text = 'Inline 4' }
+$ovDriveTab['d0-cf-redl']   = @{ Show = $true }
+$ovDriveTab['d0-cf-red-v']  = @{ Show = $true; Text = '7800 rpm' }
+$ovDriveTab['d0-cf-rdn-bg'] = @{ Show = $true }
+$ovDriveTab['d0-cf-rdn-t']  = @{ Show = $true }
+$ovDriveTab['d0-cf-rup-bg'] = @{ Show = $true }
+$ovDriveTab['d0-cf-rup-t']  = @{ Show = $true }
 # slot 1: lap times
 $ovDriveTab['d1-lt-h']      = @{ Show = $true }
 $ovDriveTab['d1-lt-cur']    = @{ Show = $true; Text = '01:24.318' }
@@ -1707,6 +1771,11 @@ $ovDriveTab['d1-lt-best-v'] = @{ Show = $true; Text = '01:23.771' }
 $ovDriveTab['d2-sc-h']  = @{ Show = $true }
 $ovDriveTab['d2-sc-z1'] = @{ Show = $true }
 $ovDriveTab['d2-sc-z2'] = @{ Show = $true }
+# Badges at rest: grey chrome, glow layers stay hidden at Opacity 0.
+$ovDriveTab['d2-sc-clip-bg']  = @{ Show = $true }
+$ovDriveTab['d2-sc-clip-t']   = @{ Show = $true }
+$ovDriveTab['d2-sc-spike-bg'] = @{ Show = $true }
+$ovDriveTab['d2-sc-spike-t']  = @{ Show = $true }
 $scLane = ((212 - 46) - 16) / 2
 $l2mid  = 228 + 10 + 26 + $scLane + 16 + $scLane / 2
 for ($i = 0; $i -lt 39; $i++) {
