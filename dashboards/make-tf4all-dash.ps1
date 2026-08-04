@@ -405,34 +405,29 @@ function Add-DashImage([string]$name, [byte[]]$png, [int]$w, [int]$h) {
     })
 }
 
-# A cone from the CENTRE of a square canvas pointing up. Square and centred
-# on purpose: the dash rotates an item about its own middle, so an item
-# centred on the radar rotates about the radar's centre, and scaling it
-# shortens the cone without moving its apex. One image serves every bearing
-# and every length.
-function New-ConePng([string]$hex, [int]$size, [double]$halfAngleDeg) {
+# A 90 degree wedge from the CENTRE of a square canvas, pointing in one of
+# the four directions. Square and centred on purpose: an item centred on
+# the radar covers it exactly, so no rotation is needed at all and the four
+# orientations are four images. Rotation would be one image, but whether
+# the viewer re-renders a BOUND rotation is unproven, and four tiny PNGs
+# cost nothing next to finding that out the hard way.
+function New-WedgePng([string]$hex, [int]$size, [double]$dirDeg) {
     $bmp = New-Object System.Drawing.Bitmap $size, $size
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.Clear([System.Drawing.Color]::Transparent)
-    $c = $size / 2.0
-    $rad = [math]::PI * $halfAngleDeg / 180.0
-    # Reaches the edge at the cone's centre line, so a full-size item spans
-    # exactly to the rim of the circle it is drawn over.
-    $len = $c
-    $pts = New-Object 'System.Drawing.PointF[]' 3
-    $pts[0] = New-Object System.Drawing.PointF($c, $c)
-    $pts[1] = New-Object System.Drawing.PointF(($c - [math]::Sin($rad) * $len), ($c - [math]::Cos($rad) * $len))
-    $pts[2] = New-Object System.Drawing.PointF(($c + [math]::Sin($rad) * $len), ($c - [math]::Cos($rad) * $len))
-    # Fades along its length, so it reads as light thrown toward the car
-    # rather than a paper triangle laid on the radar.
     $col = [System.Drawing.ColorTranslator]::FromHtml($hex)
+    # GDI angles run clockwise from 3 o'clock; ours run clockwise from 12,
+    # hence the -90. Half a quadrant either side of the centre line.
+    $start = $dirDeg - 90 - 45
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $path.AddPolygon($pts)
+    $path.AddPie(0, 0, $size, $size, $start, 90)
     $br = New-Object System.Drawing.Drawing2D.PathGradientBrush($path)
-    $br.CenterPoint = $pts[0]
-    $br.CenterColor = [System.Drawing.Color]::FromArgb(210, $col.R, $col.G, $col.B)
-    $br.SurroundColors = @([System.Drawing.Color]::FromArgb(30, $col.R, $col.G, $col.B))
+    $br.CenterPoint = (New-Object System.Drawing.PointF(($size / 2.0), ($size / 2.0)))
+    # Strongest at the middle, fading to the rim: a warning that grows
+    # toward you rather than a flat slab of colour.
+    $br.CenterColor = [System.Drawing.Color]::FromArgb(150, $col.R, $col.G, $col.B)
+    $br.SurroundColors = @([System.Drawing.Color]::FromArgb(18, $col.R, $col.G, $col.B))
     $g.FillPath($br, $path)
     $br.Dispose(); $path.Dispose(); $g.Dispose()
     $ms = New-Object System.IO.MemoryStream
@@ -441,15 +436,18 @@ function New-ConePng([string]$hex, [int]$size, [double]$halfAngleDeg) {
     $ms.ToArray()
 }
 
-# GDI is needed here, not just by the preview at the end: the cone images
-# are drawn at generation time and bundled into the dashboard.
+# GDI is needed here, not just by the preview at the end: the wedge
+# images are drawn at generation time and bundled into the dashboard.
 Add-Type -AssemblyName System.Drawing
 
-# Proximity cones, one per warning colour. 26 degrees each side is wide
-# enough to point unambiguously without swallowing a quarter of the radar.
-$CONE_PX = 256
-Add-DashImage 'tf4all-cone-amber' (New-ConePng '#FFE8A33D' $CONE_PX 26) $CONE_PX $CONE_PX
-Add-DashImage 'tf4all-cone-red'   (New-ConePng '#FFE5484D' $CONE_PX 26) $CONE_PX $CONE_PX
+# Proximity wedges: four directions, two warning colours. Front, right,
+# rear and left, each centred on its axis so a car dead ahead lights the
+# front rather than half of two corners.
+$WEDGE_PX = 256
+foreach ($wd in @(@('f', 0), @('r', 90), @('b', 180), @('l', 270))) {
+    Add-DashImage ('tf4all-wedge-y-' + $wd[0]) (New-WedgePng '#FFE8C547' $WEDGE_PX $wd[1]) $WEDGE_PX $WEDGE_PX
+    Add-DashImage ('tf4all-wedge-r-' + $wd[0]) (New-WedgePng '#FFE5484D' $WEDGE_PX $wd[1]) $WEDGE_PX $WEDGE_PX
+}
 
 # A soft radial glow: one GradientItem carrying a WPF RadialGradientBrush,
 # opaque at the centre and fading to fully transparent at the rim. Stacked
@@ -1065,70 +1063,73 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     }
     $items.Add((AddNote 'rel' 'No other cars in this session.' 'Relative' $dOpp))
 
-    # ---------------- RADAR (SimHub's own proximity item) ------------
-    # One native item that draws itself from the session's opponents, so
-    # it lights up in games reporting car positions and stays quiet in
-    # the ones that do not.
-    #
-    # The rings are decoration, matching the two circle boxes beside it.
-    # They deliberately carry no distance labels and drive nothing: the
-    # radar item scales by an undocumented multiplier, so a ring drawn at
-    # any particular radius would not correspond to a real distance and
-    # saying otherwise would be a lie the driver could not check.
+    # ---------------- RADAR ------------------------------------------
+    # Our own dots rather than SimHub's radar item, for two reasons it
+    # cannot do: every opponent gets the same colour there, and its scale
+    # is an undocumented multiplier, so a ring could not mean a distance.
+    # Here one scale is shared by the dots, the rings and the warning.
+    #   rim 40 m, mid ring 20 m, inner ring 8 m
+    #   dots white far, yellow past the mid ring, red past the inner
     $vis = KeyVis 'Radar' $dOpp
     $items.Add((AddHead 'rd' 'RADAR' 'Radar'))
-    # Square, so width caps it in the tall box: centre rather than pin.
     $rdSize = [math]::Min($iw, $h - 52)
     $rdCx = $ix + $iw / 2
     $rdCy = ($iy + 30 + $y + $h - 12) / 2
     $rdR  = $rdSize / 2
-    $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
-    $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR / 2) '#FF2A303A' 1 $vis))
 
-    # Spotter, as a cone thrown from the centre toward each nearby car,
-    # stopping at the ring that car is inside. The image is a square with
-    # the cone drawn from its middle, so the item sits centred on the radar
-    # and its own rotation IS rotation about the radar centre, and scaling
-    # it shortens the cone without moving the apex. One image per colour
-    # covers every bearing and both lengths.
-    #   inside the inner ring -> red, reaching that ring
-    #   inside the outer      -> amber, reaching the outer
-    for ($ci = 0; $ci -lt 4; $ci++) {
-        $lvl = 'var l=1*$prop("' + $P + '.Spotter.L' + $ci + '");'
-        foreach ($tone in @(@('a', 'tf4all-cone-amber', 1, ($rdR)), @('r', 'tf4all-cone-red', 2, ($rdR / 2)))) {
-            $tk = $tone[0]; $timg = $tone[1]; $tl = $tone[2]; $tr = $tone[3]
+    # Quadrant wedge, under everything. Full radius whatever the level: an
+    # alarm that lights a SMALLER area as the car gets closer reads exactly
+    # backwards, which is what a shorter cone for a nearer car did.
+    for ($qi = 0; $qi -lt 4; $qi++) {
+        $qdir = @('f', 'r', 'b', 'l')[$qi]
+        $qlvl = 'var l=1*$prop("' + $P + '.Radar.Q' + $qi + '");'
+        foreach ($tone in @(@('y', 1), @('r', 2))) {
+            $tk = $tone[0]; $tl = $tone[1]
             $img = [ordered]@{
                 '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ImageItem, SimHub.Plugins'
-                Image = $timg
+                Image = 'tf4all-wedge-' + $tk + '-' + $qdir
                 AutoSize = $false; AutoSizeScale = 1.0
                 BackgroundColor = $script:CLEAR
-                Height = [double]($tr * 2); Left = [double]($rdCx - $tr)
-                Opacity = 100.0; Top = [double]($rdCy - $tr)
-                Visible = $true; Width = [double]($tr * 2)
+                Height = [double]($rdR * 2); Left = [double]($rdCx - $rdR)
+                Opacity = 100.0; Top = [double]($rdCy - $rdR)
+                Visible = $true; Width = [double]($rdR * 2)
                 Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
-                Name = "d$slot-rd-cone$ci$tk"
+                Name = "d$slot-rd-w$qi$tk"
                 Bindings = [ordered]@{}
             }
-            $img.Bindings['Rotation'] = BindJS 'Rotation' (
-                'return 1*$prop("' + $P + '.Spotter.B' + $ci + '")')
             $img.Bindings['Visible'] = BindJS 'Visible' (
-                $lvl + 'return l==' + $tl + ' && $prop("' + $P + '.SpotterOn") && (' +
-                ($vis -replace '^return ', '') + ')')
+                $qlvl + 'return l==' + $tl + ' && (' + ($vis -replace '^return ', '') + ')')
             $items.Add($img)
         }
     }
 
-    $radar = [ordered]@{
-        '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RadarItem, SimHub.Plugins'
-        BackgroundColor = $script:CLEAR
-        Height = [double]$rdSize; Left = [double]($rdCx - $rdR)
-        Top = [double]($rdCy - $rdR)
-        Visible = $true; Width = [double]$rdSize
-        Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
-        Name = "d$slot-rd"
-        Bindings = [ordered]@{ Visible = (BindJS 'Visible' $vis) }
+    # Rings ARE the thresholds the colours change on.
+    $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
+    $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR * 20 / 40) '#FF3A3A2A' 1 $vis))
+    $items.Add((New-Ring "d$slot-rd-r3" $rdCx $rdCy ($rdR * 8 / 40) '#FF4A2226' 1 $vis))
+
+    # Opponents: white while they are simply out there, yellow once inside
+    # the middle ring, red inside the inner one.
+    for ($i = 0; $i -lt 8; $i++) {
+        $dxJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'X"))'
+        $dyJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'Y"))'
+        $dlJs = 'var l=1*$prop("' + $P + '.Radar.D' + $i + 'L");'
+        $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 5) ($rdCy - 5) 10 10 $script:WHITE @{
+            BackgroundColor = BindJS 'BackgroundColor' ($dlJs +
+                'return l>2?"' + $script:RED + '":(l>1?"#FFE8C547":"' + $script:WHITE + '")')
+        } 5
+        $dot.Bindings['Left'] = BindJS 'Left' ('return ' + ($rdCx - 5) + '+' + $dxJs + '*' + $rdR)
+        $dot.Bindings['Top']  = BindJS 'Top'  ('return ' + ($rdCy - 5) + '+' + $dyJs + '*' + $rdR)
+        $dot.Bindings['Visible'] = BindJS 'Visible' (
+            $dlJs + 'return l>0 && (' + ($vis -replace '^return ', '') + ')')
+        $items.Add($dot)
     }
-    $items.Add($radar)
+
+    # You, in green, pointing up. Green because you are the one car on here
+    # that is never the hazard.
+    $r = New-Rect "d$slot-rd-me" ($rdCx - 4) ($rdCy - 7) 8 14 $script:GREEN $null 3
+    $r.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($r)
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
 
     # ---------------- DAMAGE -----------------------------------------

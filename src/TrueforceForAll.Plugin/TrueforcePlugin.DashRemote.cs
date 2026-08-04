@@ -36,6 +36,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
 using SimHub.Plugins;
 using TrueforceForAll.Plugin.Effects;
@@ -301,32 +302,41 @@ namespace TrueforceForAll.Plugin
                 .UtilizationFloor(_dashModelGripEma / peakDiv);
         }
 
-        // ---------- spotter ----------
+        // ---------- radar ----------
         // Opponents carry RelativeCoordinatesToPlayer, a PointF already in
         // the player's own frame, and a length in metres. SimHub's own
         // SpotterCarLeft/Right is a bare yes or no with no distance in it,
-        // which cannot say HOW close, so the geometry is worth the walk.
-        internal const int   SpotterCars   = 4;
-        private  const float SpotterAmberM = 12f;
-        private  const float SpotterRedM   = 5f;
+        // and its radar item colours every opponent alike, so both the dot
+        // colours and the proximity warning are worked out here.
+        internal const int   RadarDots   = 8;
+        internal const float RadarRangeM = 40f;   // the rim
+        internal const float RadarMidM   = 20f;   // white becomes yellow
+        internal const float RadarNearM  = 8f;    // yellow becomes red
 
-        // Bearing in degrees clockwise from straight ahead, and 0/1/2 for
-        // clear, close, very close. Parked at level 0 when unused.
-        private volatile float[] _spotterBearing = new float[SpotterCars];
-        private volatile int[]   _spotterLevel   = new int[SpotterCars];
+        // Normalised to the circle, -1..1, y negative ahead. Level is 0 for
+        // an empty slot, then 1 far, 2 middle, 3 close, which is what picks
+        // the dot colour. Quadrants are the diagonals, front/right/rear/left,
+        // 0 clear, 1 something in there, 2 something close.
+        private volatile float[] _radarX = new float[RadarDots];
+        private volatile float[] _radarY = new float[RadarDots];
+        private volatile int[]   _radarLvl = new int[RadarDots];
+        private volatile int[]   _radarQuad = new int[4];
 
-        /// <summary>Nearest few cars, by bearing and how close. Called from
+        /// <summary>Rebuild the radar from this frame's opponents. Called from
         /// DataUpdate; one walk of a list SimHub has already built, and it
-        /// stops at once when there is nobody out there. Nearest first, so
-        /// the closest car always gets drawn even in heavy traffic.</summary>
-        private void DashUpdateSpotter(GameReaderCommon.GameData data)
+        /// stops at once when there is nobody out there. Nearest first, so in
+        /// heavy traffic the closest cars are the ones that get drawn.</summary>
+        private void DashUpdateRadar(GameReaderCommon.GameData data)
         {
-            var bear = new float[SpotterCars];
-            var lvl = new int[SpotterCars];
+            var xs = new float[RadarDots];
+            var ys = new float[RadarDots];
+            var lv = new int[RadarDots];
+            var qd = new int[4];
+
             var opps = data?.NewData?.Opponents;
             if (opps != null && opps.Count > 0)
             {
-                var near = new List<KeyValuePair<double, float>>(SpotterCars + 4);
+                var near = new List<KeyValuePair<double, PointF>>(RadarDots + 8);
                 foreach (var o in opps)
                 {
                     if (o == null || o.IsPlayer || !o.IsConnected) continue;
@@ -337,22 +347,28 @@ namespace TrueforceForAll.Plugin
                     if (float.IsNaN(rx) || float.IsNaN(ry)) continue;
                     double d = o.RelativeVectorLengthToPlayer;
                     if (d <= 0 || double.IsNaN(d)) d = Math.Sqrt(rx * rx + ry * ry);
-                    if (d > SpotterAmberM) continue;
-                    // atan2(lateral, ahead): 0 dead ahead, growing clockwise,
-                    // which is what a rotation in degrees wants.
-                    double b = Math.Atan2(rx, -ry) * (180.0 / Math.PI);
-                    if (double.IsNaN(b)) continue;
-                    near.Add(new KeyValuePair<double, float>(d, (float)b));
+                    if (d > RadarRangeM) continue;
+                    near.Add(new KeyValuePair<double, PointF>(d, new PointF(rx, ry)));
+
+                    // Diagonals as the sector boundaries, so a car dead ahead
+                    // lands wholly in front rather than half in two corners.
+                    double bearing = Math.Atan2(rx, -ry) * (180.0 / Math.PI);
+                    if (bearing < 0) bearing += 360.0;
+                    int q = (int)Math.Floor(((bearing + 45.0) % 360.0) / 90.0);
+                    if (q < 0 || q > 3) continue;
+                    int ql = d <= RadarNearM ? 2 : (d <= RadarMidM ? 1 : 0);
+                    if (ql > qd[q]) qd[q] = ql;
                 }
-                near.Sort((a, b2) => a.Key.CompareTo(b2.Key));
-                for (int i = 0; i < near.Count && i < SpotterCars; i++)
+                near.Sort((a, b) => a.Key.CompareTo(b.Key));
+                for (int i = 0; i < near.Count && i < RadarDots; i++)
                 {
-                    bear[i] = near[i].Value;
-                    lvl[i] = near[i].Key <= SpotterRedM ? 2 : 1;
+                    xs[i] = near[i].Value.X / RadarRangeM;
+                    ys[i] = near[i].Value.Y / RadarRangeM;
+                    double d = near[i].Key;
+                    lv[i] = d <= RadarNearM ? 3 : (d <= RadarMidM ? 2 : 1);
                 }
             }
-            _spotterBearing = bear;
-            _spotterLevel = lvl;
+            _radarX = xs; _radarY = ys; _radarLvl = lv; _radarQuad = qd;
         }
 
         // Idle mode: how long the car has been stopped, and whether the user
@@ -1101,17 +1117,23 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
             this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
-            for (int i = 0; i < SpotterCars; i++)
+            // Radar: per dot a position and a level for its colour, plus
+            // one level per quadrant so the wedge needs no arithmetic.
+            for (int i = 0; i < RadarDots; i++)
             {
                 int k = i;   // captured per delegate, not shared
-                this.AttachDelegate("Dash.Spotter.B" + k, () =>
-                {
-                    var a2 = _spotterBearing; return k < a2.Length ? a2[k] : 0f;
-                });
-                this.AttachDelegate("Dash.Spotter.L" + k, () =>
-                {
-                    var a2 = _spotterLevel; return k < a2.Length ? a2[k] : 0;
-                });
+                this.AttachDelegate("Dash.Radar.D" + k + "X", () =>
+                { var a = _radarX; return k < a.Length ? a[k] : 9f; });
+                this.AttachDelegate("Dash.Radar.D" + k + "Y", () =>
+                { var a = _radarY; return k < a.Length ? a[k] : 9f; });
+                this.AttachDelegate("Dash.Radar.D" + k + "L", () =>
+                { var a = _radarLvl; return k < a.Length ? a[k] : 0; });
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                int k = i;
+                this.AttachDelegate("Dash.Radar.Q" + k, () =>
+                { var a = _radarQuad; return k < a.Length ? a[k] : 0; });
             }
 
             // ---------- idle mode ----------
