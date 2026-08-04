@@ -943,56 +943,46 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     }
     $items.Add((AddNote 'rel' 'No other cars in this session.' 'Relative' $dOpp))
 
-    # ---------------- RADAR (SimHub's own proximity item) ------------
-    # SimHub's native item draws the cars; the rings and the proximity
-    # quadrants are ours, so it reads like the two circle boxes beside it
-    # rather than a square panel that happens to have dots in it.
+    # ---------------- RADAR ------------------------------------------
+    # Our own dots, not SimHub's radar item. Opponents carry
+    # RelativeCoordinatesToPlayer, already in the player's frame, and a
+    # length in metres, so the plugin normalises both to the circle. That
+    # buys the thing SimHub's item cannot give: ONE scale shared by the
+    # dots, the rings and the warning, so a ring is a real distance and a
+    # sector lights exactly as a car crosses the ring the driver can see.
+    #   edge 40 m, outer ring 25 m (amber), inner ring 10 m (red)
     $vis = KeyVis 'Radar' $dOpp
     $items.Add((AddHead 'rd' 'RADAR' 'Radar'))
-    # Square, so width caps it in the tall box: centre rather than pin.
     $rdSize = [math]::Min($iw, $h - 52)
     $rdCx = $ix + $iw / 2
     $rdCy = ($iy + 30 + $y + $h - 12) / 2
     $rdR  = $rdSize / 2
 
-    # Proximity glow, under the dots so it reads as light behind the traffic
-    # rather than a lid over it. 0 clear, 1 close, 2 very close.
+    # Sector glow UNDER everything, so it reads as light behind the traffic.
     #
-    # Ahead and behind grade on real metres from the tracker. Left and right
-    # come from SimHub's spotter, which is a yes or no with no distance in
-    # it, so a side only escalates to red when the nearest car longitudinally
-    # is right on top of you, which is what being genuinely alongside means.
+    # The PLUGIN grades on diagonal sectors, each 90 degrees about its own
+    # axis, which is the honest way to say "a car is on your left". The
+    # DRAWING is axis-aligned quarters, because that is the only quarter
+    # disc these primitives make exactly: one corner rounded to the full
+    # side. A rotated wedge is drawable in principle and was tried, but
+    # getting its apex back onto the centre after the rotation is guesswork
+    # against a viewer I cannot step through, and a plausible-looking wrong
+    # answer is worse than a plain right one. Bundled wedge images would do
+    # it properly and the resource bundle is already generatable.
     #
-    # The quadrants are split on the axes, which is the shape a rounded
-    # corner can draw exactly, so a car purely to one side lights that whole
-    # side. Where the two overlap, a car both left and ahead, the front-left
-    # quadrant is the one that goes red, which is the corner you care about.
-    $near = 8; $far = 30
-    $dA = '(1*$prop("' + $TRK + 'DriverAhead_00_Distance"))'
-    $dB = '(1*$prop("' + $TRK + 'DriverBehind_00_Distance"))'
-    $longJs = { param($d) '(function(){var x=Math.abs(' + $d + ');' +
-                          'if(isNaN(x)||x<=0||x>' + $far + ')return 0;' +
-                          'return x<' + $near + '?2:1;})()' }
-    $sideJs = { param($sp) '(function(){if(!$prop("' + $sp + '"))return 0;' +
-                           'var a=Math.abs(' + $dA + ');var b=Math.abs(' + $dB + ');' +
-                           'if(isNaN(a))a=9999;if(isNaN(b))b=9999;' +
-                           'return Math.min(a,b)<' + $near + '?2:1;})()' }
-    $lvL = & $sideJs 'SpotterCarLeft'
-    $lvR = & $sideJs 'SpotterCarRight'
-    $lvA = & $longJs $dA
-    $lvB = & $longJs $dB
+    # So each drawn quarter takes the worst of the two sectors that touch
+    # it: a car dead ahead lights the whole front, a car ahead and left
+    # lights the front-left hardest. The reading is the same, the edges are
+    # square rather than diagonal.
     foreach ($q in @(
-        @('fl', 'TopLeft',     $lvL, $lvA),
-        @('fr', 'TopRight',    $lvR, $lvA),
-        @('rl', 'BottomLeft',  $lvL, $lvB),
-        @('rr', 'BottomRight', $lvR, $lvB))) {
-        $qk = $q[0]; $qc = $q[1]
-        $lvlJs = 'var l=Math.max(' + $q[2] + ',' + $q[3] + ');'
-        $qx = if ($qc -like '*Left') { $rdCx - $rdR } else { $rdCx }
-        $qy = if ($qc -like 'Top*')  { $rdCy - $rdR } else { $rdCy }
+        @('fl', 'Front', 'Left',  'TopLeft',     ($rdCx - $rdR), ($rdCy - $rdR)),
+        @('fr', 'Front', 'Right', 'TopRight',    $rdCx,          ($rdCy - $rdR)),
+        @('rl', 'Rear',  'Left',  'BottomLeft',  ($rdCx - $rdR), $rdCy),
+        @('rr', 'Rear',  'Right', 'BottomRight', $rdCx,          $rdCy))) {
+        $qk = $q[0]; $qc = $q[3]; $qx = $q[4]; $qy = $q[5]
+        $lvl = 'var l=Math.max(1*$prop("' + $P + '.Radar.' + $q[1] + '"),' +
+               '1*$prop("' + $P + '.Radar.' + $q[2] + '"));'
         $qr = New-Rect "d$slot-rd-q$qk" $qx $qy $rdR $rdR '#FFE8A33D' $null 0
-        # Only the OUTER corner rounds, to the full radius, so the square
-        # becomes exactly that quarter of the disc and the four tile it.
         $ctl = if ($qc -eq 'TopLeft')     { $rdR } else { 0 }
         $ctr = if ($qc -eq 'TopRight')    { $rdR } else { 0 }
         $cbr = if ($qc -eq 'BottomRight') { $rdR } else { 0 }
@@ -1006,33 +996,37 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $qr.BorderStyle.CornerRadius = "$ctl,$ctr,$cbr,$cbl"
         $qr.Opacity = 0.0
         $qr.Bindings['BackgroundColor'] = BindJS 'BackgroundColor' (
-            $lvlJs + 'return l>1?"' + $script:RED + '":"#FFE8A33D"')
-        # Semi transparent by design: the cars have to stay readable through it.
-        $qr.Bindings['Opacity'] = BindJS 'Opacity' (
-            $lvlJs + 'return l==0?0:(l>1?40:24)')
-        # Declaration first, THEN the return: splicing the level snippet in
-        # after "return" produced "return var l=..." and a formula that
-        # silently does nothing.
+            $lvl + 'return l>1?"' + $script:RED + '":"#FFE8A33D"')
+        # Semi transparent by design: the dots stay readable through it.
+        $qr.Bindings['Opacity'] = BindJS 'Opacity' ($lvl + 'return l==0?0:(l>1?42:24)')
         $qr.Bindings['Visible'] = BindJS 'Visible' (
-            $lvlJs + 'return l>0 && (' + ($vis -replace '^return ', '') + ')')
+            $lvl + 'return l>0 && (' + ($vis -replace '^return ', '') + ')')
         $items.Add($qr)
     }
 
-    # Rings, matching the friction and g circles.
+    # Rings ARE the thresholds: outer amber at 25 m, inner red at 10 m, and
+    # the edge of the disc at 40 m. Crossing one is what changes the glow.
     $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
-    $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR / 2) '#FF2A303A' 1 $vis))
+    $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR * 25 / 40) '#FF4A3A22' 1 $vis))
+    $items.Add((New-Ring "d$slot-rd-r3" $rdCx $rdCy ($rdR * 10 / 40) '#FF4A2226' 1 $vis))
 
-    $radar = [ordered]@{
-        '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RadarItem, SimHub.Plugins'
-        BackgroundColor = $script:CLEAR
-        Height = [double]$rdSize; Left = [double]($rdCx - $rdR)
-        Top = [double]($rdCy - $rdR)
-        Visible = $true; Width = [double]$rdSize
-        Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
-        Name = "d$slot-rd"
-        Bindings = [ordered]@{ Visible = (BindJS 'Visible' $vis) }
+    # The player, dead centre and pointing up.
+    $r = New-Rect "d$slot-rd-me" ($rdCx - 4) ($rdCy - 7) 8 14 $script:GREEN $null 3
+    $r.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($r)
+
+    # Opponents. Eight is more traffic than anyone reads at a glance, and
+    # the plugin parks the unused ones off the circle so one test hides them.
+    for ($i = 0; $i -lt 8; $i++) {
+        $dxJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'X"))'
+        $dyJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'Y"))'
+        $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 5) ($rdCy - 5) 10 10 $script:WHITE $null 5
+        $dot.Bindings['Left'] = BindJS 'Left' ('return ' + ($rdCx - 5) + '+' + $dxJs + '*' + $rdR)
+        $dot.Bindings['Top']  = BindJS 'Top'  ('return ' + ($rdCy - 5) + '+' + $dyJs + '*' + $rdR)
+        $dot.Bindings['Visible'] = BindJS 'Visible' (
+            'var x=' + $dxJs + ';return Math.abs(x)<=1 && (' + ($vis -replace '^return ', '') + ')')
+        $items.Add($dot)
     }
-    $items.Add($radar)
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
 
     # ---------------- DAMAGE -----------------------------------------
@@ -2371,19 +2365,35 @@ $metaJson = $meta | ConvertTo-Json -Depth 10
 # =====================================================================
 Add-Type -AssemblyName System.Drawing
 
-function New-RoundedPath([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
+# Per corner, not one radius for all four. A quarter disc is a square with
+# ONE corner rounded to the full side, and drawing it with a uniform radius
+# renders a circle instead, which is a preview that cannot check the very
+# shape it was opened to check.
+function New-RoundedPath([float]$x, [float]$y, [float]$w, [float]$h, [float]$r,
+                         [float]$rtr = -1, [float]$rbr = -1, [float]$rbl = -1) {
     $p = New-Object System.Drawing.Drawing2D.GraphicsPath
-    if ($r -le 0) {
+    # One argument keeps the old uniform behaviour.
+    if ($rtr -lt 0) { $rtr = $r }
+    if ($rbr -lt 0) { $rbr = $r }
+    if ($rbl -lt 0) { $rbl = $r }
+    $rtl = $r
+    if ($rtl -le 0 -and $rtr -le 0 -and $rbr -le 0 -and $rbl -le 0) {
         $p.AddRectangle((New-Object System.Drawing.RectangleF($x, $y, $w, $h)))
         return $p
     }
-    $d = 2 * $r
-    if ($d -gt $w) { $d = $w }
-    if ($d -gt $h) { $d = $h }
-    $p.AddArc($x, $y, $d, $d, 180, 90)
-    $p.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
-    $p.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90)
-    $p.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
+    $cap = [math]::Min($w, $h)
+    foreach ($n in 'rtl', 'rtr', 'rbr', 'rbl') {
+        if ((Get-Variable $n -ValueOnly) -gt $cap) { Set-Variable $n -Value $cap }
+    }
+    # Straight segments where a corner has no radius, arcs where it does.
+    if ($rtl -gt 0) { $p.AddArc($x, $y, 2 * $rtl, 2 * $rtl, 180, 90) }
+    else { $p.AddLine($x, $y, $x, $y) }
+    if ($rtr -gt 0) { $p.AddArc($x + $w - 2 * $rtr, $y, 2 * $rtr, 2 * $rtr, 270, 90) }
+    else { $p.AddLine($x + $w, $y, $x + $w, $y) }
+    if ($rbr -gt 0) { $p.AddArc($x + $w - 2 * $rbr, $y + $h - 2 * $rbr, 2 * $rbr, 2 * $rbr, 0, 90) }
+    else { $p.AddLine($x + $w, $y + $h, $x + $w, $y + $h) }
+    if ($rbl -gt 0) { $p.AddArc($x, $y + $h - 2 * $rbl, 2 * $rbl, 2 * $rbl, 90, 90) }
+    else { $p.AddLine($x, $y + $h, $x, $y + $h) }
     $p.CloseFigure()
     $p
 }
@@ -2400,8 +2410,14 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
         if ($ov -and $ov.ContainsKey($name)) { $o = $ov[$name] }
         $show = $o -and $o.ContainsKey('Show') -and $o.Show
         if ($it.Bindings -and $it.Bindings.Contains('Visible') -and -not $show) { continue }
-        # Items resting at Opacity 0 (badge glow layers) stay hidden.
-        if ($it.Contains('Opacity') -and [double]$it.Opacity -le 0) { continue }
+        # Items resting at Opacity 0 (badge glow layers, proximity sectors)
+        # stay hidden unless the override raises them, which is the whole
+        # point of an override: this test used to run first and silently
+        # dropped every item whose live opacity is what makes it appear.
+        $opOv = $null
+        if ($o -and $o.ContainsKey('Opacity')) { $opOv = [double]$o.Opacity }
+        if ($null -eq $opOv -and $it.Contains('Opacity') -and [double]$it.Opacity -le 0) { continue }
+        if ($null -ne $opOv -and $opOv -le 0) { continue }
         $x = [float]$it.Left; $y = [float]$it.Top; $w = [float]$it.Width; $h = [float]$it.Height
         if ($o -and $o.ContainsKey('Left'))   { $x = [float]$o.Left }
         if ($o -and $o.ContainsKey('Top'))    { $y = [float]$o.Top }
@@ -2417,9 +2433,13 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
             if ($rot -ne 0) {
                 $g.TranslateTransform($x + $w / 2, $y + $h / 2)
                 $g.RotateTransform([float]$rot)
-                $path = New-RoundedPath (-$w / 2) (-$h / 2) $w $h ([float]$it.BorderStyle.RadiusTopLeft)
+                $path = New-RoundedPath (-$w / 2) (-$h / 2) $w $h ([float]$it.BorderStyle.RadiusTopLeft) `
+                    ([float]$it.BorderStyle.RadiusTopRight) ([float]$it.BorderStyle.RadiusBottomRight) `
+                    ([float]$it.BorderStyle.RadiusBottomLeft)
             } else {
-                $path = New-RoundedPath $x $y $w $h ([float]$it.BorderStyle.RadiusTopLeft)
+                $path = New-RoundedPath $x $y $w $h ([float]$it.BorderStyle.RadiusTopLeft) `
+                    ([float]$it.BorderStyle.RadiusTopRight) ([float]$it.BorderStyle.RadiusBottomRight) `
+                    ([float]$it.BorderStyle.RadiusBottomLeft)
             }
             $c = [System.Drawing.ColorTranslator]::FromHtml($fill)
             # Item Opacity is a multiplier on the fill in the viewer, so the

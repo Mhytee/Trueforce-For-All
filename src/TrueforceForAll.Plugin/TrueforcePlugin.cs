@@ -3722,6 +3722,8 @@ namespace TrueforceForAll.Plugin
         public void DataUpdate(PluginManager pluginManager, ref GameData data)
         {
             _currentGameName = data?.GameRunning == true ? data.GameName : null;
+            // Radar dots and proximity, from this frame's opponents.
+            try { DashUpdateRadar(data); } catch { /* display only, never fatal */ }
 
             // Continuous (telemetry-independent) tick: tell the FFB tap whether
             // force feedback should be flowing right now, from the active
