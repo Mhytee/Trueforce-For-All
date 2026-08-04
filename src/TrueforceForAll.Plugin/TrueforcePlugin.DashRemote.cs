@@ -301,6 +301,52 @@ namespace TrueforceForAll.Plugin
                 .UtilizationFloor(_dashModelGripEma / peakDiv);
         }
 
+        // ---------- spotter ----------
+        // Opponents carry RelativeCoordinatesToPlayer, a PointF already in
+        // the player's own frame, and a length in metres. SimHub's own
+        // SpotterCarLeft/Right is a bare yes or no with no distance in it,
+        // which cannot say HOW close, so the geometry is worth the walk.
+        //
+        // Alongside means beside, not merely near: a car is only counted on
+        // a side when its bearing is within 45 degrees of that side, so
+        // something dead ahead never lights a door.
+        private const float SpotterAmberM = 12f;
+        private const float SpotterRedM   = 5f;
+        private volatile int _spotterLeft;
+        private volatile int _spotterRight;
+
+        /// <summary>Nearest car to each side, graded 0 clear, 1 close, 2 very
+        /// close. Called from DataUpdate; costs one walk of a list SimHub has
+        /// already built and stops at once when nobody is out there.</summary>
+        private void DashUpdateSpotter(GameReaderCommon.GameData data)
+        {
+            int l = 0, r = 0;
+            var opps = data?.NewData?.Opponents;
+            if (opps != null && opps.Count > 0)
+            {
+                foreach (var o in opps)
+                {
+                    if (o == null || o.IsPlayer || !o.IsConnected) continue;
+                    if (o.IsCarInPit || o.IsCarInPitLane) continue;
+                    var rc = o.RelativeCoordinatesToPlayer;
+                    if (!rc.HasValue) continue;
+                    float rx = rc.Value.X, ry = rc.Value.Y;
+                    if (float.IsNaN(rx) || float.IsNaN(ry)) continue;
+                    double d = o.RelativeVectorLengthToPlayer;
+                    if (d <= 0 || double.IsNaN(d)) d = Math.Sqrt(rx * rx + ry * ry);
+                    if (d > SpotterAmberM) continue;
+                    // |lateral| must beat |longitudinal| for this to be a car
+                    // beside you rather than one you are about to run into.
+                    if (Math.Abs(rx) < Math.Abs(ry)) continue;
+                    int lvl = d <= SpotterRedM ? 2 : 1;
+                    if (rx < 0) { if (lvl > l) l = lvl; }
+                    else        { if (lvl > r) r = lvl; }
+                }
+            }
+            _spotterLeft = l;
+            _spotterRight = r;
+        }
+
         // Idle mode: how long the car has been stopped, and whether the user
         // waved this stop away. Both are per-stop, not persisted.
         private const int IdlePhaseMs = 20000;
@@ -1047,6 +1093,8 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
             this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
+            this.AttachDelegate("Dash.Spotter.Left",  () => _spotterLeft);
+            this.AttachDelegate("Dash.Spotter.Right", () => _spotterRight);
 
             // ---------- idle mode ----------
             this.AttachDelegate("Dash.Idle.On",     () => DashIdleActive());

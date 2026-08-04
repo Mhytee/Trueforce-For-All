@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "141e5b64-adc0-4caa-9e20-9182ea0ae071",
+    "Id":  "00857c49-ca39-446b-83e3-a11a077427fe",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "805c019f-77ea-422b-8592-675fc356442c",
+                        "ScreenId":  "be86ae65-62a1-428c-8d48-39caf9983527",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -4068,182 +4068,6 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  770,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  792,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -7765,7 +7589,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "39de6a65-69cb-4ca7-b81e-3b11d9ebb103",
+                        "ScreenId":  "87bc81f2-ff71-4412-8fff-9c343df3ef3b",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14988,182 +14812,6 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  770,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  792,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -18685,7 +18333,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f133916a-b45e-4021-a6d5-8a0f2d8e85b2",
+                        "ScreenId":  "867a1504-dc9c-4f3f-9434-32ca1beb4b4d",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -27942,182 +27590,6 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  770,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  792,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -31639,7 +31111,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "4cb6ebeb-a76d-4807-ab19-1d32275970f5",
+                        "ScreenId":  "9f0a5e5e-2745-41a6-9151-7ac16713adfd",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -34863,182 +34335,6 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"presets\""
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  770,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  792,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -38568,7 +37864,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "6239b8b9-a99a-4660-be22-8e7aa5e46e90",
+                        "ScreenId":  "2bb78095-a873-4b7a-9d86-36aa67ca97ab",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -48315,182 +47611,6 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  770,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  792,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -52012,7 +51132,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "9d877cce-54d1-4e1f-a568-c7f0a7a22c6b",
+                        "ScreenId":  "28ca94e0-2b94-4234-b9df-4d298e2efe60",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -58472,182 +57592,6 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  770,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  792,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -62169,7 +61113,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "fa75af5c-621a-41ce-8f04-42bf292ebd0d",
+                        "ScreenId":  "9cf6fe8b-15ba-42fb-a722-a8e71e41db0e",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -68492,6 +67436,110 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  121,
+                                          "Opacity":  100,
+                                          "Top":  113,
+                                          "Visible":  true,
+                                          "Width":  14,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rd-spl",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  167,
+                                          "Opacity":  100,
+                                          "Top":  113,
+                                          "Visible":  true,
+                                          "Width":  14,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rd-spr",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -79805,6 +78853,110 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  619,
+                                          "Opacity":  100,
+                                          "Top":  113,
+                                          "Visible":  true,
+                                          "Width":  14,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rd-spl",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  665,
+                                          "Opacity":  100,
+                                          "Top":  113,
+                                          "Visible":  true,
+                                          "Width":  14,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rd-spr",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -92554,6 +91706,126 @@
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
                                                                      }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  121,
+                                          "Opacity":  100,
+                                          "Top":  328,
+                                          "Visible":  true,
+                                          "Width":  14,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rd-spl",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?328:222"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  167,
+                                          "Opacity":  100,
+                                          "Top":  328,
+                                          "Visible":  true,
+                                          "Width":  14,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rd-spr",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?328:222"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -105877,6 +105149,126 @@
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
                                                                      }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  619,
+                                          "Opacity":  100,
+                                          "Top":  328,
+                                          "Visible":  true,
+                                          "Width":  14,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rd-spl",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?328:222"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  665,
+                                          "Opacity":  100,
+                                          "Top":  328,
+                                          "Visible":  true,
+                                          "Width":  14,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rd-spr",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?328:222"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
                                                        }
                                       },
                                       {
@@ -120044,182 +119436,6 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"presets\""
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  0,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-l",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarLeft\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  770,
-                                          "Opacity":  14,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  30,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r-glow",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
-                                                                                       },
-                                                                           "Mode":  2,
-                                                                           "TargetPropertyName":  "Visible"
-                                                                       }
-                                                       }
-                                      },
-                                      {
-                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "#FFE8A33D",
-                                          "BorderStyle":  {
-                                                              "BorderColor":  "#00FFFFFF",
-                                                              "BorderTop":  0,
-                                                              "BorderBottom":  0,
-                                                              "BorderLeft":  0,
-                                                              "BorderRight":  0,
-                                                              "CornerRadius":  "0,0,0,0",
-                                                              "RadiusTopLeft":  0,
-                                                              "RadiusTopRight":  0,
-                                                              "RadiusBottomLeft":  0,
-                                                              "RadiusBottomRight":  0,
-                                                              "Bindings":  {
-
-                                                                           }
-                                                          },
-                                          "Height":  424,
-                                          "Left":  792,
-                                          "Opacity":  100,
-                                          "Top":  16,
-                                          "Visible":  true,
-                                          "Width":  8,
-                                          "BorderBottom":  0,
-                                          "BorderColor":  "#00FFFFFF",
-                                          "BorderLeft":  0,
-                                          "BorderRight":  0,
-                                          "BorderTop":  0,
-                                          "Rotation":  0,
-                                          "RenderingSkip":  0,
-                                          "IsFreezed":  false,
-                                          "Name":  "spot-r",
-                                          "Bindings":  {
-                                                           "Visible":  {
-                                                                           "Formula":  {
-                                                                                           "Interpreter":  1,
-                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 $prop(\"SpotterCarRight\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
