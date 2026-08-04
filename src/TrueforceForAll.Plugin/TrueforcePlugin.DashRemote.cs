@@ -376,7 +376,7 @@ namespace TrueforceForAll.Plugin
 
         // Idle mode: how long the car has been stopped, and whether the user
         // waved this stop away. Both are per-stop, not persisted.
-        private const int IdlePhaseMs = 20000;
+        private const int IdlePhaseMs = 60000;
         private int  _dashIdleSinceTick;
         private volatile bool _dashIdleDismissed;
         private bool _dashIdleGameWasOn;

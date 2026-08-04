@@ -450,10 +450,12 @@ namespace TrueforceForAll.Plugin
         // appears, so it costs those players nothing.
         public bool DashFlagsEnabled { get; set; } = true;
 
-        // TF4ALL Dash rev strip: false spans the full width of every screen
-        // (default); true narrows it to the middle column, which on the Drive
-        // tab is the space above the gear between the two box columns.
-        public bool DashRevStripCentered { get; set; } = false;
+        // TF4ALL Dash rev strip, DRIVE TAB ONLY: true (default) narrows it to
+        // the space above the gear between the two box columns, false spans
+        // the full width. Every other screen is always full width, because
+        // the middle of their header row is where the title and car name
+        // live and there is nothing to narrow to.
+        public bool DashRevStripCentered { get; set; } = true;
 
         // TF4ALL Dash Drive tab: thin throttle and brake bars either side of
         // the gear with a steering indicator beneath it. Uses space the gear

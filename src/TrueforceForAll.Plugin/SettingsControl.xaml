@@ -3065,9 +3065,9 @@
                     <CheckBox x:Name="RemoteDashPedalsCheck" Content="Show pedals and steering around the gear" Margin="0,14,0,0"
                               Checked="RemoteDashPedals_Changed" Unchecked="RemoteDashPedals_Changed"
                               ToolTip="Thin throttle and brake bars either side of the gear on the Drive tab, with steering underneath."/>
-                    <CheckBox x:Name="RemoteDashRevCenteredCheck" Content="Narrow the rev strip to the middle" Margin="0,8,0,0"
+                    <CheckBox x:Name="RemoteDashRevCenteredCheck" Content="Narrow the rev strip on the Drive tab" Margin="0,8,0,0"
                               Checked="RemoteDashRevCentered_Changed" Unchecked="RemoteDashRevCentered_Changed"
-                              ToolTip="Spans only the middle column instead of the full width, which on the Drive tab is the space above the gear."/>
+                              ToolTip="On the Drive tab only: the strip spans the space above the gear between the two box columns instead of the full width. Other tabs are always full width."/>
 
                     <CheckBox x:Name="RemoteDashFlagsCheck" Content="Show race flags on the dash" Margin="0,14,0,0"
                               Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
@@ -3081,10 +3081,6 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="SimHub works this out from the other cars in the session, so like the flags it only lights up in games that report car positions and simply never appears in the ones that do not."/>
 
-                              Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <TextBlock Text="Parked for" VerticalAlignment="Center" Width="94"/>
-                        <TextBox x:Name="RemoteDashIdleDelayBox" Width="60" TextAlignment="Center"
                     <TextBlock Text="Idle mode" FontWeight="SemiBold" Margin="0,18,0,0"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="With no game running the dash shows an ambient card with your name and number instead of an empty dashboard. It clears the moment a game starts, and there is an Exit button on the card itself."/>
@@ -3093,6 +3089,10 @@
                                  ToolTip="Only applies while a game IS running: how long the car must sit still before the card takes over from the dashboard. Set it long if you would rather it never interrupted a session. With no game running the card shows straight away regardless."/>
                         <TextBlock Text="seconds" VerticalAlignment="Center" Margin="8,0,0,0"/>
                         <TextBlock Text="Background" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                              Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <TextBlock Text="Parked for" VerticalAlignment="Center" Width="94"/>
+                        <TextBox x:Name="RemoteDashIdleDelayBox" Width="60" TextAlignment="Center"
                         <ComboBox x:Name="RemoteDashIdleStyleCombo" Width="120" Margin="8,0,0,0"
                                   SelectionChanged="RemoteDashIdleStyle_Changed"/>
                     </StackPanel>

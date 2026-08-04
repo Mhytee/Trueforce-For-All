@@ -248,38 +248,43 @@ function KeypadOverlay([string]$P) {
 # remote double as rev lights in race.
 function RevStrip([string]$P, [bool]$driveTab = $false) {
     $items = [System.Collections.Generic.List[object]]::new()
-    # Span is a user choice (Dash.RevCentered): the full width of the
-    # screen, or just the middle column, which on the Drive tab is the
-    # space above the gear between the two box columns. Every segment,
-    # socket and the backing bar bind their Left and Width to it, so the
-    # switch applies live with no dashboard reload.
-    # Centred, it also drops to y 16 on the Drive tab so its top edge lines
-    # up with the top of the boxes. Every other screen keeps it at y 0: the
-    # middle of their header row is where the title and car name live.
+    # Narrowing belongs to the Drive tab and nowhere else. There it is the
+    # space above the gear between the two box columns, which is a real
+    # place; on every other screen the middle of the header row is where
+    # the title and the car name live, so there is nothing to narrow to and
+    # the strip simply spans the full width. Only the Drive copy carries
+    # the bindings at all, so the setting cannot reach the others.
+    $cenX = 300; $cenW = 200; $cenY = 16
+    $rc = '$prop("' + $P + '.RevCentered")'
     # Whole-pixel pitch on purpose: these numbers land in JS source, and a
     # fractional one would be written with the machine's decimal separator.
-    $cenX = 300; $cenW = 200
-    $cenY = if ($driveTab) { 16 } else { 0 }
-    # No Top binding at all when it does not move: six screens' worth of
-    # no-op formulas would still be evaluated on every data update.
-    $segLeftJs  = { param($i) 'return $prop("' + $P + '.RevCentered")?' + (305 + $i * 12) + ':' + (2 + $i * 50) }
-    $segWidthJs = 'return $prop("' + $P + '.RevCentered")?10:46'
-    $segTopJs   = 'return $prop("' + $P + '.RevCentered")?' + ($cenY + 1) + ':1'
-    $bg = New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' @{
-        Left  = BindJS 'Left'  ('return $prop("' + $P + '.RevCentered")?' + $cenX + ':0')
-        Width = BindJS 'Width' ('return $prop("' + $P + '.RevCentered")?' + $cenW + ':800')
-    } 0
-    if ($cenY -ne 0) { $bg.Bindings['Top'] = BindJS 'Top' ('return $prop("' + $P + '.RevCentered")?' + $cenY + ':0') }
+    $bg = New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' $null 0
+    if ($driveTab) {
+        $bg.Left = [double]$cenX; $bg.Width = [double]$cenW; $bg.Top = [double]$cenY
+        $bg.Bindings['Left']  = BindJS 'Left'  ('return ' + $rc + '?' + $cenX + ':0')
+        $bg.Bindings['Width'] = BindJS 'Width' ('return ' + $rc + '?' + $cenW + ':800')
+        $bg.Bindings['Top']   = BindJS 'Top'   ('return ' + $rc + '?' + $cenY + ':0')
+    }
+    # Hidden behind the idle card: the card is the screen when it is up, and
+    # a rev strip over it is chrome from a dashboard nobody is looking at.
+    $notIdle = '!$prop("' + $P + '.Idle.On")'
+    $bg.Bindings['Visible'] = BindJS 'Visible' ('return ' + $notIdle)
     $items.Add($bg)
+
     # Unlit sockets: a faint 1px outline per LED position, always visible,
     # so the strip is discoverable before the first rev (an all-dark strip
     # read as empty chrome). Lit segments draw over them.
     for ($i = 0; $i -lt 16; $i++) {
         $x = 2 + $i * 50
+        $cx2 = 305 + $i * 12
         $sock = New-Rect "rev-sock$i" $x 1 46 10 $script:CLEAR $null 2
-        $sock.Bindings['Left']  = BindJS 'Left'  (& $segLeftJs $i)
-        $sock.Bindings['Width'] = BindJS 'Width' $segWidthJs
-        if ($cenY -ne 0) { $sock.Bindings['Top'] = BindJS 'Top' $segTopJs }
+        if ($driveTab) {
+            $sock.Left = [double]$cx2; $sock.Width = 10.0; $sock.Top = [double]($cenY + 1)
+            $sock.Bindings['Left']  = BindJS 'Left'  ('return ' + $rc + '?' + $cx2 + ':' + $x)
+            $sock.Bindings['Width'] = BindJS 'Width' ('return ' + $rc + '?10:46')
+            $sock.Bindings['Top']   = BindJS 'Top'   ('return ' + $rc + '?' + ($cenY + 1) + ':1')
+        }
+        $sock.Bindings['Visible'] = BindJS 'Visible' ('return ' + $notIdle)
         $sock.BorderStyle.BorderColor = '#FF39404C'
         $sock.BorderStyle.BorderTop = 1; $sock.BorderStyle.BorderBottom = 1
         $sock.BorderStyle.BorderLeft = 1; $sock.BorderStyle.BorderRight = 1
@@ -289,26 +294,27 @@ function RevStrip([string]$P, [bool]$driveTab = $false) {
     }
     for ($i = 0; $i -lt 16; $i++) {
         $x = 2 + $i * 50
+        $cx2 = 305 + $i * 12
         # Two threshold schemes, chosen live by Dash.RevOutsideIn:
         # left-to-right walks 50..96.9 across the strip; outside-in pairs
         # mirror segments (0+15 first, converging on 7+8) over 50..93.75.
         $tLtr = [math]::Round(50 + $i * 3.125, 2)
         $pair = [math]::Min($i, 15 - $i)
         $tOut = [math]::Round(50 + $pair * 6.25, 2)
-        # Colors follow the direction: left-to-right zones run green ->
-        # amber -> red across the strip; outside-in zones run green at the
-        # edges converging to red in the CENTER (pair index, not position).
         $amber = '#FFE8A33D'
         $cLtr = if ($i -lt 8) { $script:GREEN } elseif ($i -lt 12) { $amber } else { $script:RED }
         $cOut = if ($pair -lt 4) { $script:GREEN } elseif ($pair -lt 6) { $amber } else { $script:RED }
         $seg = New-Rect "rev-seg$i" $x 1 46 10 $cLtr @{
             BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $P + '.RevOutsideIn")?"' + $cOut + '":"' + $cLtr + '"')
-            Left  = BindJS 'Left'  (& $segLeftJs $i)
-            Width = BindJS 'Width' $segWidthJs
         } 2
-        if ($cenY -ne 0) { $seg.Bindings['Top'] = BindJS 'Top' $segTopJs }
+        if ($driveTab) {
+            $seg.Left = [double]$cx2; $seg.Width = 10.0; $seg.Top = [double]($cenY + 1)
+            $seg.Bindings['Left']  = BindJS 'Left'  ('return ' + $rc + '?' + $cx2 + ':' + $x)
+            $seg.Bindings['Width'] = BindJS 'Width' ('return ' + $rc + '?10:46')
+            $seg.Bindings['Top']   = BindJS 'Top'   ('return ' + $rc + '?' + ($cenY + 1) + ':1')
+        }
         # RevFlash: steady true below redline, wheel-synced blink at/above.
-        $seg.Bindings['Visible'] = BindJS 'Visible' ('var t=$prop("' + $P + '.RevOutsideIn")?' + $tOut + ':' + $tLtr + ';return (1*$prop("' + $P + '.RpmPct"))>=t && $prop("' + $P + '.RevFlash")')
+        $seg.Bindings['Visible'] = BindJS 'Visible' ('var t=$prop("' + $P + '.RevOutsideIn")?' + $tOut + ':' + $tLtr + ';return ' + $notIdle + ' && (1*$prop("' + $P + '.RpmPct"))>=t && $prop("' + $P + '.RevFlash")')
         $items.Add($seg)
     }
     $items
@@ -1511,7 +1517,6 @@ function IdleCard([string]$P) {
     $on  = '$prop("' + $P + '.Idle.On")'
     $vis = 'return ' + $on
     $T   = '(1*$prop("' + $P + '.Idle.T"))'
-    $TAU = '6.283185307'
     $col = '(""+($prop("' + $P + '.Idle.Color")||"#FFF2F4F8"))'
     $style = '(""+($prop("' + $P + '.Idle.Style")||"Aurora"))'
 
@@ -1522,48 +1527,77 @@ function IdleCard([string]$P) {
     $items.Add($bg)
 
     $styleVis = { param($k) 'return ' + $on + ' && ' + $style + '=="' + $k + '"' }
+    # Every motion is a sum of sines on INTEGER multiples of the phase, so
+    # each closes exactly at the wrap and the loop has no seam, while the
+    # different multiples beat against each other for long enough that it
+    # never looks like it is repeating. One term is a circle; three is
+    # weather.
+    $w = { param($mult, $ph) 'Math.sin(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
+    $wc = { param($mult, $ph) 'Math.cos(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
 
-    # --- Aurora: soft blobs drifting on closed Lissajous paths ---
-    foreach ($a in @(@(0, 340, '#FF2E6FA8', 0.0), @(1, 280, '#FF2E9478', 0.37), @(2, 240, '#FF6A47A0', 0.71))) {
-        $ai = $a[0]; $ar = $a[1]; $ac = $a[2]; $ap = $a[3]
+    # --- Aurora: slow coloured weather, drifting and breathing ---
+    $aur = @(
+        @(0, 320, '#FF2E6FA8', 1, 2, 3, 0.00, 0.31, 0.67),
+        @(1, 270, '#FF2E9478', 2, 1, 4, 0.37, 0.72, 0.11),
+        @(2, 240, '#FF6A47A0', 1, 3, 2, 0.71, 0.19, 0.43),
+        @(3, 200, '#FF9E4A6E', 3, 2, 5, 0.14, 0.58, 0.86),
+        @(4, 180, '#FF2F7F9E', 2, 4, 3, 0.53, 0.05, 0.29)
+    )
+    foreach ($a in $aur) {
+        $ai = $a[0]; $ar = $a[1]; $ac = $a[2]
+        $mx = $a[3]; $my = $a[4]; $ms = $a[5]
+        $p1 = $a[6]; $p2 = $a[7]; $p3 = $a[8]
+        # Size breathes, so Left and Top have to follow it to stay centred.
+        $sz = 'var s=' + $ar + '*(1+0.28*' + (& $w $ms $p3) + ');'
+        $cxJs = 'var cx=400+' + (& $w $mx $p1) + '*250+' + (& $w (2 * $mx) $p2) + '*90;'
+        $cyJs = 'var cy=240+' + (& $wc $my $p2) + '*140+' + (& $wc (3 * $my) $p1) + '*50;'
         $r = New-Rect "idle-aur$ai" 100 100 $ar $ar $ac $null ([int]($ar / 2))
-        # Low enough to sit behind the number rather than compete with it.
-        $r.Opacity = 16.0
-        $r.Bindings['Left'] = BindJS 'Left' ('return ' + (400 - $ar / 2) + '+Math.sin((' + $T + '+' + $ap + ')*' + $TAU + ')*260')
-        $r.Bindings['Top']  = BindJS 'Top'  ('return ' + (240 - $ar / 2) + '+Math.cos((' + $T + '+' + $ap + ')*' + $TAU + '*2)*150')
+        $r.Opacity = 14.0
+        $r.Bindings['Left']   = BindJS 'Left'   ($sz + $cxJs + 'return cx-s/2')
+        $r.Bindings['Top']    = BindJS 'Top'    ($sz + $cyJs + 'return cy-s/2')
+        $r.Bindings['Width']  = BindJS 'Width'  ($sz + 'return s')
+        $r.Bindings['Height'] = BindJS 'Height' ($sz + 'return s')
+        # Fading in and out as well as moving, so no blob is ever simply
+        # sliding across a fixed background.
+        # High enough that the colour actually reads against the backdrop:
+        # below about 14 these land as grey and the whole thing looks dead.
+        $r.Bindings['Opacity'] = BindJS 'Opacity' ('return 17+13*(1+' + (& $w ($ms + 2) $p1) + ')/2')
         $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Aurora')
         $items.Add($r)
     }
 
-    # --- Pulse: rings breathing out of the centre, each a third of a cycle
-    # behind the last, fading as they grow so the loop has no seam.
-    for ($i = 0; $i -lt 3; $i++) {
-        $ph = $i / 3.0
-        $g = 'var g=(' + $T + '+' + $ph + ')%1;'
+    # --- Pulse: rings leaving the centre, the centre itself wandering ---
+    for ($i = 0; $i -lt 5; $i++) {
+        $ph = $i / 5.0
+        $g = 'var g=(' + $T + '*2+' + $ph + ')%1;'
+        $drift = 'var dx=' + (& $w 1 ($ph)) + '*70;var dy=' + (& $wc 2 ($ph)) + '*50;'
         $r = New-Rect "idle-pul$i" 340 180 120 120 $script:CLEAR $null 60
         $r.BorderStyle.BorderColor = '#FF2A5C7A'; $r.BorderColor = '#FF2A5C7A'
         foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
-            $r.BorderStyle."Border$sd" = 2
-            $r."Border$sd" = 2
+            $r.BorderStyle."Border$sd" = 2; $r."Border$sd" = 2
         }
-        $r.Bindings['Width']   = BindJS 'Width'   ($g + 'return 60+g*620')
-        $r.Bindings['Height']  = BindJS 'Height'  ($g + 'return 60+g*620')
-        $r.Bindings['Left']    = BindJS 'Left'    ($g + 'return 400-(60+g*620)/2')
-        $r.Bindings['Top']     = BindJS 'Top'     ($g + 'return 240-(60+g*620)/2')
-        $r.Bindings['Opacity'] = BindJS 'Opacity' ($g + 'return 55*(1-g)')
+        $r.Bindings['Width']  = BindJS 'Width'  ($g + 'return 40+g*640')
+        $r.Bindings['Height'] = BindJS 'Height' ($g + 'return 40+g*640')
+        $r.Bindings['Left']   = BindJS 'Left'   ($g + $drift + 'return 400+dx-(40+g*640)/2')
+        $r.Bindings['Top']    = BindJS 'Top'    ($g + $drift + 'return 240+dy-(40+g*640)/2')
+        $r.Bindings['Opacity'] = BindJS 'Opacity' ($g + 'return 60*(1-g)*(g<0.08?g/0.08:1)')
         $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Pulse')
         $items.Add($r)
     }
 
-    # --- Streaks: columns falling at their own rate, wrapping off the bottom.
-    for ($i = 0; $i -lt 10; $i++) {
-        $sx = 20 + $i * 78
-        $sp = ($i * 0.17) % 1.0
-        $sl = 90 + ($i % 4) * 40
-        $g2 = 'var g=(' + $T + '*' + (1 + ($i % 3) * 0.5) + '+' + $sp + ')%1;'
+    # --- Streaks: rain that also drifts sideways and varies in weight ---
+    for ($i = 0; $i -lt 16; $i++) {
+        $sx = 12 + $i * 50
+        $sp = ($i * 0.13) % 1.0
+        $sl = 70 + ($i % 5) * 34
+        $rate = 1 + ($i % 4) * 0.5
+        $g2 = 'var g=(' + $T + '*' + $rate + '+' + $sp + ')%1;'
+        $sway = 'var sw=' + (& $w (1 + ($i % 3)) $sp) + '*26;'
         $r = New-Rect "idle-str$i" $sx 0 3 $sl '#FF2E4A6B' $null 2
-        $r.Opacity = 40.0
-        $r.Bindings['Top'] = BindJS 'Top' ($g2 + 'return -' + $sl + '+g*' + (480 + $sl))
+        $r.Opacity = 34.0
+        $r.Bindings['Top']  = BindJS 'Top'  ($g2 + 'return -' + $sl + '+g*' + (480 + $sl))
+        $r.Bindings['Left'] = BindJS 'Left' ($sway + 'return ' + $sx + '+sw')
+        $r.Bindings['Opacity'] = BindJS 'Opacity' ($g2 + 'return 12+30*Math.sin(3.14159*g)')
         $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Streaks')
         $items.Add($r)
     }
@@ -1583,7 +1617,7 @@ function IdleCard([string]$P) {
     $items.Add($t)
 
     # --- Plugin status along the foot. This is the one moment anyone is
-    # looking at the dash and not at the road, so it is where a version, a
+    # looking at the dash and not the road, so it is where a version, a
     # supporter badge and an update notice actually get read.
     $t = New-Text 'idle-ver' 24 430 300 26 15 '' $script:MUTED 0 @{
         Text = BindJS 'Text' ('var v=""+($prop("' + $P + '.Version")||"");return v==""?"":"TF4ALL v"+v')
@@ -1604,14 +1638,14 @@ function IdleCard([string]$P) {
     $t.Bindings['Visible'] = BindJS 'Visible' ('return ' + $on + ' && $prop("' + $P + '.UpdateReady")')
     $items.Add($t)
 
-    # --- Exit, the one control that has to keep working while the card is up.
-    $r = New-Rect 'idle-exit-bg' 660 20 120 40 $script:TILE $null 6
-    $r.Bindings['Visible'] = BindJS 'Visible' $vis
-    $items.Add($r)
-    $t = New-Text 'idle-exit-t' 660 20 120 40 15 'EXIT' $script:WHITE 1 $null 'Bold'
+    # --- Leaving: the whole card is the button. A dedicated Exit tile asks
+    # the driver to aim at a 120px target on a screen whose entire job is
+    # to be looked at rather than used. Added LAST so it sits over
+    # everything, and named idle-exit so the hide pass leaves it alone.
+    $t = New-Text 'idle-hint' 0 442 800 22 12 'TAP ANYWHERE TO RETURN' '#FF39404C' 1
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
-    $b = New-Button 'idle-exit' 660 20 120 40 'DashIdleExit'
+    $b = New-Button 'idle-exit' 0 0 800 480 'DashIdleExit'
     $b.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($b)
 
