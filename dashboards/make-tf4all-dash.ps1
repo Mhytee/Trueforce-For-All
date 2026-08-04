@@ -455,7 +455,14 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # still means "this title does not report it" (Horizon leaves parts
     # of the dash block empty), so the notice still does its job.
     $fzTempJs = 'function(){var t=1*$prop("' + $P + '.Forza.TempFL");return t>0}'
-    $dLap   = '((1*$prop("' + $P + '.Forza.BestLap"))>0)||((""+$prop("' + $SIM + 'BestLapTime")||"")!=""&&(""+$prop("' + $SIM + 'BestLapTime")).indexOf("00:00:00")!=0)'
+    # Having a BEST lap means a lap has been COMPLETED, which is not the
+    # same as the game reporting lap times: before the first flying lap this
+    # claimed Assetto Corsa does not report them. A running current lap is
+    # the honest test, and it is there from the moment you leave the pits.
+    $dLap   = '((1*$prop("' + $P + '.Forza.BestLap"))>0)' +
+              '||((1*$prop("' + $P + '.Forza.CurLap"))>0)' +
+              '||((""+$prop("' + $SIM + 'CurrentLapTime")||"")!="")' +
+              '||((""+$prop("' + $SIM + 'BestLapTime")||"")!=""&&(""+$prop("' + $SIM + 'BestLapTime")).indexOf("00:00:00")!=0)'
     $dTemp  = '((1*$prop("' + $P + '.Forza.TempFL"))>0)||((1*$prop("' + $SIM + 'TyreTemperatureFrontLeft"))>0)'
     $dWear  = '($prop("' + $P + '.Forza.HasWear")&&(1*$prop("' + $P + '.Forza.WearFL"))>0)||((1*$prop("' + $SIM + 'TyreWearFrontLeft"))>0)'
     $dFuel  = '((1*$prop("' + $P + '.Forza.FuelPct"))>0)||((1*$prop("' + $SIM + 'MaxFuel"))>0)'
@@ -958,38 +965,64 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
 
     # ---------------- DAMAGE -----------------------------------------
-    # Laid out as the car: front above, rear below, left and right either
-    # side of the centre panel. SimHub numbers these 1 to 5 and the mapping
-    # is the game's, so the labels stay generic rather than claiming a
-    # precision the source does not have.
+    # The car from above, not a row of tiles: front and rear bumpers, the
+    # two flanks, and the shell between them, so a glance lands on the
+    # corner that took the hit without reading a single label. SimHub
+    # numbers these 1 to 5 and the mapping is the game's, so the shape
+    # carries the meaning rather than a caption claiming more precision
+    # than the source has.
     $vis = KeyVis 'Damage' $dDmg
     $items.Add((AddHead 'dm' 'DAMAGE' 'Damage'))
-    $dmW = 62; $dmH = 40
-    $dmCx = $ix + $iw / 2
-    $dmCy = ($iy + 34 + $y + $h - 12) / 2
-    # 0 is pristine, so an undamaged car is quiet chrome rather than a wall
-    # of green competing with the tyre box for attention.
-    $dmScale = 'if(isNaN(v)||v<1)return "' + $script:TILE + '";' +
+    $cw = 104.0; $ch = 150.0
+    $cx = $ix + $iw / 2
+    $cy = ($iy + 40 + $y + $h - 14) / 2
+    $cl = $cx - $cw / 2; $ct = $cy - $ch / 2
+    # Undamaged is quiet: a pristine car should read as chrome at a glance,
+    # not as a wall of green competing with the tyre box next to it.
+    $dmScale = 'if(isNaN(v)||v<1)return "#FF2A303A";' +
                'return v<25?"' + $script:GREEN + '":(v<60?"#FFE8A33D":"' + $script:RED + '")'
-    foreach ($dm in @(
-        @('f',  1,  0, -1), @('r',  2, 0, 1),
-        @('l',  3, -1,  0), @('rt', 4, 1, 0),
-        @('c',  5,  0,  0))) {
-        $dk = $dm[0]; $dn = $dm[1]; $dxo = $dm[2]; $dyo = $dm[3]
-        $dx = $dmCx - $dmW / 2 + $dxo * ($dmW + 6)
-        $dy = $dmCy - $dmH / 2 + $dyo * ($dmH + 6)
-        $dJs = 'var v=1*$prop("' + $SIM + 'CarDamage' + $dn + '");'
-        $r = New-Rect "d$slot-dm-$dk" $dx $dy $dmW $dmH $script:TILE @{
-            BackgroundColor = BindJS 'BackgroundColor' ($dJs + $dmScale)
-        } 5
+
+    # Tyres first, so the panels sit over them and read as the body on top.
+    # Parenthesised: comma binds tighter than minus too, so a bare
+    # subtraction here splits the literal into two arrays and PowerShell
+    # tries to subtract one from the other.
+    foreach ($tp in @(@('a', -8, 18), @('b', ($cw - 8), 18),
+                      @('c', -8, ($ch - 46)), @('d', ($cw - 8), ($ch - 46)))) {
+        $r = New-Rect "d$slot-dm-w$($tp[0])" ($cl + $tp[1]) ($ct + $tp[2]) 16 28 '#FF15181E' $null 5
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-        $t = New-Text "d$slot-dm-$dk-v" $dx ($dy + $dmH / 2 - 11) $dmW 22 15 '' $script:WHITE 1 @{
-            Text = BindJS 'Text' ($dJs + 'return isNaN(v)?"--":(v<1?"OK":Math.round(v))')
-            TextColor = BindJS 'TextColor' ($dJs +
-                'return (isNaN(v)||v<1)?"' + $script:MUTED + '":"#FF101216"')
-        } 'Bold'
-        $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     }
+    # Shell underneath every panel, so the gaps between them read as body.
+    $r = New-Rect "d$slot-dm-body" $cl $ct $cw $ch '#FF1B1F27' $null 22
+    $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+
+    # 1 front, 2 rear, 3 left, 4 right, 5 centre: SimHub's order, laid out
+    # where those panels actually are.
+    foreach ($dm in @(
+        @('f',  1, 10,             4,             ($cw - 20), 34, 14),
+        @('r',  2, 10,             ($ch - 38),    ($cw - 20), 34, 14),
+        @('l',  3, 4,              44,            22,         ($ch - 88), 8),
+        @('rt', 4, ($cw - 26),     44,            22,         ($ch - 88), 8),
+        @('c',  5, 30,             44,            ($cw - 60), ($ch - 88), 10))) {
+        $dk = $dm[0]; $dn = $dm[1]
+        $px = $cl + $dm[2]; $py = $ct + $dm[3]; $pw = $dm[4]; $ph = $dm[5]; $pr = $dm[6]
+        $dJs = 'var v=1*$prop("' + $SIM + 'CarDamage' + $dn + '");'
+        $r = New-Rect "d$slot-dm-$dk" $px $py $pw $ph '#FF2A303A' @{
+            BackgroundColor = BindJS 'BackgroundColor' ($dJs + $dmScale)
+        } $pr
+        $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
+    }
+
+    # One number, for the panel that is worst. Five numbers on a shape this
+    # size is unreadable, and the shape already says WHICH panel it is.
+    $worstJs = 'var w=0;for(var i=1;i<=5;i++){var v=1*$prop("' + $SIM + 'CarDamage"+i);' +
+               'if(!isNaN(v)&&v>w)w=v;}'
+    $t = New-Text "d$slot-dm-worst" $ix ($iy + 22) $iw 26 17 '' $script:MUTED 1 @{
+        Text = BindJS 'Text' ($worstJs + 'return w<1?"NO DAMAGE":"WORST "+Math.round(w)+"%"')
+        TextColor = BindJS 'TextColor' ($worstJs +
+            'return w<1?"' + $script:MUTED + '":(w<25?"' + $script:GREEN +
+            '":(w<60?"#FFE8A33D":"' + $script:RED + '"))')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
     $items.Add((AddNote 'dm' 'This game does not report damage.' 'Damage' $dDmg))
 
     # ---------------- INPUTS (pedals + steering) ---------------------
@@ -1199,8 +1232,30 @@ function DriveBoxDual([string]$P, [int]$slot, $x, $w, $yTwo, $hTwo, $yOne, $hOne
     $a = @(DriveBox $P $slot $x $yTwo $w $hTwo $false)
     $b = @(DriveBox $P $slot $x $yOne $w $hOne $false)
     $tr = '$prop("' + $P + '.Drive.TwoRows")'
+    # A ChartItem lays its plot area out from the values it was built with
+    # and does not re-lay-out when a bound Height arrives, so binding its
+    # geometry left the trace drawn to the two-row lane while the panel had
+    # grown to the one-row one. Both variants are emitted instead, each with
+    # static geometry and gated on the layout, which is what the full-screen
+    # visualizer does and why that one has always been right.
+    $extra = [System.Collections.Generic.List[object]]::new()
     for ($i = 0; $i -lt $a.Count; $i++) {
         $ia = $a[$i]; $ib = $b[$i]
+        if ([string]$ia.'$type' -like '*ChartItem*') {
+            $same = $true
+            foreach ($pn in 'Top', 'Height', 'Left', 'Width') {
+                if ([string]$ia.$pn -ne [string]$ib.$pn) { $same = $false }
+            }
+            if (-not $same) {
+                $vA = [string]$ia.Bindings['Visible'].Formula.Expression -replace '^return ', ''
+                $vB = [string]$ib.Bindings['Visible'].Formula.Expression -replace '^return ', ''
+                $ia.Bindings['Visible'] = BindJS 'Visible' ('return ' + $tr + ' && (' + $vA + ')')
+                $ib.Bindings['Visible'] = BindJS 'Visible' ('return !' + $tr + ' && (' + $vB + ')')
+                $ib.Name = [string]$ib.Name + '-1'
+                $extra.Add($ib)
+                continue
+            }
+        }
         foreach ($pn in 'Top', 'Height', 'Left', 'Width') {
             if (-not $ia.Contains($pn)) { continue }
             $hasA = $ia.Bindings -and $ia.Bindings.Contains($pn)
@@ -1217,7 +1272,7 @@ function DriveBoxDual([string]$P, [int]$slot, $x, $w, $yTwo, $hTwo, $yOne, $hOne
             }
         }
     }
-    $a
+    @($a) + @($extra)
 }
 
 function TabBar([string]$P) {
