@@ -497,6 +497,12 @@ namespace TrueforceForAll.Plugin
         // one falls back silently rather than failing.
         public string DashIdleFont        { get; set; } = "";
 
+        // Dashboard theme, by name. Themes are PALETTES: the layout is the
+        // same whichever is picked, because colour binds live and geometry
+        // does not. Unknown names fall back to the first theme rather than
+        // leaving the dash unpainted.
+        public string DashTheme { get; set; } = "Midnight";
+
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
         // user's display order; DashTabsDisabled hides tabs without losing

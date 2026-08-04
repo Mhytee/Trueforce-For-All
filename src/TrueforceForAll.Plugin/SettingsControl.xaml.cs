@@ -6379,6 +6379,18 @@ namespace TrueforceForAll.Plugin
                     RemoteDashRevCenteredCheck.IsChecked = _plugin.Settings?.DashRevStripCentered == true;
                 if (RemoteDashSpotterCheck != null)
                     RemoteDashSpotterCheck.IsChecked = _plugin.Settings?.DashSpotterEnabled != false;
+                if (RemoteDashThemeCombo != null)
+                {
+                    var names = TrueforcePlugin.DashThemeNames();
+                    if (RemoteDashThemeCombo.Items.Count != names.Length)
+                    {
+                        RemoteDashThemeCombo.Items.Clear();
+                        foreach (string n in names) RemoteDashThemeCombo.Items.Add(n);
+                    }
+                    int ti = Array.FindIndex(names, n =>
+                        string.Equals(n, _plugin.Settings?.DashTheme, StringComparison.OrdinalIgnoreCase));
+                    RemoteDashThemeCombo.SelectedIndex = ti < 0 ? 0 : ti;
+                }
                 if (RemoteDashIdleCheck != null)
                     RemoteDashIdleCheck.IsChecked = _plugin.Settings?.DashIdleEnabled != false;
                 if (RemoteDashIdleDelayBox != null)
@@ -6454,6 +6466,22 @@ namespace TrueforceForAll.Plugin
             PersistIdle();
         }
 
+        private void RemoteDashTheme_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var names = TrueforcePlugin.DashThemeNames();
+            int i = RemoteDashThemeCombo?.SelectedIndex ?? -1;
+            if (i < 0 || i >= names.Length) return;
+            _plugin.Settings.DashTheme = names[i];
+            // No notify needed: the dash polls Dash.Theme.* every update, so
+            // it repaints itself on the next frame with no reload.
+            PersistIdle();
+        }
+
+        // ---------------- idle card ----------------
+        // Style and colour are fixed lists rather than free text: both feed a
+        // dash formula, and a typo there fails silently as a blank card.
+        private static readonly string[] IdleStyleKeys   = { "Aurora", "Pulse", "Streaks", "Plain" };
         private static readonly string[] IdleStyleLabels = { "Aurora", "Pulse", "Streaks", "Plain" };
         private static readonly string[] IdleColorHex =
             { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };

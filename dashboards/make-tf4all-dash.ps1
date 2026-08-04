@@ -9,62 +9,74 @@ $ErrorActionPreference = 'Stop'
 $OutDir = Join-Path $PSScriptRoot 'TF4ALL Dash'
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
-# ---- style ----
-# 'Default' is the filled-panel look this dashboard shipped with. 'Outline'
-# goes outlined and dark: a black ground,
-# cards drawn as a thin outline with NO fill, and each card's title sitting
-# in a break in its own top border. Everything downstream reads the palette
-# below, so switching this one word restyles the whole dashboard.
-$DASH_STYLE = 'Outline'
-$OUTLINE = $DASH_STYLE -eq 'Outline'
+# ---- theme ----
+# Colours are not baked. The dashboard binds its structural colours to
+# Dash.Theme.*, which the plugin serves from whichever palette is selected,
+# so picking a theme in Settings repaints every screen live with no reload.
+#
+# Only STRUCTURE is themed. Green for good and red for trouble stay put: a
+# theme that can turn a warning green is a theme that can lie.
+#
+# The constants below are the static fallbacks. They are what a preview
+# renders and what shows for the instant before the first binding runs, so
+# they match the shipped default palette (Midnight).
+$TH = 'TrueforcePlugin.Dash.Theme.'
+function ThemeBind([string]$target, [string]$key) {
+    BindJS $target ('return ""+$prop("' + $script:TH + $key + '")')
+}
+# Stamps the theme onto an already-built rect, for the lightened areas
+# inside a card and the slice of background that breaks a card's top
+# border: both have to track the palette or the seams show.
+function ThemePaint($rect, [string]$key) {
+    $rect.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' $key
+    $rect
+}
 
-# ---- palette ----
-$BG      = if ($OUTLINE) { '#FF000000' } else { '#FF101216' }   # dashboard background
-# Cards are an outline in the outline skin, so the fill goes away entirely and the
-# border does the work. CARD_EDGE is what draws them.
-$PANEL   = if ($OUTLINE) { '#00FFFFFF' } else { '#FF1B1F27' }   # info panels
+# ---- palette (static fallbacks) ----
+$BG       = '#FF000000'   # dashboard background
+$PANEL    = '#00FFFFFF'   # cards are an outline; the edge does the work
+$CARD_EDGE = '#FF4E5668'
 # $PANEL had been doing three jobs: the big cards, the lightened areas
-# inside them, and the background of small buttons. Unfilling it for Outline
-# made every button vanish, which is what splitting these apart fixes.
-#   CARD     the outlined container            (drawn by New-Card)
-#   SUBPANEL a lightened area inside a card    (no outline, barely there)
-#   BTN      something you can press           (must always read as solid)
-$SUBPANEL = if ($OUTLINE) { '#FF0E0E10' } else { '#FF1B1F27' }
-$BTN      = if ($OUTLINE) { '#FF1C1C20' } else { '#FF1B1F27' }
+# inside them, and the background of small buttons. Unfilling it for the
+# outlined look made every button vanish, which is why these are separate.
+#   New-Card  the outlined container
+#   SUBPANEL  a lightened area inside a card, barely there
+#   New-Btn   something you press, always solid
+$SUBPANEL = '#FF0E0E10'
+$BTN      = '#FF1C1C20'
 $BTN_EDGE = '#FF3A4150'
 
-# A card: outlined and unfilled in the outline skin, a filled panel otherwise. Every
-# big container goes through here so the two looks cannot drift apart.
+# Every big container goes through here, so a new box cannot quietly opt
+# out of the theme. The border is always ONE pixel and only its COLOUR
+# changes: a palette that wants no outline sets it transparent, because
+# thickness is geometry and geometry does not switch as cleanly as colour.
 function New-Card([string]$name, $x, $y, $w, $h, [int]$radius = 10) {
-    $fill = if ($script:OUTLINE) { $script:CLEAR } else { $script:PANEL }
-    $r = New-Rect $name $x $y $w $h $fill $null $radius
-    if ($script:OUTLINE) {
-        $r.BorderStyle.BorderColor = $script:CARD_EDGE
-        $r.BorderColor = $script:CARD_EDGE
-        foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
-            $r.BorderStyle."Border$sd" = 1
-            $r."Border$sd" = 1
-        }
+    $r = New-Rect $name $x $y $w $h $script:PANEL $null $radius
+    $r.BorderStyle.BorderColor = $script:CARD_EDGE
+    $r.BorderColor = $script:CARD_EDGE
+    foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+        $r.BorderStyle."Border$sd" = 1
+        $r."Border$sd" = 1
     }
+    $r.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' 'Card'
+    $r.Bindings['BorderColor']     = ThemeBind 'BorderColor' 'CardEdge'
     $r
 }
 
-# A pressable tile: solid enough to look pressable, with a hairline in
-# Outline so it still reads as a control on a black ground.
 function New-Btn([string]$name, $x, $y, $w, $h, [int]$radius = 4) {
     $r = New-Rect $name $x $y $w $h $script:BTN $null $radius
-    if ($script:OUTLINE) {
-        $r.BorderStyle.BorderColor = $script:BTN_EDGE
-        $r.BorderColor = $script:BTN_EDGE
-        foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
-            $r.BorderStyle."Border$sd" = 1
-            $r."Border$sd" = 1
-        }
+    $r.BorderStyle.BorderColor = $script:BTN_EDGE
+    $r.BorderColor = $script:BTN_EDGE
+    foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+        $r.BorderStyle."Border$sd" = 1
+        $r."Border$sd" = 1
     }
+    $r.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' 'Btn'
+    $r.Bindings['BorderColor']     = ThemeBind 'BorderColor' 'BtnEdge'
     $r
 }
-$CARD_EDGE = '#FF4E5668'
-$TILE    = if ($OUTLINE) { '#FF141414' } else { '#FF232936' }   # buttons / tiles (off state)
+
+$TILE    = '#FF141414'   # buttons / tiles (off state)
 $TILEON  = '#FF23503A'   # toggle tile on state
 $GREEN   = '#FF37D67A'
 $RED     = '#FFE5484D'
@@ -634,27 +646,20 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # says so without a second widget, and the tap zone is the title's own
     # half of the row so it cannot swallow a badge or a value on the right.
     function AddHead([string]$id, [string]$title, [string]$k) {
-        if ($script:OUTLINE) {
-            # Centred on the card's own top border, with a slice of the
-            # background painted over the line behind it: the border appears
-            # to break for the title instead of the title floating inside a
-            # frame. That gap is the whole signature of this look.
-            $lbl = $title + '  ' + [char]0x25BE
-            $wpx = 9 * $lbl.Length + 18
-            $cx = $script:xN + $script:wN / 2 - $wpx / 2
-            $gap = New-Rect "d$script:slotN-$id-gap" $cx ($script:yN - 2) $wpx 5 $script:BG $null 0
-            $gap.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
-            $script:headGap = $gap
-            $t = New-Text "d$script:slotN-$id-h" $cx ($script:yN - 9) $wpx 18 12 $lbl $script:MUTED 1
-            $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
-            $t
-        } else {
-            $script:headGap = $null
-            $t = New-Text "d$script:slotN-$id-h" $script:ixN $script:iyN $script:iwN 22 13 ($title + '  ' + [char]0x25BE) $script:MUTED 0
-            $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
-            $t
-        }
+        # Centred on the card's own top border, with a slice of background
+        # painted over the line behind it: the border appears to break for
+        # the title rather than the title floating inside a frame.
+        $lbl = $title + '  ' + [char]0x25BE
+        $wpx = 9 * $lbl.Length + 18
+        $cx = $script:xN + $script:wN / 2 - $wpx / 2
+        $gap = ThemePaint (New-Rect "d$script:slotN-$id-gap" $cx ($script:yN - 2) $wpx 5 $script:BG $null 0) 'Bg'
+        $gap.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
+        $script:headGap = $gap
+        $t = New-Text "d$script:slotN-$id-h" $cx ($script:yN - 9) $wpx 18 12 $lbl $script:MUTED 1
+        $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
+        $t
     }
+
     # The gap belongs with the title, but AddHead can only return one item,
     # so callers take it from here right after.
     function AddHeadGap {
@@ -707,8 +712,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # layout picker, the redline row opens the keypad. Both overlays
     # live on this screen too, so the flow never leaves the Drive tab.
     $vis = KeyVis 'CarFacts' $null
-    $items.Add((AddHead 'cf' 'CAR FACTS' 'CarFacts'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'cf' 'CAR FACTS' 'CarFacts'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $t = New-Text "d$slot-cf-car" $ix ($iy + 20) $iw 26 18 '' $script:WHITE 0 @{
         Text = BindJS 'Text' ('return ""+($prop("' + $P + '.CarName")||"No car")')
     } 'Bold'
@@ -716,9 +722,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Each fact sits on its own lightened sub-panel with a caption, the
     # value, and its action tile on the right, which is the Car facts
     # tab's layout at this size rather than a list of label/value rows.
-    $cfP1 = New-Rect "d$slot-cf-p1" $ix ($iy + 48) $iw 52 $script:SUBPANEL $null 5
+    $cfP1 = ThemePaint (New-Rect "d$slot-cf-p1" $ix ($iy + 48) $iw 52 $script:SUBPANEL $null 5) 'Sub'
     $cfP1.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($cfP1)
-    $cfP2 = New-Rect "d$slot-cf-p2" $ix ($iy + 106) $iw 52 $script:SUBPANEL $null 5
+    $cfP2 = ThemePaint (New-Rect "d$slot-cf-p2" $ix ($iy + 106) $iw 52 $script:SUBPANEL $null 5) 'Sub'
     $cfP2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($cfP2)
     # Engine: caption, value, CHANGE tile on the right, exactly as the tab
     # arranges it.
@@ -771,8 +777,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # the two toggles are full-width tiles that colour with their state,
     # exactly as the tab's PLUGIN and AUDIO HAPTICS tiles do.
     $vis = KeyVis 'Home' $null
-    $items.Add((AddHead 'hm' 'GAINS' 'Home'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'hm' 'GAINS' 'Home'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $half = ($iw - 8) / 2
     # Wheel state on the header row, as on the tab. It is the one thing
     # here that is not a gain, and the reason to glance at this box when
@@ -802,7 +809,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         # 74 tall rather than 66: the extra 8 goes under the caption row so
         # the ON/OFF pill has a gap beneath it instead of resting on the
         # steppers, and the panel still clears the bottom of the smallest box.
-        $pnl = New-Rect "d$slot-hm-$gid-p" $ix $gy $iw 74 $script:SUBPANEL $null 5
+        $pnl = ThemePaint (New-Rect "d$slot-hm-$gid-p" $ix $gy $iw 74 $script:SUBPANEL $null 5) 'Sub'
         $pnl.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($pnl)
         $t = New-Text "d$slot-hm-$gid-l" ($ix + 10) ($gy + 6) ($iw - 20) 14 10 $glabel $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
@@ -856,8 +863,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Same shape as the Presets tab: a lightened panel per scope, with its
     # caption, the bound preset, and a CHANGE tile that opens the picker.
     $vis = KeyVis 'Presets' $null
-    $items.Add((AddHead 'pr' 'PRESETS' 'Presets'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'pr' 'PRESETS' 'Presets'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $prRows = @(
         @('g', 'GAME PRESET', ($P + '.PresetName'),    'DashPresetOpenGame', '(manual tune)', 26),
         @('c', 'CAR PRESET',  ($P + '.CarPresetName'), 'DashPresetOpenCar',  '(none saved)',  92)
@@ -866,7 +874,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     foreach ($pr in $prRows) {
         $prid = $pr[0]; $prLabel = $pr[1]; $prProp = $pr[2]
         $prAct = $pr[3]; $prEmpty = $pr[4]; $prY = $iy + $pr[5]
-        $r = New-Rect "d$slot-pr-$prid-p" $ix $prY $iw 58 $script:SUBPANEL $null 5
+        $r = ThemePaint (New-Rect "d$slot-pr-$prid-p" $ix $prY $iw 58 $script:SUBPANEL $null 5) 'Sub'
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
         $t = New-Text "d$slot-pr-$prid-l" ($ix + 10) ($prY + 6) ($iw - 20) 16 10 $prLabel $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
@@ -983,8 +991,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # ---------------- TYRE WEAR (visual) -----------------------------
     # Same blocks; here the colour is how much tread is left.
     $vis = KeyVis 'TyreWear' $dWear
-    $items.Add((AddHead 'tw' 'TYRE WEAR' 'TyreWear'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'tw' 'TYRE WEAR' 'TyreWear'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $fzWear = @('WearFL', 'WearFR', 'WearRL', 'WearRR')
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
@@ -1010,8 +1019,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
 
     # ---------------- FUEL -------------------------------------------
     $vis = KeyVis 'Fuel' $dFuel
-    $items.Add((AddHead 'fu' 'FUEL' 'Fuel'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'fu' 'FUEL' 'Fuel'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     # Forza reports a tank fraction rather than litres, so the big number
     # is a percentage there and a level everywhere else.
     # Tank fraction, ours first. Drives both the readout and the bar, so
@@ -1029,7 +1039,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # A bar reads at a glance where a number has to be parsed, and it is the
     # cheapest way to fill a box that was two thirds empty.
     $fuBarY = $iy + 80
-    $r = New-Rect "d$slot-fu-bar-bg" $ix $fuBarY $iw 18 $script:SUBPANEL $null 5
+    $r = ThemePaint (New-Rect "d$slot-fu-bar-bg" $ix $fuBarY $iw 18 $script:SUBPANEL $null 5) 'Sub'
     $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
     $r = New-Rect "d$slot-fu-bar" $ix $fuBarY 2 18 $script:GREEN @{
         BackgroundColor = BindJS 'BackgroundColor' ($fuPct +
@@ -1047,8 +1057,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # two of these rows and only the delta ever needed a headline, so the
     # running lap joins it here: that number was the reason to keep both.
     $vis = KeyVis 'Delta' $dDelta
-    $items.Add((AddHead 'dl' 'LAP DELTA' 'Delta'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'dl' 'LAP DELTA' 'Delta'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $t = New-Text "d$slot-dl-v" $ix ($iy + 22) $iw 44 32 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"--":(v>0?"+":"")+v.toFixed(2)')
         TextColor = BindJS 'TextColor' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"' + $script:MUTED + '":(v>0?"' + $script:RED + '":"' + $script:GREEN + '")')
@@ -1074,8 +1085,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # accelerations the crash duck uses, so it works on every telemetry
     # source we support rather than only games with raw g properties.
     $vis = KeyVis 'GCircle' $dG
-    $items.Add((AddHead 'gc' 'G CIRCLE' 'GCircle'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'gc' 'G CIRCLE' 'GCircle'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $gr  = [math]::Min(($iw - 24) / 2, ($h - 66) / 2)
     $gcx = $ix + $iw / 2
     # Centre in the area below the header rather than hanging off the top
@@ -1115,8 +1127,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # up doing. Without it, the measured load against the hardest this car
     # has taken, which every game reporting accelerations can feed.
     $vis = KeyVis 'Friction' $dFric
-    $items.Add((AddHead 'fc' 'FRICTION CIRCLE' 'Friction'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'fc' 'FRICTION CIRCLE' 'Friction'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $items.Add((New-Ring "d$slot-fc-lim" $gcx $gcy $gr '#FF6B7280' 2 $vis))
     $items.Add((New-Ring "d$slot-fc-in" $gcx $gcy ($gr * 0.75) '#FF2A303A' 1 $vis))
     $uJs = 'var u=1*$prop("' + $P + '.Drive.Util");if(isNaN(u))u=0;if(u>1.3)u=1.3;'
@@ -1154,8 +1167,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # own row is tinted green instead: on a list where every row looks the
     # same, finding yourself is the one thing you do constantly.
     $vis = KeyVis 'Relative' $dOpp
-    $items.Add((AddHead 'rel' 'RELATIVE' 'Relative'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'rel' 'RELATIVE' 'Relative'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $relRows = @(
         @('DriverAhead_01', $script:MUTED), @('DriverAhead_00', $script:WHITE),
         @('__ME__', $script:GREEN),
@@ -1212,8 +1226,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     #   rim 40 m, mid ring 20 m, inner ring 8 m
     #   dots white far, yellow past the mid ring, red past the inner
     $vis = KeyVis 'Radar' $dOpp
-    $items.Add((AddHead 'rd' 'RADAR' 'Radar'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'rd' 'RADAR' 'Radar'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $rdSize = [math]::Min($iw, $h - 52)
     $rdCx = $ix + $iw / 2
     $rdCy = ($iy + 30 + $y + $h - 12) / 2
@@ -1286,8 +1301,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # carries the meaning rather than a caption claiming more precision
     # than the source has.
     $vis = KeyVis 'Damage' $dDmg
-    $items.Add((AddHead 'dm' 'DAMAGE' 'Damage'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'dm' 'DAMAGE' 'Damage'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $cw = 104.0; $ch = 150.0
     $cx = $ix + $iw / 2
     $cy = ($iy + 40 + $y + $h - 14) / 2
@@ -1354,8 +1370,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # a bare concatenation splits into extra elements and the JS body here
     # gets cut off at the first + (which is what silently froze these bars).
     $vis = KeyVis 'Inputs' $null
-    $items.Add((AddHead 'in' 'INPUTS' 'Inputs'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'in' 'INPUTS' 'Inputs'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     $barW = 38; $barGap = 14
     $barH = [math]::Max(60, $h - 118)
     $barY = $iy + 30
@@ -1374,7 +1391,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $pkey = $pedals[$pi][0]; $plabel = $pedals[$pi][1]
         $pcol = $pedals[$pi][2]; $pJs = $pedals[$pi][3]
         $px = $barX0 + $pi * ($barW + $barGap)
-        $trough = New-Rect "d$slot-in-$pkey-bg" $px $barY $barW $barH $script:SUBPANEL $null 5
+        $trough = ThemePaint (New-Rect "d$slot-in-$pkey-bg" $px $barY $barW $barH $script:SUBPANEL $null 5) 'Sub'
         $trough.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($trough)
         # Fill grows from the bottom, so Top moves as Height does.
@@ -1392,7 +1409,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $steerJs = 'var s=1*$prop("' + $P + '.Steer");'
     $steerHas = 'return (' + ($isKeyBase = $sel + '=="Inputs"' + $rowCond) + ') && (1*$prop("' + $P + '.Steer"))>-1.5'
     $stY = $barY + $barH + 26
-    $stTrough = New-Rect "d$slot-in-st-bg" $ix $stY $iw 10 $script:SUBPANEL $null 5
+    $stTrough = ThemePaint (New-Rect "d$slot-in-st-bg" $ix $stY $iw 10 $script:SUBPANEL $null 5) 'Sub'
     $stTrough.Bindings['Visible'] = BindJS 'Visible' $steerHas
     $items.Add($stTrough)
     $stTick = New-Rect "d$slot-in-st-tick" ($ix + $iw / 2 - 1) ($stY - 3) 2 16 '#FF39404C' $null 0
@@ -1413,8 +1430,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # The force line reddens on a clip exactly as the full screen does.
     # Sampled every other ring column so a box costs about half.
     $vis = KeyVis 'Scope' $null
-    $items.Add((AddHead 'sc' 'VISUALIZER' 'Scope'))
-    $g = AddHeadGap; if ($g) { $items.Add($g) }
+    $hd = AddHead 'sc' 'VISUALIZER' 'Scope'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
+    $items.Add($hd)
     # CLIP and SPIKE badges, same contract as the full screen: grey at
     # rest, with a coloured layer and light text crossfading in on the
     # plugin-computed glow (1 at the event, decaying to 0).
@@ -1454,7 +1472,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Each lane sits on its own lightened panel over the darker card, the
     # same figure-on-ground the full screen uses. Without it the two
     # traces float on one flat background and read as a single lane.
-    $p1 = New-Rect "d$slot-sc-p1" $ix $l1y $iw $scLane $script:SUBPANEL $null 4
+    $p1 = ThemePaint (New-Rect "d$slot-sc-p1" $ix $l1y $iw $scLane $script:SUBPANEL $null 4) 'Sub'
     $p1.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($p1)
     $z1 = New-Rect "d$slot-sc-z1" $ix $l1mid $iw 2 $script:SCOPE_GRID $null 0
@@ -1486,7 +1504,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # --- lower lane: the Trueforce haptic envelope, as columns ---
     $l2y = $scTop + $scLane + 16
     $l2mid = $l2y + $scLane / 2
-    $p2 = New-Rect "d$slot-sc-p2" $ix $l2y $iw $scLane $script:SUBPANEL $null 4
+    $p2 = ThemePaint (New-Rect "d$slot-sc-p2" $ix $l2y $iw $scLane $script:SUBPANEL $null 4) 'Sub'
     $p2.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($p2)
     $z2 = New-Rect "d$slot-sc-z2" $ix $l2mid $iw 2 $script:SCOPE_GRID $null 0
@@ -1613,20 +1631,19 @@ function TabBar([string]$P) {
         $widthJs = 'var n=' + $countJs + ';if(n<1)n=7;return (784/n)-4'
         # Outlined like everything else in the outline skin, with the active tab
         # carrying the fill instead of being the only filled thing.
-        $tabOff = if ($OUTLINE) { $script:CLEAR } else { $TILE }
-        $bg = New-Rect "tab$i-bg" $x 446 127 32 $tabOff @{
-            BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $slot + '.Active")?"' + $TILEON + '":"' + $tabOff + '"')
+        $bg = New-Rect "tab$i-bg" $x 446 127 32 $script:PANEL @{
+            BackgroundColor = BindJS 'BackgroundColor' (
+                'return $prop("' + $slot + '.Active")?(""+$prop("' + $script:TH + 'TileOn")):(""+$prop("' + $script:TH + 'Card"))')
             Left  = BindJS 'Left'  $leftJs
             Width = BindJS 'Width' $widthJs
         } 4
-        if ($OUTLINE) {
-            $bg.BorderStyle.BorderColor = $script:CARD_EDGE
-            $bg.BorderColor = $script:CARD_EDGE
-            foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
-                $bg.BorderStyle."Border$sd" = 1
-                $bg."Border$sd" = 1
-            }
+        $bg.BorderStyle.BorderColor = $script:CARD_EDGE
+        $bg.BorderColor = $script:CARD_EDGE
+        foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+            $bg.BorderStyle."Border$sd" = 1
+            $bg."Border$sd" = 1
         }
+        $bg.Bindings['BorderColor'] = ThemeBind 'BorderColor' 'CardEdge'
         $bg.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($bg)
         $t = New-Text "tab$i-t" $x 446 127 32 13 '' $MUTED 1 @{
@@ -2670,6 +2687,8 @@ function Hide-ButtonsUnderOverlay($items) {
 }
 
 function New-Screen([string]$name, $items, [int]$tabIndex) {
+    # Inserted at the FRONT so it sits under everything on the screen.
+    $items = @((ThemePaint (New-Rect ('bg-' + $tabIndex) 0 0 800 480 $script:BG $null 0) 'Bg')) + @($items)
     [ordered]@{
         Name = $name; InGameScreen = $true; IdleScreen = $true; PitScreen = $false
         ScreenId = [guid]::NewGuid().ToString()

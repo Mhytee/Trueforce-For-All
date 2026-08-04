@@ -2997,20 +2997,21 @@
                          the top because it is how you first get the dash onto a device,
                          not a preference. Tabs opens by default as the one people come
                          here for; the rest stay shut until wanted. -->
-                            Style="{StaticResource PopoverPrimaryButton}"
-                            HorizontalAlignment="Left" Height="26"
-                            Click="DashPhoneAccess_Click"
-                            ToolTip="Shows a QR code and link that open TF4ALL Dash on your phone."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="Control effects, gains, and presets from your phone or tablet while driving. No SimHub setup needed: scan the QR code and the dash opens in your phone's browser."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="Theme" VerticalAlignment="Center" Width="52"/>
+                        <ComboBox x:Name="RemoteDashThemeCombo" Width="140"
+                                  SelectionChanged="RemoteDashTheme_Changed"
+                                  ToolTip="Repaints the dashboard live. Themes change the structural colours only: the greens and reds that mean something keep their meaning."/>
+                    </StackPanel>
 
-                    <TextBlock Text="Rev light direction:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
-                    <RadioButton x:Name="RemoteRevLtrRadio" GroupName="RemoteRevDir" Content="Left to right"
-                                 Checked="RemoteRevDirection_Changed"
-                                 ToolTip="The rev strip fills from the left edge toward the right as revs climb."/>
-                    <RadioButton x:Name="RemoteRevOutsideInRadio" GroupName="RemoteRevDir" Content="Outside in"
-                                 Margin="0,4,0,0" Checked="RemoteRevDirection_Changed"
-                                 ToolTip="The rev strip lights from both ends toward the center as revs climb, like center-converge shift lights."/>
+                    <!-- Phone-access funnel: same handler as the header phone
+                    button; the QR dialog itself carries the scan / same
+                    network / Add to Home Screen guidance. -->
+                    <Button x:Name="DashPhoneSettingsButton" Content="Open on your phone or tablet…"
+                    Style="{StaticResource PopoverPrimaryButton}"
+                    HorizontalAlignment="Left" Height="26"
+                    Click="DashPhoneAccess_Click"
+                    ToolTip="Shows a QR code and link that open TF4ALL Dash on your phone."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="Applies to the rev LED strip on the TF4ALL Dash dashboard. The strip scales to the current car's redline and flashes in step with the wheel's rev lights; direction changes apply instantly, no dashboard reload needed."/>
 

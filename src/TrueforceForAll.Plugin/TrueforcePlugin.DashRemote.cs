@@ -313,6 +313,59 @@ namespace TrueforceForAll.Plugin
                 .UtilizationFloor(_dashModelGripEma / peakDiv);
         }
 
+        // ---------- themes ----------
+        // A theme is a PALETTE, not a layout: the dashboard binds its
+        // structural colours to these, so switching one repaints every
+        // screen live with no reload. Semantic colours (green for good, red
+        // for trouble) are deliberately NOT themed, because a theme that
+        // can turn a warning green is a theme that can lie.
+        //
+        // Adding one is a row here plus a row in DashThemeNames. Nothing in
+        // the dashboard generator needs to know it exists.
+        internal sealed class DashTheme
+        {
+            public string Name, Bg, Card, CardEdge, Sub, Btn, BtnEdge, Tile, TileOn, Text, Muted;
+        }
+
+        internal static readonly DashTheme[] DashThemes =
+        {
+            new DashTheme {
+                Name = "Midnight", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FF4E5668",
+                Sub = "#FF0E0E10", Btn = "#FF1C1C20", BtnEdge = "#FF3A4150",
+                Tile = "#FF141414", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7" },
+            new DashTheme {
+                Name = "Slate", Bg = "#FF101216", Card = "#FF1B1F27", CardEdge = "#00FFFFFF",
+                Sub = "#FF232936", Btn = "#FF232936", BtnEdge = "#00FFFFFF",
+                Tile = "#FF232936", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7" },
+            new DashTheme {
+                Name = "Carbon", Bg = "#FF0A0B0D", Card = "#FF141619", CardEdge = "#FF2A2E36",
+                Sub = "#FF101216", Btn = "#FF1E222A", BtnEdge = "#FF343A45",
+                Tile = "#FF1E222A", TileOn = "#FF23503A", Text = "#FFEDEFF3", Muted = "#FF858C99" },
+            new DashTheme {
+                Name = "Blueprint", Bg = "#FF06121F", Card = "#00FFFFFF", CardEdge = "#FF2C6E9B",
+                Sub = "#FF091A2B", Btn = "#FF0D2438", BtnEdge = "#FF2C6E9B",
+                Tile = "#FF0D2438", TileOn = "#FF14503F", Text = "#FFDCEBF7", Muted = "#FF7FA6C4" },
+        };
+
+        internal static string[] DashThemeNames()
+        {
+            var n = new string[DashThemes.Length];
+            for (int i = 0; i < DashThemes.Length; i++) n[i] = DashThemes[i].Name;
+            return n;
+        }
+
+        /// <summary>The selected theme, or the first one when the stored name
+        /// is unknown: a dashboard with no palette is an unreadable dashboard,
+        /// so this never returns null.</summary>
+        internal DashTheme ActiveDashTheme()
+        {
+            string want = Settings?.DashTheme;
+            if (!string.IsNullOrEmpty(want))
+                foreach (var t in DashThemes)
+                    if (string.Equals(t.Name, want, StringComparison.OrdinalIgnoreCase)) return t;
+            return DashThemes[0];
+        }
+
         // ---------- radar ----------
         // Opponents carry RelativeCoordinatesToPlayer, a PointF already in
         // the player's own frame, and a length in metres. SimHub's own
@@ -1159,6 +1212,18 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
             this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
+
+            // Structural colours the dashboard paints itself with.
+            this.AttachDelegate("Dash.Theme.Bg",       () => ActiveDashTheme().Bg);
+            this.AttachDelegate("Dash.Theme.Card",     () => ActiveDashTheme().Card);
+            this.AttachDelegate("Dash.Theme.CardEdge", () => ActiveDashTheme().CardEdge);
+            this.AttachDelegate("Dash.Theme.Sub",      () => ActiveDashTheme().Sub);
+            this.AttachDelegate("Dash.Theme.Btn",      () => ActiveDashTheme().Btn);
+            this.AttachDelegate("Dash.Theme.BtnEdge",  () => ActiveDashTheme().BtnEdge);
+            this.AttachDelegate("Dash.Theme.Tile",     () => ActiveDashTheme().Tile);
+            this.AttachDelegate("Dash.Theme.TileOn",   () => ActiveDashTheme().TileOn);
+            this.AttachDelegate("Dash.Theme.Text",     () => ActiveDashTheme().Text);
+            this.AttachDelegate("Dash.Theme.Muted",    () => ActiveDashTheme().Muted);
             // A 0..1 phase over 1.2 s, for anything that should pulse. Derived
             // here rather than in the dash so every connected screen pulses
             // together, the same reason the rev flash is plugin side.
