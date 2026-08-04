@@ -126,15 +126,19 @@ namespace TrueforceForAll.Plugin
         // model is thin anyway. A relative (drivers ahead / behind) box is the
         // obvious next option: PersistantTrackerPlugin.DriverAhead_NN_* and
         // DriverBehind_NN_* carry it without the obsolete leaderboard item.
+        // Sorted by LABEL, with Empty pinned last: it is the absence of a
+        // choice rather than one of them, so it does not belong in the E's.
+        // Keys and labels are index-matched, and the on-dash picker indexes
+        // a tile straight into these, so all three lists move together.
         internal static readonly string[] DashDriveContentKeys =
-            { "CarFacts", "TyreTemps", "TyreWear", "Fuel", "Delta", "Scope",
-              "Home", "Presets", "GCircle", "Friction", "Relative", "Radar", "Inputs",
-              "Damage", "None" };
+            { "CarFacts", "Damage", "Friction", "Fuel", "GCircle", "Home",
+              "Inputs", "Delta", "Presets", "Radar", "Relative",
+              "TyreTemps", "TyreWear", "Scope", "None" };
         // Friendly labels for the Settings-tab pickers, index-matched above.
         internal static readonly string[] DashDriveContentLabels =
-            { "Car facts", "Tyre temps", "Tyre wear", "Fuel", "Lap delta + times", "Visualizer",
-              "Gains", "Presets", "G circle", "Friction circle", "Relative", "Radar", "Inputs",
-              "Damage", "Empty" };
+            { "Car facts", "Damage", "Friction circle", "Fuel", "G circle",
+              "Gains", "Inputs", "Lap delta + times", "Presets", "Radar",
+              "Relative", "Tyre temps", "Tyre wear", "Visualizer", "Empty" };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.

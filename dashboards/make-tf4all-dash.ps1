@@ -1828,9 +1828,9 @@ function DriveBoxOverlay([string]$P) {
     } 'Bold') 'drivebox'))
     # Index-matched with DashDriveContentKeys: the plugin indexes a tile
     # straight into that array, so these must stay in the same order.
-    $labels = @('Car facts', 'Tyre temps', 'Tyre wear', 'Fuel', 'Lap delta + times',
-                'Visualizer', 'Gains', 'Presets', 'G circle', 'Friction circle', 'Relative',
-                'Radar', 'Inputs', 'Damage', 'Empty')
+    $labels = @('Car facts', 'Damage', 'Friction circle', 'Fuel', 'G circle', 'Gains',
+                'Inputs', 'Lap delta + times', 'Presets', 'Radar', 'Relative',
+                'Tyre temps', 'Tyre wear', 'Visualizer', 'Empty')
     $cols = 4; $tw = 176; $th = 62; $gx = 12; $gy = 12
     $x0 = (800 - ($cols * $tw + ($cols - 1) * $gx)) / 2
     $y0 = 58
