@@ -629,10 +629,14 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $panel.Bindings['Visible'] = BindJS 'Visible' ('return ' + $sel + '!="None"' + $rowCond)
     $items.Add($panel)
 
-    # One tap zone per BOX, over the header's left half, whatever the box
-    # currently shows. An empty box gets one too, which is the only way to
-    # fill it again from the dash.
-    $headBtn = New-Button "d$slot-head" $ix $iy ($iw * 0.55) 24 ("DashDriveBoxOpen$slot")
+    # One tap zone per BOX, on the title itself. The title moved onto the
+    # card's top border, so a zone still sitting inside the card is a zone
+    # under the thing it belongs to. Fixed width and centred rather than
+    # measured, because the button is built before the title exists and its
+    # width depends on the title's length; 220 covers every label we use
+    # and still leaves a gap to the next card.
+    $hbW = [math]::Min(220, $w - 40)
+    $headBtn = New-Button "d$slot-head" ($x + $w / 2 - $hbW / 2) ($y - 12) $hbW 26 ("DashDriveBoxOpen$slot")
     $headBtn.Bindings['Visible'] = BindJS 'Visible' ('return 1' + $rowCond)
     $items.Add($headBtn)
     # An empty box would otherwise be an invisible panel with no way back.
@@ -919,8 +923,11 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # degree suffix, and a bare number in the wrong unit is worse than none.
     $ttHead = AddHead 'tt' 'TYRE TEMPS' 'TyreTemps'
     $g = AddHeadGap; if ($g) { $items.Add($g) }
+    # Binding the text replaces the static title, caret included, so this
+    # has to put it back: without it this is the one box whose header does
+    # not look tappable.
     $ttHead.Bindings['Text'] = BindJS 'Text' ($tempUnitJs +
-        'return "TYRE TEMPS  "+(uF?"°F":"°C")')
+        'return "TYRE TEMPS "+(uF?"°F":"°C")+"  ' + [char]0x25BE + '"')
     $items.Add($ttHead)
     $tyreProps = @('TyreTemperatureFrontLeft', 'TyreTemperatureFrontRight', 'TyreTemperatureRearLeft', 'TyreTemperatureRearRight')
     $wearProps = @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight')

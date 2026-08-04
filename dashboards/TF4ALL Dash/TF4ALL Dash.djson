@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "4be7d8f6-6abc-4f33-9e21-ed9e6e5fb9e0",
+    "Id":  "2b90b411-7f46-4539-92b3-7fc01178cf03",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "614b47d2-add0-44df-9a12-0676f78c71fb",
+                        "ScreenId":  "0729bb2f-8bfb-4227-9cac-bfb4d99be376",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -9329,7 +9329,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "721cb84f-e090-4c59-80a6-b6a25523d42f",
+                        "ScreenId":  "f8da1afe-5f2a-4a71-8e5b-630c0d4a6f56",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -21813,7 +21813,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "e295faa1-3414-4251-88be-97f10577482b",
+                        "ScreenId":  "53280b53-c4be-47d4-ac9d-1374a119e1c0",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -36301,7 +36301,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "dd7cdf94-ec6d-4e35-b509-f073bc722051",
+                        "ScreenId":  "9b276336-d4bf-4719-b8a6-886a9f6552f7",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44778,7 +44778,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "461204f2-3df8-4134-990c-c22f85aa32f7",
+                        "ScreenId":  "4ce05c26-2cb1-4df8-8030-771a6526fac1",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -59770,7 +59770,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "2101d53a-d8bb-4d73-bb7a-a026099f17a6",
+                        "ScreenId":  "b9f3619d-2b64-499e-8362-633ceeae3574",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -71461,7 +71461,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "247390a1-b7da-4b8d-b84d-b8b17a9b6688",
+                        "ScreenId":  "b4e074d3-da27-41a4-82b1-53cd7fb75f0a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -72137,11 +72137,11 @@
                                           "Image":  "None",
                                           "AutoSize":  false,
                                           "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  24,
-                                          "Left":  24,
-                                          "Top":  26,
+                                          "Height":  26,
+                                          "Left":  41,
+                                          "Top":  4,
                                           "Visible":  true,
-                                          "Width":  139.70000000000002,
+                                          "Width":  220,
                                           "Name":  "d0-head",
                                           "Bindings":  {
                                                            "Visible":  {
@@ -74791,7 +74791,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS  \"+(uF?\"°F\":\"°C\")"
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -85587,11 +85587,11 @@
                                           "Image":  "None",
                                           "AutoSize":  false,
                                           "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  24,
-                                          "Left":  522,
-                                          "Top":  26,
+                                          "Height":  26,
+                                          "Left":  539,
+                                          "Top":  4,
                                           "Visible":  true,
-                                          "Width":  139.70000000000002,
+                                          "Width":  220,
                                           "Name":  "d1-head",
                                           "Bindings":  {
                                                            "Visible":  {
@@ -88241,7 +88241,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS  \"+(uF?\"°F\":\"°C\")"
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -99053,11 +99053,11 @@
                                           "Image":  "None",
                                           "AutoSize":  false,
                                           "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  24,
-                                          "Left":  24,
-                                          "Top":  238,
+                                          "Height":  26,
+                                          "Left":  41,
+                                          "Top":  216,
                                           "Visible":  true,
-                                          "Width":  139.70000000000002,
+                                          "Width":  220,
                                           "Name":  "d2-head",
                                           "Bindings":  {
                                                            "Visible":  {
@@ -99071,7 +99071,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?238:26"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?216:4"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -102211,7 +102211,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS  \"+(uF?\"°F\":\"°C\")"
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -114985,11 +114985,11 @@
                                           "Image":  "None",
                                           "AutoSize":  false,
                                           "BackgroundColor":  "#00FFFFFF",
-                                          "Height":  24,
-                                          "Left":  522,
-                                          "Top":  238,
+                                          "Height":  26,
+                                          "Left":  539,
+                                          "Top":  216,
                                           "Visible":  true,
-                                          "Width":  139.70000000000002,
+                                          "Width":  220,
                                           "Name":  "d3-head",
                                           "Bindings":  {
                                                            "Visible":  {
@@ -115003,7 +115003,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?238:26"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?216:4"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -118143,7 +118143,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS  \"+(uF?\"°F\":\"°C\")"
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
