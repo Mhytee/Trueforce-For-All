@@ -6377,8 +6377,8 @@ namespace TrueforceForAll.Plugin
                     RemoteDashPedalsCheck.IsChecked = _plugin.Settings?.DashDrivePedals != false;
                 if (RemoteDashRevCenteredCheck != null)
                     RemoteDashRevCenteredCheck.IsChecked = _plugin.Settings?.DashRevStripCentered == true;
-                bool twoRows = _plugin.Settings?.DashDriveTwoRows != false;
-                if (RemoteDashDriveTwoRowsRadio != null) RemoteDashDriveTwoRowsRadio.IsChecked = twoRows;
+                if (RemoteDashSpotterCheck != null)
+                    RemoteDashSpotterCheck.IsChecked = _plugin.Settings?.DashSpotterEnabled != false;
                 if (RemoteDashIdleCheck != null)
                     RemoteDashIdleCheck.IsChecked = _plugin.Settings?.DashIdleEnabled != false;
                 if (RemoteDashIdleDelayBox != null)
@@ -6434,12 +6434,17 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private void RemoteDashFlags_Changed(object sender, RoutedEventArgs e)
+        private void RemoteDashSpotter_Changed(object sender, RoutedEventArgs e)
         {
         // ---------------- idle card ----------------
         // Style and colour are fixed lists rather than free text: both feed a
         // dash formula, and a typo there fails silently as a blank card.
         private static readonly string[] IdleStyleKeys   = { "Aurora", "Pulse", "Streaks", "Plain" };
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashSpotterEnabled = RemoteDashSpotterCheck?.IsChecked == true;
+            PersistIdle();
+        }
+
         private static readonly string[] IdleStyleLabels = { "Aurora", "Pulse", "Streaks", "Plain" };
         private static readonly string[] IdleColorHex =
             { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };

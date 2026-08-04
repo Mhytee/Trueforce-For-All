@@ -3079,6 +3079,12 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="When the car has been standing still, the dash shows an ambient card with your name and number over whatever tab is open. Anything that looks like driving clears it, and there is an Exit button on the card itself."/>
                     <CheckBox x:Name="RemoteDashIdleCheck" Content="Show the idle card when parked" Margin="0,8,0,0"
+                    <CheckBox x:Name="RemoteDashSpotterCheck" Content="Show the spotter when a car is alongside" Margin="0,8,0,0"
+                              Checked="RemoteDashSpotter_Changed" Unchecked="RemoteDashSpotter_Changed"
+                              ToolTip="A bar down the edge of whichever tab is open while a car is beside you on that side."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="SimHub works this out from the other cars in the session, so like the flags it only lights up in games that report car positions and simply never appears in the ones that do not."/>
+
                               Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                         <TextBlock Text="Appears after" VerticalAlignment="Center" Width="94"/>

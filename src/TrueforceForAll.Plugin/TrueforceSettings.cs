@@ -461,6 +461,13 @@ namespace TrueforceForAll.Plugin
         // the same three in a card.
         public bool DashDrivePedals { get; set; } = true;
 
+        // TF4ALL Dash spotter: a bar down the edge of whichever tab is open
+        // when a car is alongside on that side. SimHub works this out from
+        // the session's opponents, so it lights in games that report car
+        // positions and simply never appears in the ones that do not, the
+        // Forza titles included.
+        public bool DashSpotterEnabled { get; set; } = true;
+
         // TF4ALL Dash idle mode: a full-screen card over whatever tab is open
         // once the car has been sitting still, showing an ambient animation,
         // the driver's name and number, and the plugin's own status. Drawn as

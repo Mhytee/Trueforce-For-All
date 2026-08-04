@@ -54,6 +54,7 @@ namespace TrueforceForAll.Plugin
             "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
             "DashDriveSlots", "DashDriveTwoRows", "DashFlagsEnabled",
             "DashRevStripCentered", "DashDrivePedals",
+            "DashSpotterEnabled",
             "DashIdleEnabled", "DashIdleDelaySeconds", "DashIdleStyle",
             "DashIdleDriverName", "DashIdleNumber", "DashIdleColor",
             "DashTabOrder", "DashTabsDisabled",

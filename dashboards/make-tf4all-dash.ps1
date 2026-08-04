@@ -1457,6 +1457,33 @@ function IdleCard([string]$P) {
     $items
 }
 
+# Spotter: a bar down the edge of the screen while a car is alongside on
+# that side, on every tab, because it is a safety cue and which tab you
+# happen to be looking at has nothing to do with it. SimHub derives the
+# flags from the session's opponents, so this stays dark in titles that
+# report no car positions rather than pretending the road is clear.
+# Sits between the rev strip and the tab bar so it covers neither.
+function SpotterBars([string]$P) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $on = '$prop("' + $P + '.SpotterOn")'
+    foreach ($sd in @(@('l', 0, 'SpotterCarLeft'), @('r', 792, 'SpotterCarRight'))) {
+        $sk = $sd[0]; $sx = $sd[1]; $sp = $sd[2]
+        $vis = 'return ' + $on + ' && $prop("' + $sp + '")'
+        # A soft outer wash first, then the hard edge over it, so it reads
+        # as light spilling in rather than a stripe stuck to the border.
+        # No ternary in PowerShell 5.1: if/else assignment instead.
+        $gx = if ($sk -eq 'l') { 0 } else { 770 }
+        $w = New-Rect "spot-$sk-glow" $gx 16 30 424 '#FFE8A33D' $null 0
+        $w.Opacity = 14.0
+        $w.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($w)
+        $b = New-Rect "spot-$sk" $sx 16 8 424 '#FFE8A33D' $null 0
+        $b.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($b)
+    }
+    $items
+}
+
 function FlagBar([string]$P) {
     $F = 'DataCorePlugin.GameData.NewData.Flag_'
     $any = '$prop("' + $P + '.FlagsOn") && (' +
@@ -1616,6 +1643,7 @@ $s1.Add((New-Button 'aud-btn' 408 372 376 66 'DashFxAudioToggle'))
 
 TabBar $P | ForEach-Object { $s1.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
+SpotterBars $P | ForEach-Object { $s1.Add($_) }
 FlagBar $P | ForEach-Object { $s1.Add($_) }
 IdleCard $P | ForEach-Object { $s1.Add($_) }
 ToastBar $P | ForEach-Object { $s1.Add($_) }
@@ -1718,6 +1746,7 @@ EngineLayoutOverlay $P | ForEach-Object { $s2.Add($_) }
 TabBar $P | ForEach-Object { $s2.Add($_) }
 # ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----
 KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
+SpotterBars $P | ForEach-Object { $s2.Add($_) }
 FlagBar $P | ForEach-Object { $s2.Add($_) }
 IdleCard $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
@@ -1823,6 +1852,7 @@ $s3.Add((OnOverlay (New-Button 'ss-both' 220 248 360 64 'DashTuneSaveBoth') 'sav
 $s3.Add((OnOverlay (New-Rect 'ss-cancel-bg' 220 372 360 44 $TILE) 'savescope'))
 $s3.Add((OnOverlay (New-Text 'ss-cancel-t' 220 372 360 44 15 'CANCEL' $RED 1 $null 'Bold') 'savescope'))
 $s3.Add((OnOverlay (New-Button 'ss-cancel' 220 372 360 44 'DashTuneSaveCancel') 'savescope'))
+SpotterBars $P | ForEach-Object { $s3.Add($_) }
 FlagBar $P | ForEach-Object { $s3.Add($_) }
 IdleCard $P | ForEach-Object { $s3.Add($_) }
 ToastBar $P | ForEach-Object { $s3.Add($_) }
@@ -1858,6 +1888,7 @@ $s4.Add((New-Button 'pr-carp-btn' 648 260 120 84 'DashPresetOpenCar'))
 
 TabBar $P | ForEach-Object { $s4.Add($_) }
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
+SpotterBars $P | ForEach-Object { $s4.Add($_) }
 FlagBar $P | ForEach-Object { $s4.Add($_) }
 IdleCard $P | ForEach-Object { $s4.Add($_) }
 ToastBar $P | ForEach-Object { $s4.Add($_) }
@@ -1964,6 +1995,7 @@ for ($i = 0; $i -lt 78; $i++) {
 $s5.Add((New-Text 'sc-hint' 16 428 768 16 12 'Scrolls left, about 2.5 seconds of history. Red = FFB clipping. Yellow = spike reduction.' $GRAY 0))
 
 TabBar $P | ForEach-Object { $s5.Add($_) }
+SpotterBars $P | ForEach-Object { $s5.Add($_) }
 FlagBar $P | ForEach-Object { $s5.Add($_) }
 IdleCard $P | ForEach-Object { $s5.Add($_) }
 ToastBar $P | ForEach-Object { $s5.Add($_) }
@@ -2050,6 +2082,7 @@ $s6.Add($mbNote2)
 
 TabBar $P | ForEach-Object { $s6.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s6.Add($_) }
+SpotterBars $P | ForEach-Object { $s6.Add($_) }
 FlagBar $P | ForEach-Object { $s6.Add($_) }
 IdleCard $P | ForEach-Object { $s6.Add($_) }
 ToastBar $P | ForEach-Object { $s6.Add($_) }
@@ -2172,6 +2205,7 @@ TabBar $P | ForEach-Object { $s7.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s7.Add($_) }
 EngineLayoutOverlay $P | ForEach-Object { $s7.Add($_) }
 PresetOverlay $P | ForEach-Object { $s7.Add($_) }
+SpotterBars $P | ForEach-Object { $s7.Add($_) }
 FlagBar $P | ForEach-Object { $s7.Add($_) }
 IdleCard $P | ForEach-Object { $s7.Add($_) }
 ToastBar $P | ForEach-Object { $s7.Add($_) }

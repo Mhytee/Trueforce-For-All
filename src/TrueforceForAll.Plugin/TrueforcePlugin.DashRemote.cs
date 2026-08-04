@@ -1046,6 +1046,7 @@ namespace TrueforceForAll.Plugin
             // works on any telemetry source we support.
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
+            this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
 
             // ---------- idle mode ----------
             this.AttachDelegate("Dash.Idle.On",     () => DashIdleActive());
