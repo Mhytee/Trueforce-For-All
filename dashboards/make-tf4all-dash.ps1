@@ -1114,9 +1114,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $dxJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'X"))'
         $dyJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'Y"))'
         $dlJs = 'var l=1*$prop("' + $P + '.Radar.D' + $i + 'L");'
-        # Car-shaped, not a blob: at 40 m across roughly 160 px the scale is
-        # about 4 px per metre, so 9 by 18 is very nearly a real car seen
-        # from above, and the radar reads as traffic rather than dots.
+        # Car-shaped, not a blob, matching what SimHub's own radar drew.
         $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 4.5) ($rdCy - 9) 9 18 $script:WHITE @{
             BackgroundColor = BindJS 'BackgroundColor' ($dlJs +
                 'return l>2?"' + $script:RED + '":(l>1?"#FFE8C547":"' + $script:WHITE + '")')
@@ -1130,7 +1128,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
 
     # You, in green, pointing up. Green because you are the one car on here
     # that is never the hazard.
-    $r = New-Rect "d$slot-rd-me" ($rdCx - 4.5) ($rdCy - 9) 9 18 $script:GREEN $null 3
+    # Left at the size it always was: this marker was already right, and
+    # only the opponents needed to stop being round.
+    $r = New-Rect "d$slot-rd-me" ($rdCx - 4) ($rdCy - 7) 8 14 $script:GREEN $null 3
     $r.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($r)
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))

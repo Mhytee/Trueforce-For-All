@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "46dfaff2-bfdc-4842-8f61-5d15aad18458",
+    "Id":  "f5e9edd8-a4b1-4bda-8f7e-8d994a03945a",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "67b62b2e-55c2-4142-a2f4-4bf012e0aae1",
+                        "ScreenId":  "e73fe77f-d87e-48ca-83fa-fa3576c6a924",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -7589,7 +7589,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "41556898-6acd-477d-b585-1d93ba7e071b",
+                        "ScreenId":  "059189f7-bd82-4047-99fc-dfda59964c57",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -18333,7 +18333,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "95c4a74a-f665-4247-9887-47a93ffb453f",
+                        "ScreenId":  "19fc7cf2-2b96-4a8b-9a6f-3a515c79e581",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -31111,7 +31111,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "37d71bc6-132a-43a7-b66b-7153450123db",
+                        "ScreenId":  "7231db32-f71c-4e2a-9f29-47c918e6bca1",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -37864,7 +37864,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "fbacdcf2-7bf5-47d7-a94e-925d558d1a16",
+                        "ScreenId":  "a46ea3db-b5ab-4f6c-868e-b7ac70b7693e",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -51132,7 +51132,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f91e1e3c-9f12-4b55-8aeb-9eb4f47424ea",
+                        "ScreenId":  "dd772434-845d-4e2f-a2d8-23106a030ae7",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -61113,7 +61113,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7c99192c-3589-4213-9295-102d7caf0e05",
+                        "ScreenId":  "88645652-d04d-4e8e-8be4-f92063b2ca54",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -68264,12 +68264,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -80402,12 +80402,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -94260,12 +94260,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -94287,7 +94287,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?339:233"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?341:235"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108672,12 +108672,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108699,7 +108699,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?339:233"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?341:235"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
