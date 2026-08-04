@@ -306,24 +306,27 @@ namespace TrueforceForAll.Plugin
         // the player's own frame, and a length in metres. SimHub's own
         // SpotterCarLeft/Right is a bare yes or no with no distance in it,
         // which cannot say HOW close, so the geometry is worth the walk.
-        //
-        // Alongside means beside, not merely near: a car is only counted on
-        // a side when its bearing is within 45 degrees of that side, so
-        // something dead ahead never lights a door.
-        private const float SpotterAmberM = 12f;
-        private const float SpotterRedM   = 5f;
-        private volatile int _spotterLeft;
-        private volatile int _spotterRight;
+        internal const int   SpotterCars   = 4;
+        private  const float SpotterAmberM = 12f;
+        private  const float SpotterRedM   = 5f;
 
-        /// <summary>Nearest car to each side, graded 0 clear, 1 close, 2 very
-        /// close. Called from DataUpdate; costs one walk of a list SimHub has
-        /// already built and stops at once when nobody is out there.</summary>
+        // Bearing in degrees clockwise from straight ahead, and 0/1/2 for
+        // clear, close, very close. Parked at level 0 when unused.
+        private volatile float[] _spotterBearing = new float[SpotterCars];
+        private volatile int[]   _spotterLevel   = new int[SpotterCars];
+
+        /// <summary>Nearest few cars, by bearing and how close. Called from
+        /// DataUpdate; one walk of a list SimHub has already built, and it
+        /// stops at once when there is nobody out there. Nearest first, so
+        /// the closest car always gets drawn even in heavy traffic.</summary>
         private void DashUpdateSpotter(GameReaderCommon.GameData data)
         {
-            int l = 0, r = 0;
+            var bear = new float[SpotterCars];
+            var lvl = new int[SpotterCars];
             var opps = data?.NewData?.Opponents;
             if (opps != null && opps.Count > 0)
             {
+                var near = new List<KeyValuePair<double, float>>(SpotterCars + 4);
                 foreach (var o in opps)
                 {
                     if (o == null || o.IsPlayer || !o.IsConnected) continue;
@@ -335,16 +338,21 @@ namespace TrueforceForAll.Plugin
                     double d = o.RelativeVectorLengthToPlayer;
                     if (d <= 0 || double.IsNaN(d)) d = Math.Sqrt(rx * rx + ry * ry);
                     if (d > SpotterAmberM) continue;
-                    // |lateral| must beat |longitudinal| for this to be a car
-                    // beside you rather than one you are about to run into.
-                    if (Math.Abs(rx) < Math.Abs(ry)) continue;
-                    int lvl = d <= SpotterRedM ? 2 : 1;
-                    if (rx < 0) { if (lvl > l) l = lvl; }
-                    else        { if (lvl > r) r = lvl; }
+                    // atan2(lateral, ahead): 0 dead ahead, growing clockwise,
+                    // which is what a rotation in degrees wants.
+                    double b = Math.Atan2(rx, -ry) * (180.0 / Math.PI);
+                    if (double.IsNaN(b)) continue;
+                    near.Add(new KeyValuePair<double, float>(d, (float)b));
+                }
+                near.Sort((a, b2) => a.Key.CompareTo(b2.Key));
+                for (int i = 0; i < near.Count && i < SpotterCars; i++)
+                {
+                    bear[i] = near[i].Value;
+                    lvl[i] = near[i].Key <= SpotterRedM ? 2 : 1;
                 }
             }
-            _spotterLeft = l;
-            _spotterRight = r;
+            _spotterBearing = bear;
+            _spotterLevel = lvl;
         }
 
         // Idle mode: how long the car has been stopped, and whether the user
@@ -1093,8 +1101,18 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
             this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
-            this.AttachDelegate("Dash.Spotter.Left",  () => _spotterLeft);
-            this.AttachDelegate("Dash.Spotter.Right", () => _spotterRight);
+            for (int i = 0; i < SpotterCars; i++)
+            {
+                int k = i;   // captured per delegate, not shared
+                this.AttachDelegate("Dash.Spotter.B" + k, () =>
+                {
+                    var a2 = _spotterBearing; return k < a2.Length ? a2[k] : 0f;
+                });
+                this.AttachDelegate("Dash.Spotter.L" + k, () =>
+                {
+                    var a2 = _spotterLevel; return k < a2.Length ? a2[k] : 0;
+                });
+            }
 
             // ---------- idle mode ----------
             this.AttachDelegate("Dash.Idle.On",     () => DashIdleActive());

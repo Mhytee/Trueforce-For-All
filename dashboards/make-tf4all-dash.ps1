@@ -347,6 +347,7 @@ function RevStrip([string]$P, [bool]$driveTab = $false) {
 # box reads as a broken dash. One data test drives both states, so the
 # values and the notice can never show at once.
 $SIM = 'DataCorePlugin.GameData.NewData.'
+
 $TRK = 'PersistantTrackerPlugin.'
 
 function FmtLapJs([string]$prop) {
@@ -378,6 +379,77 @@ function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [s
     $v.Bindings['Visible'] = BindJS 'Visible' $vis
     @($l, $v)
 }
+
+# ---------------------------------------------------------------------
+# Bundled images. SimHub keeps a dashboard's images in a sibling ZIP named
+# <dash>.djson.ressources, one entry per image called <Name><Extension>,
+# and describes each in the djson's Images array. Verified against a
+# shipped dashboard: the MD5 is of the raw file bytes and Length is their
+# uncompressed count, both reproduced exactly before anything was built on
+# this. Generating them here rather than checking in binaries keeps the
+# shapes editable, which is the same reason the djson itself is generated.
+# ---------------------------------------------------------------------
+$script:DASH_IMAGES = [System.Collections.Generic.List[object]]::new()
+
+function Add-DashImage([string]$name, [byte[]]$png, [int]$w, [int]$h) {
+    $md5 = [System.Security.Cryptography.MD5]::Create().ComputeHash($png)
+    $hex = ($md5 | ForEach-Object { $_.ToString('x2') }) -join ''
+    $script:DASH_IMAGES.Add([ordered]@{
+        Bytes = $png
+        Meta  = [ordered]@{
+            Name = $name; Extension = '.png'
+            Modified = $false; Optimized = $false
+            Width = $w; Height = $h
+            Length = $png.Length; MD5 = $hex
+        }
+    })
+}
+
+# A cone from the CENTRE of a square canvas pointing up. Square and centred
+# on purpose: the dash rotates an item about its own middle, so an item
+# centred on the radar rotates about the radar's centre, and scaling it
+# shortens the cone without moving its apex. One image serves every bearing
+# and every length.
+function New-ConePng([string]$hex, [int]$size, [double]$halfAngleDeg) {
+    $bmp = New-Object System.Drawing.Bitmap $size, $size
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.Clear([System.Drawing.Color]::Transparent)
+    $c = $size / 2.0
+    $rad = [math]::PI * $halfAngleDeg / 180.0
+    # Reaches the edge at the cone's centre line, so a full-size item spans
+    # exactly to the rim of the circle it is drawn over.
+    $len = $c
+    $pts = New-Object 'System.Drawing.PointF[]' 3
+    $pts[0] = New-Object System.Drawing.PointF($c, $c)
+    $pts[1] = New-Object System.Drawing.PointF(($c - [math]::Sin($rad) * $len), ($c - [math]::Cos($rad) * $len))
+    $pts[2] = New-Object System.Drawing.PointF(($c + [math]::Sin($rad) * $len), ($c - [math]::Cos($rad) * $len))
+    # Fades along its length, so it reads as light thrown toward the car
+    # rather than a paper triangle laid on the radar.
+    $col = [System.Drawing.ColorTranslator]::FromHtml($hex)
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddPolygon($pts)
+    $br = New-Object System.Drawing.Drawing2D.PathGradientBrush($path)
+    $br.CenterPoint = $pts[0]
+    $br.CenterColor = [System.Drawing.Color]::FromArgb(210, $col.R, $col.G, $col.B)
+    $br.SurroundColors = @([System.Drawing.Color]::FromArgb(30, $col.R, $col.G, $col.B))
+    $g.FillPath($br, $path)
+    $br.Dispose(); $path.Dispose(); $g.Dispose()
+    $ms = New-Object System.IO.MemoryStream
+    $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp.Dispose()
+    $ms.ToArray()
+}
+
+# GDI is needed here, not just by the preview at the end: the cone images
+# are drawn at generation time and bundled into the dashboard.
+Add-Type -AssemblyName System.Drawing
+
+# Proximity cones, one per warning colour. 26 degrees each side is wide
+# enough to point unambiguously without swallowing a quarter of the radar.
+$CONE_PX = 256
+Add-DashImage 'tf4all-cone-amber' (New-ConePng '#FFE8A33D' $CONE_PX 26) $CONE_PX $CONE_PX
+Add-DashImage 'tf4all-cone-red'   (New-ConePng '#FFE5484D' $CONE_PX 26) $CONE_PX $CONE_PX
 
 # A soft radial glow: one GradientItem carrying a WPF RadialGradientBrush,
 # opaque at the centre and fading to fully transparent at the rim. Stacked
@@ -1013,23 +1085,36 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
     $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR / 2) '#FF2A303A' 1 $vis))
 
-    # Spotter, as a glow in the half of the circle the car is in. One real
-    # radial gradient per colour rather than a stack of discs: a disc has an
-    # edge, and four of them show four edges. Two items per side, amber and
-    # red, swapped by Visible, because the brush is a structure rather than
-    # a colour string and is not worth binding.
-    foreach ($sp in @(@('l', -0.34, 'Left'), @('r', 0.34, 'Right'))) {
-        $spk = $sp[0]; $spo = $sp[1]; $spn = $sp[2]
-        $lvl = 'var l=1*$prop("' + $P + '.Spotter.' + $spn + '");'
-        $gcx = $rdCx + $rdR * $spo
-        foreach ($tone in @(@('a', 'E8A33D', 1), @('r', 'E5484D', 2))) {
-            $tk = $tone[0]; $trgb = $tone[1]; $tl = $tone[2]
-            $g = New-Glow "d$slot-rd-sp$spk$tk" $gcx $rdCy ($rdR * 0.66) $trgb 0x8C
-            $test = if ($tl -eq 2) { 'l>1' } else { 'l==1' }
-            $g.Bindings['Visible'] = BindJS 'Visible' (
-                $lvl + 'return ' + $test + ' && $prop("' + $P + '.SpotterOn") && (' +
+    # Spotter, as a cone thrown from the centre toward each nearby car,
+    # stopping at the ring that car is inside. The image is a square with
+    # the cone drawn from its middle, so the item sits centred on the radar
+    # and its own rotation IS rotation about the radar centre, and scaling
+    # it shortens the cone without moving the apex. One image per colour
+    # covers every bearing and both lengths.
+    #   inside the inner ring -> red, reaching that ring
+    #   inside the outer      -> amber, reaching the outer
+    for ($ci = 0; $ci -lt 4; $ci++) {
+        $lvl = 'var l=1*$prop("' + $P + '.Spotter.L' + $ci + '");'
+        foreach ($tone in @(@('a', 'tf4all-cone-amber', 1, ($rdR)), @('r', 'tf4all-cone-red', 2, ($rdR / 2)))) {
+            $tk = $tone[0]; $timg = $tone[1]; $tl = $tone[2]; $tr = $tone[3]
+            $img = [ordered]@{
+                '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ImageItem, SimHub.Plugins'
+                Image = $timg
+                AutoSize = $false; AutoSizeScale = 1.0
+                BackgroundColor = $script:CLEAR
+                Height = [double]($tr * 2); Left = [double]($rdCx - $tr)
+                Opacity = 100.0; Top = [double]($rdCy - $tr)
+                Visible = $true; Width = [double]($tr * 2)
+                Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
+                Name = "d$slot-rd-cone$ci$tk"
+                Bindings = [ordered]@{}
+            }
+            $img.Bindings['Rotation'] = BindJS 'Rotation' (
+                'return 1*$prop("' + $P + '.Spotter.B' + $ci + '")')
+            $img.Bindings['Visible'] = BindJS 'Visible' (
+                $lvl + 'return l==' + $tl + ' && $prop("' + $P + '.SpotterOn") && (' +
                 ($vis -replace '^return ', '') + ')')
-            $items.Add($g)
+            $items.Add($img)
         }
     }
 
@@ -2331,7 +2416,7 @@ $doc = [ordered]@{
     ShowForeground = $true; ForegroundOpacity = 50.0
     ShowBackground = $true; BackgroundOpacity = 50.0
     ShowBoundingRectangles = $false; GridSize = 10
-    Images = @()
+    Images = @($(if ($script:DASH_IMAGES.Count) { ($script:DASH_IMAGES | ForEach-Object { $_.Meta }) }))
     Metadata = $meta
     ShowOnScreenControls = $true
     IsOverlay = $false
@@ -2369,6 +2454,24 @@ if ($bad.Count) {
 
 $json = $doc | ConvertTo-Json -Depth 60
 [IO.File]::WriteAllText((Join-Path $OutDir 'TF4ALL Dash.djson'), $json, [Text.UTF8Encoding]::new($false))
+# The image bundle beside the djson, one entry per image. Rewritten every
+# run so it can never drift from the Images array that describes it.
+$resPath = Join-Path $OutDir 'TF4ALL Dash.djson.ressources'
+if (Test-Path $resPath) { Remove-Item $resPath -Force }
+if ($script:DASH_IMAGES.Count) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $fs = [System.IO.File]::Open($resPath, [System.IO.FileMode]::CreateNew)
+    $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+    foreach ($im in $script:DASH_IMAGES) {
+        $entry = $zip.CreateEntry($im.Meta.Name + $im.Meta.Extension)
+        $es = $entry.Open()
+        $es.Write($im.Bytes, 0, $im.Bytes.Length)
+        $es.Close()
+    }
+    $zip.Dispose(); $fs.Close()
+}
+
 $metaJson = $meta | ConvertTo-Json -Depth 10
 [IO.File]::WriteAllText((Join-Path $OutDir 'TF4ALL Dash.djson.metadata'), $metaJson, [Text.UTF8Encoding]::new($false))
 
@@ -2441,7 +2544,28 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
         if ($o -and $o.ContainsKey('Width'))  { $w = [float]$o.Width }
         if ($o -and $o.ContainsKey('Height')) { $h = [float]$o.Height }
         $type = [string]$it.'$type'
-        if ($type -like '*GradientItem*') {
+        if ($type -like '*ImageItem*') {
+            # Same bytes the bundle carries, so the thumbnail shows exactly
+            # what the dashboard will.
+            $im = $script:DASH_IMAGES | Where-Object { $_.Meta.Name -eq [string]$it.Image } | Select-Object -First 1
+            if ($im) {
+                $ims = New-Object System.IO.MemoryStream (,$im.Bytes)
+                $bm = [System.Drawing.Image]::FromStream($ims)
+                $rot2 = 0.0
+                if ($o -and $o.ContainsKey('Rotation')) { $rot2 = [double]$o.Rotation }
+                elseif ($it.Contains('Rotation'))        { $rot2 = [double]$it.Rotation }
+                if ($rot2 -ne 0) {
+                    $g.TranslateTransform($x + $w / 2, $y + $h / 2)
+                    $g.RotateTransform([float]$rot2)
+                    $g.DrawImage($bm, (-$w / 2), (-$h / 2), $w, $h)
+                    $g.ResetTransform()
+                } else {
+                    $g.DrawImage($bm, $x, $y, $w, $h)
+                }
+                $bm.Dispose(); $ims.Dispose()
+            }
+        }
+        elseif ($type -like '*GradientItem*') {
             # PathGradientBrush is GDI's radial: centre colour out to the
             # surround colour at the ellipse edge, which is what the WPF
             # RadialGradientBrush does in the viewer.
