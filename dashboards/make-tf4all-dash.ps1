@@ -963,22 +963,37 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
     $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR / 2) '#FF2A303A' 1 $vis))
 
-    # Spotter, on the radar where the traffic is: a block either side of
-    # you, amber for a car alongside and red for one you could touch. The
-    # plugin grades it on real metres between the two cars, so the colour
-    # says how close rather than merely that somebody is there.
-    foreach ($sp in @(@('l', ($rdCx - 30), 'Left'), @('r', ($rdCx + 16), 'Right'))) {
-        $spk = $sp[0]; $spx = $sp[1]; $spn = $sp[2]
+    # Spotter, as a glow in the half of the circle the car is in. Built
+    # from four nested translucent discs rather than one block: each adds
+    # to the last, so the light falls off toward the rim instead of ending
+    # at an edge. A hard rectangle reads as a UI element sitting on the
+    # radar; this reads as something happening inside it.
+    #
+    # A real radial gradient would be one item (GradientItem takes a WPF
+    # brush), but nothing here can render one to check, and an unverifiable
+    # guess at how it looks is how the last two attempts went.
+    # Offset plus the widest disc must stay under 1.0, or the glow spills
+    # past the rim and stops reading as something inside the radar.
+    foreach ($sp in @(@('l', -0.40, 'Left'), @('r', 0.40, 'Right'))) {
+        $spk = $sp[0]; $spo = $sp[1]; $spn = $sp[2]
         $lvl = 'var l=1*$prop("' + $P + '.Spotter.' + $spn + '");'
-        $b = New-Rect "d$slot-rd-sp$spk" $spx ($rdCy - 20) 14 40 '#FFE8A33D' @{
-            BackgroundColor = BindJS 'BackgroundColor' (
-                $lvl + 'return l>1?"' + $script:RED + '":"#FFE8A33D"')
-        } 4
-        $b.Bindings['Visible'] = BindJS 'Visible' (
-            $lvl + 'return l>0 && $prop("' + $P + '.SpotterOn") && (' +
-            ($vis -replace '^return ', '') + ')')
-        $items.Add($b)
+        $spVis = $lvl + 'return l>0 && $prop("' + $P + '.SpotterOn") && (' +
+                 ($vis -replace '^return ', '') + ')'
+        $gcx = $rdCx + $rdR * $spo
+        $li = 0
+        foreach ($ring in @(@(0.58, 7), @(0.45, 9), @(0.32, 12), @(0.19, 16))) {
+            $gr = $rdR * $ring[0]
+            $g = New-Rect "d$slot-rd-sp$spk$li" ($gcx - $gr) ($rdCy - $gr) ($gr * 2) ($gr * 2) '#FFE8A33D' @{
+                BackgroundColor = BindJS 'BackgroundColor' (
+                    $lvl + 'return l>1?"' + $script:RED + '":"#FFE8A33D"')
+            } ([int]$gr)
+            $g.Opacity = [double]$ring[1]
+            $g.Bindings['Visible'] = BindJS 'Visible' $spVis
+            $items.Add($g)
+            $li++
+        }
     }
+
     $radar = [ordered]@{
         '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RadarItem, SimHub.Plugins'
         BackgroundColor = $script:CLEAR

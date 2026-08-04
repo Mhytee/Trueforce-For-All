@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "00857c49-ca39-446b-83e3-a11a077427fe",
+    "Id":  "bcaec4c8-9303-499f-aae2-f18d208f9c4d",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "be86ae65-62a1-428c-8d48-39caf9983527",
+                        "ScreenId":  "7b0a7c12-3694-4141-a019-b19d1d0b0caf",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -7589,7 +7589,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "87bc81f2-ff71-4412-8fff-9c343df3ef3b",
+                        "ScreenId":  "e73b4263-b50d-4e47-a161-c7a1daa0558a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -18333,7 +18333,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "867a1504-dc9c-4f3f-9434-32ca1beb4b4d",
+                        "ScreenId":  "416bb85c-bece-4d84-af1f-62ae295fd870",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -31111,7 +31111,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "9f0a5e5e-2745-41a6-9151-7ac16713adfd",
+                        "ScreenId":  "0dce2577-09cf-4566-aec9-c562b75a8d7f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -37864,7 +37864,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "2bb78095-a873-4b7a-9d86-36aa67ca97ab",
+                        "ScreenId":  "9dd7641b-8747-45d4-b026-c4a5f88c4d9d",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -51132,7 +51132,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "28ca94e0-2b94-4234-b9df-4d298e2efe60",
+                        "ScreenId":  "197a8d6b-5b8e-472d-905b-0cb42f1b56a5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -61113,7 +61113,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "9cf6fe8b-15ba-42fb-a722-a8e71e41db0e",
+                        "ScreenId":  "3a24b45f-1048-4f34-8783-2e5e332a22c2",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -67451,21 +67451,21 @@
                                                               "BorderBottom":  0,
                                                               "BorderLeft":  0,
                                                               "BorderRight":  0,
-                                                              "CornerRadius":  "4,4,4,4",
-                                                              "RadiusTopLeft":  4,
-                                                              "RadiusTopRight":  4,
-                                                              "RadiusBottomLeft":  4,
-                                                              "RadiusBottomRight":  4,
+                                                              "CornerRadius":  "45,45,45,45",
+                                                              "RadiusTopLeft":  45,
+                                                              "RadiusTopRight":  45,
+                                                              "RadiusBottomLeft":  45,
+                                                              "RadiusBottomRight":  45,
                                                               "Bindings":  {
 
                                                                            }
                                                           },
-                                          "Height":  40,
-                                          "Left":  121,
-                                          "Opacity":  100,
-                                          "Top":  113,
+                                          "Height":  89.32,
+                                          "Left":  75.54,
+                                          "Opacity":  7,
+                                          "Top":  88.34,
                                           "Visible":  true,
-                                          "Width":  14,
+                                          "Width":  89.32,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -67474,7 +67474,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "d0-rd-spl",
+                                          "Name":  "d0-rd-spl0",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -67503,21 +67503,21 @@
                                                               "BorderBottom":  0,
                                                               "BorderLeft":  0,
                                                               "BorderRight":  0,
-                                                              "CornerRadius":  "4,4,4,4",
-                                                              "RadiusTopLeft":  4,
-                                                              "RadiusTopRight":  4,
-                                                              "RadiusBottomLeft":  4,
-                                                              "RadiusBottomRight":  4,
+                                                              "CornerRadius":  "35,35,35,35",
+                                                              "RadiusTopLeft":  35,
+                                                              "RadiusTopRight":  35,
+                                                              "RadiusBottomLeft":  35,
+                                                              "RadiusBottomRight":  35,
                                                               "Bindings":  {
 
                                                                            }
                                                           },
-                                          "Height":  40,
-                                          "Left":  167,
-                                          "Opacity":  100,
-                                          "Top":  113,
+                                          "Height":  69.3,
+                                          "Left":  85.550000000000011,
+                                          "Opacity":  9,
+                                          "Top":  98.35,
                                           "Visible":  true,
-                                          "Width":  14,
+                                          "Width":  69.3,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -67526,7 +67526,319 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "d0-rd-spr",
+                                          "Name":  "d0-rd-spl1",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "25,25,25,25",
+                                                              "RadiusTopLeft":  25,
+                                                              "RadiusTopRight":  25,
+                                                              "RadiusBottomLeft":  25,
+                                                              "RadiusBottomRight":  25,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  49.28,
+                                          "Left":  95.56,
+                                          "Opacity":  12,
+                                          "Top":  108.36,
+                                          "Visible":  true,
+                                          "Width":  49.28,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rd-spl2",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "15,15,15,15",
+                                                              "RadiusTopLeft":  15,
+                                                              "RadiusTopRight":  15,
+                                                              "RadiusBottomLeft":  15,
+                                                              "RadiusBottomRight":  15,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  29.26,
+                                          "Left":  105.57000000000001,
+                                          "Opacity":  16,
+                                          "Top":  118.37,
+                                          "Visible":  true,
+                                          "Width":  29.26,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rd-spl3",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "45,45,45,45",
+                                                              "RadiusTopLeft":  45,
+                                                              "RadiusTopRight":  45,
+                                                              "RadiusBottomLeft":  45,
+                                                              "RadiusBottomRight":  45,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  89.32,
+                                          "Left":  137.14000000000001,
+                                          "Opacity":  7,
+                                          "Top":  88.34,
+                                          "Visible":  true,
+                                          "Width":  89.32,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rd-spr0",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "35,35,35,35",
+                                                              "RadiusTopLeft":  35,
+                                                              "RadiusTopRight":  35,
+                                                              "RadiusBottomLeft":  35,
+                                                              "RadiusBottomRight":  35,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  69.3,
+                                          "Left":  147.15,
+                                          "Opacity":  9,
+                                          "Top":  98.35,
+                                          "Visible":  true,
+                                          "Width":  69.3,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rd-spr1",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "25,25,25,25",
+                                                              "RadiusTopLeft":  25,
+                                                              "RadiusTopRight":  25,
+                                                              "RadiusBottomLeft":  25,
+                                                              "RadiusBottomRight":  25,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  49.28,
+                                          "Left":  157.16000000000003,
+                                          "Opacity":  12,
+                                          "Top":  108.36,
+                                          "Visible":  true,
+                                          "Width":  49.28,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rd-spr2",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "15,15,15,15",
+                                                              "RadiusTopLeft":  15,
+                                                              "RadiusTopRight":  15,
+                                                              "RadiusBottomLeft":  15,
+                                                              "RadiusBottomRight":  15,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  29.26,
+                                          "Left":  167.17000000000002,
+                                          "Opacity":  16,
+                                          "Top":  118.37,
+                                          "Visible":  true,
+                                          "Width":  29.26,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rd-spr3",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -78868,21 +79180,21 @@
                                                               "BorderBottom":  0,
                                                               "BorderLeft":  0,
                                                               "BorderRight":  0,
-                                                              "CornerRadius":  "4,4,4,4",
-                                                              "RadiusTopLeft":  4,
-                                                              "RadiusTopRight":  4,
-                                                              "RadiusBottomLeft":  4,
-                                                              "RadiusBottomRight":  4,
+                                                              "CornerRadius":  "45,45,45,45",
+                                                              "RadiusTopLeft":  45,
+                                                              "RadiusTopRight":  45,
+                                                              "RadiusBottomLeft":  45,
+                                                              "RadiusBottomRight":  45,
                                                               "Bindings":  {
 
                                                                            }
                                                           },
-                                          "Height":  40,
-                                          "Left":  619,
-                                          "Opacity":  100,
-                                          "Top":  113,
+                                          "Height":  89.32,
+                                          "Left":  573.54000000000008,
+                                          "Opacity":  7,
+                                          "Top":  88.34,
                                           "Visible":  true,
-                                          "Width":  14,
+                                          "Width":  89.32,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -78891,7 +79203,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "d1-rd-spl",
+                                          "Name":  "d1-rd-spl0",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -78920,21 +79232,21 @@
                                                               "BorderBottom":  0,
                                                               "BorderLeft":  0,
                                                               "BorderRight":  0,
-                                                              "CornerRadius":  "4,4,4,4",
-                                                              "RadiusTopLeft":  4,
-                                                              "RadiusTopRight":  4,
-                                                              "RadiusBottomLeft":  4,
-                                                              "RadiusBottomRight":  4,
+                                                              "CornerRadius":  "35,35,35,35",
+                                                              "RadiusTopLeft":  35,
+                                                              "RadiusTopRight":  35,
+                                                              "RadiusBottomLeft":  35,
+                                                              "RadiusBottomRight":  35,
                                                               "Bindings":  {
 
                                                                            }
                                                           },
-                                          "Height":  40,
-                                          "Left":  665,
-                                          "Opacity":  100,
-                                          "Top":  113,
+                                          "Height":  69.3,
+                                          "Left":  583.55000000000007,
+                                          "Opacity":  9,
+                                          "Top":  98.35,
                                           "Visible":  true,
-                                          "Width":  14,
+                                          "Width":  69.3,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -78943,7 +79255,319 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "d1-rd-spr",
+                                          "Name":  "d1-rd-spl1",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "25,25,25,25",
+                                                              "RadiusTopLeft":  25,
+                                                              "RadiusTopRight":  25,
+                                                              "RadiusBottomLeft":  25,
+                                                              "RadiusBottomRight":  25,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  49.28,
+                                          "Left":  593.56000000000006,
+                                          "Opacity":  12,
+                                          "Top":  108.36,
+                                          "Visible":  true,
+                                          "Width":  49.28,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rd-spl2",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "15,15,15,15",
+                                                              "RadiusTopLeft":  15,
+                                                              "RadiusTopRight":  15,
+                                                              "RadiusBottomLeft":  15,
+                                                              "RadiusBottomRight":  15,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  29.26,
+                                          "Left":  603.57,
+                                          "Opacity":  16,
+                                          "Top":  118.37,
+                                          "Visible":  true,
+                                          "Width":  29.26,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rd-spl3",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "45,45,45,45",
+                                                              "RadiusTopLeft":  45,
+                                                              "RadiusTopRight":  45,
+                                                              "RadiusBottomLeft":  45,
+                                                              "RadiusBottomRight":  45,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  89.32,
+                                          "Left":  635.14,
+                                          "Opacity":  7,
+                                          "Top":  88.34,
+                                          "Visible":  true,
+                                          "Width":  89.32,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rd-spr0",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "35,35,35,35",
+                                                              "RadiusTopLeft":  35,
+                                                              "RadiusTopRight":  35,
+                                                              "RadiusBottomLeft":  35,
+                                                              "RadiusBottomRight":  35,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  69.3,
+                                          "Left":  645.15,
+                                          "Opacity":  9,
+                                          "Top":  98.35,
+                                          "Visible":  true,
+                                          "Width":  69.3,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rd-spr1",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "25,25,25,25",
+                                                              "RadiusTopLeft":  25,
+                                                              "RadiusTopRight":  25,
+                                                              "RadiusBottomLeft":  25,
+                                                              "RadiusBottomRight":  25,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  49.28,
+                                          "Left":  655.16,
+                                          "Opacity":  12,
+                                          "Top":  108.36,
+                                          "Visible":  true,
+                                          "Width":  49.28,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rd-spr2",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Radar\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "15,15,15,15",
+                                                              "RadiusTopLeft":  15,
+                                                              "RadiusTopRight":  15,
+                                                              "RadiusBottomLeft":  15,
+                                                              "RadiusBottomRight":  15,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  29.26,
+                                          "Left":  665.17,
+                                          "Opacity":  16,
+                                          "Top":  118.37,
+                                          "Visible":  true,
+                                          "Width":  29.26,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rd-spr3",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -91717,21 +92341,21 @@
                                                               "BorderBottom":  0,
                                                               "BorderLeft":  0,
                                                               "BorderRight":  0,
-                                                              "CornerRadius":  "4,4,4,4",
-                                                              "RadiusTopLeft":  4,
-                                                              "RadiusTopRight":  4,
-                                                              "RadiusBottomLeft":  4,
-                                                              "RadiusBottomRight":  4,
+                                                              "CornerRadius":  "46,46,46,46",
+                                                              "RadiusTopLeft":  46,
+                                                              "RadiusTopRight":  46,
+                                                              "RadiusBottomLeft":  46,
+                                                              "RadiusBottomRight":  46,
                                                               "Bindings":  {
 
                                                                            }
                                                           },
-                                          "Height":  40,
-                                          "Left":  121,
-                                          "Opacity":  100,
-                                          "Top":  328,
+                                          "Height":  92.8,
+                                          "Left":  72.6,
+                                          "Opacity":  7,
+                                          "Top":  301.6,
                                           "Visible":  true,
-                                          "Width":  14,
+                                          "Width":  92.8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -91740,7 +92364,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "d2-rd-spl",
+                                          "Name":  "d2-rd-spl0",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -91761,11 +92385,35 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?328:222"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?301.6:168.34"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
-                                                                   }
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?92.8:147.32"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72.6:26.54"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?92.8:147.32"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
                                                        }
                                       },
                                       {
@@ -91777,21 +92425,21 @@
                                                               "BorderBottom":  0,
                                                               "BorderLeft":  0,
                                                               "BorderRight":  0,
-                                                              "CornerRadius":  "4,4,4,4",
-                                                              "RadiusTopLeft":  4,
-                                                              "RadiusTopRight":  4,
-                                                              "RadiusBottomLeft":  4,
-                                                              "RadiusBottomRight":  4,
+                                                              "CornerRadius":  "36,36,36,36",
+                                                              "RadiusTopLeft":  36,
+                                                              "RadiusTopRight":  36,
+                                                              "RadiusBottomLeft":  36,
+                                                              "RadiusBottomRight":  36,
                                                               "Bindings":  {
 
                                                                            }
                                                           },
-                                          "Height":  40,
-                                          "Left":  167,
-                                          "Opacity":  100,
-                                          "Top":  328,
+                                          "Height":  72,
+                                          "Left":  83,
+                                          "Opacity":  9,
+                                          "Top":  312,
                                           "Visible":  true,
-                                          "Width":  14,
+                                          "Width":  72,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -91800,7 +92448,259 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "d2-rd-spr",
+                                          "Name":  "d2-rd-spl1",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?312:184.85"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72:114.3"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?83:43.05"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72:114.3"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "26,26,26,26",
+                                                              "RadiusTopLeft":  26,
+                                                              "RadiusTopRight":  26,
+                                                              "RadiusBottomLeft":  26,
+                                                              "RadiusBottomRight":  26,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  51.2,
+                                          "Left":  93.4,
+                                          "Opacity":  12,
+                                          "Top":  322.4,
+                                          "Visible":  true,
+                                          "Width":  51.2,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rd-spl2",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?322.4:201.36"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?51.2:81.28"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?93.4:59.56"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?51.2:81.28"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "15,15,15,15",
+                                                              "RadiusTopLeft":  15,
+                                                              "RadiusTopRight":  15,
+                                                              "RadiusBottomLeft":  15,
+                                                              "RadiusBottomRight":  15,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  30.4,
+                                          "Left":  103.8,
+                                          "Opacity":  16,
+                                          "Top":  332.8,
+                                          "Visible":  true,
+                                          "Width":  30.4,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rd-spl3",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?332.8:217.87"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?30.4:48.26"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?103.8:76.07"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?30.4:48.26"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "46,46,46,46",
+                                                              "RadiusTopLeft":  46,
+                                                              "RadiusTopRight":  46,
+                                                              "RadiusBottomLeft":  46,
+                                                              "RadiusBottomRight":  46,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  92.8,
+                                          "Left":  136.6,
+                                          "Opacity":  7,
+                                          "Top":  301.6,
+                                          "Visible":  true,
+                                          "Width":  92.8,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rd-spr0",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -91821,11 +92721,287 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?328:222"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?301.6:168.34"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
-                                                                   }
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?92.8:147.32"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?136.6:128.14"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?92.8:147.32"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "36,36,36,36",
+                                                              "RadiusTopLeft":  36,
+                                                              "RadiusTopRight":  36,
+                                                              "RadiusBottomLeft":  36,
+                                                              "RadiusBottomRight":  36,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  72,
+                                          "Left":  147,
+                                          "Opacity":  9,
+                                          "Top":  312,
+                                          "Visible":  true,
+                                          "Width":  72,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rd-spr1",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?312:184.85"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72:114.3"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?147:144.65"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72:114.3"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "26,26,26,26",
+                                                              "RadiusTopLeft":  26,
+                                                              "RadiusTopRight":  26,
+                                                              "RadiusBottomLeft":  26,
+                                                              "RadiusBottomRight":  26,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  51.2,
+                                          "Left":  157.4,
+                                          "Opacity":  12,
+                                          "Top":  322.4,
+                                          "Visible":  true,
+                                          "Width":  51.2,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rd-spr2",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?322.4:201.36"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?51.2:81.28"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?157.4:161.16"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?51.2:81.28"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "15,15,15,15",
+                                                              "RadiusTopLeft":  15,
+                                                              "RadiusTopRight":  15,
+                                                              "RadiusBottomLeft":  15,
+                                                              "RadiusBottomRight":  15,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  30.4,
+                                          "Left":  167.8,
+                                          "Opacity":  16,
+                                          "Top":  332.8,
+                                          "Visible":  true,
+                                          "Width":  30.4,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rd-spr3",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?332.8:217.87"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?30.4:48.26"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?167.8:177.67"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?30.4:48.26"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
                                                        }
                                       },
                                       {
@@ -105160,21 +106336,21 @@
                                                               "BorderBottom":  0,
                                                               "BorderLeft":  0,
                                                               "BorderRight":  0,
-                                                              "CornerRadius":  "4,4,4,4",
-                                                              "RadiusTopLeft":  4,
-                                                              "RadiusTopRight":  4,
-                                                              "RadiusBottomLeft":  4,
-                                                              "RadiusBottomRight":  4,
+                                                              "CornerRadius":  "46,46,46,46",
+                                                              "RadiusTopLeft":  46,
+                                                              "RadiusTopRight":  46,
+                                                              "RadiusBottomLeft":  46,
+                                                              "RadiusBottomRight":  46,
                                                               "Bindings":  {
 
                                                                            }
                                                           },
-                                          "Height":  40,
-                                          "Left":  619,
-                                          "Opacity":  100,
-                                          "Top":  328,
+                                          "Height":  92.8,
+                                          "Left":  570.6,
+                                          "Opacity":  7,
+                                          "Top":  301.6,
                                           "Visible":  true,
-                                          "Width":  14,
+                                          "Width":  92.8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -105183,7 +106359,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "d3-rd-spl",
+                                          "Name":  "d3-rd-spl0",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -105204,11 +106380,35 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?328:222"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?301.6:168.34"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
-                                                                   }
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?92.8:147.32"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?570.6:524.54"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?92.8:147.32"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
                                                        }
                                       },
                                       {
@@ -105220,21 +106420,21 @@
                                                               "BorderBottom":  0,
                                                               "BorderLeft":  0,
                                                               "BorderRight":  0,
-                                                              "CornerRadius":  "4,4,4,4",
-                                                              "RadiusTopLeft":  4,
-                                                              "RadiusTopRight":  4,
-                                                              "RadiusBottomLeft":  4,
-                                                              "RadiusBottomRight":  4,
+                                                              "CornerRadius":  "36,36,36,36",
+                                                              "RadiusTopLeft":  36,
+                                                              "RadiusTopRight":  36,
+                                                              "RadiusBottomLeft":  36,
+                                                              "RadiusBottomRight":  36,
                                                               "Bindings":  {
 
                                                                            }
                                                           },
-                                          "Height":  40,
-                                          "Left":  665,
-                                          "Opacity":  100,
-                                          "Top":  328,
+                                          "Height":  72,
+                                          "Left":  581,
+                                          "Opacity":  9,
+                                          "Top":  312,
                                           "Visible":  true,
-                                          "Width":  14,
+                                          "Width":  72,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -105243,7 +106443,259 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "d3-rd-spr",
+                                          "Name":  "d3-rd-spl1",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?312:184.85"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72:114.3"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?581:541.05"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72:114.3"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "26,26,26,26",
+                                                              "RadiusTopLeft":  26,
+                                                              "RadiusTopRight":  26,
+                                                              "RadiusBottomLeft":  26,
+                                                              "RadiusBottomRight":  26,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  51.2,
+                                          "Left":  591.4,
+                                          "Opacity":  12,
+                                          "Top":  322.4,
+                                          "Visible":  true,
+                                          "Width":  51.2,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rd-spl2",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?322.4:201.36"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?51.2:81.28"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?591.4:557.56"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?51.2:81.28"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "15,15,15,15",
+                                                              "RadiusTopLeft":  15,
+                                                              "RadiusTopRight":  15,
+                                                              "RadiusBottomLeft":  15,
+                                                              "RadiusBottomRight":  15,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  30.4,
+                                          "Left":  601.8,
+                                          "Opacity":  16,
+                                          "Top":  332.8,
+                                          "Visible":  true,
+                                          "Width":  30.4,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rd-spl3",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Left\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?332.8:217.87"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?30.4:48.26"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?601.8:574.07"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?30.4:48.26"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "46,46,46,46",
+                                                              "RadiusTopLeft":  46,
+                                                              "RadiusTopRight":  46,
+                                                              "RadiusBottomLeft":  46,
+                                                              "RadiusBottomRight":  46,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  92.8,
+                                          "Left":  634.6,
+                                          "Opacity":  7,
+                                          "Top":  301.6,
+                                          "Visible":  true,
+                                          "Width":  92.8,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rd-spr0",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -105264,11 +106716,287 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?328:222"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?301.6:168.34"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
-                                                                   }
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?92.8:147.32"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?634.6:626.14"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?92.8:147.32"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "36,36,36,36",
+                                                              "RadiusTopLeft":  36,
+                                                              "RadiusTopRight":  36,
+                                                              "RadiusBottomLeft":  36,
+                                                              "RadiusBottomRight":  36,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  72,
+                                          "Left":  645,
+                                          "Opacity":  9,
+                                          "Top":  312,
+                                          "Visible":  true,
+                                          "Width":  72,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rd-spr1",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?312:184.85"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72:114.3"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?645:642.65"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?72:114.3"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "26,26,26,26",
+                                                              "RadiusTopLeft":  26,
+                                                              "RadiusTopRight":  26,
+                                                              "RadiusBottomLeft":  26,
+                                                              "RadiusBottomRight":  26,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  51.2,
+                                          "Left":  655.4,
+                                          "Opacity":  12,
+                                          "Top":  322.4,
+                                          "Visible":  true,
+                                          "Width":  51.2,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rd-spr2",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?322.4:201.36"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?51.2:81.28"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?655.4:659.16"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?51.2:81.28"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FFE8A33D",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#00FFFFFF",
+                                                              "BorderTop":  0,
+                                                              "BorderBottom":  0,
+                                                              "BorderLeft":  0,
+                                                              "BorderRight":  0,
+                                                              "CornerRadius":  "15,15,15,15",
+                                                              "RadiusTopLeft":  15,
+                                                              "RadiusTopRight":  15,
+                                                              "RadiusBottomLeft":  15,
+                                                              "RadiusBottomRight":  15,
+                                                              "Bindings":  {
+
+                                                                           }
+                                                          },
+                                          "Height":  30.4,
+                                          "Left":  665.8,
+                                          "Opacity":  16,
+                                          "Top":  332.8,
+                                          "Visible":  true,
+                                          "Width":  30.4,
+                                          "BorderBottom":  0,
+                                          "BorderColor":  "#00FFFFFF",
+                                          "BorderLeft":  0,
+                                          "BorderRight":  0,
+                                          "BorderTop":  0,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rd-spr3",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e1?\"#FFE5484D\":\"#FFE8A33D\""
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "var l=1*$prop(\"TrueforcePlugin.Dash.Spotter.Right\");return l\u003e0 \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SpotterOn\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Radar\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?332.8:217.87"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "Height":  {
+                                                                          "Formula":  {
+                                                                                          "Interpreter":  1,
+                                                                                          "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?30.4:48.26"
+                                                                                      },
+                                                                          "Mode":  2,
+                                                                          "TargetPropertyName":  "Height"
+                                                                      },
+                                                           "Left":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?665.8:675.67"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Left"
+                                                                    },
+                                                           "Width":  {
+                                                                         "Formula":  {
+                                                                                         "Interpreter":  1,
+                                                                                         "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?30.4:48.26"
+                                                                                     },
+                                                                         "Mode":  2,
+                                                                         "TargetPropertyName":  "Width"
+                                                                     }
                                                        }
                                       },
                                       {
