@@ -379,11 +379,19 @@ namespace TrueforceForAll.Plugin
         private const int IdlePhaseMs = 20000;
         private int  _dashIdleSinceTick;
         private volatile bool _dashIdleDismissed;
+        private bool _dashIdleGameWasOn;
 
-        /// <summary>Should the idle card be showing. Driving is the only thing
-        /// that clears it, so there is no way to strand the dash behind it:
-        /// telemetry flowing from a live session with the car actually moving
-        /// resets both the timer and a manual dismissal.</summary>
+        /// <summary>Should the idle card be showing.
+        ///
+        /// Two different situations, and only one of them is a timer. With no
+        /// game running there is no dashboard to show, so the card is the
+        /// screen: it appears at once. With a game running but the car sitting
+        /// still, the real dashboard is the useful thing and the card is an
+        /// interruption, so that case waits out the delay the user chose and
+        /// is meant to be set long.
+        ///
+        /// Driving always clears it, and so does a game appearing, which is
+        /// the clearest "I am back" there is.</summary>
         private bool DashIdleActive()
         {
             if (Settings?.DashIdleEnabled != true) return false;
@@ -391,6 +399,16 @@ namespace TrueforceForAll.Plugin
             // buttons the hide pass leaves live, being an overlay's own, and
             // a user part way through typing a redline is plainly still here.
             if (!string.IsNullOrEmpty(_dashOverlay)) return false;
+
+            bool gameOn = !string.IsNullOrEmpty(_currentGameName);
+            if (gameOn != _dashIdleGameWasOn)
+            {
+                _dashIdleGameWasOn = gameOn;
+                _dashIdleSinceTick = 0;
+                if (gameOn) _dashIdleDismissed = false;
+            }
+            if (!gameOn) return !_dashIdleDismissed;
+
             bool driving = !_telemetryStalled
                 && (_telemetrySource?.IsSessionActive ?? true)
                 && _dashLiveSpeedKmh > 3f;
@@ -1138,8 +1156,6 @@ namespace TrueforceForAll.Plugin
                 this.AttachDelegate("Dash.Radar.Q" + k, () =>
                 { var a = _radarQuad; return k < a.Length ? a[k] : 0; });
             }
-
-            // ---------- idle mode ----------
             this.AttachDelegate("Dash.Idle.On",     () => DashIdleActive());
             this.AttachDelegate("Dash.Idle.Style",  () => Settings?.DashIdleStyle ?? "Aurora");
             this.AttachDelegate("Dash.Idle.Name",   () => Settings?.DashIdleDriverName ?? "");

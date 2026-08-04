@@ -474,9 +474,11 @@ namespace TrueforceForAll.Plugin
         // an overlay rather than a screen of its own so there is nothing to
         // get stuck in: any sign of driving clears it.
         public bool   DashIdleEnabled      { get; set; } = true;
-        // Seconds of not driving before it appears. 0 shows it the moment the
-        // car stops, which suits a pit-lane display and nobody else.
-        public int    DashIdleDelaySeconds { get; set; } = 30;
+        // ONLY the game-is-running-but-parked case. With no game running the
+        // card shows at once, because then there is no dashboard to show and
+        // the card is the screen. Defaults long: sitting in a pit box or a
+        // menu is not a reason to take the dashboard away.
+        public int    DashIdleDelaySeconds { get; set; } = 600;
         // Which built-in ambient animation. Custom images and video are a
         // later pass: the dashboard file is rebuilt on every update, so user
         // media has to live somewhere the rebuild cannot reach.
