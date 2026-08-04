@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "dd799f65-9a24-42ae-bb8d-04a0cc520f80",
+    "Id":  "7ee97c51-e230-4894-a966-7a69ce9ab645",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7faabcb1-f1b6-4725-b405-ac45983bf10b",
+                        "ScreenId":  "82356d94-83cf-4e28-8e59-d6bdb3d79309",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -9165,7 +9165,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "74f1fab8-ce01-4e52-98fc-8983a0be0344",
+                        "ScreenId":  "98d8c133-278e-4cbb-8353-74dfffde39a5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -21485,7 +21485,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "be783730-1897-426b-ab2e-99089078dec6",
+                        "ScreenId":  "b52e91e6-2eb0-4c41-92fc-56f95ab80fe5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -35839,7 +35839,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "44c79202-dd9b-42ee-905b-d798b63db27a",
+                        "ScreenId":  "5f56b50c-6049-422f-8965-351c338b03c2",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -44168,7 +44168,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "984fd4cd-4e64-4071-a1ca-5dd0ac787d28",
+                        "ScreenId":  "42458a38-5d72-452a-9f3c-47d79987641a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -59012,7 +59012,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "05e4ee1c-6bfc-41ed-a38b-d841d33c2abb",
+                        "ScreenId":  "aa4606cf-7fb8-4546-882d-9c60a40faac0",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -70569,7 +70569,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "5159450f-9bc1-4945-8520-f49816367538",
+                        "ScreenId":  "aabc3647-756c-4fcf-a4c8-0c3649bd149f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -76362,7 +76362,7 @@
                                           "Opacity":  100,
                                           "Top":  54,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -76394,19 +76394,59 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF8B93A7",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  54,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d0-rel0-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverAhead_01_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  54,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rel0-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -76442,7 +76482,7 @@
                                           "Opacity":  100,
                                           "Top":  78,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -76474,19 +76514,59 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FFF2F4F8",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  78,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d0-rel1-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverAhead_00_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  78,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rel1-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -76522,7 +76602,7 @@
                                           "Opacity":  100,
                                           "Top":  102,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -76554,15 +76634,15 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF37D67A",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  102,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -76571,7 +76651,47 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return \"You\""
+                                                                                        "Expression":  "var n=\"\"+($prop(\"DataCorePlugin.GameData.NewData.PlayerName\")||\"\");if(n==\"\")return \"You\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF37D67A",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  102,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rel2-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var s=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LastLapTime\")||\"\");if(s.indexOf(\".\")\u003e=0)s=s.substring(0,s.indexOf(\".\")+3);if(s.indexOf(\"00:\")==0)s=s.substring(3);return s==\"\"||s.indexOf(\"00:00\")==0?\"--\":s"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -76602,7 +76722,7 @@
                                           "Opacity":  100,
                                           "Top":  126,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -76634,19 +76754,59 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FFF2F4F8",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  126,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d0-rel3-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverBehind_00_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  126,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rel3-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -76682,7 +76842,7 @@
                                           "Opacity":  100,
                                           "Top":  150,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -76714,19 +76874,59 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF8B93A7",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  150,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d0-rel4-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverBehind_01_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  150,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-rel4-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -88500,7 +88700,7 @@
                                           "Opacity":  100,
                                           "Top":  54,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -88532,19 +88732,59 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF8B93A7",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  54,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d1-rel0-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverAhead_01_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  54,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rel0-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -88580,7 +88820,7 @@
                                           "Opacity":  100,
                                           "Top":  78,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -88612,19 +88852,59 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FFF2F4F8",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  78,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d1-rel1-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverAhead_00_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  78,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rel1-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -88660,7 +88940,7 @@
                                           "Opacity":  100,
                                           "Top":  102,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -88692,15 +88972,15 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF37D67A",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  102,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -88709,7 +88989,47 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return \"You\""
+                                                                                        "Expression":  "var n=\"\"+($prop(\"DataCorePlugin.GameData.NewData.PlayerName\")||\"\");if(n==\"\")return \"You\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF37D67A",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  102,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rel2-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var s=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LastLapTime\")||\"\");if(s.indexOf(\".\")\u003e=0)s=s.substring(0,s.indexOf(\".\")+3);if(s.indexOf(\"00:\")==0)s=s.substring(3);return s==\"\"||s.indexOf(\"00:00\")==0?\"--\":s"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -88740,7 +89060,7 @@
                                           "Opacity":  100,
                                           "Top":  126,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -88772,19 +89092,59 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FFF2F4F8",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  126,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d1-rel3-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverBehind_00_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  126,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rel3-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -88820,7 +89180,7 @@
                                           "Opacity":  100,
                                           "Top":  150,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -88852,19 +89212,59 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF8B93A7",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  150,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d1-rel4-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverBehind_01_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Relative\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  150,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-rel4-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -101910,7 +102310,7 @@
                                           "Opacity":  100,
                                           "Top":  266,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -101950,19 +102350,67 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF8B93A7",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  266,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d2-rel0-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverAhead_01_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?266:183"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  266,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rel0-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -102006,7 +102454,7 @@
                                           "Opacity":  100,
                                           "Top":  290,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -102046,19 +102494,67 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FFF2F4F8",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  290,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d2-rel1-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverAhead_00_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290:207"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  290,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rel1-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -102102,7 +102598,7 @@
                                           "Opacity":  100,
                                           "Top":  314,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -102142,15 +102638,15 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF37D67A",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  314,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -102159,7 +102655,55 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return \"You\""
+                                                                                        "Expression":  "var n=\"\"+($prop(\"DataCorePlugin.GameData.NewData.PlayerName\")||\"\");if(n==\"\")return \"You\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?314:231"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF37D67A",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  314,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rel2-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var s=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LastLapTime\")||\"\");if(s.indexOf(\".\")\u003e=0)s=s.substring(0,s.indexOf(\".\")+3);if(s.indexOf(\"00:\")==0)s=s.substring(3);return s==\"\"||s.indexOf(\"00:00\")==0?\"--\":s"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -102198,7 +102742,7 @@
                                           "Opacity":  100,
                                           "Top":  338,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -102238,19 +102782,67 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FFF2F4F8",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  338,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d2-rel3-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverBehind_00_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?338:255"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  338,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rel3-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -102294,7 +102886,7 @@
                                           "Opacity":  100,
                                           "Top":  362,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -102334,19 +102926,67 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF8B93A7",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  76,
+                                          "Left":  66,
                                           "Opacity":  100,
                                           "Top":  362,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d2-rel4-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverBehind_01_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?362:279"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  204,
+                                          "Opacity":  100,
+                                          "Top":  362,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-rel4-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -116322,7 +116962,7 @@
                                           "Opacity":  100,
                                           "Top":  266,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -116362,19 +117002,67 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF8B93A7",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  266,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d3-rel0-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverAhead_01_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?266:183"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  266,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rel0-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -116418,7 +117106,7 @@
                                           "Opacity":  100,
                                           "Top":  290,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -116458,19 +117146,67 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FFF2F4F8",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  290,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d3-rel1-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverAhead_00_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?290:207"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  290,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rel1-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -116514,7 +117250,7 @@
                                           "Opacity":  100,
                                           "Top":  314,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -116554,15 +117290,15 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF37D67A",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  314,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -116571,7 +117307,55 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return \"You\""
+                                                                                        "Expression":  "var n=\"\"+($prop(\"DataCorePlugin.GameData.NewData.PlayerName\")||\"\");if(n==\"\")return \"You\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?314:231"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF37D67A",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  314,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rel2-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var s=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LastLapTime\")||\"\");if(s.indexOf(\".\")\u003e=0)s=s.substring(0,s.indexOf(\".\")+3);if(s.indexOf(\"00:\")==0)s=s.substring(3);return s==\"\"||s.indexOf(\"00:00\")==0?\"--\":s"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -116610,7 +117394,7 @@
                                           "Opacity":  100,
                                           "Top":  338,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -116650,19 +117434,67 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FFF2F4F8",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  338,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d3-rel3-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverBehind_00_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?338:255"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF2F4F8",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  338,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rel3-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -116706,7 +117538,7 @@
                                           "Opacity":  100,
                                           "Top":  362,
                                           "Visible":  true,
-                                          "Width":  48,
+                                          "Width":  40,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
@@ -116746,19 +117578,67 @@
                                           "FontSize":  15,
                                           "Text":  "",
                                           "TextColor":  "#FF8B93A7",
-                                          "HorizontalAlignment":  2,
+                                          "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
                                           "Height":  22,
-                                          "Left":  574,
+                                          "Left":  564,
                                           "Opacity":  100,
                                           "Top":  362,
                                           "Visible":  true,
-                                          "Width":  202,
+                                          "Width":  134,
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
                                           "Name":  "d3-rel4-n",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var n=\"\"+($prop(\"PersistantTrackerPlugin.DriverBehind_01_Name\")||\"\");if(n==\"\")return \"\";if(n.indexOf(\" \")\u003e=0)n=n.substring(n.lastIndexOf(\" \")+1);if(n.length\u003e13)n=n.substring(0,12)+\"…\";return n"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Relative\" \u0026\u0026 ((1*$prop(\"DataCorePlugin.GameData.NewData.OpponentsCount\"))\u003e1)"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?362:279"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "",
+                                          "TextColor":  "#FF8B93A7",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  22,
+                                          "Left":  702,
+                                          "Opacity":  100,
+                                          "Top":  362,
+                                          "Visible":  true,
+                                          "Width":  74,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-rel4-t",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {

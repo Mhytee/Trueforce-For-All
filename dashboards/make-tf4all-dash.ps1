@@ -1043,8 +1043,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddNote 'fc' 'This game does not report accelerations.' 'Friction' $dFric))
 
     # ---------------- RELATIVE ---------------------------------------
-    # Two cars ahead and two behind with their last lap, from the
-    # tracker plugin rather than the obsolete leaderboard item.
+    # Two cars ahead and two behind, from the tracker plugin rather than
+    # the obsolete leaderboard item. Three columns: position, who it is,
+    # and their last lap. A relative without names is a list of strangers,
+    # and the name is the part you actually recognise mid stint.
     $vis = KeyVis 'Relative' $dOpp
     $items.Add((AddHead 'rel' 'RELATIVE' 'Relative'))
     $relRows = @(
@@ -1055,16 +1057,28 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     for ($r = 0; $r -lt $relRows.Count; $r++) {
         $ry = $iy + 28 + $r * 24
         $src = $relRows[$r][0]; $col = $relRows[$r][1]
+        # Surnames are what people are called on a timing screen, so a
+        # "First Last" gets cut to the last word before any truncation, and
+        # only then clipped to fit the column.
+        $lastName = 'if(n.indexOf(" ")>=0)n=n.substring(n.lastIndexOf(" ")+1);' +
+                    'if(n.length>13)n=n.substring(0,12)+"…";'
         if ($src -eq '__ME__') {
             $posJs = 'var p=1*$prop("' + $SIM + 'Position");return isNaN(p)||p<=0?"-":"P"+p'
-            $valJs = 'return "You"'
+            $nameJs = 'var n=""+($prop("' + $SIM + 'PlayerName")||"");if(n=="")return "You";' +
+                      $lastName + 'return n'
+            $valJs = 'var s=""+($prop("' + $SIM + 'LastLapTime")||"");if(s.indexOf(".")>=0)s=s.substring(0,s.indexOf(".")+3);if(s.indexOf("00:")==0)s=s.substring(3);return s==""||s.indexOf("00:00")==0?"--":s'
         } else {
             $posJs = 'var p=1*$prop("' + $TRK + $src + '_Position");return isNaN(p)||p<=0?"-":"P"+p'
+            $nameJs = 'var n=""+($prop("' + $TRK + $src + '_Name")||"");if(n=="")return "";' +
+                      $lastName + 'return n'
             $valJs = 'var s=""+($prop("' + $TRK + $src + '_LastLapTime")||"");if(s.indexOf(".")>=0)s=s.substring(0,s.indexOf(".")+3);if(s.indexOf("00:")==0)s=s.substring(3);return s==""?"--":s'
         }
-        $pt = New-Text "d$slot-rel$r-p" $ix $ry 48 22 15 '' $col 0 @{ Text = BindJS 'Text' $posJs } 'Bold'
+        $timeW = 74
+        $pt = New-Text "d$slot-rel$r-p" $ix $ry 40 22 15 '' $col 0 @{ Text = BindJS 'Text' $posJs } 'Bold'
         $pt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($pt)
-        $nt = New-Text "d$slot-rel$r-n" ($ix + 52) $ry ($iw - 52) 22 15 '' $col 2 @{ Text = BindJS 'Text' $valJs }
+        $nm = New-Text "d$slot-rel$r-n" ($ix + 42) $ry ($iw - 42 - $timeW - 4) 22 15 '' $col 0 @{ Text = BindJS 'Text' $nameJs }
+        $nm.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($nm)
+        $nt = New-Text "d$slot-rel$r-t" ($ix + $iw - $timeW) $ry $timeW 22 15 '' $col 2 @{ Text = BindJS 'Text' $valJs }
         $nt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($nt)
     }
     $items.Add((AddNote 'rel' 'No other cars in this session.' 'Relative' $dOpp))
