@@ -352,6 +352,9 @@ namespace TrueforceForAll.Plugin
 
                     // Diagonals as the sector boundaries, so a car dead ahead
                     // lands wholly in front rather than half in two corners.
+                    // Axis convention CONFIRMED on track 2026-08-03: positive
+                    // X is the player's right, positive Y is behind. SimHub
+                    // documents neither, so do not "tidy" these signs.
                     double bearing = Math.Atan2(rx, -ry) * (180.0 / Math.PI);
                     if (bearing < 0) bearing += 360.0;
                     int q = (int)Math.Floor(((bearing + 45.0) % 360.0) / 90.0);
