@@ -379,6 +379,56 @@ function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [s
     @($l, $v)
 }
 
+# A soft radial glow: one GradientItem carrying a WPF RadialGradientBrush,
+# opaque at the centre and fading to fully transparent at the rim. Stacked
+# translucent discs approximate this, but each disc has an edge and the
+# steps show; a real gradient has none. The brush is serialised the way
+# SimHub stores it, an XML brush expressed as JSON attributes.
+function New-Glow([string]$name, $cx, $cy, $r, [string]$rgb, [int]$centerAlpha) {
+    $a = ('{0:X2}' -f $centerAlpha)
+    [ordered]@{
+        '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.GradientItem, SimHub.Plugins'
+        Color = [ordered]@{
+            RadialGradientBrush = [ordered]@{
+                '@Center'       = '0.5,0.5'
+                '@GradientOrigin' = '0.5,0.5'
+                '@RadiusX'      = '0.5'
+                '@RadiusY'      = '0.5'
+                '@MappingMode'  = 'RelativeToBoundingBox'
+                '@SpreadMethod' = 'Pad'
+                '@Opacity'      = '1'
+                '@xmlns'        = 'http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+                'RadialGradientBrush.GradientStops' = [ordered]@{
+                    GradientStop = @(
+                        [ordered]@{ '@Color' = "#$a$rgb"; '@Offset' = '0' },
+                        [ordered]@{ '@Color' = "#00$rgb"; '@Offset' = '1' }
+                    )
+                }
+            }
+        }
+        Rotation = 0.0; UseRotation = $false; CanResize = $true
+        BackgroundColor = $script:CLEAR
+        BlurRadius = 0.0; EnableBlur = $false
+        BorderStyle = [ordered]@{
+            AllBorders = 0; AllCornerRadius = 0
+            BorderColor = $script:CLEAR
+            BorderTop = 0; BorderBottom = 0; BorderLeft = 0; BorderRight = 0
+            CornerRadius = '0,0,0,0'
+            RadiusTopLeft = 0; RadiusTopRight = 0
+            RadiusBottomLeft = 0; RadiusBottomRight = 0
+            Bindings = [ordered]@{}
+        }
+        Height = [double]($r * 2); Left = [double]($cx - $r)
+        Opacity = 100.0; Top = [double]($cy - $r)
+        Visible = $true; Width = [double]($r * 2)
+        BorderBottom = 0; BorderColor = $script:CLEAR
+        BorderLeft = 0; BorderRight = 0; BorderTop = 0
+        IsFreezed = $false; RenderingSkip = 0
+        Name = $name
+        Bindings = [ordered]@{}
+    }
+}
+
 # A rounded outline ring (used by both circle boxes).
 function New-Ring([string]$name, $cx, $cy, $r, [string]$color, [int]$thickness, [string]$vis) {
     $ring = New-Rect $name ($cx - $r) ($cy - $r) ($r * 2) ($r * 2) $script:CLEAR $null ([int]$r)
@@ -963,34 +1013,23 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
     $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR / 2) '#FF2A303A' 1 $vis))
 
-    # Spotter, as a glow in the half of the circle the car is in. Built
-    # from four nested translucent discs rather than one block: each adds
-    # to the last, so the light falls off toward the rim instead of ending
-    # at an edge. A hard rectangle reads as a UI element sitting on the
-    # radar; this reads as something happening inside it.
-    #
-    # A real radial gradient would be one item (GradientItem takes a WPF
-    # brush), but nothing here can render one to check, and an unverifiable
-    # guess at how it looks is how the last two attempts went.
-    # Offset plus the widest disc must stay under 1.0, or the glow spills
-    # past the rim and stops reading as something inside the radar.
-    foreach ($sp in @(@('l', -0.40, 'Left'), @('r', 0.40, 'Right'))) {
+    # Spotter, as a glow in the half of the circle the car is in. One real
+    # radial gradient per colour rather than a stack of discs: a disc has an
+    # edge, and four of them show four edges. Two items per side, amber and
+    # red, swapped by Visible, because the brush is a structure rather than
+    # a colour string and is not worth binding.
+    foreach ($sp in @(@('l', -0.34, 'Left'), @('r', 0.34, 'Right'))) {
         $spk = $sp[0]; $spo = $sp[1]; $spn = $sp[2]
         $lvl = 'var l=1*$prop("' + $P + '.Spotter.' + $spn + '");'
-        $spVis = $lvl + 'return l>0 && $prop("' + $P + '.SpotterOn") && (' +
-                 ($vis -replace '^return ', '') + ')'
         $gcx = $rdCx + $rdR * $spo
-        $li = 0
-        foreach ($ring in @(@(0.58, 7), @(0.45, 9), @(0.32, 12), @(0.19, 16))) {
-            $gr = $rdR * $ring[0]
-            $g = New-Rect "d$slot-rd-sp$spk$li" ($gcx - $gr) ($rdCy - $gr) ($gr * 2) ($gr * 2) '#FFE8A33D' @{
-                BackgroundColor = BindJS 'BackgroundColor' (
-                    $lvl + 'return l>1?"' + $script:RED + '":"#FFE8A33D"')
-            } ([int]$gr)
-            $g.Opacity = [double]$ring[1]
-            $g.Bindings['Visible'] = BindJS 'Visible' $spVis
+        foreach ($tone in @(@('a', 'E8A33D', 1), @('r', 'E5484D', 2))) {
+            $tk = $tone[0]; $trgb = $tone[1]; $tl = $tone[2]
+            $g = New-Glow "d$slot-rd-sp$spk$tk" $gcx $rdCy ($rdR * 0.66) $trgb 0x8C
+            $test = if ($tl -eq 2) { 'l>1' } else { 'l==1' }
+            $g.Bindings['Visible'] = BindJS 'Visible' (
+                $lvl + 'return ' + $test + ' && $prop("' + $P + '.SpotterOn") && (' +
+                ($vis -replace '^return ', '') + ')')
             $items.Add($g)
-            $li++
         }
     }
 
@@ -2402,7 +2441,24 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
         if ($o -and $o.ContainsKey('Width'))  { $w = [float]$o.Width }
         if ($o -and $o.ContainsKey('Height')) { $h = [float]$o.Height }
         $type = [string]$it.'$type'
-        if ($type -like '*RectangleItem*') {
+        if ($type -like '*GradientItem*') {
+            # PathGradientBrush is GDI's radial: centre colour out to the
+            # surround colour at the ellipse edge, which is what the WPF
+            # RadialGradientBrush does in the viewer.
+            $stops = $it.Color.RadialGradientBrush.'RadialGradientBrush.GradientStops'.GradientStop
+            if ($stops) {
+                $ctr = [System.Drawing.ColorTranslator]::FromHtml([string]$stops[0].'@Color')
+                $edge = [System.Drawing.ColorTranslator]::FromHtml([string]$stops[1].'@Color')
+                $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+                $gp.AddEllipse($x, $y, $w, $h)
+                $pgb = New-Object System.Drawing.Drawing2D.PathGradientBrush($gp)
+                $pgb.CenterColor = $ctr
+                $pgb.SurroundColors = @($edge)
+                $g.FillPath($pgb, $gp)
+                $pgb.Dispose(); $gp.Dispose()
+            }
+        }
+        elseif ($type -like '*RectangleItem*') {
             $fill = [string]$it.BackgroundColor
             if ($o -and $o.ContainsKey('BackgroundColor')) { $fill = [string]$o.BackgroundColor }
             # Rotation matches the live viewer: CSS transform, center pivot.
