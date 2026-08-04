@@ -42,6 +42,11 @@ $CARD_EDGE = '#FF4E5668'
 #   New-Card  the outlined container
 #   SUBPANEL  a lightened area inside a card, barely there
 #   New-Btn   something you press, always solid
+# How far the card title sits BELOW the border it breaks. Centred exactly
+# on the line made the tops of the cards read unevenly against each other;
+# dropping it a few pixels keeps the break while giving the title room to
+# breathe. One number, so it stays easy to re-tune by eye.
+$HEAD_DROP = 6
 $SUBPANEL = '#FF0E0E10'
 $BTN      = '#FF1C1C20'
 $BTN_EDGE = '#FF3A4150'
@@ -636,7 +641,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # width depends on the title's length; 220 covers every label we use
     # and still leaves a gap to the next card.
     $hbW = [math]::Min(220, $w - 40)
-    $headBtn = New-Button "d$slot-head" ($x + $w / 2 - $hbW / 2) ($y - 12) $hbW 26 ("DashDriveBoxOpen$slot")
+    $headBtn = New-Button "d$slot-head" ($x + $w / 2 - $hbW / 2) ($y - 12 + $script:HEAD_DROP) $hbW 26 ("DashDriveBoxOpen$slot")
     $headBtn.Bindings['Visible'] = BindJS 'Visible' ('return 1' + $rowCond)
     $items.Add($headBtn)
     # An empty box would otherwise be an invisible panel with no way back.
@@ -659,7 +664,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $gap = ThemePaint (New-Rect "d$script:slotN-$id-gap" $cx ($script:yN - 2) $wpx 5 $script:BG $null 0) 'Bg'
         $gap.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
         $script:headGap = $gap
-        $t = New-Text "d$script:slotN-$id-h" $cx ($script:yN - 9) $wpx 18 12 $lbl $script:MUTED 1
+        $t = New-Text "d$script:slotN-$id-h" $cx ($script:yN - 9 + $script:HEAD_DROP) $wpx 18 12 $lbl $script:MUTED 1
         $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
         $t
     }
