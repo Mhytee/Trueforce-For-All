@@ -1138,6 +1138,11 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
             this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
+            // A 0..1 phase over 1.2 s, for anything that should pulse. Derived
+            // here rather than in the dash so every connected screen pulses
+            // together, the same reason the rev flash is plugin side.
+            this.AttachDelegate("Dash.PulseT", () =>
+                (Environment.TickCount & 0x7FFFFFFF) % 1200 / 1200f);
             // Radar: per dot a position and a level for its colour, plus
             // one level per quadrant so the wedge needs no arithmetic.
             for (int i = 0; i < RadarDots; i++)

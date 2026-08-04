@@ -1660,26 +1660,43 @@ function IdleCard([string]$P) {
 
 function FlagBar([string]$P) {
     $F = 'DataCorePlugin.GameData.NewData.Flag_'
+    # Orange is the meatball and Green the restart; both were missing, so
+    # two of the seven flags a game can raise went unreported entirely.
     $any = '$prop("' + $P + '.FlagsOn") && (' +
            '$prop("' + $F + 'Yellow")||$prop("' + $F + 'Blue")||$prop("' + $F + 'Black")' +
-           '||$prop("' + $F + 'White")||$prop("' + $F + 'Checkered"))'
+           '||$prop("' + $F + 'White")||$prop("' + $F + 'Checkered")' +
+           '||$prop("' + $F + 'Orange")||$prop("' + $F + 'Green"))'
     $vis = 'return ' + $any
     # Colour follows the flag, checkered reads as white.
+    # The meatball is a BLACK flag with an orange disc, so it takes the
+    # black band and earns its discs below rather than a colour of its own.
     $colJs = 'if($prop("' + $F + 'Yellow"))return "#F2E8C33D";' +
              'if($prop("' + $F + 'Blue"))return "#F23D7FE8";' +
-             'if($prop("' + $F + 'Black"))return "#F21A1A1A";' +
+             'if($prop("' + $F + 'Black")||$prop("' + $F + 'Orange"))return "#F21A1A1A";' +
+             'if($prop("' + $F + 'Green"))return "#F23DC77A";' +
              'if($prop("' + $F + 'White")||$prop("' + $F + 'Checkered"))return "#F2E8EAEE";' +
              'return "#00FFFFFF"'
-    $txtJs = 'if($prop("' + $F + 'Black")||$prop("' + $F + 'Blue"))return "' + $script:WHITE + '";return "#FF101216"'
+    $txtJs = 'if($prop("' + $F + 'Black")||$prop("' + $F + 'Orange")||$prop("' + $F + 'Blue"))' +
+             'return "' + $script:WHITE + '";return "#FF101216"'
     $nameJs = 'var n=""+($prop("' + $F + 'Name")||"");if(n!="")return n.toUpperCase();' +
               'if($prop("' + $F + 'Yellow"))return "YELLOW FLAG";' +
               'if($prop("' + $F + 'Blue"))return "BLUE FLAG";' +
               'if($prop("' + $F + 'Black"))return "BLACK FLAG";' +
               'if($prop("' + $F + 'Checkered"))return "CHEQUERED FLAG";' +
+              'if($prop("' + $F + 'Orange"))return "MEATBALL FLAG";' +
+              'if($prop("' + $F + 'Green"))return "GREEN FLAG";' +
               'if($prop("' + $F + 'White"))return "WHITE FLAG";return ""'
     $bg = New-Rect 'flag-bg' 0 14 800 48 $script:CLEAR @{
         BackgroundColor = BindJS 'BackgroundColor' $colJs
     } 0
+    # Yellow breathes, because it is the one flag that means react NOW and a
+    # steady band beside six other steady bands does not say that. Everything
+    # else holds still: a dash where each warning moves is a dash where none
+    # of them stand out.
+    $bg.Bindings['Opacity'] = BindJS 'Opacity' (
+        'if(!$prop("' + $F + 'Yellow"))return 100;' +
+        'var t=1*$prop("' + $P + '.PulseT");' +
+        'return 62+38*(0.5+0.5*Math.sin(6.283185307*t))')
     $bg.Bindings['Visible'] = BindJS 'Visible' $vis
     $t = New-Text 'flag-t' 0 14 800 48 24 '' $script:WHITE 1 @{
         Text      = BindJS 'Text'      $nameJs
@@ -1694,6 +1711,23 @@ function FlagBar([string]$P) {
     # of fighting a chequer for legibility.
     $out = [System.Collections.Generic.List[object]]::new()
     $out.Add($bg)
+
+    # A near black band on a near black dash is a band nobody sees. Two thin
+    # light rules give it an edge, on the two flags that use it.
+    $darkVis = 'return ' + $any + ' && ($prop("' + $F + 'Black")||$prop("' + $F + 'Orange"))'
+    foreach ($ey in @(14, 60)) {
+        $e = New-Rect "flag-edge$ey" 0 $ey 800 2 '#FFE8EAEE' $null 0
+        $e.Bindings['Visible'] = BindJS 'Visible' $darkVis
+        $out.Add($e)
+    }
+    # The meatball itself, one either side of the caption so it reads the
+    # same whichever half of the band the eye lands on.
+    $mbVis = 'return ' + $any + ' && $prop("' + $F + 'Orange")'
+    foreach ($mx in @(186, 582)) {
+        $m = New-Rect "flag-mb$mx" $mx 22 32 32 '#FFE87A1F' $null 16
+        $m.Bindings['Visible'] = BindJS 'Visible' $mbVis
+        $out.Add($m)
+    }
     $chk = 'return ' + $any + ' && $prop("' + $F + 'Checkered")'
     $sq = 24; $bandY = 14; $rows = 2
     $clearL = 236; $clearR = 564
