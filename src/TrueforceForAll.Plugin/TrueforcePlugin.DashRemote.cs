@@ -301,6 +301,50 @@ namespace TrueforceForAll.Plugin
                 .UtilizationFloor(_dashModelGripEma / peakDiv);
         }
 
+        // Idle mode: how long the car has been stopped, and whether the user
+        // waved this stop away. Both are per-stop, not persisted.
+        private const int IdlePhaseMs = 20000;
+        private int  _dashIdleSinceTick;
+        private volatile bool _dashIdleDismissed;
+
+        /// <summary>Should the idle card be showing. Driving is the only thing
+        /// that clears it, so there is no way to strand the dash behind it:
+        /// telemetry flowing from a live session with the car actually moving
+        /// resets both the timer and a manual dismissal.</summary>
+        private bool DashIdleActive()
+        {
+            if (Settings?.DashIdleEnabled != true) return false;
+            // Never over an open keypad or picker. Those are the one set of
+            // buttons the hide pass leaves live, being an overlay's own, and
+            // a user part way through typing a redline is plainly still here.
+            if (!string.IsNullOrEmpty(_dashOverlay)) return false;
+            bool driving = !_telemetryStalled
+                && (_telemetrySource?.IsSessionActive ?? true)
+                && _dashLiveSpeedKmh > 3f;
+            int now = Environment.TickCount;
+            if (driving)
+            {
+                _dashIdleSinceTick = 0;
+                _dashIdleDismissed = false;
+                return false;
+            }
+            if (_dashIdleSinceTick == 0) _dashIdleSinceTick = now == 0 ? 1 : now;
+            if (_dashIdleDismissed) return false;
+            int delayMs = Math.Max(0, Settings.DashIdleDelaySeconds) * 1000;
+            return unchecked(now - _dashIdleSinceTick) >= delayMs;
+        }
+
+        /// <summary>Plugin version as the idle card shows it. Trailing zero
+        /// revision dropped: 0.2.6.0 is noise, 0.2.6 is the release.</summary>
+        private static string DashPluginVersion()
+        {
+            var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            if (v == null) return "";
+            return v.Revision == 0
+                ? $"{v.Major}.{v.Minor}.{v.Build}"
+                : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
+        }
+
         /// <summary>Grip in use for the friction circle, with Telemetry FFB's
         /// force path switched off. Same model and same numbers where the game
         /// gives a slip channel; measured load against this car's hardest where
@@ -1002,6 +1046,33 @@ namespace TrueforceForAll.Plugin
             // works on any telemetry source we support.
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
+
+            // ---------- idle mode ----------
+            this.AttachDelegate("Dash.Idle.On",     () => DashIdleActive());
+            this.AttachDelegate("Dash.Idle.Style",  () => Settings?.DashIdleStyle ?? "Aurora");
+            this.AttachDelegate("Dash.Idle.Name",   () => Settings?.DashIdleDriverName ?? "");
+            this.AttachDelegate("Dash.Idle.Number", () => Settings?.DashIdleNumber ?? "");
+            this.AttachDelegate("Dash.Idle.Color",  () =>
+            {
+                string c = Settings?.DashIdleColor;
+                return string.IsNullOrWhiteSpace(c) ? "#FFF2F4F8" : c;
+            });
+            // Animation phase, 0..1 over 20 s. A PHASE rather than a clock so
+            // every curve built on it closes seamlessly at the wrap, and
+            // derived plugin-side like the rev flash so every connected dash
+            // animates in step rather than each drifting on its own timer.
+            this.AttachDelegate("Dash.Idle.T", () =>
+                (Environment.TickCount & 0x7FFFFFFF) % IdlePhaseMs / (float)IdlePhaseMs);
+            // Plugin status, which is the other half of what an idle screen is
+            // for: it is the one time anyone is looking at the dash and not at
+            // the road.
+            this.AttachDelegate("Dash.Version",   () => DashPluginVersion());
+            this.AttachDelegate("Dash.Supporter", () => LastKnownSupporter);
+            this.AttachDelegate("Dash.UpdateReady", () =>
+                UpdateChecker != null && UpdateChecker.IsUpdateAvailable);
+            this.AttachDelegate("Dash.UpdateVersion", () =>
+                UpdateChecker != null && UpdateChecker.IsUpdateAvailable
+                    ? (UpdateChecker.LatestVersionTag ?? "") : "");
             this.AttachDelegate("Dash.DrivePedals", () => Settings?.DashDrivePedals != false);
 
             // ---------- properties: Forza dash extras ----------
@@ -1218,6 +1289,15 @@ namespace TrueforceForAll.Plugin
             // setting you want to try rather than reason about, and the
             // column has no other tap target, so the whole thing is the
             // control. Also on a Settings checkbox for discoverability.
+            // Dismiss idle for this stop. Deliberately NOT a setting: it
+            // clears itself the moment the car moves, so a tap means "not
+            // now" rather than "never again".
+            this.AddAction("DashIdleExit", (a, b) =>
+            {
+                DashNoteActivity();
+                _dashIdleDismissed = true;
+                RaiseDashRemoteChanged();
+            });
             this.AddAction("DashRevStripSpanToggle", (a, b) =>
             {
                 if (Settings == null) return;

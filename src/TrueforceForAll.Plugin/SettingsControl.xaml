@@ -3073,7 +3073,34 @@
                               Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
                               ToolTip="A coloured band across the top of the dash whenever a flag is out."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="Shows yellow, blue, black, white and chequered flags across whichever tab is open. Only games that report flags can drive it, which the Forza titles do not, so it stays off by default."/>
+                               Text="Shows yellow, blue, black, white and chequered flags across whichever tab is open. Only games that report flags can drive it, which the Forza titles do not, so it simply never appears there."/>
+
+                    <TextBlock Text="Idle mode" FontWeight="SemiBold" Margin="0,18,0,0"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="When the car has been standing still, the dash shows an ambient card with your name and number over whatever tab is open. Anything that looks like driving clears it, and there is an Exit button on the card itself."/>
+                    <CheckBox x:Name="RemoteDashIdleCheck" Content="Show the idle card when parked" Margin="0,8,0,0"
+                              Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <TextBlock Text="Appears after" VerticalAlignment="Center" Width="94"/>
+                        <TextBox x:Name="RemoteDashIdleDelayBox" Width="60" TextAlignment="Center"
+                                 LostFocus="RemoteDashIdleDelay_Commit" KeyDown="RemoteDashIdleDelay_KeyDown"
+                                 ToolTip="Seconds of standing still before the card appears. 0 shows it the moment you stop."/>
+                        <TextBlock Text="seconds" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        <TextBlock Text="Background" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                        <ComboBox x:Name="RemoteDashIdleStyleCombo" Width="120" Margin="8,0,0,0"
+                                  SelectionChanged="RemoteDashIdleStyle_Changed"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <TextBlock Text="Driver name" VerticalAlignment="Center" Width="94"/>
+                        <TextBox x:Name="RemoteDashIdleNameBox" Width="180"
+                                 LostFocus="RemoteDashIdleName_Commit" KeyDown="RemoteDashIdleName_KeyDown"/>
+                        <TextBlock Text="Number" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                        <TextBox x:Name="RemoteDashIdleNumberBox" Width="70" Margin="8,0,0,0" TextAlignment="Center"
+                                 LostFocus="RemoteDashIdleNumber_Commit" KeyDown="RemoteDashIdleNumber_KeyDown"/>
+                        <TextBlock Text="Colour" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                        <ComboBox x:Name="RemoteDashIdleColorCombo" Width="110" Margin="8,0,0,0"
+                                  SelectionChanged="RemoteDashIdleColor_Changed"/>
+                    </StackPanel>
                 </StackPanel>
             </Expander>
 

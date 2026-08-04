@@ -1221,7 +1221,10 @@ function DriveBoxDual([string]$P, [int]$slot, $x, $w, $yTwo, $hTwo, $yOne, $hOne
 }
 
 function TabBar([string]$P) {
-    $overlayClosed = '(""+$prop("' + $P + '.Overlay"))==""'
+    # Idle is in here too. The tab bar bakes its own overlay check into
+    # Visible, which makes Hide-ButtonsUnderOverlay skip it, so without this
+    # the tab buttons would keep taking taps through the opaque idle card.
+    $overlayClosed = '(""+$prop("' + $P + '.Overlay"))=="" && !$prop("' + $P + '.Idle.On")'
     # Enabled-slot count, summed from the seven .On props inside the formula
     # itself (no extra plugin property needed). Slots pack left, so the
     # visible slots are exactly 0..n-1 and each slot's Left/Width bind to
@@ -1268,6 +1271,126 @@ function TabBar([string]$P) {
 # report flags and stays silent in the ones that do not (Forza reports
 # none, which is exactly why this is a toggle rather than always on).
 # Drawn above the toast but below the rev strip.
+# =====================================================================
+# IDLE CARD. Drawn over whatever tab is open once the car has been
+# standing still, rather than as a screen of its own: there is no
+# navigation to get stuck in, and any sign of driving clears it.
+# Everything animates off Dash.Idle.T, a 0..1 phase the plugin derives
+# from its own clock, so every connected dash moves in step and every
+# curve built on it closes seamlessly at the wrap.
+# =====================================================================
+function IdleCard([string]$P) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $on  = '$prop("' + $P + '.Idle.On")'
+    $vis = 'return ' + $on
+    $T   = '(1*$prop("' + $P + '.Idle.T"))'
+    $TAU = '6.283185307'
+    $col = '(""+($prop("' + $P + '.Idle.Color")||"#FFF2F4F8"))'
+    $style = '(""+($prop("' + $P + '.Idle.Style")||"Aurora"))'
+
+    # Opaque backdrop: the tab underneath keeps updating, and a translucent
+    # card over live telemetry reads as a rendering fault.
+    $bg = New-Rect 'idle-bg' 0 0 800 480 '#FF0B0D11' $null 0
+    $bg.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($bg)
+
+    $styleVis = { param($k) 'return ' + $on + ' && ' + $style + '=="' + $k + '"' }
+
+    # --- Aurora: soft blobs drifting on closed Lissajous paths ---
+    foreach ($a in @(@(0, 340, '#FF2E6FA8', 0.0), @(1, 280, '#FF2E9478', 0.37), @(2, 240, '#FF6A47A0', 0.71))) {
+        $ai = $a[0]; $ar = $a[1]; $ac = $a[2]; $ap = $a[3]
+        $r = New-Rect "idle-aur$ai" 100 100 $ar $ar $ac $null ([int]($ar / 2))
+        # Low enough to sit behind the number rather than compete with it.
+        $r.Opacity = 16.0
+        $r.Bindings['Left'] = BindJS 'Left' ('return ' + (400 - $ar / 2) + '+Math.sin((' + $T + '+' + $ap + ')*' + $TAU + ')*260')
+        $r.Bindings['Top']  = BindJS 'Top'  ('return ' + (240 - $ar / 2) + '+Math.cos((' + $T + '+' + $ap + ')*' + $TAU + '*2)*150')
+        $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Aurora')
+        $items.Add($r)
+    }
+
+    # --- Pulse: rings breathing out of the centre, each a third of a cycle
+    # behind the last, fading as they grow so the loop has no seam.
+    for ($i = 0; $i -lt 3; $i++) {
+        $ph = $i / 3.0
+        $g = 'var g=(' + $T + '+' + $ph + ')%1;'
+        $r = New-Rect "idle-pul$i" 340 180 120 120 $script:CLEAR $null 60
+        $r.BorderStyle.BorderColor = '#FF2A5C7A'; $r.BorderColor = '#FF2A5C7A'
+        foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+            $r.BorderStyle."Border$sd" = 2
+            $r."Border$sd" = 2
+        }
+        $r.Bindings['Width']   = BindJS 'Width'   ($g + 'return 60+g*620')
+        $r.Bindings['Height']  = BindJS 'Height'  ($g + 'return 60+g*620')
+        $r.Bindings['Left']    = BindJS 'Left'    ($g + 'return 400-(60+g*620)/2')
+        $r.Bindings['Top']     = BindJS 'Top'     ($g + 'return 240-(60+g*620)/2')
+        $r.Bindings['Opacity'] = BindJS 'Opacity' ($g + 'return 55*(1-g)')
+        $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Pulse')
+        $items.Add($r)
+    }
+
+    # --- Streaks: columns falling at their own rate, wrapping off the bottom.
+    for ($i = 0; $i -lt 10; $i++) {
+        $sx = 20 + $i * 78
+        $sp = ($i * 0.17) % 1.0
+        $sl = 90 + ($i % 4) * 40
+        $g2 = 'var g=(' + $T + '*' + (1 + ($i % 3) * 0.5) + '+' + $sp + ')%1;'
+        $r = New-Rect "idle-str$i" $sx 0 3 $sl '#FF2E4A6B' $null 2
+        $r.Opacity = 40.0
+        $r.Bindings['Top'] = BindJS 'Top' ($g2 + 'return -' + $sl + '+g*' + (480 + $sl))
+        $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Streaks')
+        $items.Add($r)
+    }
+
+    # --- Driver identity: the number is the point, the name labels it ---
+    $t = New-Text 'idle-num' 0 90 800 220 190 '' $script:WHITE 1 @{
+        Text      = BindJS 'Text'      ('return ""+($prop("' + $P + '.Idle.Number")||"")')
+        TextColor = BindJS 'TextColor' ('return ' + $col)
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($t)
+    $t = New-Text 'idle-name' 0 310 800 54 40 '' $script:WHITE 1 @{
+        Text      = BindJS 'Text'      ('return ""+($prop("' + $P + '.Idle.Name")||"")')
+        TextColor = BindJS 'TextColor' ('return ' + $col)
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($t)
+
+    # --- Plugin status along the foot. This is the one moment anyone is
+    # looking at the dash and not at the road, so it is where a version, a
+    # supporter badge and an update notice actually get read.
+    $t = New-Text 'idle-ver' 24 430 300 26 15 '' $script:MUTED 0 @{
+        Text = BindJS 'Text' ('var v=""+($prop("' + $P + '.Version")||"");return v==""?"":"TF4ALL v"+v')
+    }
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($t)
+    $supVis = 'return ' + $on + ' && $prop("' + $P + '.Supporter")'
+    $r = New-Rect 'idle-sup-bg' 24 396 132 26 '#FF3A2E12' $null 5
+    $r.Bindings['Visible'] = BindJS 'Visible' $supVis
+    $items.Add($r)
+    $t = New-Text 'idle-sup' 24 396 132 26 13 'SUPPORTER' '#FFE8C547' 1 $null 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $supVis
+    $items.Add($t)
+    $t = New-Text 'idle-upd' 400 430 376 26 15 '' $script:GREEN 2 @{
+        Text = BindJS 'Text' ('var v=""+($prop("' + $P + '.UpdateVersion")||"");' +
+                              'return v==""?"":"UPDATE AVAILABLE  "+v')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' ('return ' + $on + ' && $prop("' + $P + '.UpdateReady")')
+    $items.Add($t)
+
+    # --- Exit, the one control that has to keep working while the card is up.
+    $r = New-Rect 'idle-exit-bg' 660 20 120 40 $script:TILE $null 6
+    $r.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($r)
+    $t = New-Text 'idle-exit-t' 660 20 120 40 15 'EXIT' $script:WHITE 1 $null 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($t)
+    $b = New-Button 'idle-exit' 660 20 120 40 'DashIdleExit'
+    $b.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($b)
+
+    $items
+}
+
 function FlagBar([string]$P) {
     $F = 'DataCorePlugin.GameData.NewData.Flag_'
     $any = '$prop("' + $P + '.FlagsOn") && (' +
@@ -1428,6 +1551,7 @@ $s1.Add((New-Button 'aud-btn' 408 372 376 66 'DashFxAudioToggle'))
 TabBar $P | ForEach-Object { $s1.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
 FlagBar $P | ForEach-Object { $s1.Add($_) }
+IdleCard $P | ForEach-Object { $s1.Add($_) }
 ToastBar $P | ForEach-Object { $s1.Add($_) }
 RevStrip $P | ForEach-Object { $s1.Add($_) }
 
@@ -1529,6 +1653,7 @@ TabBar $P | ForEach-Object { $s2.Add($_) }
 # ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----
 KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
 FlagBar $P | ForEach-Object { $s2.Add($_) }
+IdleCard $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
 RevStrip $P | ForEach-Object { $s2.Add($_) }
 
@@ -1633,6 +1758,7 @@ $s3.Add((OnOverlay (New-Rect 'ss-cancel-bg' 220 372 360 44 $TILE) 'savescope'))
 $s3.Add((OnOverlay (New-Text 'ss-cancel-t' 220 372 360 44 15 'CANCEL' $RED 1 $null 'Bold') 'savescope'))
 $s3.Add((OnOverlay (New-Button 'ss-cancel' 220 372 360 44 'DashTuneSaveCancel') 'savescope'))
 FlagBar $P | ForEach-Object { $s3.Add($_) }
+IdleCard $P | ForEach-Object { $s3.Add($_) }
 ToastBar $P | ForEach-Object { $s3.Add($_) }
 RevStrip $P | ForEach-Object { $s3.Add($_) }
 
@@ -1667,6 +1793,7 @@ $s4.Add((New-Button 'pr-carp-btn' 648 260 120 84 'DashPresetOpenCar'))
 TabBar $P | ForEach-Object { $s4.Add($_) }
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
 FlagBar $P | ForEach-Object { $s4.Add($_) }
+IdleCard $P | ForEach-Object { $s4.Add($_) }
 ToastBar $P | ForEach-Object { $s4.Add($_) }
 RevStrip $P | ForEach-Object { $s4.Add($_) }
 
@@ -1772,6 +1899,7 @@ $s5.Add((New-Text 'sc-hint' 16 428 768 16 12 'Scrolls left, about 2.5 seconds of
 
 TabBar $P | ForEach-Object { $s5.Add($_) }
 FlagBar $P | ForEach-Object { $s5.Add($_) }
+IdleCard $P | ForEach-Object { $s5.Add($_) }
 ToastBar $P | ForEach-Object { $s5.Add($_) }
 RevStrip $P | ForEach-Object { $s5.Add($_) }
 
@@ -1857,6 +1985,7 @@ $s6.Add($mbNote2)
 TabBar $P | ForEach-Object { $s6.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s6.Add($_) }
 FlagBar $P | ForEach-Object { $s6.Add($_) }
+IdleCard $P | ForEach-Object { $s6.Add($_) }
 ToastBar $P | ForEach-Object { $s6.Add($_) }
 RevStrip $P | ForEach-Object { $s6.Add($_) }
 
@@ -1978,6 +2107,7 @@ KeypadOverlay $P | ForEach-Object { $s7.Add($_) }
 EngineLayoutOverlay $P | ForEach-Object { $s7.Add($_) }
 PresetOverlay $P | ForEach-Object { $s7.Add($_) }
 FlagBar $P | ForEach-Object { $s7.Add($_) }
+IdleCard $P | ForEach-Object { $s7.Add($_) }
 ToastBar $P | ForEach-Object { $s7.Add($_) }
 RevStrip $P $true | ForEach-Object { $s7.Add($_) }
 
@@ -1997,9 +2127,13 @@ RevStrip $P $true | ForEach-Object { $s7.Add($_) }
 # their own gate; any other existing condition (SAVE/REVERT dirty bar)
 # is ANDed with it.
 function Hide-ButtonsUnderOverlay($items) {
-    $closed = '(""+$prop("TrueforcePlugin.Dash.Overlay"))==""'
+    # Also gated on idle: the card is opaque and covers the whole screen, so
+    # every button under it must stop taking taps. Its own EXIT is excluded
+    # by name, being the one control that has to work while it is showing.
+    $closed = '(""+$prop("TrueforcePlugin.Dash.Overlay"))=="" && !$prop("TrueforcePlugin.Dash.Idle.On")'
     foreach ($it in $items) {
         if ([string]$it.'$type' -notlike '*ButtonItem*') { continue }
+        if ([string]$it.Name -eq 'idle-exit') { continue }
         $vis = $null
         if ($it.Bindings -and $it.Bindings.Contains('Visible')) { $vis = $it.Bindings['Visible'] }
         if ($vis -and ([string]$vis.Formula.Expression) -like '*Dash.Overlay*') { continue }
@@ -2159,6 +2293,16 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
                 $path = New-RoundedPath $x $y $w $h ([float]$it.BorderStyle.RadiusTopLeft)
             }
             $c = [System.Drawing.ColorTranslator]::FromHtml($fill)
+            # Item Opacity is a multiplier on the fill in the viewer, so the
+            # thumbnail has to apply it too: without this a 20%-opacity ambient
+            # layer previews as a solid slab and every judgement about it is
+            # made against something the user will never see.
+            $op = 100.0
+            if ($o -and $o.ContainsKey('Opacity')) { $op = [double]$o.Opacity }
+            elseif ($it.Contains('Opacity'))       { $op = [double]$it.Opacity }
+            if ($op -lt 100) {
+                $c = [System.Drawing.Color]::FromArgb([int]($c.A * $op / 100.0), $c.R, $c.G, $c.B)
+            }
             if ($c.A -gt 0) {
                 $br = New-Object System.Drawing.SolidBrush $c
                 $g.FillPath($br, $path); $br.Dispose()

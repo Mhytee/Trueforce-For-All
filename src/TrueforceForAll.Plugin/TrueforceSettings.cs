@@ -461,6 +461,23 @@ namespace TrueforceForAll.Plugin
         // the same three in a card.
         public bool DashDrivePedals { get; set; } = true;
 
+        // TF4ALL Dash idle mode: a full-screen card over whatever tab is open
+        // once the car has been sitting still, showing an ambient animation,
+        // the driver's name and number, and the plugin's own status. Drawn as
+        // an overlay rather than a screen of its own so there is nothing to
+        // get stuck in: any sign of driving clears it.
+        public bool   DashIdleEnabled      { get; set; } = true;
+        // Seconds of not driving before it appears. 0 shows it the moment the
+        // car stops, which suits a pit-lane display and nobody else.
+        public int    DashIdleDelaySeconds { get; set; } = 30;
+        // Which built-in ambient animation. Custom images and video are a
+        // later pass: the dashboard file is rebuilt on every update, so user
+        // media has to live somewhere the rebuild cannot reach.
+        public string DashIdleStyle        { get; set; } = "Aurora";
+        public string DashIdleDriverName   { get; set; } = "";
+        public string DashIdleNumber       { get; set; } = "";
+        public string DashIdleColor        { get; set; } = "#FFF2F4F8";
+
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
         // user's display order; DashTabsDisabled hides tabs without losing

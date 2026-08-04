@@ -6379,6 +6379,28 @@ namespace TrueforceForAll.Plugin
                     RemoteDashRevCenteredCheck.IsChecked = _plugin.Settings?.DashRevStripCentered == true;
                 bool twoRows = _plugin.Settings?.DashDriveTwoRows != false;
                 if (RemoteDashDriveTwoRowsRadio != null) RemoteDashDriveTwoRowsRadio.IsChecked = twoRows;
+                if (RemoteDashIdleCheck != null)
+                    RemoteDashIdleCheck.IsChecked = _plugin.Settings?.DashIdleEnabled != false;
+                if (RemoteDashIdleDelayBox != null)
+                    RemoteDashIdleDelayBox.Text = (_plugin.Settings?.DashIdleDelaySeconds ?? 30).ToString();
+                if (RemoteDashIdleNameBox != null)
+                    RemoteDashIdleNameBox.Text = _plugin.Settings?.DashIdleDriverName ?? "";
+                if (RemoteDashIdleNumberBox != null)
+                    RemoteDashIdleNumberBox.Text = _plugin.Settings?.DashIdleNumber ?? "";
+                if (RemoteDashIdleStyleCombo != null)
+                {
+                    if (RemoteDashIdleStyleCombo.Items.Count == 0)
+                        foreach (string lbl in IdleStyleLabels) RemoteDashIdleStyleCombo.Items.Add(lbl);
+                    int si = Array.IndexOf(IdleStyleKeys, _plugin.Settings?.DashIdleStyle ?? "Aurora");
+                    RemoteDashIdleStyleCombo.SelectedIndex = si < 0 ? 0 : si;
+                }
+                if (RemoteDashIdleColorCombo != null)
+                {
+                    if (RemoteDashIdleColorCombo.Items.Count == 0)
+                        foreach (string lbl in IdleColorNames) RemoteDashIdleColorCombo.Items.Add(lbl);
+                    int ci = Array.IndexOf(IdleColorHex, _plugin.Settings?.DashIdleColor ?? "#FFF2F4F8");
+                    RemoteDashIdleColorCombo.SelectedIndex = ci < 0 ? 0 : ci;
+                }
                 if (RemoteDashDriveOneRowRadio != null) RemoteDashDriveOneRowRadio.IsChecked = !twoRows;
                 // The top pair is not drawn in the one-row layout, so its
                 // pickers would be lying about what the dash shows.
@@ -6414,6 +6436,95 @@ namespace TrueforceForAll.Plugin
 
         private void RemoteDashFlags_Changed(object sender, RoutedEventArgs e)
         {
+        // ---------------- idle card ----------------
+        // Style and colour are fixed lists rather than free text: both feed a
+        // dash formula, and a typo there fails silently as a blank card.
+        private static readonly string[] IdleStyleKeys   = { "Aurora", "Pulse", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleLabels = { "Aurora", "Pulse", "Streaks", "Plain" };
+        private static readonly string[] IdleColorHex =
+            { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };
+        private static readonly string[] IdleColorNames =
+            { "White", "Gold", "Green", "Blue", "Red", "Violet" };
+
+        private void RemoteDashIdle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleEnabled = RemoteDashIdleCheck?.IsChecked == true;
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleStyle_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = RemoteDashIdleStyleCombo?.SelectedIndex ?? -1;
+            if (i < 0 || i >= IdleStyleKeys.Length) return;
+            _plugin.Settings.DashIdleStyle = IdleStyleKeys[i];
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleColor_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = RemoteDashIdleColorCombo?.SelectedIndex ?? -1;
+            if (i < 0 || i >= IdleColorHex.Length) return;
+            _plugin.Settings.DashIdleColor = IdleColorHex[i];
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleName_Commit(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleDriverName = (RemoteDashIdleNameBox?.Text ?? "").Trim();
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleNumber_Commit(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleNumber = (RemoteDashIdleNumberBox?.Text ?? "").Trim();
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleDelay_Commit(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int v;
+            if (!int.TryParse((RemoteDashIdleDelayBox?.Text ?? "").Trim(), out v)) v = 30;
+            if (v < 0) v = 0;
+            if (v > 3600) v = 3600;   // an hour is already "never" in practice
+            _plugin.Settings.DashIdleDelaySeconds = v;
+            _suppressEvents = true;
+            try { if (RemoteDashIdleDelayBox != null) RemoteDashIdleDelayBox.Text = v.ToString(); }
+            finally { _suppressEvents = false; }
+            PersistIdle();
+        }
+
+        // Enter commits without waiting for focus to move, which on a settings
+        // page is otherwise the difference between typing a name and keeping it.
+        private void RemoteDashIdleName_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) RemoteDashIdleName_Commit(sender, null);
+        }
+
+        private void RemoteDashIdleNumber_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) RemoteDashIdleNumber_Commit(sender, null);
+        }
+
+        private void RemoteDashIdleDelay_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) RemoteDashIdleDelay_Commit(sender, null);
+        }
+
+        private void PersistIdle()
+        {
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Persist idle settings failed: " + ex.Message);
+            }
+        }
+
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.DashFlagsEnabled = RemoteDashFlagsCheck?.IsChecked == true;
             try { _plugin.PersistSettings(); }
