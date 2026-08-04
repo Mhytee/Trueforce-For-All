@@ -1603,15 +1603,21 @@ function IdleCard([string]$P) {
     }
 
     # --- Driver identity: the number is the point, the name labels it ---
+    # Name over or under the number, the user's call. The pair keeps the
+    # same total height either way, so the block stays put on the card and
+    # only the two swap places.
+    $above = '$prop("' + $P + '.Idle.NameAbove")'
     $t = New-Text 'idle-num' 0 90 800 220 190 '' $script:WHITE 1 @{
         Text      = BindJS 'Text'      ('return ""+($prop("' + $P + '.Idle.Number")||"")')
         TextColor = BindJS 'TextColor' ('return ' + $col)
+        Top       = BindJS 'Top'       ('return ' + $above + '?124:90')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
     $t = New-Text 'idle-name' 0 310 800 54 40 '' $script:WHITE 1 @{
         Text      = BindJS 'Text'      ('return ""+($prop("' + $P + '.Idle.Name")||"")')
         TextColor = BindJS 'TextColor' ('return ' + $col)
+        Top       = BindJS 'Top'       ('return ' + $above + '?62:344')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)

@@ -1160,6 +1160,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Idle.Style",  () => Settings?.DashIdleStyle ?? "Aurora");
             this.AttachDelegate("Dash.Idle.Name",   () => Settings?.DashIdleDriverName ?? "");
             this.AttachDelegate("Dash.Idle.Number", () => Settings?.DashIdleNumber ?? "");
+            this.AttachDelegate("Dash.Idle.NameAbove", () => Settings?.DashIdleNameAbove == true);
             this.AttachDelegate("Dash.Idle.Color",  () =>
             {
                 string c = Settings?.DashIdleColor;

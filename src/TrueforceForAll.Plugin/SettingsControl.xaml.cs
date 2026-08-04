@@ -6389,6 +6389,8 @@ namespace TrueforceForAll.Plugin
                     RemoteDashIdleNumberBox.Text = _plugin.Settings?.DashIdleNumber ?? "";
                 if (RemoteDashIdleStyleCombo != null)
                 {
+                if (RemoteDashIdleNameAboveCheck != null)
+                    RemoteDashIdleNameAboveCheck.IsChecked = _plugin.Settings?.DashIdleNameAbove == true;
                     if (RemoteDashIdleStyleCombo.Items.Count == 0)
                         foreach (string lbl in IdleStyleLabels) RemoteDashIdleStyleCombo.Items.Add(lbl);
                     int si = Array.IndexOf(IdleStyleKeys, _plugin.Settings?.DashIdleStyle ?? "Aurora");
@@ -6480,6 +6482,13 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.DashIdleDriverName = (RemoteDashIdleNameBox?.Text ?? "").Trim();
+        private void RemoteDashIdleNameAbove_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleNameAbove = RemoteDashIdleNameAboveCheck?.IsChecked == true;
+            PersistIdle();
+        }
+
             PersistIdle();
         }
 

@@ -3110,6 +3110,9 @@
                 </StackPanel>
             </Expander>
 
+                        <CheckBox x:Name="RemoteDashIdleNameAboveCheck" Content="Name above" VerticalAlignment="Center" Margin="24,0,0,0"
+                                  Checked="RemoteDashIdleNameAbove_Changed" Unchecked="RemoteDashIdleNameAbove_Changed"
+                                  ToolTip="Puts the driver name over the number instead of under it."/>
             <!-- UDP telemetry: Forza UDP setup as its own collapsible, so it
                  reads as a primary setting rather than trailing Diagnostics.
                  Forza is the only UDP-telemetry game, so the body is the Forza

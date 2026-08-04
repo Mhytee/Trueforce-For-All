@@ -488,6 +488,9 @@ namespace TrueforceForAll.Plugin
         public string DashIdleDriverName   { get; set; } = "";
         public string DashIdleNumber       { get; set; } = "";
         public string DashIdleColor        { get; set; } = "#FFF2F4F8";
+        // Name above the number rather than under it. Both read fine; which
+        // one looks right depends on the number, so it is a choice.
+        public bool   DashIdleNameAbove    { get; set; } = false;
 
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the

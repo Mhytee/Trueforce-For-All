@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "6e5b399e-e584-43cc-9005-8ca0c84f4117",
+    "Id":  "b6fbd7c5-a119-4078-a3c7-10c3e245d9e1",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "ed39bb59-6a28-4c9a-a2c2-62e2c9d9e908",
+                        "ScreenId":  "3734afb6-3934-42d1-9b5c-248d32fdec69",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -6160,14 +6160,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-num",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -6176,6 +6168,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?124:90"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -6208,14 +6216,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-name",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -6224,6 +6224,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?62:344"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -8129,7 +8145,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "495f0bdd-2776-4188-8a56-d63e9ddda42a",
+                        "ScreenId":  "35c63767-0f13-4fed-91a5-c2344e40c981",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -17444,14 +17460,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-num",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -17460,6 +17468,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?124:90"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -17492,14 +17516,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-name",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -17508,6 +17524,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?62:344"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -19413,7 +19445,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "13df131f-345c-406e-85fe-d8d89b119f42",
+                        "ScreenId":  "88393afa-6a5b-4bdd-8e3c-8ec04be96fdf",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -30762,14 +30794,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-num",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -30778,6 +30802,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?124:90"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -30810,14 +30850,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-name",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -30826,6 +30858,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?62:344"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -32731,7 +32779,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c13c5eba-76c9-46c3-9e82-5b8dea5ebcc7",
+                        "ScreenId":  "d5bdca98-e7d9-4685-b740-987b4031641f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -38055,14 +38103,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-num",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -38071,6 +38111,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?124:90"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -38103,14 +38159,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-name",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -38119,6 +38167,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?62:344"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -40024,7 +40088,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "d3f22540-6b9a-45f3-bc45-f9dc191cce73",
+                        "ScreenId":  "f9b1c8a5-3f63-4d1d-8ffb-6e28a67607d1",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -51863,14 +51927,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-num",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -51879,6 +51935,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?124:90"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -51911,14 +51983,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-name",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -51927,6 +51991,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?62:344"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -53832,7 +53912,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f4c378af-5eb2-4821-9111-dbbd85de3878",
+                        "ScreenId":  "5171ab71-13b3-4e69-a10c-46f35db18e65",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -62384,14 +62464,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-num",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -62400,6 +62472,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?124:90"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -62432,14 +62520,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-name",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -62448,6 +62528,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?62:344"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -64353,7 +64449,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f81d433f-85fd-4c03-9b1b-5f8f58bcadfb",
+                        "ScreenId":  "db1aff6d-a02f-47e2-b48c-ad13084e7cbe",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -128156,14 +128252,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-num",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -128172,6 +128260,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Number\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?124:90"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -128204,14 +128308,6 @@
                                           "IsFreezed":  false,
                                           "Name":  "idle-name",
                                           "Bindings":  {
-                                                           "Text":  {
-                                                                        "Formula":  {
-                                                                                        "Interpreter":  1,
-                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
-                                                                                    },
-                                                                        "Mode":  2,
-                                                                        "TargetPropertyName":  "Text"
-                                                                    },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -128220,6 +128316,22 @@
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
                                                                          },
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+($prop(\"TrueforcePlugin.Dash.Idle.Name\")||\"\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Idle.NameAbove\")?62:344"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,

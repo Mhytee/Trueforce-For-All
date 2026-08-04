@@ -56,7 +56,7 @@ namespace TrueforceForAll.Plugin
             "DashRevStripCentered", "DashDrivePedals",
             "DashSpotterEnabled",
             "DashIdleEnabled", "DashIdleDelaySeconds", "DashIdleStyle",
-            "DashIdleDriverName", "DashIdleNumber", "DashIdleColor",
+            "DashIdleDriverName", "DashIdleNumber", "DashIdleColor", "DashIdleNameAbove",
             "DashTabOrder", "DashTabsDisabled",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
