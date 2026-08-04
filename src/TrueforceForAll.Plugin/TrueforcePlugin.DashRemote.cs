@@ -127,12 +127,12 @@ namespace TrueforceForAll.Plugin
         // obvious next option: PersistantTrackerPlugin.DriverAhead_NN_* and
         // DriverBehind_NN_* carry it without the obsolete leaderboard item.
         internal static readonly string[] DashDriveContentKeys =
-            { "CarFacts", "LapTimes", "TyreTemps", "TyreWear", "Fuel", "Delta", "Scope",
+            { "CarFacts", "TyreTemps", "TyreWear", "Fuel", "Delta", "Scope",
               "Home", "Presets", "GCircle", "Friction", "Relative", "Radar", "Inputs",
               "Damage", "None" };
         // Friendly labels for the Settings-tab pickers, index-matched above.
         internal static readonly string[] DashDriveContentLabels =
-            { "Car facts", "Lap times", "Tyre temps", "Tyre wear", "Fuel", "Lap delta", "Visualizer",
+            { "Car facts", "Tyre temps", "Tyre wear", "Fuel", "Lap delta + times", "Visualizer",
               "Gains", "Presets", "G circle", "Friction circle", "Relative", "Radar", "Inputs",
               "Damage", "Empty" };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
@@ -158,6 +158,10 @@ namespace TrueforceForAll.Plugin
             for (int i = 0; i < DashDriveSlotCount; i++)
             {
                 string v = stored != null && i < stored.Count ? stored[i] : null;
+                // Lap times merged into Lap delta, so anyone already using it
+                // lands on the box that absorbed it rather than being reset to
+                // a factory default with nothing to do with their choice.
+                if (v == "LapTimes") v = "Delta";
                 outp[i] = !string.IsNullOrEmpty(v)
                           && Array.IndexOf(DashDriveContentKeys, v) >= 0
                     ? v

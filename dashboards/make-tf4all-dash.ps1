@@ -802,19 +802,6 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
     }
 
-    # ---------------- LAP TIMES --------------------------------------
-    $vis = KeyVis 'LapTimes' $dLap
-    $items.Add((AddHead 'lt' 'LAP TIMES' 'LapTimes'))
-    # Centred: it is the one number you glance at, and left-aligning it
-    # against right-aligned rows underneath read as two different columns.
-    $t = New-Text "d$slot-lt-cur" $ix ($iy + 22) $iw 40 30 '' $script:WHITE 1 @{
-        Text = BindJS 'Text' (FmtLapDualJs ($P + '.Forza.CurLap') ($SIM + 'CurrentLapTime'))
-    } 'Bold'
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    BoxLine "d$slot-lt-last" $ix ($iy + 66) $iw 'Last' (FmtLapDualJs ($P + '.Forza.LastLap') ($SIM + 'LastLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-lt-best" $ix ($iy + 98) $iw 'Best' (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-    $items.Add((AddNote 'lt' 'This game does not report lap times.' 'LapTimes' $dLap))
-
     # ---------------- TYRE TEMPS (visual) ----------------------------
     # Four tyre blocks coloured by temperature, so the box reads at a
     # glance instead of needing four numbers parsed. Bands are broad on
@@ -973,6 +960,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddNote 'fu' 'This game does not report fuel.' 'Fuel' $dFuel))
 
     # ---------------- LAP DELTA --------------------------------------
+    # One box for the whole lap picture. A separate Lap times box repeated
+    # two of these rows and only the delta ever needed a headline, so the
+    # running lap joins it here: that number was the reason to keep both.
     $vis = KeyVis 'Delta' $dDelta
     $items.Add((AddHead 'dl' 'LAP DELTA' 'Delta'))
     $t = New-Text "d$slot-dl-v" $ix ($iy + 22) $iw 44 32 '' $script:WHITE 1 @{
@@ -980,13 +970,18 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         TextColor = BindJS 'TextColor' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"' + $script:MUTED + '":(v>0?"' + $script:RED + '":"' + $script:GREEN + '")')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    # Estimated, last and best: the delta on its own says how you are doing
-    # against the best, and these say what it is measuring between. Last and
-    # best come from our frame first, so a Forza player without forwarding
-    # still gets two of the three (the estimate is the tracker's alone).
-    BoxLine "d$slot-dl-est"  $ix ($iy + 74)  $iw 'Estimated' (FmtLapJs ($TRK + 'EstimatedLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-dl-last" $ix ($iy + 106) $iw 'Last' (FmtLapDualJs ($P + '.Forza.LastLap') ($SIM + 'LastLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
-    BoxLine "d$slot-dl-best" $ix ($iy + 138) $iw 'Best' (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime')) $vis 17 | ForEach-Object { $items.Add($_) }
+    # Four rows at 28 rather than three at 32: the extra one has to fit the
+    # short box as well as the tall one.
+    $dlRows = @(
+        @('cur',  'Current',   (FmtLapDualJs ($P + '.Forza.CurLap')  ($SIM + 'CurrentLapTime'))),
+        @('est',  'Estimated', (FmtLapJs ($TRK + 'EstimatedLapTime'))),
+        @('last', 'Last',      (FmtLapDualJs ($P + '.Forza.LastLap') ($SIM + 'LastLapTime'))),
+        @('best', 'Best',      (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime')))
+    )
+    for ($d = 0; $d -lt $dlRows.Count; $d++) {
+        BoxLine "d$slot-dl-$($dlRows[$d][0])" $ix ($iy + 70 + $d * 28) $iw $dlRows[$d][1] $dlRows[$d][2] $vis 17 |
+            ForEach-Object { $items.Add($_) }
+    }
     $items.Add((AddNote 'dl' 'This game does not report lap deltas.' 'Delta' $dDelta))
 
     # ---------------- G CIRCLE (game accelerations) ------------------
@@ -1831,7 +1826,9 @@ function DriveBoxOverlay([string]$P) {
     $items.Add((OnOverlay (New-Text 'db-title' 0 16 800 28 19 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('return "' + 'BOX: ' + '"+(""+$prop("' + $P + '.Drive.EditSlot"))')
     } 'Bold') 'drivebox'))
-    $labels = @('Car facts', 'Lap times', 'Tyre temps', 'Tyre wear', 'Fuel', 'Lap delta',
+    # Index-matched with DashDriveContentKeys: the plugin indexes a tile
+    # straight into that array, so these must stay in the same order.
+    $labels = @('Car facts', 'Tyre temps', 'Tyre wear', 'Fuel', 'Lap delta + times',
                 'Visualizer', 'Gains', 'Presets', 'G circle', 'Friction circle', 'Relative',
                 'Radar', 'Inputs', 'Damage', 'Empty')
     $cols = 4; $tw = 176; $th = 62; $gx = 12; $gy = 12
@@ -1965,11 +1962,12 @@ $s1.Add((New-Text 'aud-t' 408 372 376 66 22 '' $WHITE 1 @{
 $s1.Add((New-Button 'aud-btn' 408 372 376 66 'DashFxAudioToggle'))
 
 TabBar $P | ForEach-Object { $s1.Add($_) }
+# Under the overlays: a backdrop is meant to dim this, not sit beneath it.
+RevStrip $P | ForEach-Object { $s1.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
 FlagBar $P | ForEach-Object { $s1.Add($_) }
 IdleCard $P | ForEach-Object { $s1.Add($_) }
 ToastBar $P | ForEach-Object { $s1.Add($_) }
-RevStrip $P | ForEach-Object { $s1.Add($_) }
 
 # =====================================================================
 # Screen 2: CAR FACTS (+ layout picker overlay + redline keypad overlay)
@@ -2063,6 +2061,8 @@ function EngineLayoutOverlay([string]$P) {
     $items.Add((OnOverlay (New-Button 'lp-cancel' 8 438 782 36 'DashEngineLayoutClose') 'layout'))
     $items
 }
+# Under the overlays: a backdrop is meant to dim this, not sit beneath it.
+RevStrip $P | ForEach-Object { $s2.Add($_) }
 EngineLayoutOverlay $P | ForEach-Object { $s2.Add($_) }
 
 TabBar $P | ForEach-Object { $s2.Add($_) }
@@ -2071,7 +2071,6 @@ KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
 FlagBar $P | ForEach-Object { $s2.Add($_) }
 IdleCard $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
-RevStrip $P | ForEach-Object { $s2.Add($_) }
 
 # =====================================================================
 # Screen 3: EFFECTS (13 rows in 2 columns: toggle tile + gain readout + steppers)
@@ -2153,6 +2152,8 @@ foreach ($b in $saveBar)   { $b.Bindings['Visible'] = BindJS 'Visible' $dirtyVis
 foreach ($b in $revertBar) { $b.Bindings['Visible'] = BindJS 'Visible' $revertVis; $s3.Add($b) }
 
 TabBar $P | ForEach-Object { $s3.Add($_) }
+# Under the overlays: a backdrop is meant to dim this, not sit beneath it.
+RevStrip $P | ForEach-Object { $s3.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s3.Add($_) }
 
 # ---- overlay: save scope chooser (Dash.Overlay == "savescope") ----
@@ -2176,7 +2177,6 @@ $s3.Add((OnOverlay (New-Button 'ss-cancel' 220 372 360 44 'DashTuneSaveCancel') 
 FlagBar $P | ForEach-Object { $s3.Add($_) }
 IdleCard $P | ForEach-Object { $s3.Add($_) }
 ToastBar $P | ForEach-Object { $s3.Add($_) }
-RevStrip $P | ForEach-Object { $s3.Add($_) }
 
 # =====================================================================
 # Screen 4: PRESETS (game preset + car preset, picker overlay)
@@ -2207,11 +2207,12 @@ $s4.Add((New-Button 'pr-carp-btn' 648 260 120 84 'DashPresetOpenCar'))
 
 
 TabBar $P | ForEach-Object { $s4.Add($_) }
+# Under the overlays: a backdrop is meant to dim this, not sit beneath it.
+RevStrip $P | ForEach-Object { $s4.Add($_) }
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
 FlagBar $P | ForEach-Object { $s4.Add($_) }
 IdleCard $P | ForEach-Object { $s4.Add($_) }
 ToastBar $P | ForEach-Object { $s4.Add($_) }
-RevStrip $P | ForEach-Object { $s4.Add($_) }
 
 # =====================================================================
 # Screen 5: VISUALIZER (scrolling signal waveforms, stacked lanes)
@@ -2399,11 +2400,12 @@ $mbNote2.Bindings['Visible'] = BindJS 'Visible' ('return !' + $mbSupported)
 $s6.Add($mbNote2)
 
 TabBar $P | ForEach-Object { $s6.Add($_) }
+# Under the overlays: a backdrop is meant to dim this, not sit beneath it.
+RevStrip $P | ForEach-Object { $s6.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s6.Add($_) }
 FlagBar $P | ForEach-Object { $s6.Add($_) }
 IdleCard $P | ForEach-Object { $s6.Add($_) }
 ToastBar $P | ForEach-Object { $s6.Add($_) }
-RevStrip $P | ForEach-Object { $s6.Add($_) }
 
 # =====================================================================
 # Screen 7: DRIVE (gear + four swappable info boxes)
@@ -2519,6 +2521,8 @@ DriveBoxDual $P 3 508 282 228 212 16 424 | ForEach-Object { $s7.Add($_) }
 TabBar $P | ForEach-Object { $s7.Add($_) }
 # The interactive boxes reuse the same overlays their full tabs use, so
 # a tap on Drive never bounces the user to another screen.
+# Under the overlays: a backdrop is meant to dim this, not sit beneath it.
+RevStrip $P $true | ForEach-Object { $s7.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s7.Add($_) }
 EngineLayoutOverlay $P | ForEach-Object { $s7.Add($_) }
 PresetOverlay $P | ForEach-Object { $s7.Add($_) }
@@ -2526,7 +2530,6 @@ FlagBar $P | ForEach-Object { $s7.Add($_) }
 IdleCard $P | ForEach-Object { $s7.Add($_) }
 ToastBar $P | ForEach-Object { $s7.Add($_) }
 DriveBoxOverlay $P | ForEach-Object { $s7.Add($_) }
-RevStrip $P $true | ForEach-Object { $s7.Add($_) }
 
 # =====================================================================
 # Assemble document
