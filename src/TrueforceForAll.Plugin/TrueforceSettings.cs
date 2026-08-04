@@ -491,6 +491,11 @@ namespace TrueforceForAll.Plugin
         // Name above the number rather than under it. Both read fine; which
         // one looks right depends on the number, so it is a choice.
         public bool   DashIdleNameAbove    { get; set; } = false;
+        // Font family for the idle card's name and number. Empty means the
+        // dashboard's own. These are names the VIEWING device has to have,
+        // so the picker only offers families that ship broadly; an unknown
+        // one falls back silently rather than failing.
+        public string DashIdleFont        { get; set; } = "";
 
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the

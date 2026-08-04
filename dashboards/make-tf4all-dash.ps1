@@ -119,6 +119,7 @@ function New-Text([string]$name, $x, $y, $w, $h, $size, [string]$text, [string]$
     [ordered]@{
         '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins'
         FontWeight = $weight; TextWrapping = 1; FontStyle = 'Normal'
+        Font = ''
         FontSize = [double]$size; Text = $text; TextColor = $color
         HorizontalAlignment = $halign; VerticalAlignment = 1
         BackgroundColor = $CLEAR
@@ -1047,6 +1048,11 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # the obsolete leaderboard item. Three columns: position, who it is,
     # and their last lap. A relative without names is a list of strangers,
     # and the name is the part you actually recognise mid stint.
+    #
+    # Rows fill the card rather than stopping short of it, and alternate
+    # light and dark so the eye can follow one across three columns. Your
+    # own row is tinted green instead: on a list where every row looks the
+    # same, finding yourself is the one thing you do constantly.
     $vis = KeyVis 'Relative' $dOpp
     $items.Add((AddHead 'rel' 'RELATIVE' 'Relative'))
     $relRows = @(
@@ -1054,15 +1060,28 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         @('__ME__', $script:GREEN),
         @('DriverBehind_00', $script:WHITE), @('DriverBehind_01', $script:MUTED)
     )
+    # Capped, so the one-row layout does not stretch five rows into bands;
+    # whatever is left over becomes padding and the block sits centred.
+    $relTop0 = $iy + 26
+    $relBot  = $y + $h - 12
+    $relRowH = [math]::Min(38, ($relBot - $relTop0) / $relRows.Count)
+    $relTop  = ($relTop0 + $relBot) / 2 - ($relRowH * $relRows.Count) / 2
+    $relFont = [math]::Max(14, [math]::Min(18, $relRowH - 16))
     for ($r = 0; $r -lt $relRows.Count; $r++) {
-        $ry = $iy + 28 + $r * 24
+        $ry = $relTop + $r * $relRowH
         $src = $relRows[$r][0]; $col = $relRows[$r][1]
-        # Surnames are what people are called on a timing screen, so a
-        # "First Last" gets cut to the last word before any truncation, and
-        # only then clipped to fit the column.
+        $isMe = $src -eq '__ME__'
+        $bandCol = if ($isMe) { '#2637D67A' } elseif ($r % 2 -eq 0) { '#FF1B1F27' } else { $script:CLEAR }
+        $band = New-Rect "d$slot-rel$r-bg" $ix $ry $iw ($relRowH - 2) $bandCol $null 4
+        $band.Bindings['Visible'] = BindJS 'Visible' $vis
+        $items.Add($band)
+
+        # Surnames are what people go by on a timing screen, so a
+        # "First Last" is cut to the last word BEFORE any truncation, which
+        # keeps the useful half rather than clipping it away.
         $lastName = 'if(n.indexOf(" ")>=0)n=n.substring(n.lastIndexOf(" ")+1);' +
-                    'if(n.length>13)n=n.substring(0,12)+"…";'
-        if ($src -eq '__ME__') {
+                    'if(n.length>13)n=n.substring(0,12)+"\u2026";'
+        if ($isMe) {
             $posJs = 'var p=1*$prop("' + $SIM + 'Position");return isNaN(p)||p<=0?"-":"P"+p'
             $nameJs = 'var n=""+($prop("' + $SIM + 'PlayerName")||"");if(n=="")return "You";' +
                       $lastName + 'return n'
@@ -1073,12 +1092,13 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
                       $lastName + 'return n'
             $valJs = 'var s=""+($prop("' + $TRK + $src + '_LastLapTime")||"");if(s.indexOf(".")>=0)s=s.substring(0,s.indexOf(".")+3);if(s.indexOf("00:")==0)s=s.substring(3);return s==""?"--":s'
         }
-        $timeW = 74
-        $pt = New-Text "d$slot-rel$r-p" $ix $ry 40 22 15 '' $col 0 @{ Text = BindJS 'Text' $posJs } 'Bold'
+        $timeW = 80
+        $ty = $ry + ($relRowH - 2 - 22) / 2
+        $pt = New-Text "d$slot-rel$r-p" ($ix + 8) $ty 40 22 $relFont '' $col 0 @{ Text = BindJS 'Text' $posJs } 'Bold'
         $pt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($pt)
-        $nm = New-Text "d$slot-rel$r-n" ($ix + 42) $ry ($iw - 42 - $timeW - 4) 22 15 '' $col 0 @{ Text = BindJS 'Text' $nameJs }
+        $nm = New-Text "d$slot-rel$r-n" ($ix + 50) $ty ($iw - 50 - $timeW - 10) 22 $relFont '' $col 0 @{ Text = BindJS 'Text' $nameJs }
         $nm.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($nm)
-        $nt = New-Text "d$slot-rel$r-t" ($ix + $iw - $timeW) $ry $timeW 22 15 '' $col 2 @{ Text = BindJS 'Text' $valJs }
+        $nt = New-Text "d$slot-rel$r-t" ($ix + $iw - $timeW - 8) $ty $timeW 22 $relFont '' $col 2 @{ Text = BindJS 'Text' $valJs }
         $nt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($nt)
     }
     $items.Add((AddNote 'rel' 'No other cars in this session.' 'Relative' $dOpp))
@@ -1621,10 +1641,16 @@ function IdleCard([string]$P) {
     # same total height either way, so the block stays put on the card and
     # only the two swap places.
     $above = '$prop("' + $P + '.Idle.NameAbove")'
+    # Font is bound, not baked, so the choice applies live. Only the two
+    # big readouts carry it: a Font binding on every text item in the
+    # dashboard would be several hundred more formulas evaluated per
+    # update to change something nobody reads at speed.
+    $fontJs = 'return ""+($prop("' + $P + '.Idle.Font")||"")'
     $t = New-Text 'idle-num' 0 90 800 220 190 '' $script:WHITE 1 @{
         Text      = BindJS 'Text'      ('return ""+($prop("' + $P + '.Idle.Number")||"")')
         TextColor = BindJS 'TextColor' ('return ' + $col)
         Top       = BindJS 'Top'       ('return ' + $above + '?124:90')
+        Font      = BindJS 'Font'      $fontJs
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
@@ -1632,6 +1658,7 @@ function IdleCard([string]$P) {
         Text      = BindJS 'Text'      ('return ""+($prop("' + $P + '.Idle.Name")||"")')
         TextColor = BindJS 'TextColor' ('return ' + $col)
         Top       = BindJS 'Top'       ('return ' + $above + '?62:344')
+        Font      = BindJS 'Font'      $fontJs
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)

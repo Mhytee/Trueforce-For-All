@@ -3110,6 +3110,13 @@
                 </StackPanel>
             </Expander>
 
+                        <TextBlock Text="Font" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                        <ComboBox x:Name="RemoteDashIdleFontCombo" Width="118" Margin="8,0,0,0"
+                                  SelectionChanged="RemoteDashIdleFont_Changed"
+                                  ToolTip="Applies to the name and number on the idle card. The font has to exist on the device showing the dash, so an unknown one quietly falls back to the default."/>
+                        <CheckBox x:Name="RemoteDashIdleNameAboveCheck" Content="Name above" VerticalAlignment="Center" Margin="24,0,0,0"
+                                  Checked="RemoteDashIdleNameAbove_Changed" Unchecked="RemoteDashIdleNameAbove_Changed"
+                                  ToolTip="Puts the driver name over the number instead of under it."/>
                         <CheckBox x:Name="RemoteDashIdleNameAboveCheck" Content="Name above" VerticalAlignment="Center" Margin="24,0,0,0"
                                   Checked="RemoteDashIdleNameAbove_Changed" Unchecked="RemoteDashIdleNameAbove_Changed"
                                   ToolTip="Puts the driver name over the number instead of under it."/>

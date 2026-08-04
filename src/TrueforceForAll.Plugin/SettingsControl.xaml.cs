@@ -6398,6 +6398,13 @@ namespace TrueforceForAll.Plugin
                 }
                 if (RemoteDashIdleColorCombo != null)
                 {
+                if (RemoteDashIdleFontCombo != null)
+                {
+                    if (RemoteDashIdleFontCombo.Items.Count == 0)
+                        foreach (string lbl in IdleFontLabels) RemoteDashIdleFontCombo.Items.Add(lbl);
+                    int fi = Array.IndexOf(IdleFontValues, _plugin.Settings?.DashIdleFont ?? "");
+                    RemoteDashIdleFontCombo.SelectedIndex = fi < 0 ? 0 : fi;
+                }
                     if (RemoteDashIdleColorCombo.Items.Count == 0)
                         foreach (string lbl in IdleColorNames) RemoteDashIdleColorCombo.Items.Add(lbl);
                     int ci = Array.IndexOf(IdleColorHex, _plugin.Settings?.DashIdleColor ?? "#FFF2F4F8");
@@ -6452,6 +6459,13 @@ namespace TrueforceForAll.Plugin
             { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };
         private static readonly string[] IdleColorNames =
             { "White", "Gold", "Green", "Blue", "Red", "Violet" };
+        // Families that ship broadly enough to be there on a phone, a tablet
+        // and a PC alike. Empty is the dashboard's own font.
+        private static readonly string[] IdleFontValues =
+            { "", "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet MS" };
+        private static readonly string[] IdleFontLabels =
+            { "Default", "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet" };
+
 
         private void RemoteDashIdle_Changed(object sender, RoutedEventArgs e)
         {
@@ -6473,6 +6487,15 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             int i = RemoteDashIdleColorCombo?.SelectedIndex ?? -1;
+        private void RemoteDashIdleFont_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = RemoteDashIdleFontCombo?.SelectedIndex ?? -1;
+            if (i < 0 || i >= IdleFontValues.Length) return;
+            _plugin.Settings.DashIdleFont = IdleFontValues[i];
+            PersistIdle();
+        }
+
             if (i < 0 || i >= IdleColorHex.Length) return;
             _plugin.Settings.DashIdleColor = IdleColorHex[i];
             PersistIdle();
