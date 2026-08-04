@@ -944,18 +944,89 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddNote 'rel' 'No other cars in this session.' 'Relative' $dOpp))
 
     # ---------------- RADAR (SimHub's own proximity item) ------------
-    # One native item that draws itself from the session's opponents, so
-    # it lights up in games reporting car positions and stays quiet in
-    # the ones that do not.
+    # SimHub's native item draws the cars; the rings and the proximity
+    # quadrants are ours, so it reads like the two circle boxes beside it
+    # rather than a square panel that happens to have dots in it.
     $vis = KeyVis 'Radar' $dOpp
     $items.Add((AddHead 'rd' 'RADAR' 'Radar'))
     # Square, so width caps it in the tall box: centre rather than pin.
     $rdSize = [math]::Min($iw, $h - 52)
+    $rdCx = $ix + $iw / 2
+    $rdCy = ($iy + 30 + $y + $h - 12) / 2
+    $rdR  = $rdSize / 2
+
+    # Proximity glow, under the dots so it reads as light behind the traffic
+    # rather than a lid over it. 0 clear, 1 close, 2 very close.
+    #
+    # Ahead and behind grade on real metres from the tracker. Left and right
+    # come from SimHub's spotter, which is a yes or no with no distance in
+    # it, so a side only escalates to red when the nearest car longitudinally
+    # is right on top of you, which is what being genuinely alongside means.
+    #
+    # The quadrants are split on the axes, which is the shape a rounded
+    # corner can draw exactly, so a car purely to one side lights that whole
+    # side. Where the two overlap, a car both left and ahead, the front-left
+    # quadrant is the one that goes red, which is the corner you care about.
+    $near = 8; $far = 30
+    $dA = '(1*$prop("' + $TRK + 'DriverAhead_00_Distance"))'
+    $dB = '(1*$prop("' + $TRK + 'DriverBehind_00_Distance"))'
+    $longJs = { param($d) '(function(){var x=Math.abs(' + $d + ');' +
+                          'if(isNaN(x)||x<=0||x>' + $far + ')return 0;' +
+                          'return x<' + $near + '?2:1;})()' }
+    $sideJs = { param($sp) '(function(){if(!$prop("' + $sp + '"))return 0;' +
+                           'var a=Math.abs(' + $dA + ');var b=Math.abs(' + $dB + ');' +
+                           'if(isNaN(a))a=9999;if(isNaN(b))b=9999;' +
+                           'return Math.min(a,b)<' + $near + '?2:1;})()' }
+    $lvL = & $sideJs 'SpotterCarLeft'
+    $lvR = & $sideJs 'SpotterCarRight'
+    $lvA = & $longJs $dA
+    $lvB = & $longJs $dB
+    foreach ($q in @(
+        @('fl', 'TopLeft',     $lvL, $lvA),
+        @('fr', 'TopRight',    $lvR, $lvA),
+        @('rl', 'BottomLeft',  $lvL, $lvB),
+        @('rr', 'BottomRight', $lvR, $lvB))) {
+        $qk = $q[0]; $qc = $q[1]
+        $lvlJs = 'var l=Math.max(' + $q[2] + ',' + $q[3] + ');'
+        $qx = if ($qc -like '*Left') { $rdCx - $rdR } else { $rdCx }
+        $qy = if ($qc -like 'Top*')  { $rdCy - $rdR } else { $rdCy }
+        $qr = New-Rect "d$slot-rd-q$qk" $qx $qy $rdR $rdR '#FFE8A33D' $null 0
+        # Only the OUTER corner rounds, to the full radius, so the square
+        # becomes exactly that quarter of the disc and the four tile it.
+        $ctl = if ($qc -eq 'TopLeft')     { $rdR } else { 0 }
+        $ctr = if ($qc -eq 'TopRight')    { $rdR } else { 0 }
+        $cbr = if ($qc -eq 'BottomRight') { $rdR } else { 0 }
+        $cbl = if ($qc -eq 'BottomLeft')  { $rdR } else { 0 }
+        $qr.RadiusTopLeft = [double]$ctl; $qr.RadiusTopRight = [double]$ctr
+        $qr.RadiusBottomRight = [double]$cbr; $qr.RadiusBottomLeft = [double]$cbl
+        $qr.BorderStyle.RadiusTopLeft = [double]$ctl
+        $qr.BorderStyle.RadiusTopRight = [double]$ctr
+        $qr.BorderStyle.RadiusBottomRight = [double]$cbr
+        $qr.BorderStyle.RadiusBottomLeft = [double]$cbl
+        $qr.BorderStyle.CornerRadius = "$ctl,$ctr,$cbr,$cbl"
+        $qr.Opacity = 0.0
+        $qr.Bindings['BackgroundColor'] = BindJS 'BackgroundColor' (
+            $lvlJs + 'return l>1?"' + $script:RED + '":"#FFE8A33D"')
+        # Semi transparent by design: the cars have to stay readable through it.
+        $qr.Bindings['Opacity'] = BindJS 'Opacity' (
+            $lvlJs + 'return l==0?0:(l>1?40:24)')
+        # Declaration first, THEN the return: splicing the level snippet in
+        # after "return" produced "return var l=..." and a formula that
+        # silently does nothing.
+        $qr.Bindings['Visible'] = BindJS 'Visible' (
+            $lvlJs + 'return l>0 && (' + ($vis -replace '^return ', '') + ')')
+        $items.Add($qr)
+    }
+
+    # Rings, matching the friction and g circles.
+    $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
+    $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR / 2) '#FF2A303A' 1 $vis))
+
     $radar = [ordered]@{
         '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RadarItem, SimHub.Plugins'
         BackgroundColor = $script:CLEAR
-        Height = [double]$rdSize; Left = [double]($ix + ($iw - $rdSize) / 2)
-        Top = [double](($iy + 30 + $y + $h - 12) / 2 - $rdSize / 2)
+        Height = [double]$rdSize; Left = [double]($rdCx - $rdR)
+        Top = [double]($rdCy - $rdR)
         Visible = $true; Width = [double]$rdSize
         Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
         Name = "d$slot-rd"
@@ -2271,7 +2342,10 @@ foreach ($scr in $doc.Screens) {
             $q = ([regex]::Matches($ex, '"')).Count
             $op = ([regex]::Matches($ex, '[\(\[\{]')).Count
             $cl = ([regex]::Matches($ex, '[\)\]\}]')).Count
-            if (($q % 2) -ne 0 -or $op -ne $cl) {
+            # Balanced but still dead: a statement spliced in after the
+            # return keyword parses as nothing and the item never updates.
+            $malformed = $ex -match 'return\s+(var|if|for)'
+            if (($q % 2) -ne 0 -or $op -ne $cl -or $malformed) {
                 $bad += "$($it.Name).$bk : $ex"
             }
         }
