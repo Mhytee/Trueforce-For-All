@@ -6399,13 +6399,13 @@ namespace TrueforceForAll.Plugin
                     RemoteDashIdleNameBox.Text = _plugin.Settings?.DashIdleDriverName ?? "";
                 if (RemoteDashIdleNumberBox != null)
                     RemoteDashIdleNumberBox.Text = _plugin.Settings?.DashIdleNumber ?? "";
-                if (RemoteDashIdleStyleCombo != null)
-                {
                 if (RemoteDashIdleNameAboveCheck != null)
                     RemoteDashIdleNameAboveCheck.IsChecked = _plugin.Settings?.DashIdleNameAbove == true;
                     if (RemoteDashIdleStyleCombo.Items.Count == 0)
                         foreach (string lbl in IdleStyleLabels) RemoteDashIdleStyleCombo.Items.Add(lbl);
-                    int si = Array.IndexOf(IdleStyleKeys, _plugin.Settings?.DashIdleStyle ?? "Aurora");
+                if (RemoteDashIdleStyleCombo != null)
+                {
+                    int si = Array.IndexOf(IdleStyleKeys, _plugin.Settings?.DashIdleStyle ?? "Topo");
                     RemoteDashIdleStyleCombo.SelectedIndex = si < 0 ? 0 : si;
                 }
                 if (RemoteDashIdleColorCombo != null)
@@ -6457,10 +6457,6 @@ namespace TrueforceForAll.Plugin
 
         private void RemoteDashSpotter_Changed(object sender, RoutedEventArgs e)
         {
-        // ---------------- idle card ----------------
-        // Style and colour are fixed lists rather than free text: both feed a
-        // dash formula, and a typo there fails silently as a blank card.
-        private static readonly string[] IdleStyleKeys   = { "Aurora", "Pulse", "Streaks", "Plain" };
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.DashSpotterEnabled = RemoteDashSpotterCheck?.IsChecked == true;
             PersistIdle();
@@ -6481,12 +6477,8 @@ namespace TrueforceForAll.Plugin
         // ---------------- idle card ----------------
         // Style and colour are fixed lists rather than free text: both feed a
         // dash formula, and a typo there fails silently as a blank card.
-        private static readonly string[] IdleStyleKeys   = { "Aurora", "Pulse", "Streaks", "Plain" };
-        private static readonly string[] IdleStyleLabels = { "Aurora", "Pulse", "Streaks", "Plain" };
-        private static readonly string[] IdleColorHex =
-            { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };
-        private static readonly string[] IdleColorNames =
-            { "White", "Gold", "Green", "Blue", "Red", "Violet" };
+        private static readonly string[] IdleStyleKeys   = { "Topo", "Aurora", "Pulse", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleLabels = { "Topographic", "Aurora", "Pulse", "Streaks", "Plain" };
         // Families that ship broadly enough to be there on a phone, a tablet
         // and a PC alike. Empty is the dashboard's own font.
         private static readonly string[] IdleFontValues =

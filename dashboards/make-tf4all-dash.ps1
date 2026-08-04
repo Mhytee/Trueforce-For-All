@@ -1701,7 +1701,7 @@ function IdleCard([string]$P) {
 
     # Opaque backdrop: the tab underneath keeps updating, and a translucent
     # card over live telemetry reads as a rendering fault.
-    $bg = New-Rect 'idle-bg' 0 0 800 480 '#FF0B0D11' $null 0
+    $bg = ThemePaint (New-Rect 'idle-bg' 0 0 800 480 '#FF0B0D11' $null 0) 'Bg'
     $bg.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($bg)
 
@@ -1714,13 +1714,59 @@ function IdleCard([string]$P) {
     $w = { param($mult, $ph) 'Math.sin(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
     $wc = { param($mult, $ph) 'Math.cos(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
 
+    # --- Topographic: contour lines over ground that will not sit still.
+    # Three families of nested rings around centres that drift, and where
+    # two families overlap their contours interfere, which is what stops it
+    # reading as concentric circles and starts it reading as terrain.
+    #
+    # Each ring's SIZE is fixed and its corner radius is exactly half of it,
+    # because that is the only way a rounded rectangle is a circle. Animate
+    # the size and the radius no longer matches, so it visibly squares off
+    # at every size but one. The motion comes from the centres drifting and
+    # from a brightness wave travelling outward through the rings instead,
+    # both of which are plain position and opacity bindings.
+    $topoFam = @(
+        @(0, 300, 190, 1, 2, 0.00, 'Accent1'),
+        @(1, 520, 300, 2, 3, 0.41, 'Accent2'),
+        @(2, 160, 340, 3, 1, 0.73, 'Accent3')
+    )
+    foreach ($fam in $topoFam) {
+        $fi = $fam[0]; $fx = $fam[1]; $fy = $fam[2]
+        $fmx = $fam[3]; $fmy = $fam[4]; $fp = $fam[5]; $fac = $fam[6]
+        $cxJs = 'var cx=' + $fx + '+' + (& $w $fmx $fp) + '*120+' + (& $w (2 * $fmx) ($fp + 0.2)) + '*45;'
+        $cyJs = 'var cy=' + $fy + '+' + (& $wc $fmy $fp) + '*80+' + (& $wc (3 * $fmy) ($fp + 0.5)) + '*30;'
+        for ($ri = 0; $ri -lt 13; $ri++) {
+            # Not evenly spaced: even spacing reads as a target, widening
+            # spacing reads as ground that flattens away from the peak.
+            $rr = [int](26 + $ri * $ri * 2.4 + $ri * 15)
+            $r = New-Rect "idle-topo$fi-$ri" 0 0 ($rr * 2) ($rr * 2) $script:CLEAR $null $rr
+            $r.BorderStyle.BorderColor = $script:MUTED; $r.BorderColor = $script:MUTED
+            foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+                $r.BorderStyle."Border$sd" = 1
+                $r."Border$sd" = 1
+            }
+            $r.Opacity = 0.0
+            $r.Bindings['BorderColor'] = ThemeBind 'BorderColor' $fac
+            $r.Bindings['Left'] = BindJS 'Left' ($cxJs + 'return cx-' + $rr)
+            $r.Bindings['Top']  = BindJS 'Top'  ($cyJs + 'return cy-' + $rr)
+            # A wave of brightness travelling outward, one ring behind the
+            # last, so the contours appear to move even though none resize.
+            $ph = ($fp + $ri * 0.085) % 1.0
+            $r.Bindings['Opacity'] = BindJS 'Opacity' (
+                'var a=0.5+0.5*' + (& $w 1 $ph) + ';' +
+                'return ' + [math]::Round(8 + 34 * [math]::Exp(-$ri / 5.0), 1) + '*(0.35+0.65*a)')
+            $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Topo')
+            $items.Add($r)
+        }
+    }
+
     # --- Aurora: slow coloured weather, drifting and breathing ---
     $aur = @(
-        @(0, 320, '#FF2E6FA8', 1, 2, 3, 0.00, 0.31, 0.67),
-        @(1, 270, '#FF2E9478', 2, 1, 4, 0.37, 0.72, 0.11),
-        @(2, 240, '#FF6A47A0', 1, 3, 2, 0.71, 0.19, 0.43),
-        @(3, 200, '#FF9E4A6E', 3, 2, 5, 0.14, 0.58, 0.86),
-        @(4, 180, '#FF2F7F9E', 2, 4, 3, 0.53, 0.05, 0.29)
+        @(0, 320, 'Accent1', 1, 2, 3, 0.00, 0.31, 0.67),
+        @(1, 270, 'Accent2', 2, 1, 4, 0.37, 0.72, 0.11),
+        @(2, 240, 'Accent3', 1, 3, 2, 0.71, 0.19, 0.43),
+        @(3, 200, 'Accent1', 3, 2, 5, 0.14, 0.58, 0.86),
+        @(4, 180, 'Accent2', 2, 4, 3, 0.53, 0.05, 0.29)
     )
     foreach ($a in $aur) {
         $ai = $a[0]; $ar = $a[1]; $ac = $a[2]
@@ -1730,7 +1776,8 @@ function IdleCard([string]$P) {
         $sz = 'var s=' + $ar + '*(1+0.28*' + (& $w $ms $p3) + ');'
         $cxJs = 'var cx=400+' + (& $w $mx $p1) + '*250+' + (& $w (2 * $mx) $p2) + '*90;'
         $cyJs = 'var cy=240+' + (& $wc $my $p2) + '*140+' + (& $wc (3 * $my) $p1) + '*50;'
-        $r = New-Rect "idle-aur$ai" 100 100 $ar $ar $ac $null ([int]($ar / 2))
+        $r = New-Rect "idle-aur$ai" 100 100 $ar $ar $script:MUTED $null ([int]($ar / 2))
+        $r.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' $ac
         $r.Opacity = 14.0
         $r.Bindings['Left']   = BindJS 'Left'   ($sz + $cxJs + 'return cx-s/2')
         $r.Bindings['Top']    = BindJS 'Top'    ($sz + $cyJs + 'return cy-s/2')
@@ -1751,7 +1798,7 @@ function IdleCard([string]$P) {
         $g = 'var g=(' + $T + '*2+' + $ph + ')%1;'
         $drift = 'var dx=' + (& $w 1 ($ph)) + '*70;var dy=' + (& $wc 2 ($ph)) + '*50;'
         $r = New-Rect "idle-pul$i" 340 180 120 120 $script:CLEAR $null 60
-        $r.BorderStyle.BorderColor = '#FF2A5C7A'; $r.BorderColor = '#FF2A5C7A'
+        $r.BorderStyle.BorderColor = $script:MUTED; $r.BorderColor = $script:MUTED
         foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
             $r.BorderStyle."Border$sd" = 2; $r."Border$sd" = 2
         }
@@ -1760,6 +1807,7 @@ function IdleCard([string]$P) {
         $r.Bindings['Left']   = BindJS 'Left'   ($g + $drift + 'return 400+dx-(40+g*640)/2')
         $r.Bindings['Top']    = BindJS 'Top'    ($g + $drift + 'return 240+dy-(40+g*640)/2')
         $r.Bindings['Opacity'] = BindJS 'Opacity' ($g + 'return 60*(1-g)*(g<0.08?g/0.08:1)')
+        $r.Bindings['BorderColor'] = ThemeBind 'BorderColor' 'Accent1'
         $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Pulse')
         $items.Add($r)
     }
@@ -1772,7 +1820,8 @@ function IdleCard([string]$P) {
         $rate = 1 + ($i % 4) * 0.5
         $g2 = 'var g=(' + $T + '*' + $rate + '+' + $sp + ')%1;'
         $sway = 'var sw=' + (& $w (1 + ($i % 3)) $sp) + '*26;'
-        $r = New-Rect "idle-str$i" $sx 0 3 $sl '#FF2E4A6B' $null 2
+        $r = New-Rect "idle-str$i" $sx 0 3 $sl $script:MUTED $null 2
+        $r.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' 'Accent2'
         $r.Opacity = 34.0
         $r.Bindings['Top']  = BindJS 'Top'  ($g2 + 'return -' + $sl + '+g*' + (480 + $sl))
         $r.Bindings['Left'] = BindJS 'Left' ($sway + 'return ' + $sx + '+sw')
@@ -1813,6 +1862,7 @@ function IdleCard([string]$P) {
     # supporter badge and an update notice actually get read.
     $t = New-Text 'idle-ver' 24 430 300 26 15 '' $script:MUTED 0 @{
         Text = BindJS 'Text' ('var v=""+($prop("' + $P + '.Version")||"");return v==""?"":"TF4ALL v"+v')
+        TextColor = ThemeBind 'TextColor' 'Muted'
     }
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
@@ -1835,6 +1885,7 @@ function IdleCard([string]$P) {
     # to be looked at rather than used. Added LAST so it sits over
     # everything, and named idle-exit so the hide pass leaves it alone.
     $t = New-Text 'idle-hint' 0 442 800 22 12 'TAP ANYWHERE TO RETURN' '#FF39404C' 1
+    $t.Bindings['TextColor'] = ThemeBind 'TextColor' 'Muted'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
     $b = New-Button 'idle-exit' 0 0 800 480 'DashIdleExit'

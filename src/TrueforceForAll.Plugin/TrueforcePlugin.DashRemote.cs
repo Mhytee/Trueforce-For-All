@@ -325,6 +325,10 @@ namespace TrueforceForAll.Plugin
         internal sealed class DashTheme
         {
             public string Name, Bg, Card, CardEdge, Sub, Btn, BtnEdge, Tile, TileOn, Text, Muted;
+            // Three accents for the idle card's ambient art. Not used for
+            // anything that carries meaning, so a theme is free to be loud
+            // here without a loud theme being able to misreport anything.
+            public string Accent1, Accent2, Accent3;
         }
 
         internal static readonly DashTheme[] DashThemes =
@@ -332,19 +336,45 @@ namespace TrueforceForAll.Plugin
             new DashTheme {
                 Name = "Midnight", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FF4E5668",
                 Sub = "#FF0E0E10", Btn = "#FF1C1C20", BtnEdge = "#FF3A4150",
-                Tile = "#FF141414", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7" },
+                Tile = "#FF141414", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7",
+                Accent1 = "#FF2E6FA8", Accent2 = "#FF2E9478", Accent3 = "#FF6A47A0" },
             new DashTheme {
                 Name = "Slate", Bg = "#FF101216", Card = "#FF1B1F27", CardEdge = "#00FFFFFF",
                 Sub = "#FF232936", Btn = "#FF232936", BtnEdge = "#00FFFFFF",
-                Tile = "#FF232936", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7" },
+                Tile = "#FF232936", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7",
+                Accent1 = "#FF3D6FB5", Accent2 = "#FF37D67A", Accent3 = "#FF5A6478" },
             new DashTheme {
                 Name = "Carbon", Bg = "#FF0A0B0D", Card = "#FF141619", CardEdge = "#FF2A2E36",
                 Sub = "#FF101216", Btn = "#FF1E222A", BtnEdge = "#FF343A45",
-                Tile = "#FF1E222A", TileOn = "#FF23503A", Text = "#FFEDEFF3", Muted = "#FF858C99" },
+                Tile = "#FF1E222A", TileOn = "#FF23503A", Text = "#FFEDEFF3", Muted = "#FF858C99",
+                Accent1 = "#FF3A4150", Accent2 = "#FF4A5262", Accent3 = "#FF2E3440" },
             new DashTheme {
                 Name = "Blueprint", Bg = "#FF06121F", Card = "#00FFFFFF", CardEdge = "#FF2C6E9B",
                 Sub = "#FF091A2B", Btn = "#FF0D2438", BtnEdge = "#FF2C6E9B",
-                Tile = "#FF0D2438", TileOn = "#FF14503F", Text = "#FFDCEBF7", Muted = "#FF7FA6C4" },
+                Tile = "#FF0D2438", TileOn = "#FF14503F", Text = "#FFDCEBF7", Muted = "#FF7FA6C4",
+                Accent1 = "#FF2C6E9B", Accent2 = "#FF3E96C9", Accent3 = "#FF1B4C6E" },
+            // The loud half. These exist because the first four are safe and
+            // safe gets boring on a screen you look at every session.
+            new DashTheme {
+                Name = "Ember", Bg = "#FF120705", Card = "#00FFFFFF", CardEdge = "#FF8A3B1E",
+                Sub = "#FF1B0C08", Btn = "#FF25100A", BtnEdge = "#FF8A3B1E",
+                Tile = "#FF25100A", TileOn = "#FF5C3410", Text = "#FFFFEDE4", Muted = "#FFC08C74",
+                Accent1 = "#FFD1541F", Accent2 = "#FFE8912F", Accent3 = "#FF8A1F1F" },
+            new DashTheme {
+                Name = "Neon", Bg = "#FF05030B", Card = "#00FFFFFF", CardEdge = "#FF7A2BC4",
+                Sub = "#FF0C0718", Btn = "#FF150C28", BtnEdge = "#FFB13BE8",
+                Tile = "#FF150C28", TileOn = "#FF1F5C4A", Text = "#FFF6ECFF", Muted = "#FFA98CC4",
+                Accent1 = "#FFB13BE8", Accent2 = "#FF23D3E8", Accent3 = "#FFE8329B" },
+            new DashTheme {
+                Name = "Forest", Bg = "#FF040D08", Card = "#00FFFFFF", CardEdge = "#FF2F7A4A",
+                Sub = "#FF08160E", Btn = "#FF0D2115", BtnEdge = "#FF2F7A4A",
+                Tile = "#FF0D2115", TileOn = "#FF2A6B3C", Text = "#FFE8F5EC", Muted = "#FF86AE95",
+                Accent1 = "#FF2F7A4A", Accent2 = "#FF6FBF73", Accent3 = "#FF1B4F3A" },
+            new DashTheme {
+                Name = "Mono", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FFB8BCC4",
+                Sub = "#FF121212", Btn = "#FF1C1C1C", BtnEdge = "#FF9A9EA6",
+                Tile = "#FF1C1C1C", TileOn = "#FF4A4A4A", Text = "#FFFFFFFF", Muted = "#FF9A9EA6",
+                Accent1 = "#FF6E7278", Accent2 = "#FF9A9EA6", Accent3 = "#FF44484E" },
         };
 
         internal static string[] DashThemeNames()
@@ -1224,6 +1254,9 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Theme.TileOn",   () => ActiveDashTheme().TileOn);
             this.AttachDelegate("Dash.Theme.Text",     () => ActiveDashTheme().Text);
             this.AttachDelegate("Dash.Theme.Muted",    () => ActiveDashTheme().Muted);
+            this.AttachDelegate("Dash.Theme.Accent1",  () => ActiveDashTheme().Accent1);
+            this.AttachDelegate("Dash.Theme.Accent2",  () => ActiveDashTheme().Accent2);
+            this.AttachDelegate("Dash.Theme.Accent3",  () => ActiveDashTheme().Accent3);
             // A 0..1 phase over 1.2 s, for anything that should pulse. Derived
             // here rather than in the dash so every connected screen pulses
             // together, the same reason the rev flash is plugin side.

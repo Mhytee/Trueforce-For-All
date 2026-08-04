@@ -484,7 +484,7 @@ namespace TrueforceForAll.Plugin
         // Which built-in ambient animation. Custom images and video are a
         // later pass: the dashboard file is rebuilt on every update, so user
         // media has to live somewhere the rebuild cannot reach.
-        public string DashIdleStyle        { get; set; } = "Aurora";
+        public string DashIdleStyle        { get; set; } = "Topo";
         public string DashIdleDriverName   { get; set; } = "";
         public string DashIdleNumber       { get; set; } = "";
         public string DashIdleColor        { get; set; } = "#FFF2F4F8";
