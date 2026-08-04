@@ -943,90 +943,36 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     }
     $items.Add((AddNote 'rel' 'No other cars in this session.' 'Relative' $dOpp))
 
-    # ---------------- RADAR ------------------------------------------
-    # Our own dots, not SimHub's radar item. Opponents carry
-    # RelativeCoordinatesToPlayer, already in the player's frame, and a
-    # length in metres, so the plugin normalises both to the circle. That
-    # buys the thing SimHub's item cannot give: ONE scale shared by the
-    # dots, the rings and the warning, so a ring is a real distance and a
-    # sector lights exactly as a car crosses the ring the driver can see.
-    #   edge 40 m, outer ring 25 m (amber), inner ring 10 m (red)
+    # ---------------- RADAR (SimHub's own proximity item) ------------
+    # One native item that draws itself from the session's opponents, so
+    # it lights up in games reporting car positions and stays quiet in
+    # the ones that do not.
+    #
+    # The rings are decoration, matching the two circle boxes beside it.
+    # They deliberately carry no distance labels and drive nothing: the
+    # radar item scales by an undocumented multiplier, so a ring drawn at
+    # any particular radius would not correspond to a real distance and
+    # saying otherwise would be a lie the driver could not check.
     $vis = KeyVis 'Radar' $dOpp
     $items.Add((AddHead 'rd' 'RADAR' 'Radar'))
+    # Square, so width caps it in the tall box: centre rather than pin.
     $rdSize = [math]::Min($iw, $h - 52)
     $rdCx = $ix + $iw / 2
     $rdCy = ($iy + 30 + $y + $h - 12) / 2
     $rdR  = $rdSize / 2
-
-    # Sector glow UNDER everything, so it reads as light behind the traffic.
-    #
-    # The PLUGIN grades on diagonal sectors, each 90 degrees about its own
-    # axis, which is the honest way to say "a car is on your left". The
-    # DRAWING is axis-aligned quarters, because that is the only quarter
-    # disc these primitives make exactly: one corner rounded to the full
-    # side. A rotated wedge is drawable in principle and was tried, but
-    # getting its apex back onto the centre after the rotation is guesswork
-    # against a viewer I cannot step through, and a plausible-looking wrong
-    # answer is worse than a plain right one. Bundled wedge images would do
-    # it properly and the resource bundle is already generatable.
-    #
-    # So each drawn quarter takes the worst of the two sectors that touch
-    # it: a car dead ahead lights the whole front, a car ahead and left
-    # lights the front-left hardest. The reading is the same, the edges are
-    # square rather than diagonal.
-    foreach ($q in @(
-        @('fl', 'Front', 'Left',  'TopLeft',     ($rdCx - $rdR), ($rdCy - $rdR)),
-        @('fr', 'Front', 'Right', 'TopRight',    $rdCx,          ($rdCy - $rdR)),
-        @('rl', 'Rear',  'Left',  'BottomLeft',  ($rdCx - $rdR), $rdCy),
-        @('rr', 'Rear',  'Right', 'BottomRight', $rdCx,          $rdCy))) {
-        $qk = $q[0]; $qc = $q[3]; $qx = $q[4]; $qy = $q[5]
-        $lvl = 'var l=Math.max(1*$prop("' + $P + '.Radar.' + $q[1] + '"),' +
-               '1*$prop("' + $P + '.Radar.' + $q[2] + '"));'
-        $qr = New-Rect "d$slot-rd-q$qk" $qx $qy $rdR $rdR '#FFE8A33D' $null 0
-        $ctl = if ($qc -eq 'TopLeft')     { $rdR } else { 0 }
-        $ctr = if ($qc -eq 'TopRight')    { $rdR } else { 0 }
-        $cbr = if ($qc -eq 'BottomRight') { $rdR } else { 0 }
-        $cbl = if ($qc -eq 'BottomLeft')  { $rdR } else { 0 }
-        $qr.RadiusTopLeft = [double]$ctl; $qr.RadiusTopRight = [double]$ctr
-        $qr.RadiusBottomRight = [double]$cbr; $qr.RadiusBottomLeft = [double]$cbl
-        $qr.BorderStyle.RadiusTopLeft = [double]$ctl
-        $qr.BorderStyle.RadiusTopRight = [double]$ctr
-        $qr.BorderStyle.RadiusBottomRight = [double]$cbr
-        $qr.BorderStyle.RadiusBottomLeft = [double]$cbl
-        $qr.BorderStyle.CornerRadius = "$ctl,$ctr,$cbr,$cbl"
-        $qr.Opacity = 0.0
-        $qr.Bindings['BackgroundColor'] = BindJS 'BackgroundColor' (
-            $lvl + 'return l>1?"' + $script:RED + '":"#FFE8A33D"')
-        # Semi transparent by design: the dots stay readable through it.
-        $qr.Bindings['Opacity'] = BindJS 'Opacity' ($lvl + 'return l==0?0:(l>1?42:24)')
-        $qr.Bindings['Visible'] = BindJS 'Visible' (
-            $lvl + 'return l>0 && (' + ($vis -replace '^return ', '') + ')')
-        $items.Add($qr)
-    }
-
-    # Rings ARE the thresholds: outer amber at 25 m, inner red at 10 m, and
-    # the edge of the disc at 40 m. Crossing one is what changes the glow.
     $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
-    $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR * 25 / 40) '#FF4A3A22' 1 $vis))
-    $items.Add((New-Ring "d$slot-rd-r3" $rdCx $rdCy ($rdR * 10 / 40) '#FF4A2226' 1 $vis))
-
-    # The player, dead centre and pointing up.
-    $r = New-Rect "d$slot-rd-me" ($rdCx - 4) ($rdCy - 7) 8 14 $script:GREEN $null 3
-    $r.Bindings['Visible'] = BindJS 'Visible' $vis
-    $items.Add($r)
-
-    # Opponents. Eight is more traffic than anyone reads at a glance, and
-    # the plugin parks the unused ones off the circle so one test hides them.
-    for ($i = 0; $i -lt 8; $i++) {
-        $dxJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'X"))'
-        $dyJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'Y"))'
-        $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 5) ($rdCy - 5) 10 10 $script:WHITE $null 5
-        $dot.Bindings['Left'] = BindJS 'Left' ('return ' + ($rdCx - 5) + '+' + $dxJs + '*' + $rdR)
-        $dot.Bindings['Top']  = BindJS 'Top'  ('return ' + ($rdCy - 5) + '+' + $dyJs + '*' + $rdR)
-        $dot.Bindings['Visible'] = BindJS 'Visible' (
-            'var x=' + $dxJs + ';return Math.abs(x)<=1 && (' + ($vis -replace '^return ', '') + ')')
-        $items.Add($dot)
+    $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR / 2) '#FF2A303A' 1 $vis))
+    $radar = [ordered]@{
+        '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RadarItem, SimHub.Plugins'
+        BackgroundColor = $script:CLEAR
+        Height = [double]$rdSize; Left = [double]($rdCx - $rdR)
+        Top = [double]($rdCy - $rdR)
+        Visible = $true; Width = [double]$rdSize
+        Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
+        Name = "d$slot-rd"
+        Bindings = [ordered]@{ Visible = (BindJS 'Visible' $vis) }
     }
+    $items.Add($radar)
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
 
     # ---------------- DAMAGE -----------------------------------------

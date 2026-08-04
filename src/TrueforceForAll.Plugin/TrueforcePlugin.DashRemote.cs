@@ -301,76 +301,6 @@ namespace TrueforceForAll.Plugin
                 .UtilizationFloor(_dashModelGripEma / peakDiv);
         }
 
-        // ---------- radar ----------
-        // Opponents carry RelativeCoordinatesToPlayer, a PointF already in the
-        // player's own frame, and RelativeVectorLengthToPlayer in metres. That
-        // is everything a radar needs, so we place the dots ourselves rather
-        // than hand it to SimHub's item: the rings then mean a real distance,
-        // and the proximity warning fires on exactly the boundary the driver
-        // can see a car cross. Sharing one scale is the whole point.
-        internal const int   DashRadarDots   = 8;
-        internal const float DashRadarRangeM = 40f;   // circle edge
-        internal const float DashRadarAmberM = 25f;   // outer ring
-        internal const float DashRadarRedM   = 10f;   // inner ring
-
-        // Normalised to the circle: -1..1, y negative ahead. Off-screen dots
-        // park at 9 so the dash formula can hide them with one test.
-        private volatile float[] _dashRadarX = new float[DashRadarDots];
-        private volatile float[] _dashRadarY = new float[DashRadarDots];
-        // Front, right, rear, left. 0 clear, 1 inside the amber ring, 2 inside
-        // the red one. Sectors are the diagonals, so each is 90 degrees about
-        // its own axis and a car dead ahead cannot half-light two of them.
-        private volatile int[] _dashRadarSector = new int[4];
-
-        /// <summary>Rebuild the radar from this frame's opponents. Called from
-        /// DataUpdate, which runs whether or not anything is looking at the
-        /// dash; the work is a short walk over a list SimHub has already
-        /// built, and it stops immediately when there is nobody to draw.</summary>
-        private void DashUpdateRadar(GameReaderCommon.GameData data)
-        {
-            var xs = new float[DashRadarDots];
-            var ys = new float[DashRadarDots];
-            var sec = new int[4];
-            for (int i = 0; i < DashRadarDots; i++) { xs[i] = 9f; ys[i] = 9f; }
-
-            var opps = data?.NewData?.Opponents;
-            if (opps != null && opps.Count > 0)
-            {
-                int n = 0;
-                foreach (var o in opps)
-                {
-                    if (o == null || o.IsPlayer || !o.IsConnected) continue;
-                    if (o.IsCarInPitLane || o.IsCarInPit) continue;
-                    var rc = o.RelativeCoordinatesToPlayer;
-                    if (!rc.HasValue) continue;
-                    float rx = rc.Value.X, ry = rc.Value.Y;
-                    if (float.IsNaN(rx) || float.IsNaN(ry)) continue;
-                    double d = o.RelativeVectorLengthToPlayer;
-                    if (d <= 0 || double.IsNaN(d)) d = Math.Sqrt(rx * rx + ry * ry);
-                    if (d > DashRadarRangeM) continue;
-
-                    if (n < DashRadarDots)
-                    {
-                        xs[n] = rx / DashRadarRangeM;
-                        ys[n] = ry / DashRadarRangeM;
-                        n++;
-                    }
-                    // Sector by bearing, diagonals as the boundaries: atan2 of
-                    // (lateral, ahead) put through a 45 degree rotation so the
-                    // four quarters land on the axes rather than between them.
-                    double bearing = Math.Atan2(rx, -ry) * (180.0 / Math.PI);   // 0 = ahead
-                    if (bearing < 0) bearing += 360.0;
-                    int q = (int)Math.Floor(((bearing + 45.0) % 360.0) / 90.0);  // 0 F, 1 R, 2 B, 3 L
-                    if (q < 0 || q > 3) continue;
-                    int lvl = d <= DashRadarRedM ? 2 : (d <= DashRadarAmberM ? 1 : 0);
-                    if (lvl > sec[q]) sec[q] = lvl;
-                }
-            }
-            _dashRadarX = xs;
-            _dashRadarY = ys;
-            _dashRadarSector = sec;
-        }
-
         // Idle mode: how long the car has been stopped, and whether the user
         // waved this stop away. Both are per-stop, not persisted.
         private const int IdlePhaseMs = 20000;
@@ -1118,29 +1048,6 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
 
             // ---------- idle mode ----------
-            // Radar: dots normalised to the circle, plus one level per
-            // sector so the glow needs no arithmetic in the formula.
-            this.AttachDelegate("Dash.Radar.Range", () => DashRadarRangeM);
-            for (int i = 0; i < DashRadarDots; i++)
-            {
-                int k = i;   // captured per delegate, not shared
-                this.AttachDelegate("Dash.Radar.D" + k + "X", () =>
-                {
-                    var a = _dashRadarX; return k < a.Length ? a[k] : 9f;
-                });
-                this.AttachDelegate("Dash.Radar.D" + k + "Y", () =>
-                {
-                    var a = _dashRadarY; return k < a.Length ? a[k] : 9f;
-                });
-            }
-            foreach (var sn in new[] { "Front", "Right", "Rear", "Left" })
-            {
-                int k = Array.IndexOf(new[] { "Front", "Right", "Rear", "Left" }, sn);
-                this.AttachDelegate("Dash.Radar." + sn, () =>
-                {
-                    var a = _dashRadarSector; return k < a.Length ? a[k] : 0;
-                });
-            }
             this.AttachDelegate("Dash.Idle.On",     () => DashIdleActive());
             this.AttachDelegate("Dash.Idle.Style",  () => Settings?.DashIdleStyle ?? "Aurora");
             this.AttachDelegate("Dash.Idle.Name",   () => Settings?.DashIdleDriverName ?? "");
