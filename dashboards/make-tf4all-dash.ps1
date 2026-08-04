@@ -1114,12 +1114,15 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $dxJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'X"))'
         $dyJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'Y"))'
         $dlJs = 'var l=1*$prop("' + $P + '.Radar.D' + $i + 'L");'
-        $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 5) ($rdCy - 5) 10 10 $script:WHITE @{
+        # Car-shaped, not a blob: at 40 m across roughly 160 px the scale is
+        # about 4 px per metre, so 9 by 18 is very nearly a real car seen
+        # from above, and the radar reads as traffic rather than dots.
+        $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 4.5) ($rdCy - 9) 9 18 $script:WHITE @{
             BackgroundColor = BindJS 'BackgroundColor' ($dlJs +
                 'return l>2?"' + $script:RED + '":(l>1?"#FFE8C547":"' + $script:WHITE + '")')
-        } 5
-        $dot.Bindings['Left'] = BindJS 'Left' ('return ' + ($rdCx - 5) + '+' + $dxJs + '*' + $rdR)
-        $dot.Bindings['Top']  = BindJS 'Top'  ('return ' + ($rdCy - 5) + '+' + $dyJs + '*' + $rdR)
+        } 3
+        $dot.Bindings['Left'] = BindJS 'Left' ('return ' + ($rdCx - 4.5) + '+' + $dxJs + '*' + $rdR)
+        $dot.Bindings['Top']  = BindJS 'Top'  ('return ' + ($rdCy - 9) + '+' + $dyJs + '*' + $rdR)
         $dot.Bindings['Visible'] = BindJS 'Visible' (
             $dlJs + 'return l>0 && (' + ($vis -replace '^return ', '') + ')')
         $items.Add($dot)
@@ -1127,7 +1130,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
 
     # You, in green, pointing up. Green because you are the one car on here
     # that is never the hazard.
-    $r = New-Rect "d$slot-rd-me" ($rdCx - 4) ($rdCy - 7) 8 14 $script:GREEN $null 3
+    $r = New-Rect "d$slot-rd-me" ($rdCx - 4.5) ($rdCy - 9) 9 18 $script:GREEN $null 3
     $r.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($r)
     $items.Add((AddNote 'rd' 'No other cars in this session.' 'Radar' $dOpp))
