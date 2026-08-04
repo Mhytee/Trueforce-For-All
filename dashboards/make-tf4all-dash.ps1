@@ -1686,7 +1686,29 @@ function FlagBar([string]$P) {
         TextColor = BindJS 'TextColor' $txtJs
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
-    @($bg, $t)
+
+    # A chequered flag that is just a white band is a white flag with the
+    # wrong caption. The band stays white and black squares go over it, so
+    # only half the squares need drawing, and the run under the text is
+    # skipped rather than covered: the caption sits on clean white instead
+    # of fighting a chequer for legibility.
+    $out = [System.Collections.Generic.List[object]]::new()
+    $out.Add($bg)
+    $chk = 'return ' + $any + ' && $prop("' + $F + 'Checkered")'
+    $sq = 24; $bandY = 14; $rows = 2
+    $clearL = 236; $clearR = 564
+    for ($cx = 0; $cx -lt 800; $cx += $sq) {
+        for ($ry = 0; $ry -lt $rows; $ry++) {
+            if ((([math]::Floor($cx / $sq)) + $ry) % 2 -ne 0) { continue }
+            if (($cx + $sq) -gt $clearL -and $cx -lt $clearR) { continue }
+            $w2 = [math]::Min($sq, 800 - $cx)
+            $b2 = New-Rect "flag-chk$cx-$ry" $cx ($bandY + $ry * $sq) $w2 $sq '#FF101216' $null 0
+            $b2.Bindings['Visible'] = BindJS 'Visible' $chk
+            $out.Add($b2)
+        }
+    }
+    $out.Add($t)
+    $out
 }
 
 # Transient feedback bar (Dash.Toast): the plugin stamps a message when an
