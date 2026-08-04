@@ -9,10 +9,25 @@ $ErrorActionPreference = 'Stop'
 $OutDir = Join-Path $PSScriptRoot 'TF4ALL Dash'
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
+# ---- style ----
+# 'Default' is the filled-panel look this dashboard shipped with. 'Outline'
+# goes outlined and dark: a black ground,
+# cards drawn as a thin outline with NO fill, and each card's title sitting
+# in a break in its own top border. Everything downstream reads the palette
+# below, so switching this one word restyles the whole dashboard.
+$DASH_STYLE = 'Outline'
+$OUTLINE = $DASH_STYLE -eq 'Outline'
+
 # ---- palette ----
-$BG      = '#FF101216'   # dashboard background
-$PANEL   = '#FF1B1F27'   # info panels
-$TILE    = '#FF232936'   # buttons / tiles (off state)
+$BG      = if ($OUTLINE) { '#FF000000' } else { '#FF101216' }   # dashboard background
+# Cards are an outline in the outline skin, so the fill goes away entirely and the
+# border does the work. CARD_EDGE is what draws them.
+$PANEL   = if ($OUTLINE) { '#00FFFFFF' } else { '#FF1B1F27' }   # info panels
+# Sub panels INSIDE a card: barely-there in the outline skin, so the card's outline
+# stays the strongest line on the screen rather than competing with slabs.
+$SUBPANEL = if ($OUTLINE) { '#FF0E0E10' } else { '#FF1B1F27' }
+$CARD_EDGE = '#FF4E5668'
+$TILE    = if ($OUTLINE) { '#FF141414' } else { '#FF232936' }   # buttons / tiles (off state)
 $TILEON  = '#FF23503A'   # toggle tile on state
 $GREEN   = '#FF37D67A'
 $RED     = '#FFE5484D'
@@ -559,8 +574,19 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         ' && $prop("' + $script:PN + '.SessionLive") && !(' + $dataJs + ')'
     }
     $script:sel = $sel; $script:rowCond = $rowCond; $script:PN = $P
+    $script:xN = $x; $script:yN = $y; $script:wN = $w
 
-    $panel = New-Rect "d$slot-panel" $x $y $w $h $script:PANEL
+    $panel = New-Rect "d$slot-panel" $x $y $w $h $script:PANEL $null 10
+    if ($script:OUTLINE) {
+        # No fill, so the outline IS the card. 1px keeps it a frame rather
+        # than a box: at 2 it starts competing with the values inside.
+        $panel.BorderStyle.BorderColor = $script:CARD_EDGE
+        $panel.BorderColor = $script:CARD_EDGE
+        foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+            $panel.BorderStyle."Border$sd" = 1
+            $panel."Border$sd" = 1
+        }
+    }
     $panel.Bindings['Visible'] = BindJS 'Visible' ('return ' + $sel + '!="None"' + $rowCond)
     $items.Add($panel)
 
@@ -581,9 +607,33 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # says so without a second widget, and the tap zone is the title's own
     # half of the row so it cannot swallow a badge or a value on the right.
     function AddHead([string]$id, [string]$title, [string]$k) {
-        $t = New-Text "d$script:slotN-$id-h" $script:ixN $script:iyN $script:iwN 22 13 ($title + '  ' + [char]0x25BE) $script:MUTED 0
-        $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
-        $t
+        if ($script:OUTLINE) {
+            # Centred on the card's own top border, with a slice of the
+            # background painted over the line behind it: the border appears
+            # to break for the title instead of the title floating inside a
+            # frame. That gap is the whole signature of this look.
+            $lbl = $title + '  ' + [char]0x25BE
+            $wpx = 9 * $lbl.Length + 18
+            $cx = $script:xN + $script:wN / 2 - $wpx / 2
+            $gap = New-Rect "d$script:slotN-$id-gap" $cx ($script:yN - 2) $wpx 5 $script:BG $null 0
+            $gap.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
+            $script:headGap = $gap
+            $t = New-Text "d$script:slotN-$id-h" $cx ($script:yN - 9) $wpx 18 12 $lbl $script:MUTED 1
+            $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
+            $t
+        } else {
+            $script:headGap = $null
+            $t = New-Text "d$script:slotN-$id-h" $script:ixN $script:iyN $script:iwN 22 13 ($title + '  ' + [char]0x25BE) $script:MUTED 0
+            $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
+            $t
+        }
+    }
+    # The gap belongs with the title, but AddHead can only return one item,
+    # so callers take it from here right after.
+    function AddHeadGap {
+        $g = $script:headGap
+        $script:headGap = $null
+        $g
     }
     function AddNote([string]$id, [string]$text, [string]$k, [string]$dataJs) {
         $t = New-Text "d$script:slotN-$id-nd" $script:ixN ($script:iyN + 54) $script:iwN 60 14 $text $script:GRAY 1
@@ -631,6 +681,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # live on this screen too, so the flow never leaves the Drive tab.
     $vis = KeyVis 'CarFacts' $null
     $items.Add((AddHead 'cf' 'CAR FACTS' 'CarFacts'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $t = New-Text "d$slot-cf-car" $ix ($iy + 20) $iw 26 18 '' $script:WHITE 0 @{
         Text = BindJS 'Text' ('return ""+($prop("' + $P + '.CarName")||"No car")')
     } 'Bold'
@@ -694,6 +745,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # exactly as the tab's PLUGIN and AUDIO HAPTICS tiles do.
     $vis = KeyVis 'Home' $null
     $items.Add((AddHead 'hm' 'GAINS' 'Home'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $half = ($iw - 8) / 2
     # Wheel state on the header row, as on the tab. It is the one thing
     # here that is not a gain, and the reason to glance at this box when
@@ -778,6 +830,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # caption, the bound preset, and a CHANGE tile that opens the picker.
     $vis = KeyVis 'Presets' $null
     $items.Add((AddHead 'pr' 'PRESETS' 'Presets'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $prRows = @(
         @('g', 'GAME PRESET', ($P + '.PresetName'),    'DashPresetOpenGame', '(manual tune)', 26),
         @('c', 'CAR PRESET',  ($P + '.CarPresetName'), 'DashPresetOpenCar',  '(none saved)',  92)
@@ -830,6 +883,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # The unit lives in the header: the blocks are too narrow to carry a
     # degree suffix, and a bare number in the wrong unit is worse than none.
     $ttHead = AddHead 'tt' 'TYRE TEMPS' 'TyreTemps'
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $ttHead.Bindings['Text'] = BindJS 'Text' ($tempUnitJs +
         'return "TYRE TEMPS  "+(uF?"°F":"°C")')
     $items.Add($ttHead)
@@ -903,6 +957,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Same blocks; here the colour is how much tread is left.
     $vis = KeyVis 'TyreWear' $dWear
     $items.Add((AddHead 'tw' 'TYRE WEAR' 'TyreWear'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $fzWear = @('WearFL', 'WearFR', 'WearRL', 'WearRR')
     for ($q = 0; $q -lt 4; $q++) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
@@ -929,6 +984,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # ---------------- FUEL -------------------------------------------
     $vis = KeyVis 'Fuel' $dFuel
     $items.Add((AddHead 'fu' 'FUEL' 'Fuel'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     # Forza reports a tank fraction rather than litres, so the big number
     # is a percentage there and a level everywhere else.
     # Tank fraction, ours first. Drives both the readout and the bar, so
@@ -965,6 +1021,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # running lap joins it here: that number was the reason to keep both.
     $vis = KeyVis 'Delta' $dDelta
     $items.Add((AddHead 'dl' 'LAP DELTA' 'Delta'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $t = New-Text "d$slot-dl-v" $ix ($iy + 22) $iw 44 32 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"--":(v>0?"+":"")+v.toFixed(2)')
         TextColor = BindJS 'TextColor' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"' + $script:MUTED + '":(v>0?"' + $script:RED + '":"' + $script:GREEN + '")')
@@ -991,6 +1048,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # source we support rather than only games with raw g properties.
     $vis = KeyVis 'GCircle' $dG
     $items.Add((AddHead 'gc' 'G CIRCLE' 'GCircle'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $gr  = [math]::Min(($iw - 24) / 2, ($h - 66) / 2)
     $gcx = $ix + $iw / 2
     # Centre in the area below the header rather than hanging off the top
@@ -1031,6 +1089,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # has taken, which every game reporting accelerations can feed.
     $vis = KeyVis 'Friction' $dFric
     $items.Add((AddHead 'fc' 'FRICTION CIRCLE' 'Friction'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $items.Add((New-Ring "d$slot-fc-lim" $gcx $gcy $gr '#FF6B7280' 2 $vis))
     $items.Add((New-Ring "d$slot-fc-in" $gcx $gcy ($gr * 0.75) '#FF2A303A' 1 $vis))
     $uJs = 'var u=1*$prop("' + $P + '.Drive.Util");if(isNaN(u))u=0;if(u>1.3)u=1.3;'
@@ -1069,6 +1128,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # same, finding yourself is the one thing you do constantly.
     $vis = KeyVis 'Relative' $dOpp
     $items.Add((AddHead 'rel' 'RELATIVE' 'Relative'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $relRows = @(
         @('DriverAhead_01', $script:MUTED), @('DriverAhead_00', $script:WHITE),
         @('__ME__', $script:GREEN),
@@ -1126,6 +1186,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     #   dots white far, yellow past the mid ring, red past the inner
     $vis = KeyVis 'Radar' $dOpp
     $items.Add((AddHead 'rd' 'RADAR' 'Radar'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $rdSize = [math]::Min($iw, $h - 52)
     $rdCx = $ix + $iw / 2
     $rdCy = ($iy + 30 + $y + $h - 12) / 2
@@ -1199,6 +1260,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # than the source has.
     $vis = KeyVis 'Damage' $dDmg
     $items.Add((AddHead 'dm' 'DAMAGE' 'Damage'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $cw = 104.0; $ch = 150.0
     $cx = $ix + $iw / 2
     $cy = ($iy + 40 + $y + $h - 14) / 2
@@ -1266,6 +1328,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # gets cut off at the first + (which is what silently froze these bars).
     $vis = KeyVis 'Inputs' $null
     $items.Add((AddHead 'in' 'INPUTS' 'Inputs'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     $barW = 38; $barGap = 14
     $barH = [math]::Max(60, $h - 118)
     $barY = $iy + 30
@@ -1324,6 +1387,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Sampled every other ring column so a box costs about half.
     $vis = KeyVis 'Scope' $null
     $items.Add((AddHead 'sc' 'VISUALIZER' 'Scope'))
+    $g = AddHeadGap; if ($g) { $items.Add($g) }
     # CLIP and SPIKE badges, same contract as the full screen: grey at
     # rest, with a coloured layer and light text crossfading in on the
     # plugin-computed glow (1 at the event, decaying to 0).
