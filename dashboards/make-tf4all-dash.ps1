@@ -1114,13 +1114,14 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $dxJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'X"))'
         $dyJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'Y"))'
         $dlJs = 'var l=1*$prop("' + $P + '.Radar.D' + $i + 'L");'
-        # Car-shaped, not a blob, matching what SimHub's own radar drew.
-        $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 4.5) ($rdCy - 9) 9 18 $script:WHITE @{
+        # Identical to the player marker: same car, same size, one scale.
+        # Only the colour separates them.
+        $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 4) ($rdCy - 7) 8 14 $script:WHITE @{
             BackgroundColor = BindJS 'BackgroundColor' ($dlJs +
                 'return l>2?"' + $script:RED + '":(l>1?"#FFE8C547":"' + $script:WHITE + '")')
         } 3
-        $dot.Bindings['Left'] = BindJS 'Left' ('return ' + ($rdCx - 4.5) + '+' + $dxJs + '*' + $rdR)
-        $dot.Bindings['Top']  = BindJS 'Top'  ('return ' + ($rdCy - 9) + '+' + $dyJs + '*' + $rdR)
+        $dot.Bindings['Left'] = BindJS 'Left' ('return ' + ($rdCx - 4) + '+' + $dxJs + '*' + $rdR)
+        $dot.Bindings['Top']  = BindJS 'Top'  ('return ' + ($rdCy - 7) + '+' + $dyJs + '*' + $rdR)
         $dot.Bindings['Visible'] = BindJS 'Visible' (
             $dlJs + 'return l>0 && (' + ($vis -replace '^return ', '') + ')')
         $items.Add($dot)

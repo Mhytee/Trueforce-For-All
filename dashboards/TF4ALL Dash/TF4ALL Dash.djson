@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "f5e9edd8-a4b1-4bda-8f7e-8d994a03945a",
+    "Id":  "c924804a-91d0-4f58-9fa0-eb5c4e1590d6",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF101216",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "e73fe77f-d87e-48ca-83fa-fa3576c6a924",
+                        "ScreenId":  "4589faa4-1cd7-4f4e-bbcf-a13c5706912c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -7589,7 +7589,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "059189f7-bd82-4047-99fc-dfda59964c57",
+                        "ScreenId":  "c432ee08-8b89-4163-adc9-5f7ad15d1cfe",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -18333,7 +18333,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "19fc7cf2-2b96-4a8b-9a6f-3a515c79e581",
+                        "ScreenId":  "bcd9686c-9770-42e8-ac06-25b1d9f72669",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -31111,7 +31111,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7231db32-f71c-4e2a-9f29-47c918e6bca1",
+                        "ScreenId":  "56b018ef-411b-4a9e-a56b-02588e421e28",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -37864,7 +37864,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a46ea3db-b5ab-4f6c-868e-b7ac70b7693e",
+                        "ScreenId":  "4b026a75-a297-4d3b-a34c-1a1d1c6ee6e5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -51132,7 +51132,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "dd772434-845d-4e2f-a2d8-23106a030ae7",
+                        "ScreenId":  "10a53b46-ec62-448e-bb7d-5ea0a6557727",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -61113,7 +61113,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "88645652-d04d-4e8e-8be4-f92063b2ca54",
+                        "ScreenId":  "6f10b820-cb87-4526-92c0-d0c31b33ca43",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -67720,12 +67720,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -67747,7 +67747,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*77"
+                                                                                        "Expression":  "return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -67755,7 +67755,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -67788,12 +67788,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -67815,7 +67815,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*77"
+                                                                                        "Expression":  "return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -67823,7 +67823,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -67856,12 +67856,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -67883,7 +67883,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*77"
+                                                                                        "Expression":  "return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -67891,7 +67891,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -67924,12 +67924,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -67951,7 +67951,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*77"
+                                                                                        "Expression":  "return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -67959,7 +67959,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -67992,12 +67992,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -68019,7 +68019,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*77"
+                                                                                        "Expression":  "return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -68027,7 +68027,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -68060,12 +68060,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -68087,7 +68087,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*77"
+                                                                                        "Expression":  "return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -68095,7 +68095,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -68128,12 +68128,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -68155,7 +68155,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*77"
+                                                                                        "Expression":  "return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -68163,7 +68163,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -68196,12 +68196,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -68223,7 +68223,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*77"
+                                                                                        "Expression":  "return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -68231,7 +68231,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -79858,12 +79858,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -79885,7 +79885,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*77"
+                                                                                        "Expression":  "return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -79893,7 +79893,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -79926,12 +79926,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -79953,7 +79953,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*77"
+                                                                                        "Expression":  "return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -79961,7 +79961,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -79994,12 +79994,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -80021,7 +80021,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*77"
+                                                                                        "Expression":  "return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -80029,7 +80029,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80062,12 +80062,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -80089,7 +80089,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*77"
+                                                                                        "Expression":  "return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -80097,7 +80097,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80130,12 +80130,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -80157,7 +80157,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*77"
+                                                                                        "Expression":  "return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -80165,7 +80165,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80198,12 +80198,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -80225,7 +80225,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*77"
+                                                                                        "Expression":  "return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -80233,7 +80233,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80266,12 +80266,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -80293,7 +80293,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*77"
+                                                                                        "Expression":  "return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -80301,7 +80301,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -80334,12 +80334,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  124,
+                                          "Top":  126,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -80361,7 +80361,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*77"
+                                                                                        "Expression":  "return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*77"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -80369,7 +80369,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return 124+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*77"
+                                                                                       "Expression":  "return 126+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*77"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -93716,12 +93716,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -93743,7 +93743,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*80})():(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*80})():(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -93751,7 +93751,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -93784,12 +93784,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -93811,7 +93811,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*80})():(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*80})():(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -93819,7 +93819,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -93852,12 +93852,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -93879,7 +93879,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*80})():(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*80})():(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -93887,7 +93887,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -93920,12 +93920,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -93947,7 +93947,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*80})():(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*80})():(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -93955,7 +93955,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -93988,12 +93988,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -94015,7 +94015,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*80})():(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*80})():(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -94023,7 +94023,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -94056,12 +94056,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -94083,7 +94083,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*80})():(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*80})():(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -94091,7 +94091,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -94124,12 +94124,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -94151,7 +94151,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*80})():(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*80})():(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -94159,7 +94159,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -94192,12 +94192,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  146.5,
+                                          "Height":  14,
+                                          "Left":  147,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -94219,7 +94219,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*80})():(function(){return 146.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*80})():(function(){return 147+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -94227,7 +94227,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108128,12 +108128,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108155,7 +108155,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*80})():(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*80})():(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -108163,7 +108163,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D0Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108196,12 +108196,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108223,7 +108223,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*80})():(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*80})():(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -108231,7 +108231,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D1Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108264,12 +108264,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108291,7 +108291,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*80})():(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*80})():(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -108299,7 +108299,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D2Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108332,12 +108332,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108359,7 +108359,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*80})():(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*80})():(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -108367,7 +108367,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D3Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108400,12 +108400,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108427,7 +108427,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*80})():(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*80})():(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -108435,7 +108435,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D4Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108468,12 +108468,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108495,7 +108495,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*80})():(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*80})():(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -108503,7 +108503,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D5Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108536,12 +108536,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108563,7 +108563,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*80})():(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*80})():(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -108571,7 +108571,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D6Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
@@ -108604,12 +108604,12 @@
 
                                                                            }
                                                           },
-                                          "Height":  18,
-                                          "Left":  644.5,
+                                          "Height":  14,
+                                          "Left":  645,
                                           "Opacity":  100,
-                                          "Top":  339,
+                                          "Top":  341,
                                           "Visible":  true,
-                                          "Width":  9,
+                                          "Width":  8,
                                           "BorderBottom":  0,
                                           "BorderColor":  "#00FFFFFF",
                                           "BorderLeft":  0,
@@ -108631,7 +108631,7 @@
                                                            "Left":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*80})():(function(){return 644.5+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*127})()"
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*80})():(function(){return 645+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7X\"))*127})()"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Left"
@@ -108639,7 +108639,7 @@
                                                            "Top":  {
                                                                        "Formula":  {
                                                                                        "Interpreter":  1,
-                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 339+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*80})():(function(){return 233+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*127})()"
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?(function(){return 341+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*80})():(function(){return 235+(1*$prop(\"TrueforcePlugin.Dash.Radar.D7Y\"))*127})()"
                                                                                    },
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
