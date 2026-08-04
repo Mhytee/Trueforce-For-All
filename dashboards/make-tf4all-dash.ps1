@@ -113,13 +113,13 @@ function BindJS([string]$target, [string]$expr) {
 }
 
 function New-Text([string]$name, $x, $y, $w, $h, $size, [string]$text, [string]$color,
-                  [int]$halign = 1, [hashtable]$bindings = $null, [string]$weight = 'Normal') {
+                  [int]$halign = 1, [hashtable]$bindings = $null, [string]$weight = 'Normal',
+                  [switch]$Fontable) {
     $b = [ordered]@{}
     if ($bindings) { foreach ($k in $bindings.Keys) { $b[$k] = $bindings[$k] } }
-    [ordered]@{
+    $it = [ordered]@{
         '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins'
         FontWeight = $weight; TextWrapping = 1; FontStyle = 'Normal'
-        Font = ''
         FontSize = [double]$size; Text = $text; TextColor = $color
         HorizontalAlignment = $halign; VerticalAlignment = 1
         BackgroundColor = $CLEAR
@@ -128,6 +128,11 @@ function New-Text([string]$name, $x, $y, $w, $h, $size, [string]$text, [string]$
         Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
         Name = $name; Bindings = $b
     }
+    # Font is omitted unless the item is meant to carry one. An empty Font
+    # is NOT "use the dashboard's default": it is a family nobody has, and
+    # putting it on every text item made the entire dash fall back.
+    if ($Fontable) { $it.Insert(3, 'Font', '') }
+    $it
 }
 
 function New-Rect([string]$name, $x, $y, $w, $h, [string]$fill,
@@ -576,7 +581,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # says so without a second widget, and the tap zone is the title's own
     # half of the row so it cannot swallow a badge or a value on the right.
     function AddHead([string]$id, [string]$title, [string]$k) {
-        $t = New-Text "d$script:slotN-$id-h" $script:ixN $script:iyN $script:iwN 22 13 ($title + '  \u02C5') $script:MUTED 0
+        $t = New-Text "d$script:slotN-$id-h" $script:ixN $script:iyN $script:iwN 22 13 ($title + '  ' + [char]0x25BE) $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
         $t
     }
@@ -1665,7 +1670,7 @@ function IdleCard([string]$P) {
         TextColor = BindJS 'TextColor' ('return ' + $col)
         Top       = BindJS 'Top'       ('return ' + $above + '?124:90')
         Font      = BindJS 'Font'      $fontJs
-    } 'Bold'
+    } 'Bold' -Fontable
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
     $t = New-Text 'idle-name' 0 310 800 54 40 '' $script:WHITE 1 @{
@@ -1673,7 +1678,7 @@ function IdleCard([string]$P) {
         TextColor = BindJS 'TextColor' ('return ' + $col)
         Top       = BindJS 'Top'       ('return ' + $above + '?62:344')
         Font      = BindJS 'Font'      $fontJs
-    } 'Bold'
+    } 'Bold' -Fontable
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
 
