@@ -559,10 +559,24 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $panel.Bindings['Visible'] = BindJS 'Visible' ('return ' + $sel + '!="None"' + $rowCond)
     $items.Add($panel)
 
+    # One tap zone per BOX, over the header's left half, whatever the box
+    # currently shows. An empty box gets one too, which is the only way to
+    # fill it again from the dash.
+    $headBtn = New-Button "d$slot-head" $ix $iy ($iw * 0.55) 24 ("DashDriveBoxOpen$slot")
+    $headBtn.Bindings['Visible'] = BindJS 'Visible' ('return 1' + $rowCond)
+    $items.Add($headBtn)
+    # An empty box would otherwise be an invisible panel with no way back.
+    $t = New-Text "d$slot-empty" $ix ($iy + 40) $iw 24 14 'TAP TO CHOOSE' $script:GRAY 1
+    $t.Bindings['Visible'] = BindJS 'Visible' ('return ' + $sel + '=="None"' + $rowCond)
+    $items.Add($t)
+
     # Adds a section header that shows whenever the box holds this key,
     # data or not, so a "no data" box still says what it is.
+    # The header doubles as the control for what the box shows. A caret
+    # says so without a second widget, and the tap zone is the title's own
+    # half of the row so it cannot swallow a badge or a value on the right.
     function AddHead([string]$id, [string]$title, [string]$k) {
-        $t = New-Text "d$script:slotN-$id-h" $script:ixN $script:iyN $script:iwN 22 13 $title $script:MUTED 0
+        $t = New-Text "d$script:slotN-$id-h" $script:ixN $script:iyN $script:iwN 22 13 ($title + '  \u02C5') $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
         $t
     }
@@ -1801,6 +1815,39 @@ function ToastBar([string]$P) {
 }
 
 # Preset picker overlay (Dash.Overlay == "presets"): 8 name slots + paging.
+# What a Drive box shows, picked on the dash. Sixteen options is too many
+# for the eight-slot list the preset picker uses, so this is a grid: four
+# across, four down, every choice on one screen with no paging. The labels
+# are the same ones the Settings combo used to offer, in the same order,
+# because the plugin indexes tiles straight into DashDriveContentKeys.
+function DriveBoxOverlay([string]$P) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $items.Add((OnOverlay (New-Rect 'db-backdrop' 0 0 800 480 $script:BACKDROP $null 0) 'drivebox'))
+    $items.Add((OnOverlay (New-Text 'db-title' 0 16 800 28 19 '' $script:WHITE 1 @{
+        Text = BindJS 'Text' ('return "' + 'BOX: ' + '"+(""+$prop("' + $P + '.Drive.EditSlot"))')
+    } 'Bold') 'drivebox'))
+    $labels = @('Car facts', 'Lap times', 'Tyre temps', 'Tyre wear', 'Fuel', 'Lap delta',
+                'Visualizer', 'Gains', 'Presets', 'G circle', 'Friction circle', 'Relative',
+                'Radar', 'Inputs', 'Damage', 'Empty')
+    $cols = 4; $tw = 176; $th = 62; $gx = 12; $gy = 12
+    $x0 = (800 - ($cols * $tw + ($cols - 1) * $gx)) / 2
+    $y0 = 58
+    for ($i = 0; $i -lt $labels.Count; $i++) {
+        $cx = $x0 + ($i % $cols) * ($tw + $gx)
+        $cy = $y0 + [math]::Floor($i / $cols) * ($th + $gy)
+        $bg = New-Rect "db-t$i-bg" $cx $cy $tw $th $script:TILE $null 6
+        $items.Add((OnOverlay $bg 'drivebox'))
+        $t = New-Text "db-t$i-t" $cx $cy $tw $th 15 $labels[$i] $script:WHITE 1
+        $items.Add((OnOverlay $t 'drivebox'))
+        $items.Add((OnOverlay (New-Button "db-t$i" $cx $cy $tw $th "DashDriveBoxPick$i") 'drivebox'))
+    }
+    $cyc = $y0 + 4 * ($th + $gy) + 6
+    $items.Add((OnOverlay (New-Rect 'db-cancel-bg' 300 $cyc 200 40 $script:PANEL $null 6) 'drivebox'))
+    $items.Add((OnOverlay (New-Text 'db-cancel-t' 300 $cyc 200 40 15 'CANCEL' $script:MUTED 1) 'drivebox'))
+    $items.Add((OnOverlay (New-Button 'db-cancel' 300 $cyc 200 40 'DashDriveBoxCancel') 'drivebox'))
+    $items
+}
+
 # Slots with an empty name hide themselves; the active preset highlights.
 function PresetOverlay([string]$P) {
     $items = [System.Collections.Generic.List[object]]::new()
@@ -2473,6 +2520,7 @@ PresetOverlay $P | ForEach-Object { $s7.Add($_) }
 FlagBar $P | ForEach-Object { $s7.Add($_) }
 IdleCard $P | ForEach-Object { $s7.Add($_) }
 ToastBar $P | ForEach-Object { $s7.Add($_) }
+DriveBoxOverlay $P | ForEach-Object { $s7.Add($_) }
 RevStrip $P $true | ForEach-Object { $s7.Add($_) }
 
 # =====================================================================

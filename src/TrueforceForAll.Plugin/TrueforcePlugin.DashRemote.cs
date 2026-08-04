@@ -141,6 +141,9 @@ namespace TrueforceForAll.Plugin
         private static readonly string[] DashDriveFactorySlots =
             { "CarFacts", "TyreTemps", "Scope", "GCircle" };
         internal const int DashDriveSlotCount = 4;
+        // Which box the on-dash picker is editing. Set when it opens, read
+        // by the picker's title and by every tile it offers.
+        private volatile int _dashDriveEditSlot;
         // Cached sanitized slots, refreshed alongside the tab slot map so the
         // property getters never re-walk settings per poll.
         private volatile string[] _dashDriveSlots = (string[])DashDriveFactorySlots.Clone();
@@ -1130,6 +1133,16 @@ namespace TrueforceForAll.Plugin
                 });
             }
             this.AttachDelegate("Dash.Drive.TwoRows", () => Settings?.DashDriveTwoRows != false);
+            this.AttachDelegate("Dash.Drive.EditSlot", () =>
+            {
+                switch (_dashDriveEditSlot)
+                {
+                    case 0: return "TOP LEFT";
+                    case 1: return "TOP RIGHT";
+                    case 2: return "BOTTOM LEFT";
+                    default: return "BOTTOM RIGHT";
+                }
+            });
             // Friction circle: our own Mode B numbers, not the game's. Util is
             // how much of the tyre's grip the model is using (1 = the limit);
             // the g pair gives the direction the load is coming from, taken
@@ -1411,6 +1424,46 @@ namespace TrueforceForAll.Plugin
             {
                 DashNoteActivity();
                 _dashIdleDismissed = true;
+                RaiseDashRemoteChanged();
+            });
+            // Change what a Drive box shows, from the dash. Four openers and
+            // one tile per content type: the picker applies to whichever box
+            // was tapped, so the tiles do not need to know about slots.
+            for (int i = 0; i < DashDriveSlotCount; i++)
+            {
+                int slot = i;   // captured per action, not shared
+                this.AddAction("DashDriveBoxOpen" + slot, (a2, b2) =>
+                {
+                    DashNoteActivity();
+                    _dashDriveEditSlot = slot;
+                    _dashOverlay = "drivebox";
+                    RaiseDashRemoteChanged();
+                });
+            }
+            for (int i = 0; i < DashDriveContentKeys.Length; i++)
+            {
+                int idx = i;
+                this.AddAction("DashDriveBoxPick" + idx, (a2, b2) =>
+                {
+                    if (Settings == null) return;
+                    DashNoteActivity();
+                    var cur = GetDashDriveSlots();
+                    int slot = _dashDriveEditSlot;
+                    if (slot < 0 || slot >= cur.Length) { _dashOverlay = ""; return; }
+                    cur[slot] = DashDriveContentKeys[idx];
+                    // Stored as a plain list of four, which is what the
+                    // sanitizer expects to read back.
+                    Settings.DashDriveSlots = new List<string>(cur);
+                    PersistSettings();
+                    RefreshDashTabSlots();
+                    _dashOverlay = "";
+                    DashToast("BOX SET TO " + DashDriveContentLabels[idx].ToUpperInvariant());
+                    RaiseDashRemoteChanged();
+                });
+            }
+            this.AddAction("DashDriveBoxCancel", (a2, b2) =>
+            {
+                _dashOverlay = "";
                 RaiseDashRemoteChanged();
             });
             this.AddAction("DashRevStripSpanToggle", (a, b) =>

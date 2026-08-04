@@ -2992,6 +2992,11 @@
                          button; the QR dialog itself carries the scan / same
                          network / Add to Home Screen guidance. -->
                     <Button x:Name="DashPhoneSettingsButton" Content="Open on your phone or tablet…"
+                    <!-- Grouped rather than one flat scroll: this section had grown to
+                         six unrelated concerns in a single list. Phone access stays at
+                         the top because it is how you first get the dash onto a device,
+                         not a preference. Tabs opens by default as the one people come
+                         here for; the rest stay shut until wanted. -->
                             Style="{StaticResource PopoverPrimaryButton}"
                             HorizontalAlignment="Left" Height="26"
                             Click="DashPhoneAccess_Click"
@@ -3009,104 +3014,153 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                                Text="Applies to the rev LED strip on the TF4ALL Dash dashboard. The strip scales to the current car's redline and flashes in step with the wheel's rev lights; direction changes apply instantly, no dashboard reload needed."/>
 
-                    <TextBlock Text="Opening tab:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
-                    <CheckBox x:Name="RemoteDashRememberTabCheck" Content="Remember last used tab"
-                              Checked="RemoteDashRememberTab_Changed" Unchecked="RemoteDashRememberTab_Changed"
-                              ToolTip="The dash comes back on whichever tab was open last, surviving SimHub restarts."/>
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <TextBlock Text="Default tab:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                        <!-- Items are built in code (RebuildRemoteDashTabsEditor):
-                             only ENABLED tabs are offered, in the user's order. -->
-                        <ComboBox x:Name="RemoteDashDefaultTabCombo" Width="140" Margin="8,0,0,0"
-                                  SelectionChanged="RemoteDashDefaultTab_Changed"
-                                  ToolTip="The tab the dash opens on when 'Remember last used tab' is off."/>
-                    </StackPanel>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="With remember on, the dash reopens where you left it, even across SimHub restarts. Turn it off to always start on the default tab picked here (applies at the next SimHub start)."/>
+                    <Expander IsExpanded="True" Margin="0,8,0,0">
+                        <Expander.Header>
+                            <TextBlock Text="Tabs" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,4">
+                            <TextBlock Text="Opening tab:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                            <CheckBox x:Name="RemoteDashRememberTabCheck" Content="Remember last used tab"
+                            Checked="RemoteDashRememberTab_Changed" Unchecked="RemoteDashRememberTab_Changed"
+                            ToolTip="The dash comes back on whichever tab was open last, surviving SimHub restarts."/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="Default tab:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <!-- Items are built in code (RebuildRemoteDashTabsEditor):
+                            only ENABLED tabs are offered, in the user's order. -->
+                            <ComboBox x:Name="RemoteDashDefaultTabCombo" Width="140" Margin="8,0,0,0"
+                            SelectionChanged="RemoteDashDefaultTab_Changed"
+                            ToolTip="The tab the dash opens on when 'Remember last used tab' is off."/>
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="With remember on, the dash reopens where you left it, even across SimHub restarts. Turn it off to always start on the default tab picked here (applies at the next SimHub start)."/>
 
-                    <!-- Tab layout editor: one row per dash tab (enable checkbox
-                         + up/down reorder). Rows are built in code
-                         (RebuildRemoteDashTabsEditor); the dash re-reads the
-                         layout live, so changes apply with no reload. -->
-                    <TextBlock Text="Tabs:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
-                    <StackPanel x:Name="RemoteDashTabsPanel"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="Untick a tab to hide it on the dash; use the arrows to change the order. Changes apply instantly, no dashboard reload needed. At least one tab always stays on."/>
+                            <!-- Tab layout editor: one row per dash tab (enable checkbox
+                            + up/down reorder). Rows are built in code
+                            (RebuildRemoteDashTabsEditor); the dash re-reads the
+                            layout live, so changes apply with no reload. -->
+                            <TextBlock Text="Tabs:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                            <StackPanel x:Name="RemoteDashTabsPanel"/>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="Untick a tab to hide it on the dash; use the arrows to change the order. Changes apply instantly, no dashboard reload needed. At least one tab always stays on."/>
 
-                    <!-- Drive tab: which of the four boxes around the gear shows
-                         what, plus the one-row / two-row choice. Combo items are
-                         filled in code from the plugin's content list so a new
-                         box type needs no XAML change. -->
-                    <TextBlock Text="Drive tab boxes:" Style="{StaticResource LabelText}" Margin="0,16,0,4"/>
-                    <RadioButton x:Name="RemoteDashDriveTwoRowsRadio" GroupName="RemoteDashDriveRows"
-                                 Content="Two rows (tablet)" Checked="RemoteDashDriveRows_Changed"
-                                 ToolTip="All four boxes, two above and two below."/>
-                    <RadioButton x:Name="RemoteDashDriveOneRowRadio" GroupName="RemoteDashDriveRows"
-                                 Content="Bottom row only (phone)" Margin="0,4,0,0" Checked="RemoteDashDriveRows_Changed"
-                                 ToolTip="Just the bottom two boxes, with a bigger gear readout above them."/>
-                    <Grid Margin="0,8,0,0">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
+                            <!-- Drive tab: which of the four boxes around the gear shows
+                            what, plus the one-row / two-row choice. Combo items are
+                            filled in code from the plugin's content list so a new
+                            box type needs no XAML change. -->
+                        </StackPanel>
+                    </Expander>
+                    <Expander IsExpanded="False" Margin="0,8,0,0">
+                        <Expander.Header>
+                            <TextBlock Text="Drive tab" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,4">
+                            <TextBlock Text="Drive tab boxes:" Style="{StaticResource LabelText}" Margin="0,16,0,4"/>
+                            <RadioButton x:Name="RemoteDashDriveTwoRowsRadio" GroupName="RemoteDashDriveRows"
+                            Content="Two rows (tablet)" Checked="RemoteDashDriveRows_Changed"
+                            ToolTip="All four boxes, two above and two below."/>
+                            <RadioButton x:Name="RemoteDashDriveOneRowRadio" GroupName="RemoteDashDriveRows"
+                            Content="Bottom row only (phone)" Margin="0,4,0,0" Checked="RemoteDashDriveRows_Changed"
+                            ToolTip="Just the bottom two boxes, with a bigger gear readout above them."/>
+                            <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" x:Name="RemoteDashDriveSlot0Label" Text="Top left:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                        <ComboBox   Grid.Row="0" Grid.Column="1" x:Name="RemoteDashDriveSlot0Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
-                        <TextBlock Grid.Row="1" Grid.Column="0" x:Name="RemoteDashDriveSlot1Label" Text="Top right:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                        <ComboBox   Grid.Row="1" Grid.Column="1" x:Name="RemoteDashDriveSlot1Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Bottom left:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                        <ComboBox   Grid.Row="2" Grid.Column="1" x:Name="RemoteDashDriveSlot2Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Bottom right:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                        <ComboBox   Grid.Row="3" Grid.Column="1" x:Name="RemoteDashDriveSlot3Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
-                    </Grid>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tyre and fuel readouts come from the game, so what they show depends on what that game reports."/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" x:Name="RemoteDashDriveSlot0Label" Text="Top left:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <ComboBox   Grid.Row="0" Grid.Column="1" x:Name="RemoteDashDriveSlot0Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" x:Name="RemoteDashDriveSlot1Label" Text="Top right:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <ComboBox   Grid.Row="1" Grid.Column="1" x:Name="RemoteDashDriveSlot1Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Bottom left:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <ComboBox   Grid.Row="2" Grid.Column="1" x:Name="RemoteDashDriveSlot2Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Bottom right:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <ComboBox   Grid.Row="3" Grid.Column="1" x:Name="RemoteDashDriveSlot3Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
+                            </Grid>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tyre and fuel readouts come from the game, so what they show depends on what that game reports."/>
 
-                    <CheckBox x:Name="RemoteDashPedalsCheck" Content="Show pedals and steering around the gear" Margin="0,14,0,0"
-                              Checked="RemoteDashPedals_Changed" Unchecked="RemoteDashPedals_Changed"
-                              ToolTip="Thin throttle and brake bars either side of the gear on the Drive tab, with steering underneath."/>
-                    <CheckBox x:Name="RemoteDashRevCenteredCheck" Content="Narrow the rev strip on the Drive tab" Margin="0,8,0,0"
-                              Checked="RemoteDashRevCentered_Changed" Unchecked="RemoteDashRevCentered_Changed"
-                              ToolTip="On the Drive tab only: the strip spans the space above the gear between the two box columns instead of the full width. Other tabs are always full width."/>
+                            <CheckBox x:Name="RemoteDashPedalsCheck" Content="Show pedals and steering around the gear" Margin="0,14,0,0"
+                            Checked="RemoteDashPedals_Changed" Unchecked="RemoteDashPedals_Changed"
+                            ToolTip="Thin throttle and brake bars either side of the gear on the Drive tab, with steering underneath."/>
+                            <CheckBox x:Name="RemoteDashRevCenteredCheck" Content="Narrow the rev strip on the Drive tab" Margin="0,8,0,0"
+                            Checked="RemoteDashRevCentered_Changed" Unchecked="RemoteDashRevCentered_Changed"
+                            ToolTip="On the Drive tab only: the strip spans the space above the gear between the two box columns instead of the full width. Other tabs are always full width."/>
+                        </StackPanel>
+                    </Expander>
+                    <Expander IsExpanded="False" Margin="0,8,0,0">
+                        <Expander.Header>
+                            <TextBlock Text="Rev lights" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,4">
+                            <TextBlock Text="Rev light direction:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                            <RadioButton x:Name="RemoteRevLtrRadio" GroupName="RemoteRevDir" Content="Left to right"
+                            Checked="RemoteRevDirection_Changed"
+                            ToolTip="The rev strip fills from the left edge toward the right as revs climb."/>
+                            <RadioButton x:Name="RemoteRevOutsideInRadio" GroupName="RemoteRevDir" Content="Outside in"
+                            Margin="0,4,0,0" Checked="RemoteRevDirection_Changed"
+                            ToolTip="The rev strip lights from both ends toward the center as revs climb, like center-converge shift lights."/>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="Applies to the rev LED strip on the TF4ALL Dash dashboard. The strip scales to the current car's redline and flashes in step with the wheel's rev lights; direction changes apply instantly, no dashboard reload needed."/>
+                        </StackPanel>
+                    </Expander>
+                    <Expander IsExpanded="False" Margin="0,8,0,0">
+                        <Expander.Header>
+                            <TextBlock Text="Alerts" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,4">
+                            <CheckBox x:Name="RemoteDashFlagsCheck" Content="Show race flags on the dash" Margin="0,14,0,0"
+                            Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
+                            ToolTip="A coloured band across the top of the dash whenever a flag is out."/>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="Shows yellow, blue, black, white and chequered flags across whichever tab is open. Only games that report flags can drive it, which the Forza titles do not, so it simply never appears there."/>
 
-                    <CheckBox x:Name="RemoteDashFlagsCheck" Content="Show race flags on the dash" Margin="0,14,0,0"
-                              Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
-                              ToolTip="A coloured band across the top of the dash whenever a flag is out."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="Shows yellow, blue, black, white and chequered flags across whichever tab is open. Only games that report flags can drive it, which the Forza titles do not, so it simply never appears there."/>
-
-                    <CheckBox x:Name="RemoteDashSpotterCheck" Content="Show the spotter when a car is alongside" Margin="0,8,0,0"
-                              Checked="RemoteDashSpotter_Changed" Unchecked="RemoteDashSpotter_Changed"
-                              ToolTip="A bar down the edge of whichever tab is open while a car is beside you on that side."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="SimHub works this out from the other cars in the session, so like the flags it only lights up in games that report car positions and simply never appears in the ones that do not."/>
-
-                    <TextBlock Text="Idle mode" FontWeight="SemiBold" Margin="0,18,0,0"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="With no game running the dash shows an ambient card with your name and number instead of an empty dashboard. It clears the moment a game starts, and there is an Exit button on the card itself."/>
-                    <CheckBox x:Name="RemoteDashIdleCheck" Content="Show the idle card when no game is running" Margin="0,8,0,0"
-                                 LostFocus="RemoteDashIdleDelay_Commit" KeyDown="RemoteDashIdleDelay_KeyDown"
-                                 ToolTip="Only applies while a game IS running: how long the car must sit still before the card takes over from the dashboard. Set it long if you would rather it never interrupted a session. With no game running the card shows straight away regardless."/>
-                        <TextBlock Text="seconds" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                        <TextBlock Text="Background" VerticalAlignment="Center" Margin="24,0,0,0"/>
-                              Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <TextBlock Text="Parked for" VerticalAlignment="Center" Width="94"/>
-                        <TextBox x:Name="RemoteDashIdleDelayBox" Width="60" TextAlignment="Center"
-                        <ComboBox x:Name="RemoteDashIdleStyleCombo" Width="120" Margin="8,0,0,0"
-                                  SelectionChanged="RemoteDashIdleStyle_Changed"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <TextBlock Text="Driver name" VerticalAlignment="Center" Width="94"/>
-                        <TextBox x:Name="RemoteDashIdleNameBox" Width="180"
-                                 LostFocus="RemoteDashIdleName_Commit" KeyDown="RemoteDashIdleName_KeyDown"/>
-                        <TextBlock Text="Number" VerticalAlignment="Center" Margin="24,0,0,0"/>
-                        <TextBox x:Name="RemoteDashIdleNumberBox" Width="70" Margin="8,0,0,0" TextAlignment="Center"
-                                 LostFocus="RemoteDashIdleNumber_Commit" KeyDown="RemoteDashIdleNumber_KeyDown"/>
-                        <TextBlock Text="Colour" VerticalAlignment="Center" Margin="24,0,0,0"/>
-                        <ComboBox x:Name="RemoteDashIdleColorCombo" Width="110" Margin="8,0,0,0"
-                                  SelectionChanged="RemoteDashIdleColor_Changed"/>
-                    </StackPanel>
+                            <CheckBox x:Name="RemoteDashSpotterCheck" Content="Show the spotter when a car is alongside" Margin="0,8,0,0"
+                            Checked="RemoteDashSpotter_Changed" Unchecked="RemoteDashSpotter_Changed"
+                            ToolTip="A bar down the edge of whichever tab is open while a car is beside you on that side."/>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="SimHub works this out from the other cars in the session, so like the flags it only lights up in games that report car positions and simply never appears in the ones that do not."/>
+                        </StackPanel>
+                    </Expander>
+                    <Expander IsExpanded="False" Margin="0,8,0,0">
+                        <Expander.Header>
+                            <TextBlock Text="Idle card" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,4">
+                            <TextBlock Text="Idle mode" FontWeight="SemiBold" Margin="0,18,0,0"/>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="With no game running the dash shows an ambient card with your name and number instead of an empty dashboard. It clears the moment a game starts, and there is an Exit button on the card itself."/>
+                            <CheckBox x:Name="RemoteDashIdleCheck" Content="Show the idle card when no game is running" Margin="0,8,0,0"
+                            Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <TextBlock Text="Parked for" VerticalAlignment="Center" Width="94"/>
+                            <TextBox x:Name="RemoteDashIdleDelayBox" Width="60" TextAlignment="Center"
+                            LostFocus="RemoteDashIdleDelay_Commit" KeyDown="RemoteDashIdleDelay_KeyDown"
+                            ToolTip="Only applies while a game IS running: how long the car must sit still before the card takes over from the dashboard. Set it long if you would rather it never interrupted a session. With no game running the card shows straight away regardless."/>
+                            <TextBlock Text="seconds" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            <TextBlock Text="Background" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            <ComboBox x:Name="RemoteDashIdleStyleCombo" Width="120" Margin="8,0,0,0"
+                            SelectionChanged="RemoteDashIdleStyle_Changed"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <TextBlock Text="Driver name" VerticalAlignment="Center" Width="94"/>
+                            <TextBox x:Name="RemoteDashIdleNameBox" Width="180"
+                            LostFocus="RemoteDashIdleName_Commit" KeyDown="RemoteDashIdleName_KeyDown"/>
+                            <TextBlock Text="Number" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            <TextBox x:Name="RemoteDashIdleNumberBox" Width="70" Margin="8,0,0,0" TextAlignment="Center"
+                            LostFocus="RemoteDashIdleNumber_Commit" KeyDown="RemoteDashIdleNumber_KeyDown"/>
+                            <TextBlock Text="Colour" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            <ComboBox x:Name="RemoteDashIdleColorCombo" Width="110" Margin="8,0,0,0"
+                            SelectionChanged="RemoteDashIdleColor_Changed"/>
+                            <TextBlock Text="Font" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            <ComboBox x:Name="RemoteDashIdleFontCombo" Width="118" Margin="8,0,0,0"
+                            SelectionChanged="RemoteDashIdleFont_Changed"
+                            ToolTip="Applies to the name and number on the idle card. The font has to exist on the device showing the dash, so an unknown one quietly falls back to the default."/>
+                            <CheckBox x:Name="RemoteDashIdleNameAboveCheck" Content="Name above" VerticalAlignment="Center" Margin="24,0,0,0"
+                            Checked="RemoteDashIdleNameAbove_Changed" Unchecked="RemoteDashIdleNameAbove_Changed"
+                            ToolTip="Puts the driver name over the number instead of under it."/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander>
                 </StackPanel>
             </Expander>
 
