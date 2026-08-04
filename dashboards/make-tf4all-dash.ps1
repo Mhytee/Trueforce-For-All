@@ -23,9 +23,46 @@ $BG      = if ($OUTLINE) { '#FF000000' } else { '#FF101216' }   # dashboard back
 # Cards are an outline in the outline skin, so the fill goes away entirely and the
 # border does the work. CARD_EDGE is what draws them.
 $PANEL   = if ($OUTLINE) { '#00FFFFFF' } else { '#FF1B1F27' }   # info panels
-# Sub panels INSIDE a card: barely-there in the outline skin, so the card's outline
-# stays the strongest line on the screen rather than competing with slabs.
+# $PANEL had been doing three jobs: the big cards, the lightened areas
+# inside them, and the background of small buttons. Unfilling it for Outline
+# made every button vanish, which is what splitting these apart fixes.
+#   CARD     the outlined container            (drawn by New-Card)
+#   SUBPANEL a lightened area inside a card    (no outline, barely there)
+#   BTN      something you can press           (must always read as solid)
 $SUBPANEL = if ($OUTLINE) { '#FF0E0E10' } else { '#FF1B1F27' }
+$BTN      = if ($OUTLINE) { '#FF1C1C20' } else { '#FF1B1F27' }
+$BTN_EDGE = '#FF3A4150'
+
+# A card: outlined and unfilled in the outline skin, a filled panel otherwise. Every
+# big container goes through here so the two looks cannot drift apart.
+function New-Card([string]$name, $x, $y, $w, $h, [int]$radius = 10) {
+    $fill = if ($script:OUTLINE) { $script:CLEAR } else { $script:PANEL }
+    $r = New-Rect $name $x $y $w $h $fill $null $radius
+    if ($script:OUTLINE) {
+        $r.BorderStyle.BorderColor = $script:CARD_EDGE
+        $r.BorderColor = $script:CARD_EDGE
+        foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+            $r.BorderStyle."Border$sd" = 1
+            $r."Border$sd" = 1
+        }
+    }
+    $r
+}
+
+# A pressable tile: solid enough to look pressable, with a hairline in
+# Outline so it still reads as a control on a black ground.
+function New-Btn([string]$name, $x, $y, $w, $h, [int]$radius = 4) {
+    $r = New-Rect $name $x $y $w $h $script:BTN $null $radius
+    if ($script:OUTLINE) {
+        $r.BorderStyle.BorderColor = $script:BTN_EDGE
+        $r.BorderColor = $script:BTN_EDGE
+        foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+            $r.BorderStyle."Border$sd" = 1
+            $r."Border$sd" = 1
+        }
+    }
+    $r
+}
 $CARD_EDGE = '#FF4E5668'
 $TILE    = if ($OUTLINE) { '#FF141414' } else { '#FF232936' }   # buttons / tiles (off state)
 $TILEON  = '#FF23503A'   # toggle tile on state
@@ -233,7 +270,7 @@ function KeypadOverlay([string]$P) {
     $items.Add((OnOverlay (New-Text 'kp-title' 0 16 800 30 20 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('return ""+$prop("' + $P + '.KeypadTitle")')
     } 'Bold') 'keypad'))
-    $items.Add((OnOverlay (New-Rect 'kp-entry-bg' 250 48 300 64 $script:PANEL) 'keypad'))
+    $items.Add((OnOverlay (New-Card 'kp-entry-bg' 250 48 300 64 6) 'keypad'))
     $items.Add((OnOverlay (New-Text 'kp-entry' 250 48 300 64 42 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('var e=""+$prop("' + $P + '.KeypadEntry");return e==""?"----":e')
     } 'Bold') 'keypad'))
@@ -576,17 +613,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $script:sel = $sel; $script:rowCond = $rowCond; $script:PN = $P
     $script:xN = $x; $script:yN = $y; $script:wN = $w
 
-    $panel = New-Rect "d$slot-panel" $x $y $w $h $script:PANEL $null 10
-    if ($script:OUTLINE) {
-        # No fill, so the outline IS the card. 1px keeps it a frame rather
-        # than a box: at 2 it starts competing with the values inside.
-        $panel.BorderStyle.BorderColor = $script:CARD_EDGE
-        $panel.BorderColor = $script:CARD_EDGE
-        foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
-            $panel.BorderStyle."Border$sd" = 1
-            $panel."Border$sd" = 1
-        }
-    }
+    $panel = New-Card "d$slot-panel" $x $y $w $h 10
     $panel.Bindings['Visible'] = BindJS 'Visible' ('return ' + $sel + '!="None"' + $rowCond)
     $items.Add($panel)
 
@@ -689,9 +716,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Each fact sits on its own lightened sub-panel with a caption, the
     # value, and its action tile on the right, which is the Car facts
     # tab's layout at this size rather than a list of label/value rows.
-    $cfP1 = New-Rect "d$slot-cf-p1" $ix ($iy + 48) $iw 52 $script:TILE $null 5
+    $cfP1 = New-Rect "d$slot-cf-p1" $ix ($iy + 48) $iw 52 $script:SUBPANEL $null 5
     $cfP1.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($cfP1)
-    $cfP2 = New-Rect "d$slot-cf-p2" $ix ($iy + 106) $iw 52 $script:TILE $null 5
+    $cfP2 = New-Rect "d$slot-cf-p2" $ix ($iy + 106) $iw 52 $script:SUBPANEL $null 5
     $cfP2.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($cfP2)
     # Engine: caption, value, CHANGE tile on the right, exactly as the tab
     # arranges it.
@@ -702,7 +729,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         Text = BindJS 'Text' ('return ""+($prop("' + $P + '.EngineLayout")||"Auto")')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $r = New-Rect "d$slot-cf-eng-ch-bg" ($ix + $iw - $chW - 8) ($iy + 58) $chW 34 $script:PANEL $null 4
+    $r = New-Btn "d$slot-cf-eng-ch-bg" ($ix + $iw - $chW - 8) ($iy + 58) $chW 34 4
     $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
     $t = New-Text "d$slot-cf-eng-ch-t" ($ix + $iw - $chW - 8) ($iy + 58) $chW 34 12 'CHANGE' $script:WHITE 1
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
@@ -722,7 +749,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
     foreach ($st in @(@('dn', 'DashRedlineDown', '-', 0), @('up', 'DashRedlineUp', '+', ($stepW + 6)))) {
         $sx = $ix + $iw - 8 - ($stepW * 2 + 6) + $st[3]
-        $r = New-Rect "d$slot-cf-r$($st[0])-bg" $sx ($iy + 116) $stepW 34 $script:PANEL $null 4
+        $r = New-Btn "d$slot-cf-r$($st[0])-bg" $sx ($iy + 116) $stepW 34 4
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
         $tt = New-Text "d$slot-cf-r$($st[0])-t" $sx ($iy + 116) $stepW 34 20 $st[2] $script:WHITE 1 $null 'Bold'
         $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
@@ -775,7 +802,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         # 74 tall rather than 66: the extra 8 goes under the caption row so
         # the ON/OFF pill has a gap beneath it instead of resting on the
         # steppers, and the panel still clears the bottom of the smallest box.
-        $pnl = New-Rect "d$slot-hm-$gid-p" $ix $gy $iw 74 $script:TILE $null 5
+        $pnl = New-Rect "d$slot-hm-$gid-p" $ix $gy $iw 74 $script:SUBPANEL $null 5
         $pnl.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($pnl)
         $t = New-Text "d$slot-hm-$gid-l" ($ix + 10) ($gy + 6) ($iw - 20) 14 10 $glabel $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
@@ -785,7 +812,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         if ($gonProp -ne '') {
             $pillW = 42
             $px = $ix + $iw - 10 - $pillW
-            $r = New-Rect "d$slot-hm-$gid-pill-bg" $px ($gy + 4) $pillW 18 $script:PANEL @{
+            $r = New-Rect "d$slot-hm-$gid-pill-bg" $px ($gy + 4) $pillW 18 $script:BTN @{
                 BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $gonProp + '")?"' + $script:TILEON + '":"' + $script:PANEL + '"')
             } 4
             $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
@@ -815,7 +842,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $b.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($b)
         foreach ($st in @(@(($gid + 'dn'), $gdn, '-', ($ix + 10)), @(($gid + 'up'), $gup, '+', ($ix + $iw - 10 - $gStep)))) {
             $sx = $st[3]
-            $r = New-Rect "d$slot-hm-$($st[0])-bg" $sx ($gy + 30) $gStep 36 $script:PANEL $null 4
+            $r = New-Btn "d$slot-hm-$($st[0])-bg" $sx ($gy + 30) $gStep 36 4
             $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
             $tt = New-Text "d$slot-hm-$($st[0])-t" $sx ($gy + 30) $gStep 36 24 $st[2] $script:WHITE 1 $null 'Bold'
             $tt.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($tt)
@@ -839,7 +866,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     foreach ($pr in $prRows) {
         $prid = $pr[0]; $prLabel = $pr[1]; $prProp = $pr[2]
         $prAct = $pr[3]; $prEmpty = $pr[4]; $prY = $iy + $pr[5]
-        $r = New-Rect "d$slot-pr-$prid-p" $ix $prY $iw 58 $script:TILE $null 5
+        $r = New-Rect "d$slot-pr-$prid-p" $ix $prY $iw 58 $script:SUBPANEL $null 5
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
         $t = New-Text "d$slot-pr-$prid-l" ($ix + 10) ($prY + 6) ($iw - 20) 16 10 $prLabel $script:MUTED 0
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
@@ -847,7 +874,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
             Text = BindJS 'Text' ('var p=""+($prop("' + $prProp + '")||"");return p!=""?p:"' + $prEmpty + '"')
         } 'Bold'
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-        $r = New-Rect "d$slot-pr-$prid-ch-bg" ($ix + $iw - $chW - 8) ($prY + 12) $chW 34 $script:PANEL $null 4
+        $r = New-Btn "d$slot-pr-$prid-ch-bg" ($ix + $iw - $chW - 8) ($prY + 12) $chW 34 4
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
         $t = New-Text "d$slot-pr-$prid-ch-t" ($ix + $iw - $chW - 8) ($prY + 12) $chW 34 12 'CHANGE' $script:WHITE 1
         $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
@@ -1002,7 +1029,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # A bar reads at a glance where a number has to be parsed, and it is the
     # cheapest way to fill a box that was two thirds empty.
     $fuBarY = $iy + 80
-    $r = New-Rect "d$slot-fu-bar-bg" $ix $fuBarY $iw 18 $script:TILE $null 5
+    $r = New-Rect "d$slot-fu-bar-bg" $ix $fuBarY $iw 18 $script:SUBPANEL $null 5
     $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
     $r = New-Rect "d$slot-fu-bar" $ix $fuBarY 2 18 $script:GREEN @{
         BackgroundColor = BindJS 'BackgroundColor' ($fuPct +
@@ -1347,7 +1374,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $pkey = $pedals[$pi][0]; $plabel = $pedals[$pi][1]
         $pcol = $pedals[$pi][2]; $pJs = $pedals[$pi][3]
         $px = $barX0 + $pi * ($barW + $barGap)
-        $trough = New-Rect "d$slot-in-$pkey-bg" $px $barY $barW $barH $script:TILE $null 5
+        $trough = New-Rect "d$slot-in-$pkey-bg" $px $barY $barW $barH $script:SUBPANEL $null 5
         $trough.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($trough)
         # Fill grows from the bottom, so Top moves as Height does.
@@ -1365,7 +1392,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $steerJs = 'var s=1*$prop("' + $P + '.Steer");'
     $steerHas = 'return (' + ($isKeyBase = $sel + '=="Inputs"' + $rowCond) + ') && (1*$prop("' + $P + '.Steer"))>-1.5'
     $stY = $barY + $barH + 26
-    $stTrough = New-Rect "d$slot-in-st-bg" $ix $stY $iw 10 $script:TILE $null 5
+    $stTrough = New-Rect "d$slot-in-st-bg" $ix $stY $iw 10 $script:SUBPANEL $null 5
     $stTrough.Bindings['Visible'] = BindJS 'Visible' $steerHas
     $items.Add($stTrough)
     $stTick = New-Rect "d$slot-in-st-tick" ($ix + $iw / 2 - 1) ($stY - 3) 2 16 '#FF39404C' $null 0
@@ -1427,7 +1454,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Each lane sits on its own lightened panel over the darker card, the
     # same figure-on-ground the full screen uses. Without it the two
     # traces float on one flat background and read as a single lane.
-    $p1 = New-Rect "d$slot-sc-p1" $ix $l1y $iw $scLane $script:TILE $null 4
+    $p1 = New-Rect "d$slot-sc-p1" $ix $l1y $iw $scLane $script:SUBPANEL $null 4
     $p1.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($p1)
     $z1 = New-Rect "d$slot-sc-z1" $ix $l1mid $iw 2 $script:SCOPE_GRID $null 0
@@ -1459,7 +1486,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # --- lower lane: the Trueforce haptic envelope, as columns ---
     $l2y = $scTop + $scLane + 16
     $l2mid = $l2y + $scLane / 2
-    $p2 = New-Rect "d$slot-sc-p2" $ix $l2y $iw $scLane $script:TILE $null 4
+    $p2 = New-Rect "d$slot-sc-p2" $ix $l2y $iw $scLane $script:SUBPANEL $null 4
     $p2.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($p2)
     $z2 = New-Rect "d$slot-sc-z2" $ix $l2mid $iw 2 $script:SCOPE_GRID $null 0
@@ -1584,11 +1611,22 @@ function TabBar([string]$P) {
         $vis = 'return ' + $overlayClosed + ' && $prop("' + $slot + '.On")'
         $leftJs  = 'var n=' + $countJs + ';if(n<1)n=7;return 10+' + $i + '*(784/n)'
         $widthJs = 'var n=' + $countJs + ';if(n<1)n=7;return (784/n)-4'
-        $bg = New-Rect "tab$i-bg" $x 446 127 32 $TILE @{
-            BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $slot + '.Active")?"' + $TILEON + '":"' + $TILE + '"')
+        # Outlined like everything else in the outline skin, with the active tab
+        # carrying the fill instead of being the only filled thing.
+        $tabOff = if ($OUTLINE) { $script:CLEAR } else { $TILE }
+        $bg = New-Rect "tab$i-bg" $x 446 127 32 $tabOff @{
+            BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $slot + '.Active")?"' + $TILEON + '":"' + $tabOff + '"')
             Left  = BindJS 'Left'  $leftJs
             Width = BindJS 'Width' $widthJs
         } 4
+        if ($OUTLINE) {
+            $bg.BorderStyle.BorderColor = $script:CARD_EDGE
+            $bg.BorderColor = $script:CARD_EDGE
+            foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+                $bg.BorderStyle."Border$sd" = 1
+                $bg."Border$sd" = 1
+            }
+        }
         $bg.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($bg)
         $t = New-Text "tab$i-t" $x 446 127 32 13 '' $MUTED 1 @{
@@ -1988,7 +2026,7 @@ $s1.Add((New-Text 'preset' 16 86 768 26 15 '' $MUTED 0 @{
 }))
 
 # Master gain (left column); the big value is a tap zone for exact entry
-$s1.Add((New-Rect 'mg-panel' 16 116 376 240 $PANEL))
+$s1.Add((New-Card 'mg-panel' 16 116 376 240))
 $s1.Add((New-Text 'mg-label' 32 128 344 26 16 'MASTER GAIN  (tap value to type)' $MUTED 0))
 $s1.Add((New-Text 'mg-value' 32 156 344 96 64 '' $WHITE 1 @{
     Text = BindJS 'Text' ('return (1*$prop("' + $P + '.MasterGain")).toFixed(2)')
@@ -1999,7 +2037,7 @@ $s1.Add((New-Button 'mg-value-tap' 114 156 180 96 'DashMasterGainOpen'))
 StepperTiles 'mg' 32 264 344 76 'DashMasterGainDown' 'DashMasterGainUp' | ForEach-Object { $s1.Add($_) }
 
 # Audio gain (right column); same tap-to-type value
-$s1.Add((New-Rect 'ag-panel' 408 116 376 240 $PANEL))
+$s1.Add((New-Card 'ag-panel' 408 116 376 240))
 $s1.Add((New-Text 'ag-label' 424 128 344 26 16 '' $MUTED 0 @{
     Text = BindJS 'Text' ('return "AUDIO GAIN  "+($prop("' + $P + '.Fx.Audio.On")?"(ON)":"(OFF)")+"  (tap value to type)"')
 }))
@@ -2046,7 +2084,7 @@ $s2.Add((New-Text 'cf-car' 224 16 560 36 18 '' $MUTED 2 @{
 # Engine row: tap the value to open the layout picker. The two cards +
 # info line sit 32px below the natural flow so the block reads centered
 # between the title and the footer note.
-$s2.Add((New-Rect 'cf-eng-panel' 16 92 768 108 $PANEL))
+$s2.Add((New-Card 'cf-eng-panel' 16 92 768 108))
 $s2.Add((New-Text 'cf-eng-label' 32 102 400 24 15 'ENGINE LAYOUT' $MUTED 0))
 $s2.Add((New-Text 'cf-eng-value' 32 128 600 60 34 '' $WHITE 0 @{
     Text = BindJS 'Text' ('var s=""+($prop("' + $P + '.EngineLayoutSource")||"");var l=""+($prop("' + $P + '.EngineLayout")||"Auto");return s!=""?(l+"  ("+s+")"):l')
@@ -2056,7 +2094,7 @@ $s2.Add((New-Text 'cf-eng-hint-t' 648 116 120 60 17 'CHANGE' $WHITE 1))
 $s2.Add((New-Button 'cf-eng-btn' 648 116 120 60 'DashEngineLayoutOpen'))
 
 # Redline row: tap value = keypad; +/- 50 steppers on the right
-$s2.Add((New-Rect 'cf-rl-panel' 16 212 768 120 $PANEL))
+$s2.Add((New-Card 'cf-rl-panel' 16 212 768 120))
 $s2.Add((New-Text 'cf-rl-label' 32 222 400 24 15 'REDLINE  (tap value to type it)' $MUTED 0))
 $s2.Add((New-Text 'cf-rl-value' 32 250 360 68 44 '' $WHITE 0 @{
     Text = BindJS 'Text' ('var r=1*$prop("' + $P + '.Redline");return r>0?(r+" rpm"):"not set"')
@@ -2251,7 +2289,7 @@ $s4.Add((New-Text 'pr-car' 320 16 464 36 16 '' $MUTED 2 @{
     Text = BindJS 'Text' ('var g=""+($prop("' + $P + '.Game")||"No game");var c=""+($prop("' + $P + '.CarName")||"");return c!=""?(g+"  -  "+c):g')
 }))
 
-$s4.Add((New-Rect 'pr-game-panel' 16 64 768 150 $PANEL))
+$s4.Add((New-Card 'pr-game-panel' 16 64 768 150))
 $s4.Add((New-Text 'pr-game-label' 32 76 500 24 15 'GAME PRESET  (applies to the whole game)' $MUTED 0))
 $s4.Add((New-Text 'pr-game-value' 32 104 600 80 30 '' $WHITE 0 @{
     Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.PresetName")||"");return p!=""?p:"(manual tune)"')
@@ -2260,7 +2298,7 @@ $s4.Add((New-Rect 'pr-game-hint' 648 96 120 84 $TILE))
 $s4.Add((New-Text 'pr-game-hint-t' 648 96 120 84 17 'CHANGE' $WHITE 1))
 $s4.Add((New-Button 'pr-game-btn' 648 96 120 84 'DashPresetOpenGame'))
 
-$s4.Add((New-Rect 'pr-carp-panel' 16 228 768 150 $PANEL))
+$s4.Add((New-Card 'pr-carp-panel' 16 228 768 150))
 $s4.Add((New-Text 'pr-carp-label' 32 240 500 24 15 'CAR PRESET  (this car only)' $MUTED 0))
 $s4.Add((New-Text 'pr-carp-value' 32 268 600 80 30 '' $WHITE 0 @{
     Text = BindJS 'Text' ('var p=""+($prop("' + $P + '.CarPresetName")||"");return p!=""?p:"(none saved for this car)"')
@@ -2328,7 +2366,7 @@ $s5.Add((New-Rect 'sc-leg2-sw' 650 28 14 14 $SCOPE_PURPLE $null 2))
 $s5.Add((New-Text 'sc-leg2-t' 670 18 120 34 13 'TRUEFORCE' $MUTED 0))
 
 $s5.Add((New-Text 'sc-ffb-label' 16 50 400 20 13 'GAME FFB (as sent to the wheel)' $MUTED 0))
-$s5.Add((New-Rect 'sc-ffb-panel' 10 74 780 160 $PANEL))
+$s5.Add((New-Card 'sc-ffb-panel' 10 74 780 160))
 $s5.Add((New-Rect 'sc-ffb-zero' 12 153 776 2 $SCOPE_GRID $null 0))
 # Thin dotted red lines at the clip DETECTION threshold (0.98 of full
 # scale, matching the plugin's latch on the drawn value): y = 154 -/+
@@ -2365,7 +2403,7 @@ $clipNeg.Minimum = 0.0
 $s5.Add($clipNeg)
 
 $s5.Add((New-Text 'sc-tex-label' 16 240 400 20 13 'TRUEFORCE HAPTIC SIGNAL' $MUTED 0))
-$s5.Add((New-Rect 'sc-tex-panel' 10 262 780 164 $PANEL))
+$s5.Add((New-Card 'sc-tex-panel' 10 262 780 164))
 $s5.Add((New-Rect 'sc-tex-zero' 12 343 776 2 $SCOPE_GRID $null 0))
 # Full-width columns (no gaps) render the envelope as one solid filled
 # waveform silhouette rather than separated bars.
