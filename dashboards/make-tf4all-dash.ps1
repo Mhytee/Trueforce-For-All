@@ -1911,6 +1911,18 @@ function IdleCard([string]$P) {
 
     $ctrM = @(1, 2, 3); $ctrN = @(2, 3, 1); $ctrP = @(0.0, 0.37, 0.72)
 
+    # The art is collected here and added AFTER the driver number, so it
+    # draws on top of it.
+    #
+    # Underneath, every ring that crossed the number came out as two loose
+    # arcs, because the number is a solid slab 190px tall across the middle
+    # of the card and the rings are two pixel outlines. It read as the
+    # circles being broken, or drawn at an angle, when they were exact
+    # circles the whole time. A thin line over a letter costs nothing: the
+    # number is still perfectly readable through it, and a ripple that
+    # crosses it stays a ripple.
+    $art = New-Object System.Collections.ArrayList
+
     # ---------------- round pool ----------------
     for ($ei = 0; $ei -lt $EPOOL; $ei++) {
         $eu  = $ei / [double]$EPOOL
@@ -1989,7 +2001,7 @@ function IdleCard([string]$P) {
         $puOn = ($ei % 3 -eq 0)
         $puOff = [math]::Round($eu, 4)
         $puQ = 'var q=(6*T+' + $puOff + ')%1;'
-        $puR = if ($puOn) { '20+300*q' } else { '0' }
+        $puR = if ($puOn) { '16+218*q' } else { '0' }
 
         # Aurora: big soft ovals at low opacity, drifting over each other.
         $auX = 80 + ($ei % 6) * 130
@@ -2057,7 +2069,7 @@ function IdleCard([string]$P) {
             'if(s=="Aurora"){return 15;}' +
             'return ' + $eop)
         $e.Bindings['Visible'] = BindJS 'Visible' ('return ' + $on + ' && ' + $EROUND + '.indexOf(' + $style + ')>=0')
-        $items.Add($e)
+        [void]$art.Add($e)
     }
 
     # ---------------- straight pool ----------------
@@ -2127,7 +2139,7 @@ function IdleCard([string]$P) {
             'if(s=="Streaks"){return ' + $stH + ';}' +
             $wvH + 'return h')
         $r.Bindings['Visible'] = BindJS 'Visible' ('return ' + $on + ' && ' + $RSTRAIGHT + '.indexOf(' + $style + ')>=0')
-        $items.Add($r)
+        [void]$art.Add($r)
     }
 
     # --- Driver identity: the number is the point, the name labels it ---
@@ -2156,6 +2168,10 @@ function IdleCard([string]$P) {
     } 'Bold' -Fontable
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
+
+    # Over the number, under the status line: the small print at the foot is
+    # there to be read, and a ring through a version string is just noise.
+    foreach ($a in $art) { $items.Add($a) }
 
     # --- Plugin status along the foot. This is the one moment anyone is
     # looking at the dash and not the road, so it is where a version, a
