@@ -2863,6 +2863,29 @@ function Apply-Theme($items) {
             $key = $THEME_MAP[$prop][$cur]
             if ($key) { $it.Bindings[$prop] = ThemeBind $prop $key }
         }
+        # A tile IS a button, so it shows an edge like one. Only the Drive
+        # screen was built with New-Btn, which left its 36 buttons outlined
+        # and the tiles on every other tab bare: the same control looked
+        # like two different things depending on which tab it was on, and a
+        # theme could only repaint the edge that existed.
+        #
+        # Done here rather than at the call sites for the usual reason: there
+        # are about 150 of them across seven screens and any one that got
+        # missed would be invisible until someone happened to compare two
+        # tabs. Setting the static colour is enough, because the pass below
+        # is what turns it into a binding.
+        if ($it.Contains('BackgroundColor') -and $it.BorderStyle -and
+            [int]$it.BorderStyle.BorderTop -eq 0 -and
+            ([string]$it.BackgroundColor -eq $script:TILE -or
+             [string]$it.BackgroundColor -eq $script:TILEON)) {
+            $it.BorderStyle.BorderColor = $script:BTN_EDGE
+            if ($it.Contains('BorderColor')) { $it.BorderColor = $script:BTN_EDGE }
+            foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+                $it.BorderStyle."Border$sd" = 1
+                if ($it.Contains("Border$sd")) { $it."Border$sd" = 1 }
+            }
+        }
+
         # The outline is a special case in BOTH directions: the colour the
         # viewer draws comes from BorderStyle, not from the item's own
         # BorderColor, and so does the binding it reads. The old pass got
