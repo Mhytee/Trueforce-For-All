@@ -2816,12 +2816,16 @@ Map-Theme 'BackgroundColor' $SCOPE_AMBER  'Trace1'
 Map-Theme 'BackgroundColor' $SCOPE_PURPLE 'Trace2'
 Map-Theme 'BackgroundColor' $SCOPE_GRID   'Sub'
 Map-Theme 'BackgroundColor' $REVBG        'Sub'
-Map-Theme 'BackgroundColor' $PANEL        'Card'
+# NOT $PANEL, and NOT $BG. $PANEL is transparent in the outlined look, so
+# it is the same value as $CLEAR, and keying on it matched every text item,
+# button, ellipse and image that simply has no background: 1533 of them,
+# every one of which would have painted the card colour in any theme where
+# a card is filled. New-Card and the screen backdrop bind themselves, so
+# neither ever needed to be in this map.
 Map-Theme 'BackgroundColor' $SUBPANEL     'Sub'
 Map-Theme 'BackgroundColor' $BTN          'Btn'
 Map-Theme 'BackgroundColor' $TILE         'Tile'
 Map-Theme 'BackgroundColor' $TILEON       'TileOn'
-Map-Theme 'BackgroundColor' $BG           'Bg'
 Map-Theme 'TextColor'       $WHITE        'Text'
 Map-Theme 'TextColor'       $MUTED        'Muted'
 Map-Theme 'TextColor'       $GRAY         'Dim'
