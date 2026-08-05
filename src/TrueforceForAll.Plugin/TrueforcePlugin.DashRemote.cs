@@ -344,6 +344,11 @@ namespace TrueforceForAll.Plugin
             // legend says so, and theming the swatch alone made the key
             // disagree with the line it was keying.
             public string Dim => "#FF6E6E6E";
+            // Hairlines: ring outlines, tick marks, rev sockets. Far darker
+            // than the faint-text tone because they are not read, only
+            // sensed. They shared a key with faint text until text went
+            // neutral, which would have brightened every one of them.
+            public string Line => "#FF3C3F44";
         }
 
         internal static readonly DashTheme[] DashThemes =
@@ -1276,6 +1281,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Theme.Accent2",  () => ActiveDashTheme().Accent2);
             this.AttachDelegate("Dash.Theme.Accent3",  () => ActiveDashTheme().Accent3);
             this.AttachDelegate("Dash.Theme.Dim",      () => ActiveDashTheme().Dim);
+            this.AttachDelegate("Dash.Theme.Line",     () => ActiveDashTheme().Line);
             // A 0..1 phase over 1.2 s, for anything that should pulse. Derived
             // here rather than in the dash so every connected screen pulses
             // together, the same reason the rev flash is plugin side.

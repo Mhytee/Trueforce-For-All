@@ -98,9 +98,15 @@ $TILEON  = '#FF23503A'   # toggle tile on state
 $GREEN   = '#FF37D67A'
 $RED     = '#FFE5484D'
 $YELLOW  = '#FFE8C547'   # spike-reduction badge lit state
-$WHITE   = '#FFF2F4F8'
-$MUTED   = '#FF8B93A7'
-$GRAY    = '#FF6B7280'
+# Text is white or grey, never coloured, and these three match the tones
+# the plugin serves for Text/Muted/Dim. They used to be a blue-tinted white
+# and a blue-grey, which is subtle in isolation and obvious once a theme
+# put a warm or green outline next to it. They are also baked into ~120
+# computed colour expressions where no theme pass can reach them, so the
+# constants themselves have to be right.
+$WHITE   = '#FFF4F4F4'
+$MUTED   = '#FFA0A0A0'
+$GRAY    = '#FF6E6E6E'
 $CLEAR   = '#00FFFFFF'
 
 # Tyre temperature ramp: blue, green, yellow, orange, red, interpolated
@@ -149,7 +155,7 @@ function TempColorJs([string]$tileColor) {
 function TempTextColorJs([string]$emptyColor) {
     (TempRampJs ('return "' + $emptyColor + '";')) +
     'var lum=(c[1]*299+c[2]*587+c[3]*114)/1000;' +
-    'return lum>140?"#FF101216":"#FFF2F4F8"'
+    ('return lum>140?"#FF101216":"' + $script:WHITE + '"')
 }
 
 # Same ramp in PowerShell, for the preview renderer (it draws static
@@ -181,7 +187,7 @@ function TempColor([double]$v) {
 function TempTextColor([double]$v) {
     $c = [System.Drawing.ColorTranslator]::FromHtml((TempColor $v))
     $lum = ($c.R * 299 + $c.G * 587 + $c.B * 114) / 1000
-    if ($lum -gt 140) { '#FF101216' } else { '#FFF2F4F8' }
+    if ($lum -gt 140) { '#FF101216' } else { $script:WHITE }
 }
 $BACKDROP= '#F60D0F13'   # overlay backdrop (near-opaque)
 
@@ -1176,7 +1182,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $hd = AddHead 'fc' 'FRICTION CIRCLE' 'Friction'
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
     $items.Add($hd)
-    $items.Add((New-Ring "d$slot-fc-lim" $gcx $gcy $gr '#FF6B7280' 2 $vis))
+    $items.Add((New-Ring "d$slot-fc-lim" $gcx $gcy $gr $script:GRAY 2 $vis))
     $items.Add((New-Ring "d$slot-fc-in" $gcx $gcy ($gr * 0.75) $script:SUBPANEL 1 $vis))
     $uJs = 'var u=1*$prop("' + $P + '.Drive.Util");if(isNaN(u))u=0;if(u>1.3)u=1.3;'
     $dirJs = 'var a=1*$prop("' + $P + '.Drive.GLat");var b=1*$prop("' + $P + '.Drive.GLong");' +
@@ -1730,7 +1736,7 @@ function IdleCard([string]$P) {
     $on  = '$prop("' + $P + '.Idle.On")'
     $vis = 'return ' + $on
     $T   = '(1*$prop("' + $P + '.Idle.T"))'
-    $col = '(""+($prop("' + $P + '.Idle.Color")||"#FFF2F4F8"))'
+    $col = '(""+($prop("' + $P + '.Idle.Color")||"' + $script:WHITE + '"))'
     $style = '(""+($prop("' + $P + '.Idle.Style")||"Aurora"))'
 
     # Opaque backdrop: the tab underneath keeps updating, and a translucent
@@ -2838,7 +2844,12 @@ Map-Theme 'TextColor'       $GRAY         'Dim'
 Map-Theme 'TextColor'       $LINE         'Dim'
 Map-Theme 'BorderColor'     $CARD_EDGE    'CardEdge'
 Map-Theme 'BorderColor'     $BTN_EDGE     'BtnEdge'
-Map-Theme 'BorderColor'     $LINE         'Dim'
+# Hairlines get their own tone rather than borrowing the faint-text one.
+# They are not read, only sensed, so they sit far darker than the grey that
+# keeps small text legible; sharing one key would have brightened every
+# ring, tick and rev socket the moment text went neutral.
+Map-Theme 'BorderColor'     $LINE         'Line'
+Map-Theme 'BackgroundColor' $LINE         'Line'
 Map-Theme 'EllipseColor'    $MUTED        'Muted'
 
 function Apply-Theme($items) {
@@ -2969,6 +2980,43 @@ if ($misplaced.Count) {
         Write-Host "BORDER BIND ON ITEM  $_  (belongs in BorderStyle.Bindings)" -ForegroundColor Red
     }
     throw "$($misplaced.Count) item(s) bind BorderColor where it is never read; dashboard NOT written."
+}
+
+# Text is white or grey. The only colours allowed on it are the ones that
+# MEAN something, and they are listed here by hand so that adding a fifth
+# is a decision rather than an accident.
+#
+# This is checked rather than trusted because a text colour can arrive from
+# three places: the item, the theme, or a literal baked into a computed
+# expression. The last kind is invisible to the theme pass, and ~120 of
+# them sat there holding a blue-grey through every palette.
+$SEMANTIC_TEXT = @('#FF37D67A', '#FFE5484D', '#FFE8A33D', '#FFE8C547')
+function ColorSpread([string]$hex) {
+    $r = [Convert]::ToInt32($hex.Substring(3, 2), 16)
+    $g = [Convert]::ToInt32($hex.Substring(5, 2), 16)
+    $b = [Convert]::ToInt32($hex.Substring(7, 2), 16)
+    [Math]::Max([Math]::Max($r, $g), $b) - [Math]::Min([Math]::Min($r, $g), $b)
+}
+$tinted = @()
+foreach ($scr in $doc.Screens) {
+    foreach ($it in $scr.Items) {
+        if (-not $it.Contains('TextColor')) { continue }
+        $seen = @()
+        if ($it.Bindings -and $it.Bindings.Contains('TextColor')) {
+            $ex = [string]$it.Bindings['TextColor'].Formula.Expression
+            $seen = [regex]::Matches($ex, '#[0-9A-Fa-f]{8}') | ForEach-Object { $_.Value }
+        } else {
+            $seen = @([string]$it.TextColor)
+        }
+        foreach ($c in $seen) {
+            if ($SEMANTIC_TEXT -contains $c.ToUpper()) { continue }
+            if ((ColorSpread $c) -gt 12) { $tinted += "$($it.Name)  $c" }
+        }
+    }
+}
+if ($tinted.Count) {
+    $tinted | Select-Object -First 10 | ForEach-Object { Write-Host "TINTED TEXT  $_" -ForegroundColor Red }
+    throw "$($tinted.Count) text colour(s) are neither grey nor meaningful; dashboard NOT written."
 }
 
 $bad = @()
