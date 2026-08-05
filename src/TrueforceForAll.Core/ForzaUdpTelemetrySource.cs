@@ -129,9 +129,50 @@ namespace TrueforceForAll.Core
 
         public Action<string> Logger { get; set; }
 
-        /// <summary>Most recent IsRaceOn flag, exposed so the UI can show
-        /// "active / paused" state independent of MeasuredHz.</summary>
+        /// <summary>Most recent IsRaceOn flag FROM A REAL FRAME (all-zero
+        /// keepalives don't stamp it: their flag byte is zeroed payload, not
+        /// state). Exposed so the UI can show "active / paused" state
+        /// independent of MeasuredHz.</summary>
         public bool LastIsRaceOn { get; private set; }
+
+        // FH6 interleaves all-zero keepalives between real frames several
+        // times a second while driving (see the keepalive gate in
+        // ParsePacket). A lone keepalive adjacent to fresh real frames must
+        // not reach consumers: its zeroed flag reads as "paused", which
+        // notches the FFB provider's pause-release and, whenever a DataUpdate
+        // tick samples that window, drops the wheel out of Trueforce mode for
+        // the length of the resume hold (issue #39: FFB cuts out mid-corner
+        // and the wheel lurches when it comes back). Only persistent
+        // emptiness (a real pause / menu: no real frame for
+        // KeepaliveSilenceAfterMs) passes the silencing zero frame through.
+        // Receive-thread only.
+        internal double KeepaliveSilenceAfterMs = 250;
+        private long _lastRealFrameTicks;
+        internal bool ShouldEmit(TelemetryFrame frame, long nowTicks)
+        {
+            if (frame.MaxRpm > 0)
+            {
+                _lastRealFrameTicks = nowTicks;
+                return true;
+            }
+            if (_lastRealFrameTicks != 0
+                && (nowTicks - _lastRealFrameTicks) * 1000.0
+                   / System.Diagnostics.Stopwatch.Frequency < KeepaliveSilenceAfterMs)
+                return false;
+            // Persistent emptiness IS session state, even though one zeroed
+            // payload is not: no real frame for KeepaliveSilenceAfterMs means
+            // pause / menu, so the session flag drops HERE (the zeroed packets
+            // themselves no longer stamp it in ParsePacket). This keeps the
+            // FFB provider's pause-release and the stop-stream-on-pause gate
+            // engaging for Horizon pauses that stream only keepalives (issue
+            // #13's full-lock protection), just one silence window later than
+            // the per-packet stamping it replaces. Dropping _prevRaceOn too
+            // re-arms the raceOn 0->1 settle edge for the restart-from-menu
+            // placement jolt, matching the pre-swallow behavior.
+            LastIsRaceOn = false;
+            _prevRaceOn  = false;
+            return true;
+        }
 
         /// <summary>Forza's CarOrdinal for the currently-loaded car (unique
         /// per car model across the entire Forza catalog). Null until we've
@@ -302,7 +343,9 @@ namespace TrueforceForAll.Core
                 try
                 {
                     Interlocked.Increment(ref _packetsReceived);
-                    EmitFrame(ParsePacket(scratch, len));
+                    var frame = ParsePacket(scratch, len);
+                    if (ShouldEmit(frame, System.Diagnostics.Stopwatch.GetTimestamp()))
+                        EmitFrame(frame);
                 }
                 catch (Exception ex)
                 {
@@ -367,6 +410,42 @@ namespace TrueforceForAll.Core
                 // (+ = right); the spring's downstream invert was tuned on
                 // AC, so the Forza direction is a hardware-verify item.
                 steerNorm = (double)unchecked((sbyte)buf[OFF_STEER_HORIZON]) / 127.0;
+            }
+
+            // All-zero keepalive. FH6 interleaves these between real frames
+            // several times a second while driving, and every field in them
+            // (IsRaceOn included) is zeroed payload, not state. This check
+            // sits ABOVE the raceOn / settle / airborne stamping below on
+            // purpose: stamping it flapped LastIsRaceOn several times a
+            // second mid-race, which notched the FFB provider's pause-release
+            // and let the stop-stream-on-pause gate leave Trueforce mode for
+            // the length of a resume hold whenever a DataUpdate tick sampled
+            // the window (issue #39), and it recorded a raceOn 0->1 edge on
+            // every keepalive->real transition, re-opening the 400 ms settle
+            // window so the grip / impact channels never escaped suppression
+            // during FH6 races. Persistent emptiness DOES drop the flag, in
+            // ShouldEmit, once the silence window expires: one zeroed payload
+            // is noise, a quarter second of nothing but them is a pause.
+            // The zeroed frame returned here is what the swallow in
+            // ShouldEmit discards for lone keepalives; when it does flow, it
+            // silences the volatile channels exactly like the paused branch
+            // below. maxRpm is a static-ish field a real frame always carries,
+            // so it identifies an empty payload without trusting the flag.
+            if (maxRpm <= 0f)
+            {
+                return new TelemetryFrame
+                {
+                    Rpms       = 0,
+                    MaxRpm     = maxRpm,
+                    Throttle01 = 0,
+                    SpeedKmh   = 0,
+                    Gear       = "N",
+                    NumCylinders = numCyl > 0 ? numCyl : (int?)null,
+                    // Steering intentionally not reported: an empty packet
+                    // zeros it anyway and the stationary spring falls back to
+                    // the wheel's physical position, so a null avoids feeding
+                    // the spring a stray 0.
+                };
             }
 
             bool raceOn = isRaceOn != 0;

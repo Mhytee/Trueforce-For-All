@@ -238,5 +238,122 @@ namespace TrueforceForAll.Core.Tests
             Assert.Null(f.SteeringAngle);
             Assert.Equal(0.0, f.SpeedKmh, 6);
         }
+
+        // ---- FH6 keepalive gate (issue #39) ----------------------------------
+        // FH6 interleaves all-zero keepalive packets between real frames several
+        // times a second while driving. Their zeroed IsRaceOn byte is payload,
+        // not state: stamping it flapped LastIsRaceOn mid-race, which notched
+        // the FFB provider's pause-release and let the stop-stream-on-pause gate
+        // drop the wheel out of Trueforce mode for ~0.7 s whenever a DataUpdate
+        // tick sampled the window.
+
+        [Fact]
+        public void EmptyKeepalivePacket_ZeroesVolatileChannels()
+        {
+            // The silence gate keys on maxRpm == 0, not on IsRaceOn, so a
+            // genuinely-empty packet zeroes the volatile channels even when it
+            // still carries a stray current-rpm / speed value.
+            var src = NewSource();
+            var f = src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 5000f, speedMs: 30f),
+                                    HorizonDashLength);
+
+            Assert.Equal(0.0, f.Rpms, 6);
+            Assert.Equal(0.0, f.SpeedKmh, 6);
+            Assert.Equal("N", f.Gear);
+        }
+
+        [Fact]
+        public void Keepalive_DoesNotStampRaceOn()
+        {
+            var src = NewSource();
+            src.ParsePacket(DashPacket(raceOn: 1), HorizonDashLength);
+            Assert.True(src.LastIsRaceOn);
+
+            src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 0f, speedMs: 0f), HorizonDashLength);
+            Assert.True(src.LastIsRaceOn);   // unchanged by the empty
+        }
+
+        [Fact]
+        public void RaceOnZeroWithLivePhysics_StillReadsPaused()
+        {
+            // Guard on the half of the behavior this fix deliberately leaves
+            // alone: a REAL frame (maxRpm > 0) reporting IsRaceOn == 0 is a
+            // genuine pause / replay, so it still drops the flag and silences
+            // the volatile channels exactly as it did before the gate.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(raceOn: 1), HorizonDashLength);
+            var f = src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 8000f, rpm: 5000f, speedMs: 30f),
+                                    HorizonDashLength);
+
+            Assert.False(src.LastIsRaceOn);
+            Assert.Equal(0.0, f.Rpms, 6);
+            Assert.Equal(0.0, f.SpeedKmh, 6);
+        }
+
+        [Fact]
+        public void KeepaliveBetweenRealFrames_DoesNotReopenSettleWindow()
+        {
+            // A keepalive used to record a raceOn=0 level, so the next real
+            // frame looked like a 0->1 edge and re-opened the 400 ms settle
+            // window: with keepalives interleaving several times a second, the
+            // grip / impact channels never escaped suppression during a race.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(), HorizonDashLength);   // open + spend settle window
+            Thread.Sleep(450);
+            src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 0f, speedMs: 0f), HorizonDashLength);
+            var f = src.ParsePacket(DashPacket(heave: 50f, combinedSlip: 0.9f), HorizonDashLength);
+
+            Assert.True(Math.Abs(f.AccelerationHeave.GetValueOrDefault()) > 0.0);
+            Assert.True(f.WheelSlip.GetValueOrDefault() > 0.0);
+        }
+
+        [Fact]
+        public void ShouldEmit_SwallowsLoneKeepalives_PassesPersistentEmptiness()
+        {
+            // Lone keepalives adjacent to fresh real frames must not reach
+            // consumers (their zeroed speed / rpm / gear wipe scalar caches
+            // mid-race); only persistent emptiness (a real pause / menu) may
+            // pass the silencing zero frame through.
+            var src = NewSource();
+            long hz = System.Diagnostics.Stopwatch.Frequency;
+            var real  = new TelemetryFrame { MaxRpm = 8000 };
+            var empty = new TelemetryFrame { MaxRpm = 0 };
+
+            Assert.True(src.ShouldEmit(real, 10 * hz));
+            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 100));   // 10 ms later: lone
+            Assert.True(src.ShouldEmit(real, 10 * hz + hz / 50));
+            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 25));    // 20 ms since real: lone
+            Assert.True(src.ShouldEmit(empty, 11 * hz));               // ~1 s since real: pause
+        }
+
+        [Fact]
+        public void ShouldEmit_KeepaliveBeforeAnyRealFrame_FlowsThrough()
+        {
+            // Fresh source straight into a menu: no real frame has been seen,
+            // so the silencing zero frame must not be withheld.
+            var src = NewSource();
+            Assert.True(src.ShouldEmit(new TelemetryFrame { MaxRpm = 0 }, 123456));
+        }
+
+        [Fact]
+        public void PersistentKeepalives_DropRaceOn_AfterSilenceWindow()
+        {
+            // One zeroed payload is noise, but persistent emptiness is a real
+            // pause: the session flag must drop when the silencing frames start
+            // flowing, or the FFB provider's pause-release (issue #13 full-lock
+            // protection) never engages on Horizon pauses.
+            var src = NewSource();
+            long hz = System.Diagnostics.Stopwatch.Frequency;
+            src.ParsePacket(DashPacket(raceOn: 1), HorizonDashLength);
+            Assert.True(src.LastIsRaceOn);
+
+            var real  = new TelemetryFrame { MaxRpm = 8000 };
+            var empty = new TelemetryFrame { MaxRpm = 0 };
+            Assert.True(src.ShouldEmit(real, 10 * hz));
+            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 100));
+            Assert.True(src.LastIsRaceOn);                 // lone empty: still driving
+            Assert.True(src.ShouldEmit(empty, 11 * hz));   // persistent: pause
+            Assert.False(src.LastIsRaceOn);
+        }
     }
 }
