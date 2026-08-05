@@ -1768,24 +1768,25 @@ function IdleCard([string]$P) {
     # round comes from the ellipses, anything straight from the rectangles,
     # and a pattern uses whichever it needs and hides the other.
     #
-    # The budget is repaint, not taste. Folding the last three separate
-    # styles in here paid for both the rectangles and an Opacity binding,
-    # and that binding is what lets a ripple fade instead of having to
-    # close again.
-    $EPOOL = 48
-    $RPOOL = 20
+    # The pools are deliberately smaller than the binding budget allows.
+    # Pulse took the viewer down by drawing forty eight ellipse outlines at
+    # nearly the full size of the card at once, so the ceiling here is
+    # OVERDRAW, not formula count, and a pattern that wants to be huge has
+    # to use fewer marks to pay for it.
+    $EPOOL = 42
+    $RPOOL = 30
     $TAU   = '6.283185307'
 
-    $EROUND = '["Topo","Caustics","Bubbles","Rain","Fractal","Spiral","Ribbon","Orbit","Warp","Pulse","Aurora"]'
+    $EROUND = '["Topo","Caustics","Bubbles","Rain","Fractal","Ribbon","Orbit","Pulse","Aurora"]'
     $RSTRAIGHT = '["Pipes","Wave","Streaks"]'
 
     # Scattered positions that do not move: where the rain falls, and where
-    # the pipe turns. Drawn from a small fixed generator rather than
+    # each pipe turns. Drawn from a small fixed generator rather than
     # Get-Random so the dashboard is byte for byte the same every build.
     #
     # SEPARATE streams. Sharing one meant the rain consumed its numbers
     # first, so the walk that shipped was not the walk whose coverage had
-    # been measured, and adding a raindrop silently rerouted the pipe.
+    # been measured, and adding a raindrop silently rerouted the pipes.
     $rndNext = {
         $script:__rs = ([int64]$script:__rs * 1103515245 + 12345) % 2147483648
         $script:__rs / 2147483648.0
@@ -1795,39 +1796,55 @@ function IdleCard([string]$P) {
         $script:__ps / 2147483648.0
     }
     $script:__rs = 987654321
-    # Chosen, not arbitrary: the walk is deterministic, so its coverage was
-    # searched over seeds and starts and this is the one that crosses the
-    # whole card without ever stepping on itself. The obvious start, dead
-    # centre heading right, spent every step in one corner.
     $script:__ps = 112358
 
-    $dropX = @(); $dropY = @(); $dropSpd = @()
-    for ($dn = 0; $dn -lt $EPOOL; $dn++) {
-        $dropX   += [math]::Round(70 + (& $rndNext) * 660, 1)
-        $dropY   += [math]::Round(64 + (& $rndNext) * 352, 1)
+    # Fourteen drops, three rings each.
+    $dropX = @(); $dropY = @(); $dropSpd = @(); $dropOff = @()
+    for ($dn = 0; $dn -lt 14; $dn++) {
+        $dropX   += [math]::Round(80 + (& $rndNext) * 640, 1)
+        $dropY   += [math]::Round(76 + (& $rndNext) * 330, 1)
         $dropSpd += (1 + [int]([math]::Floor((& $rndNext) * 3)))
+        $dropOff += [math]::Round((& $rndNext), 4)
     }
 
-    # The pipe walks a grid and only ever turns by a right angle, which is
-    # the whole look of it. A step that would leave the screen turns instead,
-    # so the run stays inside without a position ever being clamped, which
-    # would have put two segments on top of each other.
-    $pipePts = @()
-    $ppx = 136.0; $ppy = 102.0; $pdir = 0
+    # Bubbles gets its OWN scatter, one position per mark. It used to borrow
+    # the rain's, and when that table shrank to fourteen drops the bubbles
+    # collapsed onto fourteen spots and started looking like the rain.
+    $bubX = @(); $bubY = @()
+    for ($bn = 0; $bn -lt $EPOOL; $bn++) {
+        $bubX += [math]::Round(70 + (& $rndNext) * 660, 1)
+        $bubY += [math]::Round(80 + (& $rndNext) * 320, 1)
+    }
+
+    # FIVE pipes, six segments each, rather than one long run. A single pipe
+    # drawing itself and vanishing is a line; several at once, at different
+    # points in their own cycle, is the screensaver.
+    #
+    # Each starts in its own part of the card and only ever turns by a right
+    # angle. A step that would leave the screen turns instead, so a run
+    # stays inside without a position ever being clamped, which would have
+    # put two segments on top of each other.
+    $pipeStarts = @(@(136, 102), @(560, 128), @(268, 300), @(636, 336), @(112, 372))
+    $pipeRuns = @()
     $pdxs = @(44, 0, -44, 0); $pdys = @(0, 44, 0, -44)
-    for ($pn = 0; $pn -le $RPOOL; $pn++) {
-        $pipePts += , @($ppx, $ppy)
-        # NOT $t. PowerShell names are case insensitive, so $t is $T, which
-        # is the phase expression every pattern is animated by; naming it
-        # that here once baked a constant into every binding in the pool.
-        $turnR = & $pipeNext
-        if ($turnR -lt 0.28) { $pdir = ($pdir + 1) % 4 } elseif ($turnR -lt 0.56) { $pdir = ($pdir + 3) % 4 }
-        for ($ptry = 0; $ptry -lt 4; $ptry++) {
-            $nxx = $ppx + $pdxs[$pdir]; $nyy = $ppy + $pdys[$pdir]
-            if ($nxx -ge 60 -and $nxx -le 736 -and $nyy -ge 60 -and $nyy -le 416) { break }
-            $pdir = ($pdir + 1) % 4
+    foreach ($st in $pipeStarts) {
+        $ppx = [double]$st[0]; $ppy = [double]$st[1]; $pdir = 0
+        $pts = @()
+        for ($pn = 0; $pn -le 6; $pn++) {
+            $pts += , @($ppx, $ppy)
+            # NOT $t. PowerShell names are case insensitive, so $t is $T,
+            # which is the phase expression every pattern is animated by;
+            # naming it that here once baked a constant into every binding.
+            $turnR = & $pipeNext
+            if ($turnR -lt 0.3) { $pdir = ($pdir + 1) % 4 } elseif ($turnR -lt 0.6) { $pdir = ($pdir + 3) % 4 }
+            for ($ptry = 0; $ptry -lt 4; $ptry++) {
+                $nxx = $ppx + $pdxs[$pdir]; $nyy = $ppy + $pdys[$pdir]
+                if ($nxx -ge 56 -and $nxx -le 740 -and $nyy -ge 56 -and $nyy -le 420) { break }
+                $pdir = ($pdir + 1) % 4
+            }
+            $ppx = $ppx + $pdxs[$pdir]; $ppy = $ppy + $pdys[$pdir]
         }
-        $ppx = $ppx + $pdxs[$pdir]; $ppy = $ppy + $pdys[$pdir]
+        $pipeRuns += , $pts
     }
 
     $ctrM = @(1, 2, 3); $ctrN = @(2, 3, 1); $ctrP = @(0.0, 0.37, 0.72)
@@ -1836,17 +1853,17 @@ function IdleCard([string]$P) {
     for ($ei = 0; $ei -lt $EPOOL; $ei++) {
         $eu  = $ei / [double]$EPOOL
         $eci = $ei % 3
-        $eki = [int][math]::Floor($ei / 3)      # 0..15, ring index
-        $egc = $ei % 8                          # grid column
-        $egr = [int][math]::Floor($ei / 8)      # grid row, 0..5
+        $eki = [int][math]::Floor($ei / 3)      # 0..13, ring index
+        $egc = $ei % 7                          # grid column
+        $egr = [int][math]::Floor($ei / 7)      # grid row, 0..5
         $efm = $ei % 6                          # fractal mark
-        $efl = [int][math]::Floor($ei / 6)      # fractal level, 0..7
+        $efl = [int][math]::Floor($ei / 6)      # fractal level, 0..6
 
         # Contours: rings about a drifting centre, dealt round robin between
         # three of them. Nothing computes a contour; the crossings are the
         # picture. Wider than tall, so it reads as ground at an angle.
         $tM = $ctrM[$eci]; $tN = $ctrN[$eci]; $tP = $ctrP[$eci]
-        $tBase = 14 + $eki * 15
+        $tBase = 14 + $eki * 17
         $tKp = [math]::Round($eki / 8.0, 4)
         $tCx = '400+150*Math.sin(' + $TAU + '*(' + $tM + '*T+' + $tP + '))'
         $tCy = '240+92*Math.cos(' + $TAU + '*(' + $tN + '*T+' + $tP + '))'
@@ -1854,25 +1871,14 @@ function IdleCard([string]$P) {
         # PowerShell tries to parse the JS as a number.
         $tRad = [string]$tBase + '+7*Math.sin(' + $TAU + '*(2*T+' + $tKp + '))'
 
-        # Spiral: three arms, one per accent. The angular STEP decides
-        # whether this is an arm or a scatter: at 24 degrees a point wraps
-        # most of a turn and crosses the others. It also has to be BIG,
-        # because the driver number owns the middle of the card and a
-        # smaller spiral simply hid behind it.
-        $spTh = [math]::Round($eci * 2.0943951 + $eki * 0.15, 4)
-        $spR  = 20 + $eki * 18
-        $spJp = [math]::Round($eki / 16.0, 4)
-        $spS  = [math]::Round(4 + $eki * 0.35, 2)
-        $spPre = 'var b=' + $spR + '*(1+0.08*Math.sin(' + $TAU + '*(2*T+' + $spJp + ')));' +
-                 'var th=' + $spTh + '+' + $TAU + '*T;'
-
         # Ribbon: one head running a 3:2 Lissajous with the pool strung out
         # behind it in time. Sampling the curve evenly put neighbours on
         # opposite sides of the screen; a trail keeps them adjacent.
-        $rbOff = [math]::Round($ei * 0.0055, 5)
+        $rbOff = [math]::Round($ei * 0.0063, 5)
         $rbS   = [math]::Round(15 - 10 * $eu, 2)
 
-        # Orbit: a circle riding a circle. Also sized to clear the number.
+        # Orbit: a circle riding a circle. Sized to clear the driver number,
+        # which owns the middle of the card.
         $obU  = [math]::Round($eu, 4)
         $obU3 = [math]::Round(3 * $eu, 4)
         $obS  = 6
@@ -1881,29 +1887,37 @@ function IdleCard([string]$P) {
         # own harmonic. Nothing simulates light through water: what reads as
         # caustics is the moving OVERLAP, so they are far wider than their
         # spacing.
-        $csX = 50 + $egc * 100
+        $csX = 56 + $egc * 112
         $csY = 66 + $egr * 70
-        $csP = [math]::Round(($egc + $egr) / 8.0, 4)
-        $csQ = [math]::Round($egc / 8.0 + $egr / 5.0, 4)
+        $csP = [math]::Round(($egc + $egr) / 7.0, 4)
+        $csQ = [math]::Round($egc / 7.0 + $egr / 5.0, 4)
 
         # Bubbles: rings that grow and close again, squashed as if the
         # surface were tilted. This is what the first attempt at rain looked
         # like. It was not rain, but it was worth keeping.
-        $bbX = $dropX[$ei]; $bbY = $dropY[$ei]; $bbM = $dropSpd[$ei]
+        $bbX = $bubX[$ei]; $bbY = $bubY[$ei]
+        $bbM = $dropSpd[$ei % 14]
         $bbOff = [math]::Round(($eu * 3.7) % 1.0, 4)
         $bbPre = 'var q=(' + $bbM + '*T+' + $bbOff + ')%1;' +
                  'r=80*Math.pow(q,0.65)*(1-Math.pow(q,12));'
 
-        # Rain: seen from ABOVE, so the ripple is a circle and not an
-        # ellipse, and it fades as it widens instead of closing again. The
-        # fade is the whole reason the Opacity binding exists.
-        $rnX = $dropX[($ei + 17) % $EPOOL]
-        $rnY = $dropY[($ei + 29) % $EPOOL]
-        $rnM = $dropSpd[($ei + 11) % $EPOOL]
-        $rnOff = [math]::Round(($eu * 6.3) % 1.0, 4)
-        $rnQ = 'var q=(' + $rnM + '*T+' + $rnOff + ')%1;'
+        # Rain: a drop is THREE rings, not one, and it is dark most of the
+        # time. Forty two rings all running at once is a boiling surface,
+        # which is what the first attempt looked like; rain is a few
+        # separate rings arriving, spreading and fading while the rest of
+        # the water sits still. So each drop rings for two fifths of its
+        # cycle and waits out the rest, and the trailing rings follow the
+        # first one out.
+        $rnD = [int][math]::Floor($ei / 3)       # 0..13, which drop
+        $rnJ = $ei % 3                            # which ring of that drop
+        $rnX = $dropX[$rnD]; $rnY = $dropY[$rnD]
+        $rnM = $dropSpd[$rnD]
+        $rnOff = $dropOff[$rnD]
+        $rnTrail = [math]::Round($rnJ * 0.055, 4)
+        $rnQ = 'var q=((' + $rnM + '*T+' + $rnOff + ')%1)-' + $rnTrail + ';var qq=q/0.4;' +
+               'var live=(qq>=0&&qq<=1);'
 
-        # Fractal: eight rings of six, each 1.6 times the one inside it, all
+        # Fractal: seven rings of six, each 1.7 times the one inside it, all
         # growing at that rate. A ring that reaches the size the next one out
         # had wraps back to the middle, and since every ring carries the same
         # six marks the picture is unchanged. The zoom never ends because it
@@ -1911,17 +1925,14 @@ function IdleCard([string]$P) {
         # turn, so a mark lands where its neighbour was; any other angle and
         # the seam shows once a cycle.
         $frA = [math]::Round($efm * 1.0471976, 4)
-        $frP = [math]::Round($efl / 8.0, 4)
-        $frPre = 'var q=(T+' + $frP + ')%1;var sc=Math.pow(1.6,8*q);'
+        $frP = [math]::Round($efl / 7.0, 4)
+        $frPre = 'var q=(T+' + $frP + ')%1;var sc=Math.pow(1.7,7*q);'
 
-        # Warp: outward from the middle, spread by the golden angle so no two
-        # share a track, brightening as they come. They run PAST the edge
-        # rather than stopping at it, which hides the restart.
-        $wpCos = [math]::Round([math]::Cos($ei * 2.399963), 5)
-        $wpSin = [math]::Round([math]::Sin($ei * 2.399963), 5)
-        $wpOff = [math]::Round($eu, 4)
-
-        # Pulse: rings leaving a wandering centre, fading as they go.
+        # Pulse: rings leaving a wandering centre, fading as they go. Only
+        # every third mark takes part, and they stop well short of the
+        # corners: this is the pattern that took the viewer down when all
+        # forty eight were drawn at nearly the full size of the card.
+        $puOn = ($ei % 3 -eq 0)
         $puOff = [math]::Round($eu, 4)
         $puQ = 'var q=(T+' + $puOff + ')%1;'
 
@@ -1932,6 +1943,7 @@ function IdleCard([string]$P) {
 
         $eHead = 'var T=' + $T + ';var s=' + $style + ';'
         $eop = [math]::Round(26 + 30 * [math]::Exp(-$ei / 22.0), 1)
+        $puR = if ($puOn) { '20+320*q' } else { '0' }
 
         $rad0 = $tBase + 7 * [math]::Sin(2 * [math]::PI * $tKp)
         $cx0 = 400 + 150 * [math]::Sin(2 * [math]::PI * $tP)
@@ -1943,63 +1955,54 @@ function IdleCard([string]$P) {
         $e.Opacity = [double]$eop
         $e.Bindings['EllipseColor'] = ThemeBind 'EllipseColor' ('Accent' + ($eci + 1))
         $e.Bindings['Left'] = BindJS 'Left' ($eHead + 'var x,r;' +
-            'if(s=="Spiral"){' + $spPre + 'x=400+b*Math.cos(th)*1.45;r=' + $spS + ';}' +
-            'else if(s=="Ribbon"){var p=T-' + $rbOff + ';x=400+320*Math.sin(' + $TAU + '*3*p);r=' + $rbS + ';}' +
-            'else if(s=="Warp"){var q=(T+' + $wpOff + ')%1;x=400+(20+520*q)*' + $wpCos + ';r=2+11*q;}' +
+            'if(s=="Ribbon"){var p=T-' + $rbOff + ';x=400+320*Math.sin(' + $TAU + '*3*p);r=' + $rbS + ';}' +
             'else if(s=="Orbit"){x=400+240*Math.cos(' + $TAU + '*(' + $obU + '+T))+110*Math.cos(' + $TAU + '*(' + $obU3 + '+2*T));r=' + $obS + ';}' +
             'else if(s=="Caustics"){x=' + $csX + '+18*Math.sin(' + $TAU + '*(T+' + $csP + '));r=46+26*Math.sin(' + $TAU + '*(2*T+' + $csP + '));}' +
-            'else if(s=="Rain"){' + $rnQ + 'r=6+78*q;x=' + $rnX + ';}' +
+            'else if(s=="Rain"){' + $rnQ + 'r=live?(4+96*qq):0;x=' + $rnX + ';}' +
             'else if(s=="Bubbles"){' + $bbPre + 'x=' + $bbX + ';}' +
             'else if(s=="Fractal"){' + $frPre + 'var an=' + $frA + '+1.0471976*q;x=400+11*sc*Math.cos(an);r=4.2*sc;}' +
-            'else if(s=="Pulse"){' + $puQ + 'r=20+430*q;x=400+40*Math.sin(' + $TAU + '*T);}' +
+            'else if(s=="Pulse"){' + $puQ + 'r=' + $puR + ';x=400+40*Math.sin(' + $TAU + '*T);}' +
             'else if(s=="Aurora"){x=' + $auX + '+46*Math.sin(' + $TAU + '*(T+' + $auP + '));r=150+40*Math.sin(' + $TAU + '*(2*T+' + $auP + '));}' +
             'else{x=' + $tCx + ';r=(' + $tRad + ')*1.25;}' +
             'return x-r')
         $e.Bindings['Top'] = BindJS 'Top' ($eHead + 'var y,r;' +
-            'if(s=="Spiral"){' + $spPre + 'y=240+b*Math.sin(th)*0.95;r=' + $spS + ';}' +
-            'else if(s=="Ribbon"){var p=T-' + $rbOff + ';y=240+200*Math.sin(' + $TAU + '*(2*p+0.25));r=' + $rbS + ';}' +
-            'else if(s=="Warp"){var q=(T+' + $wpOff + ')%1;y=240+(20+520*q)*' + $wpSin + '*0.62;r=2+11*q;}' +
+            'if(s=="Ribbon"){var p=T-' + $rbOff + ';y=240+200*Math.sin(' + $TAU + '*(2*p+0.25));r=' + $rbS + ';}' +
             'else if(s=="Orbit"){y=240+165*Math.sin(' + $TAU + '*(' + $obU + '+T))+70*Math.sin(' + $TAU + '*(' + $obU3 + '+2*T));r=' + $obS + ';}' +
             'else if(s=="Caustics"){y=' + $csY + '+14*Math.cos(' + $TAU + '*(2*T+' + $csQ + '));r=34+20*Math.cos(' + $TAU + '*(3*T+' + $csQ + '));}' +
-            'else if(s=="Rain"){' + $rnQ + 'r=6+78*q;y=' + $rnY + ';}' +
+            'else if(s=="Rain"){' + $rnQ + 'r=live?(4+96*qq):0;y=' + $rnY + ';}' +
             'else if(s=="Bubbles"){' + $bbPre + 'y=' + $bbY + ';r=r*0.55;}' +
             'else if(s=="Fractal"){' + $frPre + 'var an=' + $frA + '+1.0471976*q;y=240+11*sc*Math.sin(an)*0.62;r=4.2*sc;}' +
-            'else if(s=="Pulse"){' + $puQ + 'r=20+430*q;y=240+26*Math.cos(' + $TAU + '*T);r=r*0.62;}' +
+            'else if(s=="Pulse"){' + $puQ + 'r=(' + $puR + ')*0.62;y=240+26*Math.cos(' + $TAU + '*T);}' +
             'else if(s=="Aurora"){y=' + $auY + '+30*Math.cos(' + $TAU + '*(2*T+' + $auP + '));r=110+30*Math.cos(' + $TAU + '*(3*T+' + $auP + '));}' +
             'else{y=' + $tCy + ';r=' + $tRad + ';}' +
             'return y-r')
         $e.Bindings['Width'] = BindJS 'Width' ($eHead + 'var r;' +
-            'if(s=="Spiral"){r=' + $spS + ';}' +
-            'else if(s=="Ribbon"){r=' + $rbS + ';}' +
-            'else if(s=="Warp"){r=2+11*((T+' + $wpOff + ')%1);}' +
+            'if(s=="Ribbon"){r=' + $rbS + ';}' +
             'else if(s=="Orbit"){r=' + $obS + ';}' +
             'else if(s=="Caustics"){r=46+26*Math.sin(' + $TAU + '*(2*T+' + $csP + '));}' +
-            'else if(s=="Rain"){' + $rnQ + 'r=6+78*q;}' +
+            'else if(s=="Rain"){' + $rnQ + 'r=live?(4+96*qq):0;}' +
             'else if(s=="Bubbles"){' + $bbPre + '}' +
             'else if(s=="Fractal"){' + $frPre + 'r=4.2*sc;}' +
-            'else if(s=="Pulse"){' + $puQ + 'r=20+430*q;}' +
+            'else if(s=="Pulse"){' + $puQ + 'r=' + $puR + ';}' +
             'else if(s=="Aurora"){r=150+40*Math.sin(' + $TAU + '*(2*T+' + $auP + '));}' +
             'else{r=(' + $tRad + ')*1.25;}' +
             'return r*2')
         $e.Bindings['Height'] = BindJS 'Height' ($eHead + 'var r;' +
-            'if(s=="Spiral"){r=' + $spS + ';}' +
-            'else if(s=="Ribbon"){r=' + $rbS + ';}' +
-            'else if(s=="Warp"){r=2+11*((T+' + $wpOff + ')%1);}' +
+            'if(s=="Ribbon"){r=' + $rbS + ';}' +
             'else if(s=="Orbit"){r=' + $obS + ';}' +
             'else if(s=="Caustics"){r=34+20*Math.cos(' + $TAU + '*(3*T+' + $csQ + '));}' +
-            'else if(s=="Rain"){' + $rnQ + 'r=6+78*q;}' +
+            'else if(s=="Rain"){' + $rnQ + 'r=live?(4+96*qq):0;}' +
             'else if(s=="Bubbles"){' + $bbPre + 'r=r*0.55;}' +
             'else if(s=="Fractal"){' + $frPre + 'r=4.2*sc;}' +
-            'else if(s=="Pulse"){' + $puQ + 'r=(20+430*q)*0.62;}' +
+            'else if(s=="Pulse"){' + $puQ + 'r=(' + $puR + ')*0.62;}' +
             'else if(s=="Aurora"){r=110+30*Math.cos(' + $TAU + '*(3*T+' + $auP + '));}' +
             'else{r=' + $tRad + ';}' +
             'return r*2')
-        # A ripple fades as it widens, a star brightens as it arrives, and
-        # everything else holds the depth gradient it was built with.
+        # A ripple fades as it widens and is dark between drops; everything
+        # else holds the depth gradient it was built with.
         $e.Bindings['Opacity'] = BindJS 'Opacity' ($eHead +
-            'if(s=="Rain"){' + $rnQ + 'return 95*(1-q)*Math.min(1,q*7);}' +
-            'if(s=="Pulse"){' + $puQ + 'return 95*(1-q)*Math.min(1,q*8);}' +
-            'if(s=="Warp"){return 15+85*((T+' + $wpOff + ')%1);}' +
+            'if(s=="Rain"){' + $rnQ + 'return live?95*(1-qq)*Math.min(1,qq*8):0;}' +
+            'if(s=="Pulse"){' + $puQ + 'return 92*(1-q)*Math.min(1,q*8);}' +
             'if(s=="Aurora"){return 15;}' +
             'return ' + $eop)
         $e.Bindings['Visible'] = BindJS 'Visible' ('return ' + $on + ' && ' + $EROUND + '.indexOf(' + $style + ')>=0')
@@ -2010,34 +2013,40 @@ function IdleCard([string]$P) {
     for ($ri = 0; $ri -lt $RPOOL; $ri++) {
         $ru  = $ri / [double]$RPOOL
         $rci = $ri % 3
+        $rpi = [int][math]::Floor($ri / 6)      # which pipe, 0..4
+        $rsj = $ri % 6                           # which segment of it
 
-        # Pipes: one segment per step of the walk. It grows from its start,
-        # so the run draws itself in, and is then eaten from the same end, so
-        # the loop closes on an empty screen and never jumps.
-        $pA = $pipePts[$ri]; $pB = $pipePts[$ri + 1]
+        # Pipes: one segment per step of a run. It grows from its own start,
+        # so a run draws itself in and is then eaten from the same end, and
+        # each of the five is a fifth of a cycle behind the last so they are
+        # never all doing the same thing at once.
+        $pRun = $pipeRuns[$rpi]
+        $pA = $pRun[$rsj]; $pB = $pRun[$rsj + 1]
         $pSx = $pA[0]; $pSy = $pA[1]
         $pDx = [math]::Round($pB[0] - $pA[0], 1); $pDy = [math]::Round($pB[1] - $pA[1], 1)
-        $pPre = 'var hd=T<0.7?T/0.7*23:23;var tl=T<0.7?0:(T-0.7)/0.3*23;' +
-                'var g=Math.min(1,Math.max(0,hd-' + $ri + '))*Math.min(1,Math.max(0,' + $ri + '-tl+1));' +
+        $pPh = [math]::Round($rpi * 0.19, 4)
+        $pPre = 'var tp=(T+' + $pPh + ')%1;' +
+                'var hd=tp<0.7?tp/0.7*8:8;var tl=tp<0.7?0:(tp-0.7)/0.3*8;' +
+                'var g=Math.min(1,Math.max(0,hd-' + $rsj + '))*Math.min(1,Math.max(0,' + $rsj + '-tl+1));' +
                 'var ex=' + $pSx + '+' + $pDx + '*g;var ey=' + $pSy + '+' + $pDy + '*g;'
 
-        # Wave: a row of bars rising and falling. Straight, because a sheet
-        # made of circles reads as dots and this is meant to read as a level.
-        $wvX = 24 + $ri * 38
+        # Wave: a row of bars rising and falling. Straight, because a level
+        # made of circles reads as dots.
+        $wvX = 18 + $ri * 26
         $wvP = [math]::Round($ri / 6.0, 4)
         $wvQ = [math]::Round($ri / 10.0, 4)
         $wvH = 'var h=26+180*(0.5+0.5*Math.sin(' + $TAU + '*(2*T+' + $wvP + '))*Math.cos(' + $TAU + '*(T+' + $wvQ + ')));'
 
         # Streaks: thin bars falling at their own rates, on integer
         # multiples so each closes exactly at the wrap.
-        $stX = 30 + $ri * 39
+        $stX = 20 + $ri * 26
         $stM = 1 + ($ri % 3)
         $stOff = [math]::Round(($ru * 2.7) % 1.0, 4)
         $stH = 70 + ($ri % 4) * 34
 
         $rHead = 'var T=' + $T + ';var s=' + $style + ';'
 
-        $r = New-Rect "idle-bar$ri" $wvX 300 26 120 $script:MUTED $null 6
+        $r = New-Rect "idle-bar$ri" $wvX 300 20 120 $script:MUTED $null 6
         $r.Opacity = 70.0
         $r.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' ('Accent' + ($rci + 1))
         $r.Bindings['Left'] = BindJS 'Left' ($rHead +
@@ -2051,7 +2060,7 @@ function IdleCard([string]$P) {
         $r.Bindings['Width'] = BindJS 'Width' ($rHead +
             'if(s=="Pipes"){' + $pPre + 'return Math.abs(ex-' + $pSx + ')+12;}' +
             'if(s=="Streaks"){return 3;}' +
-            'return 26')
+            'return 20')
         $r.Bindings['Height'] = BindJS 'Height' ($rHead +
             'if(s=="Pipes"){' + $pPre + 'return Math.abs(ey-' + $pSy + ')+12;}' +
             'if(s=="Streaks"){return ' + $stH + ';}' +
