@@ -2445,8 +2445,8 @@ ToastBar $P | ForEach-Object { $s4.Add($_) }
 # 32 ms ring (purple). Palette mirrors the FFB-architecture doc (base
 # amber / tf purple).
 # =====================================================================
-$SCOPE_AMBER  = '#FFE3A445'   # themed as Trace1
-$SCOPE_PURPLE = '#FFA08CFF'   # themed as Trace2
+$SCOPE_AMBER  = '#FFE3A445'   # NOT themed: this colour is the legend
+$SCOPE_PURPLE = '#FFA08CFF'   # NOT themed: this colour is the legend
 $SCOPE_GRID   = '#FF262F3A'   # themed as Sub
 $s5 = [System.Collections.Generic.List[object]]::new()
 $s5.Add((New-Text 'sc-title' 16 18 300 34 22 'VISUALIZER' $WHITE 0 $null 'Bold'))
@@ -2816,8 +2816,6 @@ function Map-Theme([string]$prop, [string]$colour, [string]$key) {
     if (-not $script:THEME_MAP.ContainsKey($prop)) { $script:THEME_MAP[$prop] = @{} }
     if (-not $script:THEME_MAP[$prop].ContainsKey($colour)) { $script:THEME_MAP[$prop][$colour] = $key }
 }
-Map-Theme 'BackgroundColor' $SCOPE_AMBER  'Trace1'
-Map-Theme 'BackgroundColor' $SCOPE_PURPLE 'Trace2'
 Map-Theme 'BackgroundColor' $SCOPE_GRID   'Sub'
 Map-Theme 'BackgroundColor' $REVBG        'Sub'
 # NOT $PANEL, and NOT $BG. $PANEL is transparent in the outlined look, so
@@ -2837,8 +2835,6 @@ Map-Theme 'TextColor'       $LINE         'Dim'
 Map-Theme 'BorderColor'     $CARD_EDGE    'CardEdge'
 Map-Theme 'BorderColor'     $BTN_EDGE     'BtnEdge'
 Map-Theme 'BorderColor'     $LINE         'Dim'
-Map-Theme 'EllipseColor'    $SCOPE_AMBER  'Trace1'
-Map-Theme 'EllipseColor'    $SCOPE_PURPLE 'Trace2'
 Map-Theme 'EllipseColor'    $MUTED        'Muted'
 
 function Apply-Theme($items) {
