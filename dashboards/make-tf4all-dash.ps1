@@ -1776,7 +1776,7 @@ function IdleCard([string]$P) {
     # scatter gets its own, rather than borrowing another one's and
     # collapsing onto its positions.
     $EPOOL = 42
-    $RPOOL = 30
+    $RPOOL = 40
     $TAU   = '6.283185307'
 
     $EROUND = '["Topo","Caustics","Bubbles","Rain","Fractal","Ribbon","Pulse","Aurora"]'
@@ -1812,7 +1812,7 @@ function IdleCard([string]$P) {
         $bubY += [math]::Round(120 + (& $rndNext) * 240, 1)
     }
 
-    # THREE pipes of ten segments. Each one comes in from an edge, turns a
+    # FIVE pipes of eight segments. Each one comes in from an edge, turns a
     # few times, and leaves by another: that is the shape of the thing, and
     # a run that starts in the middle of the card and stops there is just a
     # line. The walk is searched rather than steered, because a walk that is
@@ -1823,7 +1823,7 @@ function IdleCard([string]$P) {
     $pipeStep = 84
     $pipeRuns = @()
     $pdxs = @($pipeStep, 0, -$pipeStep, 0); $pdys = @(0, $pipeStep, 0, -$pipeStep)
-    for ($pk = 0; $pk -lt 3; $pk++) {
+    for ($pk = 0; $pk -lt 5; $pk++) {
         $found = $null
         for ($att = 0; $att -lt 900 -and -not $found; $att++) {
             $edge = [int][math]::Floor((& $pipeNext) * 4)
@@ -1836,7 +1836,7 @@ function IdleCard([string]$P) {
             }
             $x = [double]$sx; $y = [double]$sy; $d = $d0
             $pts = @(); $seen = @{}; $ok = $true
-            for ($n = 0; $n -le 10; $n++) {
+            for ($n = 0; $n -le 8; $n++) {
                 $pts += , @($x, $y)
                 $key = "$x,$y"
                 if ($seen.ContainsKey($key)) { $ok = $false; break }
@@ -1848,9 +1848,9 @@ function IdleCard([string]$P) {
             if (-not $ok) { continue }
             $inside = { param($pt) $pt[0] -gt 10 -and $pt[0] -lt 790 -and $pt[1] -gt 10 -and $pt[1] -lt 470 }
             $mid = $true
-            foreach ($idx in 2, 3, 4, 5, 6, 7) { if (-not (& $inside $pts[$idx])) { $mid = $false } }
+            foreach ($idx in 2, 3, 4, 5, 6) { if (-not (& $inside $pts[$idx])) { $mid = $false } }
             $startsOut = -not (& $inside $pts[0])
-            $endsOut = -not (& $inside $pts[10])
+            $endsOut = -not (& $inside $pts[8])
             if ($mid -and $startsOut -and $endsOut) { $found = $pts }
         }
         if (-not $found) { throw "no edge to edge pipe found for run $pk" }
@@ -2008,58 +2008,68 @@ function IdleCard([string]$P) {
     for ($ri = 0; $ri -lt $RPOOL; $ri++) {
         $ru  = $ri / [double]$RPOOL
         $rci = $ri % 3
-        $rpi = [int][math]::Floor($ri / 10)     # which pipe, 0..2
-        $rsj = $ri % 10                          # which segment of it
+        $rpi = [int][math]::Floor($ri / 8)      # which pipe, 0..4
+        $rsj = $ri % 8                          # which segment of it
 
         $pRun = $pipeRuns[$rpi]
         $pA = $pRun[$rsj]; $pB = $pRun[$rsj + 1]
         $pSx = $pA[0]; $pSy = $pA[1]
         $pDx = [math]::Round($pB[0] - $pA[0], 1); $pDy = [math]::Round($pB[1] - $pA[1], 1)
-        # A third of a cycle apart, so one is arriving as another leaves.
-        $pPh = [math]::Round($rpi * 0.33, 4)
+        # A fifth of a cycle apart, so one is arriving as another leaves.
+        $pPh = [math]::Round($rpi * 0.2, 4)
+        # A pipe has a HEAD and a TAIL, and they are two numbers, not one.
+        #
+        # With a single factor scaling the segment's length, it grew forward
+        # from its start and then shrank back to that same start, so the run
+        # retracted the way it had come. The head is where the run has got
+        # to; the tail is where it is being eaten from. The visible piece of
+        # a segment is between them, and there is nothing to draw at all
+        # until the head is past where the tail has reached.
         $pPre = 'var tp=(T+' + $pPh + ')%1;' +
-                'var hd=tp<0.66?tp/0.66*12:12;var tl=tp<0.66?0:(tp-0.66)/0.34*12;' +
-                'var g=Math.min(1,Math.max(0,hd-' + $rsj + '))*Math.min(1,Math.max(0,' + $rsj + '-tl+1));' +
-                'var ex=(' + $pSx + ')+(' + $pDx + ')*g;var ey=(' + $pSy + ')+(' + $pDy + ')*g;'
+                'var hd=tp<0.66?tp/0.66*10:10;var tl=tp<0.66?0:(tp-0.66)/0.34*10;' +
+                'var a=Math.min(1,Math.max(0,hd-' + $rsj + '));' +
+                'var b=1-Math.min(1,Math.max(0,' + $rsj + '-tl+1));' +
+                'var sx=(' + $pSx + ')+(' + $pDx + ')*b;var sy=(' + $pSy + ')+(' + $pDy + ')*b;' +
+                'var ex=(' + $pSx + ')+(' + $pDx + ')*a;var ey=(' + $pSy + ')+(' + $pDy + ')*a;' +
+                'var live=(a-b)>0.001;'
 
         # Wave: a row of bars rising and falling. Straight, because a level
         # made of circles reads as dots.
-        $wvX = 18 + $ri * 26
-        $wvP = [math]::Round($ri / 6.0, 4)
-        $wvQ = [math]::Round($ri / 10.0, 4)
+        $wvX = 12 + $ri * 20
+        $wvP = [math]::Round($ri / 8.0, 4)
+        $wvQ = [math]::Round($ri / 13.0, 4)
         $wvH = 'var h=26+180*(0.5+0.5*Math.sin(' + $TAU + '*(2*T+' + $wvP + '))*Math.cos(' + $TAU + '*(T+' + $wvQ + ')));'
 
         # Streaks: thin bars falling at their own rates, on integer
         # multiples so each closes exactly at the wrap.
-        $stX = 20 + $ri * 26
+        $stX = 14 + $ri * 20
         $stM = 1 + ($ri % 3)
         $stOff = [math]::Round(($ru * 2.7) % 1.0, 4)
         $stH = 70 + ($ri % 4) * 34
 
         $rHead = 'var T=' + $T + ';var s=' + $style + ';'
 
-        $r = New-Rect "idle-bar$ri" $wvX 300 20 120 $script:MUTED $null 6
-        $r.Opacity = 70.0
+        $r = New-Rect "idle-bar$ri" $wvX 300 15 120 $script:MUTED $null 6
+        # Static, because none of the three straight patterns fades and the
+        # forty of these had to pay for themselves somewhere.
+        $r.Opacity = 78.0
         $r.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' ('Accent' + ($rci + 1))
         $r.Bindings['Left'] = BindJS 'Left' ($rHead +
-            'if(s=="Pipes"){' + $pPre + 'return Math.min((' + $pSx + '),ex)-7;}' +
+            'if(s=="Pipes"){' + $pPre + 'return Math.min(sx,ex)-7;}' +
             'if(s=="Streaks"){return ' + $stX + ';}' +
             'return ' + $wvX)
         $r.Bindings['Top'] = BindJS 'Top' ($rHead +
-            'if(s=="Pipes"){' + $pPre + 'return Math.min((' + $pSy + '),ey)-7;}' +
+            'if(s=="Pipes"){' + $pPre + 'return Math.min(sy,ey)-7;}' +
             'if(s=="Streaks"){return ((' + $stM + '*T+' + $stOff + ')%1)*640-160;}' +
             $wvH + 'return 440-h')
         $r.Bindings['Width'] = BindJS 'Width' ($rHead +
-            'if(s=="Pipes"){' + $pPre + 'return g>0.001?Math.abs(ex-(' + $pSx + '))+14:0;}' +
+            'if(s=="Pipes"){' + $pPre + 'return live?Math.abs(ex-sx)+14:0;}' +
             'if(s=="Streaks"){return 3;}' +
-            'return 20')
+            'return 15')
         $r.Bindings['Height'] = BindJS 'Height' ($rHead +
-            'if(s=="Pipes"){' + $pPre + 'return g>0.001?Math.abs(ey-(' + $pSy + '))+14:0;}' +
+            'if(s=="Pipes"){' + $pPre + 'return live?Math.abs(ey-sy)+14:0;}' +
             'if(s=="Streaks"){return ' + $stH + ';}' +
             $wvH + 'return h')
-        $r.Bindings['Opacity'] = BindJS 'Opacity' ($rHead +
-            'if(s=="Streaks"){return 42;}' +
-            'return 82')
         $r.Bindings['Visible'] = BindJS 'Visible' ('return ' + $on + ' && ' + $RSTRAIGHT + '.indexOf(' + $style + ')>=0')
         $items.Add($r)
     }
