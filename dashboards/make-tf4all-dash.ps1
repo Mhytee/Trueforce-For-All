@@ -1880,20 +1880,29 @@ function IdleCard([string]$P) {
                 if (-not ($mid -and -not (& $inside $pts[0]) -and -not (& $inside $pts[8]))) { continue }
                 # Clear of every run already placed. Measured between the
                 # corners of the runs, which is enough on a grid this coarse.
-                $clear = $true
+                #
+                # NOT named $clear. PowerShell variable names are case
+                # INSENSITIVE, so a local $clear shadows the palette's $CLEAR
+                # for the rest of IdleCard AND for everything IdleCard calls,
+                # because lookup walks the call stack. New-Rect then wrote a
+                # boolean into BorderColor, SimHub could not convert True to a
+                # Color, and the whole dashboard failed to load: the phone
+                # reported it as not existing. 623 colours were poisoned by
+                # this one name. The guard before the write catches a repeat.
+                $runIsClear = $true
                 if ($sep -gt 0) {
                     foreach ($prev in $pipeRuns) {
                         foreach ($pt in $pts) {
                             foreach ($qt in $prev) {
                                 $dx = $pt[0] - $qt[0]; $dy = $pt[1] - $qt[1]
-                                if ([math]::Sqrt($dx * $dx + $dy * $dy) -lt $sep) { $clear = $false; break }
+                                if ([math]::Sqrt($dx * $dx + $dy * $dy) -lt $sep) { $runIsClear = $false; break }
                             }
-                            if (-not $clear) { break }
+                            if (-not $runIsClear) { break }
                         }
-                        if (-not $clear) { break }
+                        if (-not $runIsClear) { break }
                     }
                 }
-                if ($clear) { $found = $pts }
+                if ($runIsClear) { $found = $pts }
             }
         }
         if (-not $found) { throw "no edge to edge pipe found for run $pk" }
@@ -2258,11 +2267,11 @@ function FlagBar([string]$P) {
     }
     $chk = 'return ' + $any + ' && $prop("' + $F + 'Checkered")'
     $sq = 24; $bandY = 14; $rows = 2
-    $clearL = 236; $clearR = 564
+    $runIsClearL = 236; $runIsClearR = 564
     for ($cx = 0; $cx -lt 800; $cx += $sq) {
         for ($ry = 0; $ry -lt $rows; $ry++) {
             if ((([math]::Floor($cx / $sq)) + $ry) % 2 -ne 0) { continue }
-            if (($cx + $sq) -gt $clearL -and $cx -lt $clearR) { continue }
+            if (($cx + $sq) -gt $runIsClearL -and $cx -lt $runIsClearR) { continue }
             $w2 = [math]::Min($sq, 800 - $cx)
             $b2 = New-Rect "flag-chk$cx-$ry" $cx ($bandY + $ry * $sq) $w2 $sq '#FF101216' $null 0
             $b2.Bindings['Visible'] = BindJS 'Visible' $chk
@@ -3214,19 +3223,35 @@ $doc = [ordered]@{
 # SimHub rejects the whole dashboard for one of them, with an error that
 # names a screen index and nothing else, so catch it here where the item
 # name is still known.
-$blank = @()
+#
+# Checked by SHAPE, not just for emptiness. A colour here has been an empty
+# string (a constant read before it was assigned) and a boolean (a local
+# named $clear shadowing the palette's $CLEAR, because names are case
+# insensitive and lookup walks the call stack). Both sail through every
+# other check and both make SimHub reject the entire dashboard, which
+# reaches the user as the dash no longer existing.
+$badcol = @()
+$colourRx = '^#[0-9A-Fa-f]{8}$'
 foreach ($scr in $doc.Screens) {
     foreach ($it in $scr.Items) {
+        $checks = @()
         foreach ($ck in 'BackgroundColor', 'TextColor', 'BorderColor', 'EllipseColor', 'FillColor') {
-            if ($it.Contains($ck) -and [string]::IsNullOrEmpty([string]$it.$ck)) {
-                $blank += "$($it.Name).$ck"
-            }
+            if ($it.Contains($ck)) { $checks += , @($ck, $it.$ck) }
+        }
+        if ($it.Contains('BorderStyle') -and $it.BorderStyle) {
+            $checks += , @('BorderStyle.BorderColor', $it.BorderStyle.BorderColor)
+        }
+        foreach ($c in $checks) {
+            $v = $c[1]
+            if ($null -eq $v) { continue }
+            if ($v -isnot [string]) { $badcol += "$($it.Name).$($c[0]) = $v [$($v.GetType().Name)]"; continue }
+            if ($v -notmatch $colourRx) { $badcol += "$($it.Name).$($c[0]) = '$v'" }
         }
     }
 }
-if ($blank.Count) {
-    $blank | Select-Object -First 10 | ForEach-Object { Write-Host "EMPTY COLOUR  $_" -ForegroundColor Red }
-    throw "$($blank.Count) item(s) with an empty colour; dashboard NOT written."
+if ($badcol.Count) {
+    $badcol | Select-Object -First 10 | ForEach-Object { Write-Host "NOT A COLOUR  $_" -ForegroundColor Red }
+    throw "$($badcol.Count) value(s) are not #AARRGGBB colours; dashboard NOT written."
 }
 
 # A BorderColor binding on the ITEM is accepted by the viewer, saved, and
@@ -3356,6 +3381,52 @@ foreach ($scr in $doc.Screens) {
 if ($bad.Count) {
     $bad | ForEach-Object { Write-Host "MALFORMED BINDING  $_" -ForegroundColor Red }
     throw "$($bad.Count) malformed binding expression(s); dashboard NOT written."
+}
+
+# ---- colour guard ----
+# Every slot whose name carries "Color" must hold a NON-EMPTY STRING, or a
+# binding object that computes one. Anything else is a build bug, and the
+# whole class of them lands the same way: SimHub's loader cannot convert the
+# value to a System.Windows.Media.Color, LoadFromFile throws, the web
+# controller 500s, and the phone reports the dashboard as not existing. The
+# file gets written and looks fine, so nothing shows up until someone opens
+# the dash on a phone.
+#
+# This has now bitten three times, each from a different direction: a colour
+# read before it was defined (null), a theming pass keying on transparent
+# (wrong colour everywhere), and a local $clear shadowing the palette's
+# $CLEAR (boolean). Checking the OUTPUT catches all three and whatever the
+# fourth turns out to be, which reading the code carefully has not.
+$badColour = New-Object System.Collections.ArrayList
+function Test-Colours($node, [string]$path) {
+    if ($node -is [System.Collections.IDictionary]) {
+        foreach ($k in @($node.Keys)) {
+            $v = $node[$k]
+            $p = if ($path) { "$path.$k" } else { [string]$k }
+            if ([string]$k -like '*Color*') {
+                # A binding object is fine: it computes the colour at runtime.
+                if ($v -is [System.Collections.IDictionary]) { Test-Colours $v $p }
+                elseif ($v -is [string] -and $v.Length -gt 0) { }
+                else {
+                    $tn = if ($null -eq $v) { 'null' } else { $v.GetType().Name }
+                    [void]$script:badColour.Add("$p = '$v' [$tn]")
+                }
+            }
+            else { Test-Colours $v $p }
+        }
+    }
+    elseif ($node -is [System.Collections.IEnumerable] -and $node -isnot [string]) {
+        $i = 0
+        foreach ($e in $node) { Test-Colours $e ("$path[$i]"); $i++ }
+    }
+}
+Test-Colours $doc ''
+if ($badColour.Count) {
+    $badColour | Select-Object -First 12 | ForEach-Object { Write-Host "BAD COLOUR  $_" -ForegroundColor Red }
+    if ($badColour.Count -gt 12) { Write-Host "  ... and $($badColour.Count - 12) more" -ForegroundColor Red }
+    throw ("$($badColour.Count) colour slot(s) do not hold a colour string; dashboard NOT written. " +
+           "A Boolean here almost always means a local variable name collided with a palette name: " +
+           "PowerShell variable names are CASE INSENSITIVE, so `$clear shadows `$CLEAR.")
 }
 
 $json = $doc | ConvertTo-Json -Depth 60
