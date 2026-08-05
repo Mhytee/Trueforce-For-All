@@ -1754,61 +1754,112 @@ function IdleCard([string]$P) {
     $w = { param($mult, $ph) 'Math.sin(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
     $wc = { param($mult, $ph) 'Math.cos(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
 
-    # --- Topographic: separate hills, each with its own contours.
+    # --- One pool of ellipses, several patterns, chosen inside the formula.
     #
-    # Every hill owns a CELL and cannot leave it. Its drift amplitude plus
-    # its widest contour is kept under the cell's half width and half
-    # height, so two hills can approach and slide past each other but can
-    # never overlap, by construction rather than by luck. That is also why
-    # there is no collision test: there is nothing to collide.
+    # Each pattern used to be its own set of items, and the idle card exists
+    # on all seven screens, and the active screen evaluates every binding
+    # every frame whether or not that pattern is the one showing. So a style
+    # nobody had selected still cost a full frame's worth of maths, and two
+    # of them together were the flicker.
     #
-    # Ellipses, not rounded rectangles: width and height move on DIFFERENT
-    # harmonics, so a contour is out of round and out of round by a
-    # changing amount. A rounded rectangle is only a circle while its
-    # corner radius is exactly half its size, so it squares off as it
-    # breathes, which is what the first attempt did.
+    # Here the patterns SHARE the pool and the style switches the maths. A
+    # new pattern is a branch in an expression, not another forty items on
+    # seven cards, and it costs nothing while it is not selected.
     #
-    # Four hills of ten rather than five of sixteen. Eighty animated
-    # ellipses at six bindings each was more than the viewer could repaint
-    # smoothly, and the flicker was that, not the animation.
-    #   cell 400 x 240, so half is 200 x 120
-    #   worst reach measured over a whole loop: 148 x 108, inside both.
-    #   The first numbers here were guessed and reached 130 vertically,
-    #   which would have let two hills touch, so they are measured now.
-    $topoCells = @(
-        @(0, 200, 120, 1, 2, 0.00, 'Accent1'),
-        @(1, 600, 120, 2, 3, 0.37, 'Accent2'),
-        @(2, 200, 360, 3, 1, 0.61, 'Accent3'),
-        @(3, 600, 360, 2, 1, 0.83, 'Accent1')
-    )
-    foreach ($cell in $topoCells) {
-        $fi = $cell[0]; $fx = $cell[1]; $fy = $cell[2]
-        $fmx = $cell[3]; $fmy = $cell[4]; $fp = $cell[5]; $fac = $cell[6]
-        # Bounded drift: 56 across, 30 down, which with the widest contour
-        # keeps every ring inside this hill's own cell.
-        $cxJs = 'var cx=' + $fx + '+' + (& $w $fmx $fp) + '*40+' + (& $w (2 * $fmx) ($fp + 0.2)) + '*16;'
-        $cyJs = 'var cy=' + $fy + '+' + (& $wc $fmy $fp) + '*17+' + (& $wc (3 * $fmy) ($fp + 0.5)) + '*7;'
-        for ($ri = 0; $ri -lt 10; $ri++) {
-            # Widening spacing reads as ground that flattens away from a
-            # peak; even spacing reads as a target.
-            $base = 6 + $ri * $ri * 0.42 + $ri * 5.2
-            $rp = ($fp + $ri * 0.09) % 1.0
-            $amp = [math]::Round(3 + $ri * 0.9, 1)
-            $rw = 'var rw=' + [math]::Round($base, 1) + '+' + (& $w (1 + ($ri % 3)) $rp) + '*' + $amp + ';'
-            $rh = 'var rh=' + [math]::Round($base * 0.84, 1) + '+' + (& $wc (2 + ($ri % 4)) ($rp + 0.33)) + '*' + $amp + ';'
-            $e = New-Ellipse "idle-topo$fi-$ri" 0 0 ($base * 2) ($base * 2) $script:MUTED 1
-            $e.Opacity = [double]([math]::Round(10 + 30 * [math]::Exp(-$ri / 4.5), 1))
-            $e.Bindings['EllipseColor'] = ThemeBind 'EllipseColor' $fac
-            $e.Bindings['Width']  = BindJS 'Width'  ($rw + 'return rw*2')
-            $e.Bindings['Height'] = BindJS 'Height' ($rh + 'return rh*2')
-            $e.Bindings['Left']   = BindJS 'Left'   ($rw + $cxJs + 'return cx-rw')
-            $e.Bindings['Top']    = BindJS 'Top'    ($rh + $cyJs + 'return cy-rh')
-            # Opacity is STATIC. It was a sixth animated binding per ring
-            # for an effect the drifting already gives, and cutting it is
-            # forty fewer formulas a frame.
-            $e.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Topo')
-            $items.Add($e)
-        }
+    # Forty eight is few enough that a pattern has to be legible at low
+    # density. A sunflower spiral and an evenly sampled Lissajous were both
+    # tried here and both read as scattered dots: they need hundreds of
+    # points before the eye finds the figure. What works instead is
+    # structure the eye can complete from a handful of points, which is why
+    # these three are arms, a trail, and interference.
+    $POOL = 48
+    $TAU  = '6.283185307'
+    # Three drifting centres for the contour pattern. Rings are dealt round
+    # robin between them, so the three families slide through each other and
+    # it is their CROSSINGS that draw the contour lines. Nothing computes a
+    # contour: the interference is the picture.
+    $ctrM = @(1, 2, 3)
+    $ctrN = @(2, 3, 1)
+    $ctrP = @(0.0, 0.37, 0.72)
+
+    for ($i = 0; $i -lt $POOL; $i++) {
+        $c = $i % 3
+        $k = [int][math]::Floor($i / 3)
+
+        # Spiral: three arms of sixteen, one per accent, turning once per
+        # loop while the radius breathes on a different multiple.
+        #
+        # The angular STEP is what decides whether this reads as an arm or
+        # as a scatter. At 24 degrees a point twelve long wraps almost the
+        # whole way round and crosses the other arms, which is a field of
+        # dots. At 9 degrees it spans about 130 degrees: long enough to be a
+        # curve, short enough that the eye keeps hold of it.
+        $arm = $i % 3
+        $j   = [int][math]::Floor($i / 3)
+        $spTh = [math]::Round($arm * 2.0943951 + $j * 0.16, 4)
+        $spR  = 16 + $j * 15
+        $spJp = [math]::Round($j / 16.0, 4)
+        $spS  = [math]::Round(3 + $j * 0.3, 2)
+        $spPre = 'var b=' + $spR + '*(1+0.08*Math.sin(' + $TAU + '*(2*T+' + $spJp +
+            ')));var th=' + $spTh + '+' + $TAU + '*T;'
+
+        # Ribbon: one head running a 3:2 Lissajous with the rest of the pool
+        # strung out BEHIND it in time. Sampling the curve evenly put
+        # neighbours on opposite sides of the screen; a trail keeps them
+        # adjacent, so the dots draw the line they are travelling along.
+        $rbOff = [math]::Round($i * 0.0055, 5)
+        $rbS   = [math]::Round(9 - 6 * ($i / [double]$POOL), 2)
+
+        # Contour: concentric rings about a drifting centre. Wider than tall,
+        # because a ring 1.25 times wider than high reads as ground seen at
+        # an angle rather than as a target.
+        $tM = $ctrM[$c]; $tN = $ctrN[$c]; $tP = $ctrP[$c]
+        $tBase = 14 + $k * 15
+        $tKp = [math]::Round($k / 8.0, 4)
+        $tCx = '400+150*Math.sin(' + $TAU + '*(' + $tM + '*T+' + $tP + '))'
+        $tCy = '240+92*Math.cos(' + $TAU + '*(' + $tN + '*T+' + $tP + '))'
+        # [string] first: with an int on the left, + is addition and
+        # PowerShell tries to parse the JS as a number.
+        $tRad = [string]$tBase + '+7*Math.sin(' + $TAU + '*(2*T+' + $tKp + '))'
+
+        $head = 'var T=' + $T + ';var s=' + $style + ';'
+
+        # Static starting geometry, which is also what the preview renders.
+        $rad0 = $tBase + 7 * [math]::Sin(2 * [math]::PI * $tKp)
+        $cx0 = 400 + 150 * [math]::Sin(2 * [math]::PI * $tP)
+        $cy0 = 240 + 92 * [math]::Cos(2 * [math]::PI * $tP)
+
+        $e = New-Ellipse "idle-fld$i" ($cx0 - $rad0 * 1.25) ($cy0 - $rad0) `
+            ($rad0 * 2.5) ($rad0 * 2) $script:MUTED 1
+        # Fades along the index, which is outward for the rings and the arms
+        # and backward along the trail: near and far in all three. Static,
+        # because it was a fifth animated formula for depth the motion
+        # already gives.
+        $e.Opacity = [double]([math]::Round(18 + 30 * [math]::Exp(-$i / 16.0), 1))
+        $e.Bindings['EllipseColor'] = ThemeBind 'EllipseColor' ('Accent' + ($c + 1))
+        $e.Bindings['Left'] = BindJS 'Left' ($head + 'var x,r;' +
+            'if(s=="Spiral"){' + $spPre + 'x=400+b*Math.cos(th)*1.4;r=' + $spS + ';}' +
+            'else if(s=="Ribbon"){var p=T-' + $rbOff + ';x=400+300*Math.sin(' + $TAU + '*3*p);r=' + $rbS + ';}' +
+            'else{x=' + $tCx + ';r=(' + $tRad + ')*1.25;}' +
+            'return x-r')
+        $e.Bindings['Top'] = BindJS 'Top' ($head + 'var y,r;' +
+            'if(s=="Spiral"){' + $spPre + 'y=240+b*Math.sin(th)*0.92;r=' + $spS + ';}' +
+            'else if(s=="Ribbon"){var p=T-' + $rbOff + ';y=240+185*Math.sin(' + $TAU + '*(2*p+0.25));r=' + $rbS + ';}' +
+            'else{y=' + $tCy + ';r=' + $tRad + ';}' +
+            'return y-r')
+        $e.Bindings['Width'] = BindJS 'Width' ($head + 'var r;' +
+            'if(s=="Spiral"){r=' + $spS + ';}' +
+            'else if(s=="Ribbon"){r=' + $rbS + ';}' +
+            'else{r=(' + $tRad + ')*1.25;}' +
+            'return r*2')
+        $e.Bindings['Height'] = BindJS 'Height' ($head + 'var r;' +
+            'if(s=="Spiral"){r=' + $spS + ';}' +
+            'else if(s=="Ribbon"){r=' + $rbS + ';}' +
+            'else{r=' + $tRad + ';}' +
+            'return r*2')
+        $e.Bindings['Visible'] = BindJS 'Visible' ('return ' + $on + ' && (' +
+            $style + '=="Topo"||' + $style + '=="Spiral"||' + $style + '=="Ribbon")')
+        $items.Add($e)
     }
 
     # --- Aurora: slow coloured weather, drifting and breathing ---
@@ -2077,8 +2128,11 @@ function DriveBoxOverlay([string]$P) {
         $items.Add((OnOverlay (New-Button "db-t$i" $cx $cy $tw $th "DashDriveBoxPick$i") 'drivebox'))
     }
     $cyc = $y0 + 4 * ($th + $gy) + 6
-    $items.Add((OnOverlay (New-Rect 'db-cancel-bg' 300 $cyc 200 40 $script:PANEL $null 6) 'drivebox'))
-    $items.Add((OnOverlay (New-Text 'db-cancel-t' 300 $cyc 200 40 15 'CANCEL' $script:MUTED 1) 'drivebox'))
+    # Red and bold, like every other cancel on the dash. This one was muted
+    # text on a panel, so the one place you reach it mid-session was the one
+    # place it did not look like the way out.
+    $items.Add((OnOverlay (New-Rect 'db-cancel-bg' 300 $cyc 200 40 $script:TILE $null 6) 'drivebox'))
+    $items.Add((OnOverlay (New-Text 'db-cancel-t' 300 $cyc 200 40 15 'CANCEL' $script:RED 1 $null 'Bold') 'drivebox'))
     $items.Add((OnOverlay (New-Button 'db-cancel' 300 $cyc 200 40 'DashDriveBoxCancel') 'drivebox'))
     $items
 }

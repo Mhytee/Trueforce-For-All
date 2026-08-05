@@ -605,6 +605,7 @@ namespace TrueforceForAll.Plugin
                     ModeBSignCheck.IsChecked    = mbs.ModeBSign < 0f;
                     ModeBStrengthSlider.Value   = mbs.ModeBSatGain;
                     ModeBStrengthText.Text      = mbs.ModeBSatGain.ToString("F2");
+                    ModeBAutoStrengthCheck.IsChecked = mbs.ModeBAutoStrength;
                     // Center feel (ModeBDirSoft) is code-only now (BDIRK): Direct
                     // centering + damping own center calm, so the slider left the UI.
                     ModeBDamperSlider.Value     = mbs.ModeBDamper;
@@ -4401,6 +4402,7 @@ namespace TrueforceForAll.Plugin
             s.ModeBLongitudinalGripLearn = adaptive;
             UpdateModeBGripLimitVisibility();   // grip-limit slider only shows in manual mode (adaptive off)
             s.ModeBLateralDemand         = ModeBLateralDemandCheck.IsChecked == true;
+            s.ModeBAutoStrength          = ModeBAutoStrengthCheck.IsChecked == true;
             // ModeBCenterPd stays untouched here: Direct centering is always on
             // (default true) with only the hidden MBCPD dev code as a failsafe.
             _plugin.ApplyModeBFeel();
@@ -6377,8 +6379,6 @@ namespace TrueforceForAll.Plugin
                     RemoteDashPedalsCheck.IsChecked = _plugin.Settings?.DashDrivePedals != false;
                 if (RemoteDashRevCenteredCheck != null)
                     RemoteDashRevCenteredCheck.IsChecked = _plugin.Settings?.DashRevStripCentered == true;
-                if (RemoteDashSpotterCheck != null)
-                    RemoteDashSpotterCheck.IsChecked = _plugin.Settings?.DashSpotterEnabled != false;
                 if (RemoteDashThemeCombo != null)
                 {
                     var names = TrueforcePlugin.DashThemeNames();
@@ -6391,6 +6391,8 @@ namespace TrueforceForAll.Plugin
                         string.Equals(n, _plugin.Settings?.DashTheme, StringComparison.OrdinalIgnoreCase));
                     RemoteDashThemeCombo.SelectedIndex = ti < 0 ? 0 : ti;
                 }
+                if (RemoteDashSpotterCheck != null)
+                    RemoteDashSpotterCheck.IsChecked = _plugin.Settings?.DashSpotterEnabled != false;
                 if (RemoteDashIdleCheck != null)
                     RemoteDashIdleCheck.IsChecked = _plugin.Settings?.DashIdleEnabled != false;
                 if (RemoteDashIdleDelayBox != null)
@@ -6401,15 +6403,13 @@ namespace TrueforceForAll.Plugin
                     RemoteDashIdleNumberBox.Text = _plugin.Settings?.DashIdleNumber ?? "";
                 if (RemoteDashIdleNameAboveCheck != null)
                     RemoteDashIdleNameAboveCheck.IsChecked = _plugin.Settings?.DashIdleNameAbove == true;
-                    if (RemoteDashIdleStyleCombo.Items.Count == 0)
-                        foreach (string lbl in IdleStyleLabels) RemoteDashIdleStyleCombo.Items.Add(lbl);
                 if (RemoteDashIdleStyleCombo != null)
                 {
+                    if (RemoteDashIdleStyleCombo.Items.Count == 0)
+                        foreach (string lbl in IdleStyleLabels) RemoteDashIdleStyleCombo.Items.Add(lbl);
                     int si = Array.IndexOf(IdleStyleKeys, _plugin.Settings?.DashIdleStyle ?? "Topo");
                     RemoteDashIdleStyleCombo.SelectedIndex = si < 0 ? 0 : si;
                 }
-                if (RemoteDashIdleColorCombo != null)
-                {
                 if (RemoteDashIdleFontCombo != null)
                 {
                     if (RemoteDashIdleFontCombo.Items.Count == 0)
@@ -6417,11 +6417,15 @@ namespace TrueforceForAll.Plugin
                     int fi = Array.IndexOf(IdleFontValues, _plugin.Settings?.DashIdleFont ?? "");
                     RemoteDashIdleFontCombo.SelectedIndex = fi < 0 ? 0 : fi;
                 }
+                if (RemoteDashIdleColorCombo != null)
+                {
                     if (RemoteDashIdleColorCombo.Items.Count == 0)
                         foreach (string lbl in IdleColorNames) RemoteDashIdleColorCombo.Items.Add(lbl);
                     int ci = Array.IndexOf(IdleColorHex, _plugin.Settings?.DashIdleColor ?? "#FFF2F4F8");
                     RemoteDashIdleColorCombo.SelectedIndex = ci < 0 ? 0 : ci;
                 }
+                bool twoRows = _plugin.Settings?.DashDriveTwoRows != false;
+                if (RemoteDashDriveTwoRowsRadio != null) RemoteDashDriveTwoRowsRadio.IsChecked = twoRows;
                 if (RemoteDashDriveOneRowRadio != null) RemoteDashDriveOneRowRadio.IsChecked = !twoRows;
                 // The top pair is not drawn in the one-row layout, so its
                 // pickers would be lying about what the dash shows.
@@ -6477,8 +6481,8 @@ namespace TrueforceForAll.Plugin
         // ---------------- idle card ----------------
         // Style and colour are fixed lists rather than free text: both feed a
         // dash formula, and a typo there fails silently as a blank card.
-        private static readonly string[] IdleStyleKeys   = { "Topo", "Aurora", "Pulse", "Streaks", "Plain" };
-        private static readonly string[] IdleStyleLabels = { "Topographic", "Aurora", "Pulse", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleKeys   = { "Topo", "Spiral", "Ribbon", "Aurora", "Pulse", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleLabels = { "Contours", "Spiral", "Ribbon", "Aurora", "Pulse", "Streaks", "Plain" };
         // Families that ship broadly enough to be there on a phone, a tablet
         // and a PC alike. Empty is the dashboard's own font.
         private static readonly string[] IdleFontValues =
@@ -6486,6 +6490,10 @@ namespace TrueforceForAll.Plugin
         private static readonly string[] IdleFontLabels =
             { "Default", "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet" };
 
+        private static readonly string[] IdleColorHex =
+            { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };
+        private static readonly string[] IdleColorNames =
+            { "White", "Gold", "Green", "Blue", "Red", "Violet" };
 
         private void RemoteDashIdle_Changed(object sender, RoutedEventArgs e)
         {
@@ -6503,10 +6511,6 @@ namespace TrueforceForAll.Plugin
             PersistIdle();
         }
 
-        private void RemoteDashIdleColor_Changed(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings == null) return;
-            int i = RemoteDashIdleColorCombo?.SelectedIndex ?? -1;
         private void RemoteDashIdleFont_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -6516,15 +6520,15 @@ namespace TrueforceForAll.Plugin
             PersistIdle();
         }
 
+        private void RemoteDashIdleColor_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = RemoteDashIdleColorCombo?.SelectedIndex ?? -1;
             if (i < 0 || i >= IdleColorHex.Length) return;
             _plugin.Settings.DashIdleColor = IdleColorHex[i];
             PersistIdle();
         }
 
-        private void RemoteDashIdleName_Commit(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.DashIdleDriverName = (RemoteDashIdleNameBox?.Text ?? "").Trim();
         private void RemoteDashIdleNameAbove_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -6532,6 +6536,10 @@ namespace TrueforceForAll.Plugin
             PersistIdle();
         }
 
+        private void RemoteDashIdleName_Commit(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleDriverName = (RemoteDashIdleNameBox?.Text ?? "").Trim();
             PersistIdle();
         }
 
@@ -6582,6 +6590,8 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        private void RemoteDashFlags_Changed(object sender, RoutedEventArgs e)
+        {
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.DashFlagsEnabled = RemoteDashFlagsCheck?.IsChecked == true;
             try { _plugin.PersistSettings(); }
@@ -10901,7 +10911,7 @@ namespace TrueforceForAll.Plugin
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BAUTOS 1/0 auto strength per car, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -10971,6 +10981,7 @@ namespace TrueforceForAll.Plugin
                         || pn == "BLAT" || pn == "BDIRK"
                         || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
                         || pn == "BLEARN" || pn == "BGTRIM" || pn == "BLDEM"
+                        || pn == "BAUTOS"
                         || pn == "MBREV" || pn == "BREVG"
                        
                         || pn == "MBLEAD" || pn == "BLEAD"
