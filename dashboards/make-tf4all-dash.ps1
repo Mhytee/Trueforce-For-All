@@ -1775,6 +1775,22 @@ function IdleCard([string]$P) {
     # turned bubbles into flat arcs. And a pattern that needs its own
     # scatter gets its own, rather than borrowing another one's and
     # collapsing onto its positions.
+    # T IS ONE MINUTE. Dash.Idle.T runs 0 to 1 over sixty seconds, so the
+    # number sitting next to T in any of these is CYCLES PER MINUTE. It is a
+    # duration, not a shape parameter, and it does not look like one.
+    #
+    # Getting it wrong is invisible in the maths and obvious on the screen.
+    # Rain was written at one to three cycles, which is a ripple taking
+    # between nine and twenty seven seconds to spread and fade: right in
+    # every other respect and nothing like rain. Three rewrites went into
+    # the geometry before anyone converted a rate into seconds.
+    #
+    # Multiples stay INTEGERS whatever the rate. That is what makes each
+    # pattern close exactly at the wrap.
+    #
+    #   ambient     Contours, Caustics, Aurora, Fractal   1 to 3    20 to 60 s
+    #   travelling  Ribbon, Pipes, Pulse                  2 to 6    10 to 30 s
+    #   events      Rain, Bubbles, Streaks, Wave         12 to 40   1.5 to 5 s
     $EPOOL = 42
     $RPOOL = 40
     $TAU   = '6.283185307'
@@ -1800,7 +1816,7 @@ function IdleCard([string]$P) {
     for ($dn = 0; $dn -lt 21; $dn++) {
         $dropX   += [math]::Round(50 + (& $rndNext) * 700, 1)
         $dropY   += [math]::Round(50 + (& $rndNext) * 380, 1)
-        $dropSpd += (1 + [int]([math]::Floor((& $rndNext) * 3)))
+        $dropSpd += (24 + 8 * [int]([math]::Floor((& $rndNext) * 3)))
         $dropOff += [math]::Round((& $rndNext), 4)
     }
 
@@ -1812,46 +1828,73 @@ function IdleCard([string]$P) {
         $bubY += [math]::Round(120 + (& $rndNext) * 240, 1)
     }
 
-    # FIVE pipes of eight segments. Each one comes in from an edge, turns a
-    # few times, and leaves by another: that is the shape of the thing, and
-    # a run that starts in the middle of the card and stops there is just a
-    # line. The walk is searched rather than steered, because a walk that is
-    # pushed back whenever it nears the edge can never leave by one.
+    # FIVE pipes of eight segments. Each comes in from an edge, turns a few
+    # times, and leaves by another: that is the shape of the thing, and a run
+    # that starts in the middle of the card and stops there is just a line.
+    # The walk is searched rather than steered, because a walk that gets
+    # pushed back whenever it nears an edge can never leave by one.
     #
-    # A candidate is accepted when it starts outside, spends its middle
-    # inside, ends outside, and never crosses itself.
+    # The entry edge is ASSIGNED, not drawn. Picking it at random gave five
+    # runs that mostly came in from the same side, because random over five
+    # tries is not spread, it is random.
+    #
+    # Runs are also kept apart from each other. Crossing now and then is
+    # part of it; five runs laid over each other is not, and independent
+    # searches have no reason to avoid one another. Each candidate has to
+    # clear the runs already accepted by a margin, and the margin is relaxed
+    # only if nothing can be found at it, so the spacing is as good as the
+    # geometry allows rather than as good as the first attempt happened to
+    # be.
     $pipeStep = 84
     $pipeRuns = @()
     $pdxs = @($pipeStep, 0, -$pipeStep, 0); $pdys = @(0, $pipeStep, 0, -$pipeStep)
+    $edgeOrder = @(0, 1, 2, 3, 1)      # left, top, right, bottom, top again
+    $inside = { param($pt) $pt[0] -gt 10 -and $pt[0] -lt 790 -and $pt[1] -gt 10 -and $pt[1] -lt 470 }
     for ($pk = 0; $pk -lt 5; $pk++) {
+        $edge = $edgeOrder[$pk]
         $found = $null
-        for ($att = 0; $att -lt 900 -and -not $found; $att++) {
-            $edge = [int][math]::Floor((& $pipeNext) * 4)
-            $along = & $pipeNext
-            switch ($edge) {
-                0 { $sx = -$pipeStep; $sy = [math]::Round(60 + $along * 340, 0); $d0 = 0 }
-                1 { $sx = [math]::Round(80 + $along * 620, 0); $sy = -$pipeStep; $d0 = 1 }
-                2 { $sx = 800 + $pipeStep; $sy = [math]::Round(60 + $along * 340, 0); $d0 = 2 }
-                default { $sx = [math]::Round(80 + $along * 620, 0); $sy = 480 + $pipeStep; $d0 = 3 }
+        foreach ($sep in 150, 120, 90, 60, 0) {
+            if ($found) { break }
+            for ($att = 0; $att -lt 700 -and -not $found; $att++) {
+                $along = & $pipeNext
+                switch ($edge) {
+                    0 { $sx = -$pipeStep; $sy = [math]::Round(60 + $along * 340, 0); $d0 = 0 }
+                    1 { $sx = [math]::Round(80 + $along * 620, 0); $sy = -$pipeStep; $d0 = 1 }
+                    2 { $sx = 800 + $pipeStep; $sy = [math]::Round(60 + $along * 340, 0); $d0 = 2 }
+                    default { $sx = [math]::Round(80 + $along * 620, 0); $sy = 480 + $pipeStep; $d0 = 3 }
+                }
+                $x = [double]$sx; $y = [double]$sy; $d = $d0
+                $pts = @(); $seen = @{}; $ok = $true
+                for ($n = 0; $n -le 8; $n++) {
+                    $pts += , @($x, $y)
+                    $key = "$x,$y"
+                    if ($seen.ContainsKey($key)) { $ok = $false; break }
+                    $seen[$key] = 1
+                    $turn = & $pipeNext
+                    if ($turn -lt 0.26) { $d = ($d + 1) % 4 } elseif ($turn -lt 0.52) { $d = ($d + 3) % 4 }
+                    $x = $x + $pdxs[$d]; $y = $y + $pdys[$d]
+                }
+                if (-not $ok) { continue }
+                $mid = $true
+                foreach ($idx in 2, 3, 4, 5, 6) { if (-not (& $inside $pts[$idx])) { $mid = $false } }
+                if (-not ($mid -and -not (& $inside $pts[0]) -and -not (& $inside $pts[8]))) { continue }
+                # Clear of every run already placed. Measured between the
+                # corners of the runs, which is enough on a grid this coarse.
+                $clear = $true
+                if ($sep -gt 0) {
+                    foreach ($prev in $pipeRuns) {
+                        foreach ($pt in $pts) {
+                            foreach ($qt in $prev) {
+                                $dx = $pt[0] - $qt[0]; $dy = $pt[1] - $qt[1]
+                                if ([math]::Sqrt($dx * $dx + $dy * $dy) -lt $sep) { $clear = $false; break }
+                            }
+                            if (-not $clear) { break }
+                        }
+                        if (-not $clear) { break }
+                    }
+                }
+                if ($clear) { $found = $pts }
             }
-            $x = [double]$sx; $y = [double]$sy; $d = $d0
-            $pts = @(); $seen = @{}; $ok = $true
-            for ($n = 0; $n -le 8; $n++) {
-                $pts += , @($x, $y)
-                $key = "$x,$y"
-                if ($seen.ContainsKey($key)) { $ok = $false; break }
-                $seen[$key] = 1
-                $turn = & $pipeNext
-                if ($turn -lt 0.26) { $d = ($d + 1) % 4 } elseif ($turn -lt 0.52) { $d = ($d + 3) % 4 }
-                $x = $x + $pdxs[$d]; $y = $y + $pdys[$d]
-            }
-            if (-not $ok) { continue }
-            $inside = { param($pt) $pt[0] -gt 10 -and $pt[0] -lt 790 -and $pt[1] -gt 10 -and $pt[1] -lt 470 }
-            $mid = $true
-            foreach ($idx in 2, 3, 4, 5, 6) { if (-not (& $inside $pts[$idx])) { $mid = $false } }
-            $startsOut = -not (& $inside $pts[0])
-            $endsOut = -not (& $inside $pts[8])
-            if ($mid -and $startsOut -and $endsOut) { $found = $pts }
         }
         if (-not $found) { throw "no edge to edge pipe found for run $pk" }
         $pipeRuns += , $found
@@ -1884,7 +1927,11 @@ function IdleCard([string]$P) {
         # Ribbon: one head running a 3:2 Lissajous with the pool strung out
         # behind it in time. Sampling the curve evenly put neighbours on
         # opposite sides of the screen; a trail keeps them adjacent.
-        $rbOff = [math]::Round($ei * 0.0063, 5)
+        # Halved along with the doubled lap rate. The trail is measured in
+        # LAPS, so leaving it alone while the head went twice as fast would
+        # have smeared the dots over the whole figure and turned the ribbon
+        # back into the scatter it started as.
+        $rbOff = [math]::Round($ei * 0.00315, 5)
         $rbS   = [math]::Round(15 - 10 * $eu, 2)
 
         # Caustics: oversized ovals on a coarse grid, each breathing on its
@@ -1898,7 +1945,7 @@ function IdleCard([string]$P) {
         # Bubbles: round, well inside the edges, growing and closing and
         # fading at both ends so none of them pops.
         $bbX = $bubX[$ei]; $bbY = $bubY[$ei]
-        $bbM = 1 + ($ei % 3)
+        $bbM = 6 + ($ei % 3) * 2
         $bbOff = [math]::Round(($eu * 3.7) % 1.0, 4)
         $bbPre = 'var q=(' + $bbM + '*T+' + $bbOff + ')%1;'
         $bbR = 'r=62*Math.pow(q,0.55)*(1-Math.pow(q,14));'
@@ -1932,7 +1979,7 @@ function IdleCard([string]$P) {
         # were drawn at nearly the full width of the card.
         $puOn = ($ei % 3 -eq 0)
         $puOff = [math]::Round($eu, 4)
-        $puQ = 'var q=(T+' + $puOff + ')%1;'
+        $puQ = 'var q=(6*T+' + $puOff + ')%1;'
         $puR = if ($puOn) { '20+300*q' } else { '0' }
 
         # Aurora: big soft ovals at low opacity, drifting over each other.
@@ -1951,7 +1998,7 @@ function IdleCard([string]$P) {
         $e.Opacity = [double]$eop
         $e.Bindings['EllipseColor'] = ThemeBind 'EllipseColor' ('Accent' + ($eci + 1))
         $e.Bindings['Left'] = BindJS 'Left' ($eHead + 'var x,r;' +
-            'if(s=="Ribbon"){var p=T-' + $rbOff + ';x=400+320*Math.sin(' + $TAU + '*3*p);r=' + $rbS + ';}' +
+            'if(s=="Ribbon"){var p=T-' + $rbOff + ';x=400+320*Math.sin(' + $TAU + '*6*p);r=' + $rbS + ';}' +
             'else if(s=="Caustics"){x=' + $csX + '+18*Math.sin(' + $TAU + '*(T+' + $csP + '));r=46+26*Math.sin(' + $TAU + '*(2*T+' + $csP + '));}' +
             'else if(s=="Rain"){' + $rnQ + $rnR + 'x=' + $rnX + ';}' +
             'else if(s=="Bubbles"){' + $bbPre + $bbR + 'x=' + $bbX + ';}' +
@@ -1961,7 +2008,7 @@ function IdleCard([string]$P) {
             'else{x=' + $tCx + ';r=(' + $tRad + ')*1.25;}' +
             'return x-r')
         $e.Bindings['Top'] = BindJS 'Top' ($eHead + 'var y,r;' +
-            'if(s=="Ribbon"){var p=T-' + $rbOff + ';y=240+200*Math.sin(' + $TAU + '*(2*p+0.25));r=' + $rbS + ';}' +
+            'if(s=="Ribbon"){var p=T-' + $rbOff + ';y=240+200*Math.sin(' + $TAU + '*(4*p+0.25));r=' + $rbS + ';}' +
             'else if(s=="Caustics"){y=' + $csY + '+14*Math.cos(' + $TAU + '*(2*T+' + $csQ + '));r=34+20*Math.cos(' + $TAU + '*(3*T+' + $csQ + '));}' +
             'else if(s=="Rain"){' + $rnQ + $rnR + 'y=' + $rnY + ';}' +
             'else if(s=="Bubbles"){' + $bbPre + $bbR + 'y=' + $bbY + ';}' +
@@ -2025,7 +2072,7 @@ function IdleCard([string]$P) {
         # to; the tail is where it is being eaten from. The visible piece of
         # a segment is between them, and there is nothing to draw at all
         # until the head is past where the tail has reached.
-        $pPre = 'var tp=(T+' + $pPh + ')%1;' +
+        $pPre = 'var tp=(2*T+' + $pPh + ')%1;' +
                 'var hd=tp<0.66?tp/0.66*10:10;var tl=tp<0.66?0:(tp-0.66)/0.34*10;' +
                 'var a=Math.min(1,Math.max(0,hd-' + $rsj + '));' +
                 'var b=1-Math.min(1,Math.max(0,' + $rsj + '-tl+1));' +
@@ -2038,12 +2085,12 @@ function IdleCard([string]$P) {
         $wvX = 12 + $ri * 20
         $wvP = [math]::Round($ri / 8.0, 4)
         $wvQ = [math]::Round($ri / 13.0, 4)
-        $wvH = 'var h=26+180*(0.5+0.5*Math.sin(' + $TAU + '*(2*T+' + $wvP + '))*Math.cos(' + $TAU + '*(T+' + $wvQ + ')));'
+        $wvH = 'var h=26+180*(0.5+0.5*Math.sin(' + $TAU + '*(28*T+' + $wvP + '))*Math.cos(' + $TAU + '*(17*T+' + $wvQ + ')));'
 
         # Streaks: thin bars falling at their own rates, on integer
         # multiples so each closes exactly at the wrap.
         $stX = 14 + $ri * 20
-        $stM = 1 + ($ri % 3)
+        $stM = 12 + ($ri % 3) * 4
         $stOff = [math]::Round(($ru * 2.7) % 1.0, 4)
         $stH = 70 + ($ri % 4) * 34
 
