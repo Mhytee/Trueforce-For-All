@@ -6481,8 +6481,8 @@ namespace TrueforceForAll.Plugin
         // ---------------- idle card ----------------
         // Style and colour are fixed lists rather than free text: both feed a
         // dash formula, and a typo there fails silently as a blank card.
-        private static readonly string[] IdleStyleKeys   = { "Topo", "Caustics", "Rain", "Pipes", "Fractal", "Spiral", "Ribbon", "Wave", "Warp", "Orbit", "Aurora", "Pulse", "Streaks", "Plain" };
-        private static readonly string[] IdleStyleLabels = { "Contours", "Caustics", "Rain", "Pipes", "Fractal zoom", "Spiral", "Ribbon", "Wave", "Warp", "Orbit", "Aurora", "Pulse", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleKeys   = { "Rain", "Pipes", "Fractal", "Topo", "Caustics", "Bubbles", "Spiral", "Ribbon", "Orbit", "Wave", "Warp", "Pulse", "Aurora", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleLabels = { "Rain", "Pipes", "Fractal zoom", "Contours", "Caustics", "Bubbles", "Spiral", "Ribbon", "Orbit", "Wave", "Warp", "Pulse", "Aurora", "Streaks", "Plain" };
         // Families that ship broadly enough to be there on a phone, a tablet
         // and a PC alike. Empty is the dashboard's own font.
         private static readonly string[] IdleFontValues =
