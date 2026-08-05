@@ -777,8 +777,15 @@ namespace TrueforceForAll.Core
         /// plugin calls this while it holds the stream stopped for a pause, so a
         /// stream restart mid-transition (FH6 quick travel / teleport) can't
         /// replay a stale pre-pause force and slam the wheel to lock (issue #13).
-        /// The reader thread repopulates this the instant real FFB flows again.</summary>
-        public void ClearLastFfbTarget() => System.Threading.Interlocked.Exchange(ref _packed, 0);
+        /// The reader thread repopulates this the instant real FFB flows again.
+        /// Also arms a reset of the classic slot state, so a wheel on that path
+        /// cannot have a bare PLAY after the pause republish the pre-pause
+        /// force from a slot we still believe is loaded.</summary>
+        public void ClearLastFfbTarget()
+        {
+            _classicResetRequested = true;
+            System.Threading.Interlocked.Exchange(ref _packed, 0);
+        }
 
         // ---------- reader thread ----------
 
@@ -1201,6 +1208,11 @@ namespace TrueforceForAll.Core
             if (magic != 0xa1b2c3d4 || linkType != DLT_USBPCAP)
                 throw new InvalidDataException($"Not a USBPcap stream (magic=0x{magic:x8}, linktype={linkType})");
 
+            // Slot state describes the wheel's live FFB slots; a fresh capture
+            // (first start, or a watchdog restart) knows nothing about them.
+            ResetClassicState();
+            _classicResetRequested = false;
+
             byte[] payload = new byte[1024];
 
             while (!_stopping)
@@ -1249,30 +1261,17 @@ namespace TrueforceForAll.Core
                     _outEndpointCounts[epNum]++;
                 }
 
-                // DirectInput-style FFB path: a non-Trueforce game writes the
-                // FFB target as report 0x11 / cmd 0x08 on an interrupt OUT
-                // endpoint (the wheel's normal FFB endpoint), force = int8
-                // offset-binary centered at 0x80 at report offset 2. Decoded
-                // from the FH5 G923 capture 2026-05-17. For interrupt OUT the
-                // report data starts right after the USBPcap pseudo-header
+                // Classic Logitech FFB path: a non-Trueforce game writes force
+                // as the slot-based classic protocol on an interrupt OUT
+                // endpoint (the wheel's normal FFB endpoint). For interrupt OUT
+                // the report data starts right after the USBPcap pseudo-header
                 // (no setup stage, unlike the ep0 control path below).
                 // Independent of the ep0 HID++ path; whichever transport the
                 // running game uses latches the freshest value, and
-                // TryGetFreshFfbTarget arbitrates by recency. Normalized to
-                // the int16 scale the HID++ path uses (<<8) so FfbScale tuning
-                // behaves the same regardless of which path fed the value.
-                if (isOut && xfer == 0x01 && headerLen + 3 <= caplen
-                    && payload[headerLen] == 0x11 && payload[headerLen + 1] == 0x08)
-                {
-                    int force8 = payload[headerLen + 2] - 0x80;   // -128..+127
-                    short ffbTarget = (short)(force8 << 8);        // -> int16 scale
-                    long ts = _sw.ElapsedTicks & TimestampMask;
-                    long pk = (ts << 16) | (uint)(ushort)ffbTarget;
-                    System.Threading.Interlocked.Exchange(ref _packed, pk);
-                    System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
-                    FfbSamplesCaptured++;
-                    NoteExtraction("interrupt-out", -1, -1, "dinput-int8@2 (report 0x11/0x08)");
-                }
+                // TryGetFreshFfbTarget arbitrates by recency. See
+                // HandleClassicFfbCommand for the protocol state machine.
+                if (isOut && xfer == 0x01 && headerLen < caplen)
+                    HandleClassicFfbCommand(payload, headerLen, caplen - headerLen);
 
                 // Interrupt-OUT HID++ FFB path. Some wheels deliver the SAME
                 // HID++ 0x8123 FFB long-form report as the ep0 control path
@@ -1407,6 +1406,164 @@ namespace TrueforceForAll.Core
                 }
             }
             CloseRawLog();
+        }
+
+        // ---------- classic Logitech FFB protocol (slot state machine) -------
+        //
+        // The G923 PS/PC (C266) is the only supported wheel that never speaks
+        // HID++: its own captures (FH5 and ACC, 2026-05-17) contain ZERO ep0
+        // SET_REPORT and zero "11 ff" interrupt HID++ writes, so every guard on
+        // the HID++ paths (feature-index pinning, the _sawReal0x11 latch, the
+        // Min0x12RunToTrust run gate) is dead code on it. Its force arrives as
+        // the classic slot protocol on ep01, which is STATEFUL: a force is
+        // downloaded into one of four slots and plays until it is stopped.
+        //
+        // The old handler matched one shape ("11 08", slot 1 download-and-play,
+        // variable force) and treated every other command as if it did not
+        // exist. That included STOP (109 of them in a 5 minute FH5 capture): on
+        // a stop the wheel goes quiet but the tap kept replaying the last
+        // downloaded force for up to FfbTargetMaxAgeMs (10 s), so our ep3
+        // stream held a force the game had already cancelled. That is the same
+        // failure ClearLastFfbTarget was written for (issue #13's full-lock),
+        // one layer down, and the reason a strong force can be held long after
+        // the game stopped commanding it.
+        //
+        // Byte 0 is (slotMask << 4) | command; byte 1 is the force type on the
+        // commands that carry one. 0xF8 is the whole-byte extended-command
+        // prefix (rev LEDs on this wheel), not a slot/command pair.
+        private const int  ClassicSlotCount   = 4;
+        private const byte ClassicTypeVariable = 0x08;   // params: force X at byte 2, offset-binary
+        private const byte ClassicMaxForceType = 0x0e;   // highest defined type (high-res auto-center)
+        private const byte ClassicCmdDownload        = 0x0;
+        private const byte ClassicCmdDownloadAndPlay = 0x1;
+        private const byte ClassicCmdPlay            = 0x2;
+        private const byte ClassicCmdStop            = 0x3;
+        private const byte ClassicCmdRefreshForce    = 0xc;
+        private const byte ClassicExtendedCommand    = 0xf8;
+
+        // Parser-thread only. Per slot: the last decoded force, whether we
+        // could decode it at all, and whether the slot is currently playing.
+        private readonly short[] _classicSlotForce   = new short[ClassicSlotCount];
+        private readonly bool[]  _classicSlotDecoded = new bool[ClassicSlotCount];
+        private readonly bool[]  _classicSlotPlaying = new bool[ClassicSlotCount];
+        private short _classicLastPublished;
+        private bool  _classicHavePublished;
+        // Set by ClearLastFfbTarget (plugin thread) and honoured by the parser,
+        // so the slot state is only ever mutated on the parser thread. Without
+        // it a bare PLAY after a pause could republish the pre-pause force.
+        private volatile bool _classicResetRequested;
+
+        private void ResetClassicState()
+        {
+            Array.Clear(_classicSlotForce, 0, ClassicSlotCount);
+            Array.Clear(_classicSlotDecoded, 0, ClassicSlotCount);
+            Array.Clear(_classicSlotPlaying, 0, ClassicSlotCount);
+            _classicLastPublished = 0;
+            _classicHavePublished = false;
+        }
+
+        private void HandleClassicFfbCommand(byte[] payload, int off, int len)
+        {
+            if (_classicResetRequested)
+            {
+                _classicResetRequested = false;
+                ResetClassicState();
+            }
+            if (len < 2) return;
+
+            byte b0 = payload[off];
+            if (b0 == ClassicExtendedCommand) return;   // rev LEDs and friends
+
+            int slots = (b0 >> 4) & 0x0f;
+            int cmd   = b0 & 0x0f;
+            // Slot mask 0 is not a classic command. This is what keeps our OWN
+            // ep3 Trueforce stream (report 0x01) out of the state machine.
+            if (slots == 0) return;
+
+            // HID++ firewall. Report IDs 0x10 / 0x11 / 0x12 collide with slot-1
+            // download / download-and-play / play, so a HID++ wheel's FFB would
+            // otherwise drive this state machine and clobber _packed. Byte 1 is
+            // the HID++ device index (0xff on a directly attached wheel) and a
+            // classic force type is never above 0x0e, so one range check
+            // separates them. Every command we act on carries either a force
+            // type or an unused zero here.
+            byte typeOrPad = payload[off + 1];
+            if (typeOrPad > ClassicMaxForceType) return;
+
+            bool decodedForce = false;
+            switch (cmd)
+            {
+                case ClassicCmdDownload:          // load a slot, do NOT play it
+                case ClassicCmdDownloadAndPlay:
+                case ClassicCmdRefreshForce:      // retune a force already playing
+                {
+                    // Only VARIABLE is decoded. Any other type still marks the
+                    // slot playing so a later STOP is accounted for, but
+                    // contributes nothing: guessing at an undecoded payload is
+                    // how you invent a force the game never asked for.
+                    bool isVariable = typeOrPad == ClassicTypeVariable && len >= 3;
+                    short f = isVariable ? (short)((payload[off + 2] - 0x80) << 8) : (short)0;
+                    for (int i = 0; i < ClassicSlotCount; i++)
+                    {
+                        if ((slots & (1 << i)) == 0) continue;
+                        if (cmd == ClassicCmdRefreshForce && !_classicSlotPlaying[i]) continue;
+                        if (isVariable)
+                        {
+                            _classicSlotForce[i]   = f;
+                            _classicSlotDecoded[i] = true;
+                            decodedForce = true;
+                        }
+                        else
+                        {
+                            _classicSlotDecoded[i] = false;
+                        }
+                        if (cmd == ClassicCmdDownloadAndPlay) _classicSlotPlaying[i] = true;
+                    }
+                    break;
+                }
+                case ClassicCmdPlay:
+                    for (int i = 0; i < ClassicSlotCount; i++)
+                        if ((slots & (1 << i)) != 0) _classicSlotPlaying[i] = true;
+                    break;
+                case ClassicCmdStop:
+                    for (int i = 0; i < ClassicSlotCount; i++)
+                        if ((slots & (1 << i)) != 0) _classicSlotPlaying[i] = false;
+                    break;
+                default:
+                    // Default spring on/off, set default spring, dead band and
+                    // the rest do not change the commanded force.
+                    return;
+            }
+
+            int sum = 0;
+            for (int i = 0; i < ClassicSlotCount; i++)
+                if (_classicSlotPlaying[i] && _classicSlotDecoded[i]) sum += _classicSlotForce[i];
+            if (sum > short.MaxValue) sum = short.MaxValue;
+            else if (sum < short.MinValue) sum = short.MinValue;
+            short ffbTarget = (short)sum;
+
+            // Publish when we learned something: a fresh force, or a state
+            // change that moved the effective force (a STOP publishing 0 is the
+            // whole point). Commands that taught us nothing must NOT refresh
+            // the timestamp, or an undecodable slot's traffic would keep a
+            // stale value looking fresh.
+            if (!decodedForce && _classicHavePublished && ffbTarget == _classicLastPublished) return;
+            // Never publish a zero out of nowhere. Until a force has actually
+            // played, a bare download or a stop leaves the wheel commanding
+            // nothing, and counting that as a captured sample would mark a dead
+            // capture as working (and make "the game is writing FFB" true on a
+            // game that never played any).
+            if (!_classicHavePublished && ffbTarget == 0) return;
+            _classicLastPublished = ffbTarget;
+            _classicHavePublished = true;
+            if (SimulateNoFfbCapture) return;
+
+            long ts = _sw.ElapsedTicks & TimestampMask;
+            long pk = (ts << 16) | (uint)(ushort)ffbTarget;
+            System.Threading.Interlocked.Exchange(ref _packed, pk);
+            System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
+            FfbSamplesCaptured++;
+            NoteExtraction("interrupt-out", -1, -1, "classic-slot int8@2 (Logitech slot protocol)");
         }
 
         private void RecordTupleSeen(byte reportId, byte featIdx, byte funcByte)
