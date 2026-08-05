@@ -143,13 +143,19 @@ namespace TrueforceForAll.Core
         public long PacketsParsed { get; private set; }
         public long FfbSamplesCaptured { get; private set; }
 
+        // Packets that passed the device-address filter, i.e. traffic that is
+        // really the wheel's. Interlocked-backed because in whole-bus capture
+        // this is the liveness signal (see LivenessProgress) and the watchdog
+        // thread must not read a torn 64-bit value on the 32-bit host.
+        private long _packetsForOurDevice;
+        public long PacketsForOurDevice => Interlocked.Read(ref _packetsForOurDevice);
+
         // Diagnostic counters. Written only by the parser thread; read by any
         // thread via property getters. Triage tool for the case where the tap
         // is running but FFB pass-through still feels broken: tells us which
         // endpoint(s) and transfer type(s) the game is actually using.
         // Critical when the resolved 0x8123 feature index is wrong or the
         // game uses an unexpected HID++ shape; the tuple histogram surfaces it.
-        public long PacketsForOurDevice { get; private set; }
         public long ControlTransfersOnOurDevice { get; private set; }
         public long Ep0ControlTransfersOnOurDevice { get; private set; }
         public long SetReportsOnOurDevice { get; private set; }
@@ -585,6 +591,16 @@ namespace TrueforceForAll.Core
         private long _liveLastSends;
         private long _liveLastProgressTicks;
 
+        // The progress signal the watchdog watches. In --devices mode the
+        // upstream USBPcapCMD filter restricts the stream to our address, so
+        // the raw parse counter IS wheel traffic. In whole-bus (-A) fallback
+        // the raw counter climbs from every device on the bus, so a
+        // re-enumerated wheel (new address, stale filter) would look alive
+        // forever, exactly the G923 fallback case that defeated the self-heal.
+        // Watch only device-matched packets there; our own 1 kHz stream to the
+        // wheel keeps it climbing while the wheel is genuinely present.
+        private long LivenessProgress => _useBroadCapture ? PacketsForOurDevice : PacketsParsed;
+
         // Pass null/0 (the defaults) to auto-discover via WheelUsbDiscovery on
         // Start(). Pass explicit values only when overriding (env vars,
         // manual picker, tests).
@@ -861,7 +877,7 @@ namespace TrueforceForAll.Core
                 var probe = _sendActivityProbe;
                 if (probe == null) continue;                    // not wired -> inert
 
-                long parsed = PacketsParsed;
+                long parsed = LivenessProgress;
                 long sends;
                 try { sends = probe(); } catch { continue; }
                 long nowTicks = _sw.ElapsedTicks;
@@ -882,7 +898,7 @@ namespace TrueforceForAll.Core
                 long sentSinceProgress = sends - Interlocked.Read(ref _liveLastSends);
                 if (stalledMs >= LivenessTimeoutMs && sentSinceProgress >= LivenessMinSends)
                 {
-                    Log($"FFB tap: capture parsed 0 packets in {stalledMs} ms while {sentSinceProgress} were sent to the wheel; " +
+                    Log($"FFB tap: capture saw 0 packets from the wheel in {stalledMs} ms while {sentSinceProgress} were sent to it; " +
                         "the capture has stalled (wheel may have re-enumerated). Restarting it.");
                     _forceRevalidate = true;                    // re-locate by identity on restart
                     Interlocked.Exchange(ref _liveLastProgressTicks, nowTicks);  // avoid re-firing before restart settles
@@ -1059,8 +1075,10 @@ namespace TrueforceForAll.Core
             _ffbAtCaptureStart = FfbSamplesCaptured;
             _nextWatchdogMs = Environment.TickCount + WatchdogIntervalMs;
             // Liveness baseline: fresh capture gets a full grace window before
-            // a stall can be declared.
-            Interlocked.Exchange(ref _liveLastParsed, PacketsParsed);
+            // a stall can be declared. Uses the same selector the watchdog
+            // reads, so a mode flip between captures cannot fake a stall (a
+            // counter jump in the other direction just reads as progress).
+            Interlocked.Exchange(ref _liveLastParsed, LivenessProgress);
             try { Interlocked.Exchange(ref _liveLastSends, _sendActivityProbe?.Invoke() ?? 0); } catch { }
             Interlocked.Exchange(ref _liveLastProgressTicks, _sw.ElapsedTicks);
             Status = $"Tapping {_usbPcapInterface} dev {_deviceAddress}{(_useBroadCapture ? " (whole-bus)" : "")}";
@@ -1079,10 +1097,12 @@ namespace TrueforceForAll.Core
             }) { IsBackground = true, Name = "UsbPcapFfbTap-stderr" }.Start();
         }
 
-        private void ParseStream()
-        {
-            var s = _proc.StandardOutput.BaseStream;
+        private void ParseStream() => ParseFrom(_proc.StandardOutput.BaseStream);
 
+        // Split from ParseStream so a test can drive the parser with a
+        // synthetic capture stream (no child process).
+        internal void ParseFrom(Stream s)
+        {
             // ---- pcap global header (24 bytes, LE) ----
             byte[] gh = ReadExact(s, 24);
             uint magic    = BitConverter.ToUInt32(gh, 0);
@@ -1125,7 +1145,7 @@ namespace TrueforceForAll.Core
                 if (isOut) MaybeLogPcap(rh, payload, caplen);
 
                 if (dev != _deviceAddress) continue;
-                PacketsForOurDevice++;
+                Interlocked.Increment(ref _packetsForOurDevice);
 
                 // Per-direction / per-transfer-type / per-endpoint breakdown.
                 // OUT direction is the host writing to the wheel (FFB and our
