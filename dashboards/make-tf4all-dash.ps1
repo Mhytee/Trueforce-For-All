@@ -1915,6 +1915,21 @@ function IdleCard([string]$P) {
         $rnX = $dropX[$i]; $rnY = $dropY[$i]; $rnM = $dropSpd[$i]
         $rnOff = [math]::Round($u * 3.7 % 1.0, 4)
 
+        # Fractal: eight rings of eight, each ring 1.6 times the one inside
+        # it, all of them growing at that same rate. When a ring reaches the
+        # size the next one out had, it wraps back to the innermost, and
+        # because every ring carries the same eight marks the picture at
+        # that instant is identical to the one a moment before. That is the
+        # whole trick: the zoom never ends because it never restarts, it
+        # just keeps arriving where it already was.
+        #
+        # The rotation per wrap is 45 degrees, which is one eighth of a
+        # turn, so a mark also lands exactly where its neighbour was. Any
+        # other angle and the seam would show once per cycle.
+        $frA = [math]::Round($gcol * 0.7853982, 4)
+        $frP = [math]::Round($grow / 8.0, 4)
+        $frPre = 'var q=(T+' + $frP + ')%1;var sc=Math.pow(1.6,8*q);'
+
         # Pipes: fixed path, and time only decides how much of it exists.
         # It draws itself in, then is eaten from the start, so the loop
         # closes with an empty screen and never jumps.
@@ -1949,6 +1964,8 @@ function IdleCard([string]$P) {
             'else if(s=="Warp"){var q=(T+' + $wpOff + ')%1;x=400+(20+520*q)*' + $wpCos + ';r=2+11*q;}' +
             'else if(s=="Orbit"){x=400+160*Math.cos(' + $TAU + '*(' + $obU + '+T))+80*Math.cos(' + $TAU + '*(' + $obU3 + '+2*T));r=' + $obS + ';}' +
             'else if(s=="Caustics"){x=' + $csX + '+18*Math.sin(' + $TAU + '*(T+' + $csP + '));r=46+26*Math.sin(' + $TAU + '*(2*T+' + $csP + '));}' +
+            'else if(s=="Fractal"){' + $frPre + 'var an=' + $frA + '+0.7853982*q;' +
+                'x=400+11*sc*Math.cos(an);r=4.2*sc;}' +
             'else if(s=="Rain"){' + $rnPre + 'x=' + $rnX + ';}' +
             'else if(s=="Pipes"){' + $ppPre + 'x=' + $ppX + ';}' +
             'else{x=' + $tCx + ';r=(' + $tRad + ')*1.25;}' +
@@ -1960,6 +1977,8 @@ function IdleCard([string]$P) {
             'else if(s=="Warp"){var q=(T+' + $wpOff + ')%1;y=240+(20+520*q)*' + $wpSin + '*0.62;r=2+11*q;}' +
             'else if(s=="Orbit"){y=240+110*Math.sin(' + $TAU + '*(' + $obU + '+T))+55*Math.sin(' + $TAU + '*(' + $obU3 + '+2*T));r=' + $obS + ';}' +
             'else if(s=="Caustics"){y=' + $csY + '+14*Math.cos(' + $TAU + '*(2*T+' + $csQ + '));r=34+20*Math.cos(' + $TAU + '*(3*T+' + $csQ + '));}' +
+            'else if(s=="Fractal"){' + $frPre + 'var an=' + $frA + '+0.7853982*q;' +
+                'y=240+11*sc*Math.sin(an)*0.62;r=4.2*sc;}' +
             'else if(s=="Rain"){' + $rnPre + 'y=' + $rnY + ';r=r*0.55;}' +
             'else if(s=="Pipes"){' + $ppPre + 'y=' + $ppY + ';}' +
             'else{y=' + $tCy + ';r=' + $tRad + ';}' +
@@ -1971,6 +1990,7 @@ function IdleCard([string]$P) {
             'else if(s=="Warp"){r=2+11*((T+' + $wpOff + ')%1);}' +
             'else if(s=="Orbit"){r=' + $obS + ';}' +
             'else if(s=="Caustics"){r=46+26*Math.sin(' + $TAU + '*(2*T+' + $csP + '));}' +
+            'else if(s=="Fractal"){' + $frPre + 'r=4.2*sc;}' +
             'else if(s=="Rain"){' + $rnPre + '}' +
             'else if(s=="Pipes"){' + $ppPre + '}' +
             'else{r=(' + $tRad + ')*1.25;}' +
@@ -1982,12 +2002,13 @@ function IdleCard([string]$P) {
             'else if(s=="Warp"){r=2+11*((T+' + $wpOff + ')%1);}' +
             'else if(s=="Orbit"){r=' + $obS + ';}' +
             'else if(s=="Caustics"){r=34+20*Math.cos(' + $TAU + '*(3*T+' + $csQ + '));}' +
+            'else if(s=="Fractal"){' + $frPre + 'r=4.2*sc;}' +
             'else if(s=="Rain"){' + $rnPre + 'r=r*0.55;}' +
             'else if(s=="Pipes"){' + $ppPre + '}' +
             'else{r=' + $tRad + ';}' +
             'return r*2')
         $e.Bindings['Visible'] = BindJS 'Visible' ('return ' + $on +
-            ' && ["Topo","Spiral","Ribbon","Wave","Warp","Orbit","Caustics","Rain","Pipes"]' +
+            ' && ["Topo","Spiral","Ribbon","Wave","Warp","Orbit","Caustics","Rain","Pipes","Fractal"]' +
             '.indexOf(' + $style + ')>=0')
         $items.Add($e)
     }
