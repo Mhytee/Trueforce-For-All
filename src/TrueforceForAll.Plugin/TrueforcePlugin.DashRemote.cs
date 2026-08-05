@@ -334,47 +334,45 @@ namespace TrueforceForAll.Plugin
         internal static readonly DashTheme[] DashThemes =
         {
             new DashTheme {
-                Name = "Midnight", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FF4E5668",
+                Name = "Midnight", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FF5C6478",
                 Sub = "#FF0E0E10", Btn = "#FF1C1C20", BtnEdge = "#FF3A4150",
                 Tile = "#FF141414", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7",
-                Accent1 = "#FF2E6FA8", Accent2 = "#FF2E9478", Accent3 = "#FF6A47A0" },
+                Accent1 = "#FF3D7FC4", Accent2 = "#FF35A98A", Accent3 = "#FF7A55C0" },
             new DashTheme {
                 Name = "Slate", Bg = "#FF101216", Card = "#FF1B1F27", CardEdge = "#00FFFFFF",
                 Sub = "#FF232936", Btn = "#FF232936", BtnEdge = "#00FFFFFF",
                 Tile = "#FF232936", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7",
                 Accent1 = "#FF3D6FB5", Accent2 = "#FF37D67A", Accent3 = "#FF5A6478" },
             new DashTheme {
-                Name = "Carbon", Bg = "#FF0A0B0D", Card = "#FF141619", CardEdge = "#FF2A2E36",
-                Sub = "#FF101216", Btn = "#FF1E222A", BtnEdge = "#FF343A45",
-                Tile = "#FF1E222A", TileOn = "#FF23503A", Text = "#FFEDEFF3", Muted = "#FF858C99",
-                Accent1 = "#FF3A4150", Accent2 = "#FF4A5262", Accent3 = "#FF2E3440" },
+                Name = "Carbon", Bg = "#FF0A0B0D", Card = "#FF141619", CardEdge = "#FF6E7684",
+                Sub = "#FF101216", Btn = "#FF1E222A", BtnEdge = "#FF4A5262",
+                Tile = "#FF1E222A", TileOn = "#FF23503A", Text = "#FFEDEFF3", Muted = "#FF9AA3B2",
+                Accent1 = "#FF7E8899", Accent2 = "#FF5C6674", Accent3 = "#FF98A2B3" },
             new DashTheme {
-                Name = "Blueprint", Bg = "#FF06121F", Card = "#00FFFFFF", CardEdge = "#FF2C6E9B",
-                Sub = "#FF091A2B", Btn = "#FF0D2438", BtnEdge = "#FF2C6E9B",
-                Tile = "#FF0D2438", TileOn = "#FF14503F", Text = "#FFDCEBF7", Muted = "#FF7FA6C4",
-                Accent1 = "#FF2C6E9B", Accent2 = "#FF3E96C9", Accent3 = "#FF1B4C6E" },
-            // The loud half. These exist because the first four are safe and
-            // safe gets boring on a screen you look at every session.
+                Name = "Blueprint", Bg = "#FF041524", Card = "#00FFFFFF", CardEdge = "#FF35A7E8",
+                Sub = "#FF07203A", Btn = "#FF0A2C4A", BtnEdge = "#FF35A7E8",
+                Tile = "#FF0A2C4A", TileOn = "#FF12566E", Text = "#FFD8EEFF", Muted = "#FF6FB6E0",
+                Accent1 = "#FF35A7E8", Accent2 = "#FF57D0F0", Accent3 = "#FF1F6E9E" },
             new DashTheme {
-                Name = "Ember", Bg = "#FF120705", Card = "#00FFFFFF", CardEdge = "#FF8A3B1E",
-                Sub = "#FF1B0C08", Btn = "#FF25100A", BtnEdge = "#FF8A3B1E",
-                Tile = "#FF25100A", TileOn = "#FF5C3410", Text = "#FFFFEDE4", Muted = "#FFC08C74",
-                Accent1 = "#FFD1541F", Accent2 = "#FFE8912F", Accent3 = "#FF8A1F1F" },
+                Name = "Ember", Bg = "#FF150604", Card = "#00FFFFFF", CardEdge = "#FFE8642A",
+                Sub = "#FF210A06", Btn = "#FF2E0F08", BtnEdge = "#FFE8642A",
+                Tile = "#FF2E0F08", TileOn = "#FF7A3A12", Text = "#FFFFEFE6", Muted = "#FFD69A80",
+                Accent1 = "#FFE8642A", Accent2 = "#FFFFA23D", Accent3 = "#FFC42020" },
             new DashTheme {
-                Name = "Neon", Bg = "#FF05030B", Card = "#00FFFFFF", CardEdge = "#FF7A2BC4",
-                Sub = "#FF0C0718", Btn = "#FF150C28", BtnEdge = "#FFB13BE8",
-                Tile = "#FF150C28", TileOn = "#FF1F5C4A", Text = "#FFF6ECFF", Muted = "#FFA98CC4",
-                Accent1 = "#FFB13BE8", Accent2 = "#FF23D3E8", Accent3 = "#FFE8329B" },
+                Name = "Neon", Bg = "#FF06030E", Card = "#00FFFFFF", CardEdge = "#FFC63BFF",
+                Sub = "#FF0E0620", Btn = "#FF180A32", BtnEdge = "#FFC63BFF",
+                Tile = "#FF180A32", TileOn = "#FF1F6B78", Text = "#FFF7ECFF", Muted = "#FFBFA0E0",
+                Accent1 = "#FFC63BFF", Accent2 = "#FF2BE0FF", Accent3 = "#FFFF3DA6" },
             new DashTheme {
-                Name = "Forest", Bg = "#FF040D08", Card = "#00FFFFFF", CardEdge = "#FF2F7A4A",
-                Sub = "#FF08160E", Btn = "#FF0D2115", BtnEdge = "#FF2F7A4A",
-                Tile = "#FF0D2115", TileOn = "#FF2A6B3C", Text = "#FFE8F5EC", Muted = "#FF86AE95",
-                Accent1 = "#FF2F7A4A", Accent2 = "#FF6FBF73", Accent3 = "#FF1B4F3A" },
+                Name = "Forest", Bg = "#FF03100A", Card = "#00FFFFFF", CardEdge = "#FF3FBF6A",
+                Sub = "#FF061A0F", Btn = "#FF0A2716", BtnEdge = "#FF3FBF6A",
+                Tile = "#FF0A2716", TileOn = "#FF2A7A46", Text = "#FFE9F7EE", Muted = "#FF8FC7A2",
+                Accent1 = "#FF3FBF6A", Accent2 = "#FF8FE04A", Accent3 = "#FF1F7A5A" },
             new DashTheme {
-                Name = "Mono", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FFB8BCC4",
-                Sub = "#FF121212", Btn = "#FF1C1C1C", BtnEdge = "#FF9A9EA6",
-                Tile = "#FF1C1C1C", TileOn = "#FF4A4A4A", Text = "#FFFFFFFF", Muted = "#FF9A9EA6",
-                Accent1 = "#FF6E7278", Accent2 = "#FF9A9EA6", Accent3 = "#FF44484E" },
+                Name = "Mono", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FFFFFFFF",
+                Sub = "#FF141414", Btn = "#FF1E1E1E", BtnEdge = "#FFCFCFCF",
+                Tile = "#FF1E1E1E", TileOn = "#FF565656", Text = "#FFFFFFFF", Muted = "#FFB4B4B4",
+                Accent1 = "#FFFFFFFF", Accent2 = "#FFB4B4B4", Accent3 = "#FF6E6E6E" },
         };
 
         internal static string[] DashThemeNames()

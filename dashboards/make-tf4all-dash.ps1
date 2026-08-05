@@ -580,6 +580,25 @@ function New-Glow([string]$name, $cx, $cy, $r, [string]$rgb, [int]$centerAlpha) 
     }
 }
 
+# A true ellipse. A RectangleItem can only be a circle when its corner
+# radius is exactly half its size, so animating the size leaves the radius
+# behind and the shape squares off. An EllipseItem takes width and height
+# independently, which is what lets a contour breathe out of round.
+function New-Ellipse([string]$name, $x, $y, $w, $h, [string]$stroke, [double]$thick = 1) {
+    [ordered]@{
+        '$type' = 'SimHub.Plugins.OutputPlugins.GraphicalDash.Models.EllipseItem, SimHub.Plugins'
+        FillColor = $script:CLEAR
+        EllipseColor = $stroke
+        EllipseThickness = [double]$thick
+        EllipseBackgroundImage = 'None'
+        BackgroundColor = $script:CLEAR
+        Height = [double]$h; Left = [double]$x; Opacity = 100.0; Top = [double]$y
+        Visible = $true; Width = [double]$w
+        Rotation = 0.0; RenderingSkip = 0; IsFreezed = $false
+        Name = $name; Bindings = [ordered]@{}
+    }
+}
+
 # A rounded outline ring (used by both circle boxes).
 function New-Ring([string]$name, $cx, $cy, $r, [string]$color, [int]$thickness, [string]$vis) {
     $ring = New-Rect $name ($cx - $r) ($cy - $r) ($r * 2) ($r * 2) $script:CLEAR $null ([int]$r)
@@ -665,6 +684,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $gap.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
         $script:headGap = $gap
         $t = New-Text "d$script:slotN-$id-h" $cx ($script:yN - 9 + $script:HEAD_DROP) $wpx 18 12 $lbl $script:MUTED 1
+        # The titles are the most repeated text on the dashboard, so they do
+        # more than anything else to make one theme look unlike another.
+        $t.Bindings['TextColor'] = ThemeBind 'TextColor' 'Muted'
         $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis $k $null)
         $t
     }
@@ -1714,49 +1736,51 @@ function IdleCard([string]$P) {
     $w = { param($mult, $ph) 'Math.sin(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
     $wc = { param($mult, $ph) 'Math.cos(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
 
-    # --- Topographic: contour lines over ground that will not sit still.
-    # Three families of nested rings around centres that drift, and where
-    # two families overlap their contours interfere, which is what stops it
-    # reading as concentric circles and starts it reading as terrain.
+    # --- Topographic: contours over ground that will not sit still.
+    # Five families of nested ellipses around centres that drift, and where
+    # families overlap their contours interfere, which is what stops this
+    # reading as circles and starts it reading as terrain.
     #
-    # Each ring's SIZE is fixed and its corner radius is exactly half of it,
-    # because that is the only way a rounded rectangle is a circle. Animate
-    # the size and the radius no longer matches, so it visibly squares off
-    # at every size but one. The motion comes from the centres drifting and
-    # from a brightness wave travelling outward through the rings instead,
-    # both of which are plain position and opacity bindings.
+    # Ellipses, not rounded rectangles: width and height move on DIFFERENT
+    # harmonics, so every contour is out of round and out of round by a
+    # changing amount. A rounded rectangle cannot do that, because it is
+    # only a circle while its corner radius is exactly half its size, and
+    # the first version of this visibly squared off as it breathed.
     $topoFam = @(
         @(0, 300, 190, 1, 2, 0.00, 'Accent1'),
-        @(1, 520, 300, 2, 3, 0.41, 'Accent2'),
-        @(2, 160, 340, 3, 1, 0.73, 'Accent3')
+        @(1, 530, 300, 2, 3, 0.41, 'Accent2'),
+        @(2, 150, 350, 3, 1, 0.73, 'Accent3'),
+        @(3, 660, 120, 2, 1, 0.19, 'Accent1'),
+        @(4, 400, 430, 1, 3, 0.57, 'Accent2')
     )
     foreach ($fam in $topoFam) {
         $fi = $fam[0]; $fx = $fam[1]; $fy = $fam[2]
         $fmx = $fam[3]; $fmy = $fam[4]; $fp = $fam[5]; $fac = $fam[6]
-        $cxJs = 'var cx=' + $fx + '+' + (& $w $fmx $fp) + '*120+' + (& $w (2 * $fmx) ($fp + 0.2)) + '*45;'
-        $cyJs = 'var cy=' + $fy + '+' + (& $wc $fmy $fp) + '*80+' + (& $wc (3 * $fmy) ($fp + 0.5)) + '*30;'
-        for ($ri = 0; $ri -lt 13; $ri++) {
+        $cxJs = 'var cx=' + $fx + '+' + (& $w $fmx $fp) + '*130+' + (& $w (2 * $fmx) ($fp + 0.2)) + '*50;'
+        $cyJs = 'var cy=' + $fy + '+' + (& $wc $fmy $fp) + '*90+' + (& $wc (3 * $fmy) ($fp + 0.5)) + '*34;'
+        for ($ri = 0; $ri -lt 16; $ri++) {
             # Not evenly spaced: even spacing reads as a target, widening
-            # spacing reads as ground that flattens away from the peak.
-            $rr = [int](26 + $ri * $ri * 2.4 + $ri * 15)
-            $r = New-Rect "idle-topo$fi-$ri" 0 0 ($rr * 2) ($rr * 2) $script:CLEAR $null $rr
-            $r.BorderStyle.BorderColor = $script:MUTED; $r.BorderColor = $script:MUTED
-            foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
-                $r.BorderStyle."Border$sd" = 1
-                $r."Border$sd" = 1
-            }
-            $r.Opacity = 0.0
-            $r.Bindings['BorderColor'] = ThemeBind 'BorderColor' $fac
-            $r.Bindings['Left'] = BindJS 'Left' ($cxJs + 'return cx-' + $rr)
-            $r.Bindings['Top']  = BindJS 'Top'  ($cyJs + 'return cy-' + $rr)
-            # A wave of brightness travelling outward, one ring behind the
-            # last, so the contours appear to move even though none resize.
-            $ph = ($fp + $ri * 0.085) % 1.0
-            $r.Bindings['Opacity'] = BindJS 'Opacity' (
-                'var a=0.5+0.5*' + (& $w 1 $ph) + ';' +
-                'return ' + [math]::Round(8 + 34 * [math]::Exp(-$ri / 5.0), 1) + '*(0.35+0.65*a)')
-            $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Topo')
-            $items.Add($r)
+            # spacing reads as ground that flattens away from a peak.
+            $base = 20 + $ri * $ri * 1.7 + $ri * 12
+            $rp = ($fp + $ri * 0.07) % 1.0
+            # The two axes swell on different harmonics and different
+            # phases, so the shape is never round twice in the same way.
+            $rw = 'var rw=' + $base + '+' + (& $w (1 + ($ri % 3)) $rp) + '*' + [math]::Round(10 + $ri * 1.6, 1) + ';'
+            $rh = 'var rh=' + $base + '*0.82+' + (& $wc (2 + ($ri % 4)) ($rp + 0.33)) + '*' + [math]::Round(9 + $ri * 1.4, 1) + ';'
+            $e = New-Ellipse "idle-topo$fi-$ri" 0 0 ($base * 2) ($base * 2) $script:MUTED 1
+            $e.Opacity = 0.0
+            $e.Bindings['EllipseColor'] = ThemeBind 'EllipseColor' $fac
+            $e.Bindings['Width']  = BindJS 'Width'  ($rw + 'return rw*2')
+            $e.Bindings['Height'] = BindJS 'Height' ($rh + 'return rh*2')
+            $e.Bindings['Left']   = BindJS 'Left'   ($rw + $cxJs + 'return cx-rw')
+            $e.Bindings['Top']    = BindJS 'Top'    ($rh + $cyJs + 'return cy-rh')
+            # A brightness wave travelling outward, so the contours move
+            # even where the shapes momentarily do not.
+            $e.Bindings['Opacity'] = BindJS 'Opacity' (
+                'var a=0.5+0.5*' + (& $w 1 $rp) + ';' +
+                'return ' + [math]::Round(7 + 30 * [math]::Exp(-$ri / 6.0), 1) + '*(0.4+0.6*a)')
+            $e.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Topo')
+            $items.Add($e)
         }
     }
 
@@ -2608,6 +2632,7 @@ $revCen  = '$prop("' + $P + '.RevCentered")'
 # Our own frame first, SimHub second: a Forza player usually leaves
 # forwarding off, which leaves SimHub's copies empty all session.
 $gear = New-Text 'dr-gear' 300 55 200 210 130 '' $WHITE 1 @{
+    TextColor = ThemeBind 'TextColor' 'Text'
     Text = BindJS 'Text' ('var g=""+($prop("' + $P + '.Gear")||"");' +
                           'if(g=="")g=""+($prop("' + $SIM + 'Gear")||"");return g==""?"N":g')
     Top  = BindJS 'Top'  ('return ' + $twoRows + '?55:130')
@@ -2622,6 +2647,7 @@ $s7.Add($gear)
 # instead of floating between it and the strip.
 $rpmTop = 'return ' + $twoRows + '?(' + $revCen + '?34:26):(' + $revCen + '?71:63)'
 $rpm = New-Text 'dr-rpm' 300 26 200 28 22 '' $MUTED 1 @{
+    TextColor = ThemeBind 'TextColor' 'Muted'
     Text = BindJS 'Text' ('var r=1*$prop("' + $P + '.Rpm");' +
                           'if(!(r>0))r=1*$prop("' + $SIM + 'Rpms");' +
                           'if(isNaN(r)||r<=0)return "";return Math.round(r)+" rpm"')
@@ -2631,6 +2657,7 @@ $s7.Add($rpm)
 # Speed follows SimHub's unit setting when SimHub has the data; from our
 # own frame it is km/h, converted here when the user is set to MPH.
 $spd = New-Text 'dr-speed' 300 268 200 40 26 '' $MUTED 1 @{
+    TextColor = ThemeBind 'TextColor' 'Muted'
     Text = BindJS 'Text' ('var u=""+($prop("' + $SIM + 'SpeedLocalUnit")||"");' +
                           'var v=1*$prop("' + $SIM + 'SpeedLocal");' +
                           'if(!(v>0)){var k=1*$prop("' + $P + '.SpeedKmh");' +
@@ -2926,7 +2953,16 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
         if ($o -and $o.ContainsKey('Width'))  { $w = [float]$o.Width }
         if ($o -and $o.ContainsKey('Height')) { $h = [float]$o.Height }
         $type = [string]$it.'$type'
-        if ($type -like '*ImageItem*') {
+        if ($type -like '*EllipseItem*') {
+            $ec = [string]$it.EllipseColor
+            if ($o -and $o.ContainsKey('EllipseColor')) { $ec = [string]$o.EllipseColor }
+            $col = [System.Drawing.ColorTranslator]::FromHtml($ec)
+            if ($op -lt 100) { $col = [System.Drawing.Color]::FromArgb([int](255 * $op / 100), $col.R, $col.G, $col.B) }
+            $pen = New-Object System.Drawing.Pen $col, ([float]$it.EllipseThickness)
+            $g.DrawEllipse($pen, $x, $y, $w, $h)
+            $pen.Dispose()
+        }
+        elseif ($type -like '*ImageItem*') {
             # Same bytes the bundle carries, so the thumbnail shows exactly
             # what the dashboard will.
             $im = $script:DASH_IMAGES | Where-Object { $_.Meta.Name -eq [string]$it.Image } | Select-Object -First 1
