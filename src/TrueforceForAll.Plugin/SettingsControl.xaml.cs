@@ -6408,6 +6408,15 @@ namespace TrueforceForAll.Plugin
                     if (RemoteDashIdleStyleCombo.Items.Count == 0)
                         foreach (string lbl in IdleStyleLabels) RemoteDashIdleStyleCombo.Items.Add(lbl);
                     int si = Array.IndexOf(IdleStyleKeys, _plugin.Settings?.DashIdleStyle ?? "Topo");
+                    if (si < 0 && _plugin?.Settings != null)
+                    {
+                        // A retired style left the box showing the first entry
+                        // while the setting still said something else, so the
+                        // box and the card disagreed until it was touched.
+                        _plugin.Settings.DashIdleStyle = IdleStyleKeys[0];
+                        si = 0;
+                        PersistIdle();
+                    }
                     RemoteDashIdleStyleCombo.SelectedIndex = si < 0 ? 0 : si;
                 }
                 if (RemoteDashIdleFontCombo != null)
@@ -6481,8 +6490,8 @@ namespace TrueforceForAll.Plugin
         // ---------------- idle card ----------------
         // Style and colour are fixed lists rather than free text: both feed a
         // dash formula, and a typo there fails silently as a blank card.
-        private static readonly string[] IdleStyleKeys   = { "Rain", "Pipes", "Fractal", "Topo", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
-        private static readonly string[] IdleStyleLabels = { "Rain", "Pipes", "Fractal zoom", "Contours", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleKeys   = { "Pipes", "Fractal", "Topo", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleLabels = { "Pipes", "Fractal zoom", "Contours", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
         // Families that ship broadly enough to be there on a phone, a tablet
         // and a PC alike. Empty is the dashboard's own font.
         private static readonly string[] IdleFontValues =

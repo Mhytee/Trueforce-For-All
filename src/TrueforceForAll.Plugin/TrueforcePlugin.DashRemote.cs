@@ -351,6 +351,23 @@ namespace TrueforceForAll.Plugin
             public string Line => "#FF3C3F44";
         }
 
+        // Idle patterns that were tried and dropped. Every pattern on the card
+        // is gated on its own name, so a setting still pointing at a retired
+        // one shows an empty card rather than falling back to anything: the
+        // dash has no way to know the name is stale. Resolving it here fixes
+        // it for someone who never opens the settings tab.
+        private static readonly string[] RetiredIdleStyles =
+            { "Rain", "Orbit", "Spiral", "Warp", "Bloom" };
+
+        private string LiveIdleStyle()
+        {
+            string s = Settings?.DashIdleStyle;
+            if (string.IsNullOrEmpty(s)) return "Topo";
+            foreach (string gone in RetiredIdleStyles)
+                if (string.Equals(s, gone, StringComparison.OrdinalIgnoreCase)) return "Topo";
+            return s;
+        }
+
         internal static readonly DashTheme[] DashThemes =
         {
             // Colour lives in the OUTLINES, the tiles and the idle art. It
@@ -1306,7 +1323,7 @@ namespace TrueforceForAll.Plugin
                 { var a = _radarQuad; return k < a.Length ? a[k] : 0; });
             }
             this.AttachDelegate("Dash.Idle.On",     () => DashIdleActive());
-            this.AttachDelegate("Dash.Idle.Style",  () => Settings?.DashIdleStyle ?? "Aurora");
+            this.AttachDelegate("Dash.Idle.Style",  () => LiveIdleStyle());
             this.AttachDelegate("Dash.Idle.Name",   () => Settings?.DashIdleDriverName ?? "");
             this.AttachDelegate("Dash.Idle.Number", () => Settings?.DashIdleNumber ?? "");
             this.AttachDelegate("Dash.Idle.NameAbove", () => Settings?.DashIdleNameAbove == true);

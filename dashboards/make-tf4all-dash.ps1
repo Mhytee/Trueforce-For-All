@@ -1795,7 +1795,7 @@ function IdleCard([string]$P) {
     $RPOOL = 40
     $TAU   = '6.283185307'
 
-    $EROUND = '["Topo","Caustics","Bubbles","Rain","Fractal","Ribbon","Pulse","Aurora"]'
+    $EROUND = '["Topo","Caustics","Bubbles","Fractal","Ribbon","Pulse","Aurora"]'
     $RSTRAIGHT = '["Pipes","Wave","Streaks"]'
 
     $rndNext = {
@@ -1808,17 +1808,6 @@ function IdleCard([string]$P) {
     }
     $script:__rs = 987654321
     $script:__ps = 112358
-
-    # Twenty one drops, two rings each. Small and quick and plenty of them:
-    # a few big slow rings read as something being dropped in the water, not
-    # as rain falling on it.
-    $dropX = @(); $dropY = @(); $dropSpd = @(); $dropOff = @()
-    for ($dn = 0; $dn -lt 21; $dn++) {
-        $dropX   += [math]::Round(50 + (& $rndNext) * 700, 1)
-        $dropY   += [math]::Round(50 + (& $rndNext) * 380, 1)
-        $dropSpd += (24 + 8 * [int]([math]::Floor((& $rndNext) * 3)))
-        $dropOff += [math]::Round((& $rndNext), 4)
-    }
 
     # Bubbles keeps well clear of the edges. A bubble that runs off the side
     # is an arc, and an arc is not a bubble.
@@ -1911,16 +1900,9 @@ function IdleCard([string]$P) {
 
     $ctrM = @(1, 2, 3); $ctrN = @(2, 3, 1); $ctrP = @(0.0, 0.37, 0.72)
 
-    # The art is collected here and added AFTER the driver number, so it
-    # draws on top of it.
-    #
-    # Underneath, every ring that crossed the number came out as two loose
-    # arcs, because the number is a solid slab 190px tall across the middle
-    # of the card and the rings are two pixel outlines. It read as the
-    # circles being broken, or drawn at an angle, when they were exact
-    # circles the whole time. A thin line over a letter costs nothing: the
-    # number is still perfectly readable through it, and a ripple that
-    # crosses it stays a ripple.
+    # Collected here and added below the driver number. Putting it on top
+    # was tried, to stop the number cutting rings into arcs, and lines over
+    # the name and number look worse than broken rings do.
     $art = New-Object System.Collections.ArrayList
 
     # ---------------- round pool ----------------
@@ -1971,19 +1953,6 @@ function IdleCard([string]$P) {
         $bbPre = 'var q=(' + $bbM + '*T+' + $bbOff + ')%1;'
         $bbR = 'r=62*Math.pow(q,0.55)*(1-Math.pow(q,14));'
 
-        # Rain: two rings per drop, small, quick, and dark for more than half
-        # of every cycle. Big slow rings running constantly is a boiling
-        # surface; rain is a lot of little ones arriving and vanishing.
-        $rnD = [int][math]::Floor($ei / 2)       # 0..20, which drop
-        $rnJ = $ei % 2                            # first ring or the one behind it
-        $rnX = $dropX[$rnD]; $rnY = $dropY[$rnD]
-        $rnM = $dropSpd[$rnD]
-        $rnOff = $dropOff[$rnD]
-        $rnTrail = [math]::Round($rnJ * 0.05, 4)
-        $rnQ = 'var q=((' + $rnM + '*T+' + $rnOff + ')%1)-' + $rnTrail + ';var qq=q/0.45;' +
-               'var live=(qq>=0&&qq<=1);'
-        $rnR = 'r=live?(3+56*qq):0;'
-
         # Fractal: seven rings of six, each 1.7 times the one inside it, all
         # growing at that rate. A ring that reaches the size the next one out
         # had wraps back to the middle, and since every ring carries the same
@@ -2021,7 +1990,6 @@ function IdleCard([string]$P) {
         $e.Bindings['Left'] = BindJS 'Left' ($eHead + 'var x,r;' +
             'if(s=="Ribbon"){var p=T-' + $rbOff + ';x=400+320*Math.sin(' + $TAU + '*6*p);r=' + $rbS + ';}' +
             'else if(s=="Caustics"){x=' + $csX + '+18*Math.sin(' + $TAU + '*(T+' + $csP + '));r=46+26*Math.sin(' + $TAU + '*(2*T+' + $csP + '));}' +
-            'else if(s=="Rain"){' + $rnQ + $rnR + 'x=' + $rnX + ';}' +
             'else if(s=="Bubbles"){' + $bbPre + $bbR + 'x=' + $bbX + ';}' +
             'else if(s=="Fractal"){' + $frPre + 'var an=' + $frA + '+1.0471976*q;x=400+11*sc*Math.cos(an);r=4.2*sc;}' +
             'else if(s=="Pulse"){' + $puQ + 'r=' + $puR + ';x=400+40*Math.sin(' + $TAU + '*T);}' +
@@ -2031,7 +1999,6 @@ function IdleCard([string]$P) {
         $e.Bindings['Top'] = BindJS 'Top' ($eHead + 'var y,r;' +
             'if(s=="Ribbon"){var p=T-' + $rbOff + ';y=240+200*Math.sin(' + $TAU + '*(4*p+0.25));r=' + $rbS + ';}' +
             'else if(s=="Caustics"){y=' + $csY + '+14*Math.cos(' + $TAU + '*(2*T+' + $csQ + '));r=34+20*Math.cos(' + $TAU + '*(3*T+' + $csQ + '));}' +
-            'else if(s=="Rain"){' + $rnQ + $rnR + 'y=' + $rnY + ';}' +
             'else if(s=="Bubbles"){' + $bbPre + $bbR + 'y=' + $bbY + ';}' +
             'else if(s=="Fractal"){' + $frPre + 'var an=' + $frA + '+1.0471976*q;y=240+11*sc*Math.sin(an)*0.62;r=4.2*sc;}' +
             'else if(s=="Pulse"){' + $puQ + 'r=' + $puR + ';y=240+26*Math.cos(' + $TAU + '*T);}' +
@@ -2041,7 +2008,6 @@ function IdleCard([string]$P) {
         $e.Bindings['Width'] = BindJS 'Width' ($eHead + 'var r;' +
             'if(s=="Ribbon"){r=' + $rbS + ';}' +
             'else if(s=="Caustics"){r=46+26*Math.sin(' + $TAU + '*(2*T+' + $csP + '));}' +
-            'else if(s=="Rain"){' + $rnQ + $rnR + '}' +
             'else if(s=="Bubbles"){' + $bbPre + $bbR + '}' +
             'else if(s=="Fractal"){' + $frPre + 'r=4.2*sc;}' +
             'else if(s=="Pulse"){' + $puQ + 'r=' + $puR + ';}' +
@@ -2052,7 +2018,6 @@ function IdleCard([string]$P) {
         $e.Bindings['Height'] = BindJS 'Height' ($eHead + 'var r;' +
             'if(s=="Ribbon"){r=' + $rbS + ';}' +
             'else if(s=="Caustics"){r=34+20*Math.cos(' + $TAU + '*(3*T+' + $csQ + '));}' +
-            'else if(s=="Rain"){' + $rnQ + $rnR + '}' +
             'else if(s=="Bubbles"){' + $bbPre + $bbR + '}' +
             'else if(s=="Fractal"){' + $frPre + 'r=4.2*sc;}' +
             'else if(s=="Pulse"){' + $puQ + 'r=' + $puR + ';}' +
@@ -2063,7 +2028,6 @@ function IdleCard([string]$P) {
         # fades in and out at both ends of its life, and everything else
         # holds the depth gradient it was built with.
         $e.Bindings['Opacity'] = BindJS 'Opacity' ($eHead +
-            'if(s=="Rain"){' + $rnQ + 'return live?92*(1-qq)*Math.min(1,qq*10):0;}' +
             'if(s=="Bubbles"){' + $bbPre + 'return 78*Math.min(1,q*9)*(1-Math.pow(q,8));}' +
             'if(s=="Pulse"){' + $puQ + 'return 92*(1-q)*Math.min(1,q*8);}' +
             'if(s=="Aurora"){return 15;}' +
@@ -2142,6 +2106,8 @@ function IdleCard([string]$P) {
         [void]$art.Add($r)
     }
 
+    foreach ($a in $art) { $items.Add($a) }
+
     # --- Driver identity: the number is the point, the name labels it ---
     # Name over or under the number, the user's call. The pair keeps the
     # same total height either way, so the block stays put on the card and
@@ -2168,10 +2134,6 @@ function IdleCard([string]$P) {
     } 'Bold' -Fontable
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
-
-    # Over the number, under the status line: the small print at the foot is
-    # there to be read, and a ring through a version string is just noise.
-    foreach ($a in $art) { $items.Add($a) }
 
     # --- Plugin status along the foot. This is the one moment anyone is
     # looking at the dash and not the road, so it is where a version, a
