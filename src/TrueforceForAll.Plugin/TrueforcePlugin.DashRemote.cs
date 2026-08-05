@@ -329,50 +329,66 @@ namespace TrueforceForAll.Plugin
             // anything that carries meaning, so a theme is free to be loud
             // here without a loud theme being able to misreport anything.
             public string Accent1, Accent2, Accent3;
+            // Dim is the faintest readable text; Trace1/Trace2 are the two
+            // visualizer lanes. The lanes carry a legend that uses the same
+            // two values, so theming them stays truthful.
+            public string Dim, Trace1, Trace2;
         }
 
         internal static readonly DashTheme[] DashThemes =
         {
+            // A theme repaints EVERY structural colour: backgrounds, card
+            // outlines, tiles, buttons, every shade of text and both
+            // visualizer lanes. Tinting the background alone was why the
+            // first sets all looked alike.
             new DashTheme {
                 Name = "Midnight", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FF5C6478",
                 Sub = "#FF0E0E10", Btn = "#FF1C1C20", BtnEdge = "#FF3A4150",
                 Tile = "#FF141414", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7",
-                Accent1 = "#FF3D7FC4", Accent2 = "#FF35A98A", Accent3 = "#FF7A55C0" },
+                Accent1 = "#FF3D7FC4", Accent2 = "#FF35A98A", Accent3 = "#FF7A55C0",
+                Dim = "#FF5A6274", Trace1 = "#FFE3A445", Trace2 = "#FFA08CFF" },
             new DashTheme {
                 Name = "Slate", Bg = "#FF101216", Card = "#FF1B1F27", CardEdge = "#00FFFFFF",
                 Sub = "#FF232936", Btn = "#FF232936", BtnEdge = "#00FFFFFF",
                 Tile = "#FF232936", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7",
-                Accent1 = "#FF3D6FB5", Accent2 = "#FF37D67A", Accent3 = "#FF5A6478" },
+                Accent1 = "#FF3D6FB5", Accent2 = "#FF37D67A", Accent3 = "#FF5A6478",
+                Dim = "#FF6B7280", Trace1 = "#FFE3A445", Trace2 = "#FFA08CFF" },
             new DashTheme {
                 Name = "Carbon", Bg = "#FF0A0B0D", Card = "#FF141619", CardEdge = "#FF6E7684",
                 Sub = "#FF101216", Btn = "#FF1E222A", BtnEdge = "#FF4A5262",
-                Tile = "#FF1E222A", TileOn = "#FF23503A", Text = "#FFEDEFF3", Muted = "#FF9AA3B2",
-                Accent1 = "#FF7E8899", Accent2 = "#FF5C6674", Accent3 = "#FF98A2B3" },
+                Tile = "#FF1E222A", TileOn = "#FF3A4450", Text = "#FFEDEFF3", Muted = "#FF9AA3B2",
+                Accent1 = "#FF7E8899", Accent2 = "#FF5C6674", Accent3 = "#FF98A2B3",
+                Dim = "#FF6A727E", Trace1 = "#FFB9C0CC", Trace2 = "#FF7E8899" },
             new DashTheme {
                 Name = "Blueprint", Bg = "#FF041524", Card = "#00FFFFFF", CardEdge = "#FF35A7E8",
                 Sub = "#FF07203A", Btn = "#FF0A2C4A", BtnEdge = "#FF35A7E8",
                 Tile = "#FF0A2C4A", TileOn = "#FF12566E", Text = "#FFD8EEFF", Muted = "#FF6FB6E0",
-                Accent1 = "#FF35A7E8", Accent2 = "#FF57D0F0", Accent3 = "#FF1F6E9E" },
+                Accent1 = "#FF35A7E8", Accent2 = "#FF57D0F0", Accent3 = "#FF1F6E9E",
+                Dim = "#FF4A82A6", Trace1 = "#FF57D0F0", Trace2 = "#FF9BD8F5" },
             new DashTheme {
                 Name = "Ember", Bg = "#FF150604", Card = "#00FFFFFF", CardEdge = "#FFE8642A",
                 Sub = "#FF210A06", Btn = "#FF2E0F08", BtnEdge = "#FFE8642A",
                 Tile = "#FF2E0F08", TileOn = "#FF7A3A12", Text = "#FFFFEFE6", Muted = "#FFD69A80",
-                Accent1 = "#FFE8642A", Accent2 = "#FFFFA23D", Accent3 = "#FFC42020" },
+                Accent1 = "#FFE8642A", Accent2 = "#FFFFA23D", Accent3 = "#FFC42020",
+                Dim = "#FF9A6A55", Trace1 = "#FFFFA23D", Trace2 = "#FFFF6E4A" },
             new DashTheme {
                 Name = "Neon", Bg = "#FF06030E", Card = "#00FFFFFF", CardEdge = "#FFC63BFF",
                 Sub = "#FF0E0620", Btn = "#FF180A32", BtnEdge = "#FFC63BFF",
                 Tile = "#FF180A32", TileOn = "#FF1F6B78", Text = "#FFF7ECFF", Muted = "#FFBFA0E0",
-                Accent1 = "#FFC63BFF", Accent2 = "#FF2BE0FF", Accent3 = "#FFFF3DA6" },
+                Accent1 = "#FFC63BFF", Accent2 = "#FF2BE0FF", Accent3 = "#FFFF3DA6",
+                Dim = "#FF8A6EA8", Trace1 = "#FF2BE0FF", Trace2 = "#FFFF3DA6" },
             new DashTheme {
                 Name = "Forest", Bg = "#FF03100A", Card = "#00FFFFFF", CardEdge = "#FF3FBF6A",
                 Sub = "#FF061A0F", Btn = "#FF0A2716", BtnEdge = "#FF3FBF6A",
                 Tile = "#FF0A2716", TileOn = "#FF2A7A46", Text = "#FFE9F7EE", Muted = "#FF8FC7A2",
-                Accent1 = "#FF3FBF6A", Accent2 = "#FF8FE04A", Accent3 = "#FF1F7A5A" },
+                Accent1 = "#FF3FBF6A", Accent2 = "#FF8FE04A", Accent3 = "#FF1F7A5A",
+                Dim = "#FF5E8E71", Trace1 = "#FF8FE04A", Trace2 = "#FF4ADBA0" },
             new DashTheme {
                 Name = "Mono", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FFFFFFFF",
                 Sub = "#FF141414", Btn = "#FF1E1E1E", BtnEdge = "#FFCFCFCF",
                 Tile = "#FF1E1E1E", TileOn = "#FF565656", Text = "#FFFFFFFF", Muted = "#FFB4B4B4",
-                Accent1 = "#FFFFFFFF", Accent2 = "#FFB4B4B4", Accent3 = "#FF6E6E6E" },
+                Accent1 = "#FFFFFFFF", Accent2 = "#FFB4B4B4", Accent3 = "#FF6E6E6E",
+                Dim = "#FF7A7A7A", Trace1 = "#FFFFFFFF", Trace2 = "#FFA8A8A8" },
         };
 
         internal static string[] DashThemeNames()
@@ -1255,6 +1271,9 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Theme.Accent1",  () => ActiveDashTheme().Accent1);
             this.AttachDelegate("Dash.Theme.Accent2",  () => ActiveDashTheme().Accent2);
             this.AttachDelegate("Dash.Theme.Accent3",  () => ActiveDashTheme().Accent3);
+            this.AttachDelegate("Dash.Theme.Dim",      () => ActiveDashTheme().Dim);
+            this.AttachDelegate("Dash.Theme.Trace1",   () => ActiveDashTheme().Trace1);
+            this.AttachDelegate("Dash.Theme.Trace2",   () => ActiveDashTheme().Trace2);
             // A 0..1 phase over 1.2 s, for anything that should pulse. Derived
             // here rather than in the dash so every connected screen pulses
             // together, the same reason the rev flash is plugin side.

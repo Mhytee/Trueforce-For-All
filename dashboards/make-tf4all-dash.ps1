@@ -333,7 +333,7 @@ function RevStrip([string]$P, [bool]$driveTab = $false) {
     $rc = '$prop("' + $P + '.RevCentered")'
     # Whole-pixel pitch on purpose: these numbers land in JS source, and a
     # fractional one would be written with the machine's decimal separator.
-    $bg = New-Rect 'rev-bg' 0 0 800 12 '#FF15181E' $null 0
+    $bg = New-Rect 'rev-bg' 0 0 800 12 $script:REVBG $null 0
     if ($driveTab) {
         $bg.Left = [double]$cenX; $bg.Width = [double]$cenW; $bg.Top = [double]$cenY
         $bg.Bindings['Left']  = BindJS 'Left'  ('return ' + $rc + '?' + $cenX + ':0')
@@ -360,10 +360,10 @@ function RevStrip([string]$P, [bool]$driveTab = $false) {
             $sock.Bindings['Top']   = BindJS 'Top'   ('return ' + $rc + '?' + ($cenY + 1) + ':1')
         }
         $sock.Bindings['Visible'] = BindJS 'Visible' ('return ' + $notIdle)
-        $sock.BorderStyle.BorderColor = '#FF39404C'
+        $sock.BorderStyle.BorderColor = $script:LINE
         $sock.BorderStyle.BorderTop = 1; $sock.BorderStyle.BorderBottom = 1
         $sock.BorderStyle.BorderLeft = 1; $sock.BorderStyle.BorderRight = 1
-        $sock.BorderColor = '#FF39404C'
+        $sock.BorderColor = $script:LINE
         $sock.BorderTop = 1; $sock.BorderBottom = 1; $sock.BorderLeft = 1; $sock.BorderRight = 1
         $items.Add($sock)
     }
@@ -1131,8 +1131,8 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # has to be right here: a post-hoc shift would move the rings and
     # leave the bound dots behind.
     $gcy = ($iy + 30 + $y + $h - 12) / 2
-    $items.Add((New-Ring "d$slot-gc-r1" $gcx $gcy $gr '#FF39404C' 1 $vis))
-    $items.Add((New-Ring "d$slot-gc-r2" $gcx $gcy ($gr / 2) '#FF2A303A' 1 $vis))
+    $items.Add((New-Ring "d$slot-gc-r1" $gcx $gcy $gr $script:LINE 1 $vis))
+    $items.Add((New-Ring "d$slot-gc-r2" $gcx $gcy ($gr / 2) $script:SUBPANEL 1 $vis))
     # The dot shows the force you FEEL, not the car's acceleration vector:
     # squeeze the throttle and it sinks toward you, brake and it rises,
     # turn right and it swings left, which is the way a g meter on a dash
@@ -1165,7 +1165,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
     $items.Add($hd)
     $items.Add((New-Ring "d$slot-fc-lim" $gcx $gcy $gr '#FF6B7280' 2 $vis))
-    $items.Add((New-Ring "d$slot-fc-in" $gcx $gcy ($gr * 0.75) '#FF2A303A' 1 $vis))
+    $items.Add((New-Ring "d$slot-fc-in" $gcx $gcy ($gr * 0.75) $script:SUBPANEL 1 $vis))
     $uJs = 'var u=1*$prop("' + $P + '.Drive.Util");if(isNaN(u))u=0;if(u>1.3)u=1.3;'
     $dirJs = 'var a=1*$prop("' + $P + '.Drive.GLat");var b=1*$prop("' + $P + '.Drive.GLong");' +
              'var m=Math.sqrt(a*a+b*b);if(isNaN(m)||m<0.05){a=0;b=0;m=1;}'
@@ -1220,7 +1220,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $ry = $relTop + $r * $relRowH
         $src = $relRows[$r][0]; $col = $relRows[$r][1]
         $isMe = $src -eq '__ME__'
-        $bandCol = if ($isMe) { '#2637D67A' } elseif ($r % 2 -eq 0) { '#FF1B1F27' } else { $script:CLEAR }
+        $bandCol = if ($isMe) { '#2637D67A' } elseif ($r % 2 -eq 0) { $script:SUBPANEL } else { $script:CLEAR }
         $band = New-Rect "d$slot-rel$r-bg" $ix $ry $iw ($relRowH - 2) $bandCol $null 4
         $band.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($band)
@@ -1295,7 +1295,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     }
 
     # Rings ARE the thresholds the colours change on.
-    $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR '#FF39404C' 1 $vis))
+    $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR $script:LINE 1 $vis))
     $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR * 20 / 40) '#FF3A3A2A' 1 $vis))
     $items.Add((New-Ring "d$slot-rd-r3" $rdCx $rdCy ($rdR * 8 / 40) '#FF4A2226' 1 $vis))
 
@@ -1353,11 +1353,11 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # tries to subtract one from the other.
     foreach ($tp in @(@('a', -8, 18), @('b', ($cw - 8), 18),
                       @('c', -8, ($ch - 46)), @('d', ($cw - 8), ($ch - 46)))) {
-        $r = New-Rect "d$slot-dm-w$($tp[0])" ($cl + $tp[1]) ($ct + $tp[2]) 16 28 '#FF15181E' $null 5
+        $r = New-Rect "d$slot-dm-w$($tp[0])" ($cl + $tp[1]) ($ct + $tp[2]) 16 28 $script:REVBG $null 5
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
     }
     # Shell underneath every panel, so the gaps between them read as body.
-    $r = New-Rect "d$slot-dm-body" $cl $ct $cw $ch '#FF1B1F27' $null 22
+    $r = New-Rect "d$slot-dm-body" $cl $ct $cw $ch $script:SUBPANEL $null 22
     $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
 
     # 1 front, 2 rear, 3 left, 4 right, 5 centre: SimHub's order, laid out
@@ -1371,7 +1371,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $dk = $dm[0]; $dn = $dm[1]
         $px = $cl + $dm[2]; $py = $ct + $dm[3]; $pw = $dm[4]; $ph = $dm[5]; $pr = $dm[6]
         $dJs = 'var v=1*$prop("' + $SIM + 'CarDamage' + $dn + '");'
-        $r = New-Rect "d$slot-dm-$dk" $px $py $pw $ph '#FF2A303A' @{
+        $r = New-Rect "d$slot-dm-$dk" $px $py $pw $ph $script:SUBPANEL @{
             BackgroundColor = BindJS 'BackgroundColor' ($dJs + $dmScale)
         } $pr
         $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
@@ -1446,7 +1446,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $stTrough = ThemePaint (New-Rect "d$slot-in-st-bg" $ix $stY $iw 10 $script:SUBPANEL $null 5) 'Sub'
     $stTrough.Bindings['Visible'] = BindJS 'Visible' $steerHas
     $items.Add($stTrough)
-    $stTick = New-Rect "d$slot-in-st-tick" ($ix + $iw / 2 - 1) ($stY - 3) 2 16 '#FF39404C' $null 0
+    $stTick = New-Rect "d$slot-in-st-tick" ($ix + $iw / 2 - 1) ($stY - 3) 2 16 $script:LINE $null 0
     $stTick.Bindings['Visible'] = BindJS 'Visible' $steerHas
     $items.Add($stTick)
     $stDot = New-Rect "d$slot-in-st" ($ix + $iw / 2 - 7) ($stY - 2) 14 14 $script:WHITE $null 7
@@ -1736,49 +1736,58 @@ function IdleCard([string]$P) {
     $w = { param($mult, $ph) 'Math.sin(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
     $wc = { param($mult, $ph) 'Math.cos(6.283185307*(' + $mult + '*' + $T + '+' + $ph + '))' }
 
-    # --- Topographic: contours over ground that will not sit still.
-    # Five families of nested ellipses around centres that drift, and where
-    # families overlap their contours interfere, which is what stops this
-    # reading as circles and starts it reading as terrain.
+    # --- Topographic: separate hills, each with its own contours.
+    #
+    # Every hill owns a CELL and cannot leave it. Its drift amplitude plus
+    # its widest contour is kept under the cell's half width and half
+    # height, so two hills can approach and slide past each other but can
+    # never overlap, by construction rather than by luck. That is also why
+    # there is no collision test: there is nothing to collide.
     #
     # Ellipses, not rounded rectangles: width and height move on DIFFERENT
-    # harmonics, so every contour is out of round and out of round by a
-    # changing amount. A rounded rectangle cannot do that, because it is
-    # only a circle while its corner radius is exactly half its size, and
-    # the first version of this visibly squared off as it breathed.
-    $topoFam = @(
-        @(0, 300, 190, 1, 2, 0.00, 'Accent1'),
-        @(1, 530, 300, 2, 3, 0.41, 'Accent2'),
-        @(2, 150, 350, 3, 1, 0.73, 'Accent3'),
-        @(3, 660, 120, 2, 1, 0.19, 'Accent1'),
-        @(4, 400, 430, 1, 3, 0.57, 'Accent2')
+    # harmonics, so a contour is out of round and out of round by a
+    # changing amount. A rounded rectangle is only a circle while its
+    # corner radius is exactly half its size, so it squares off as it
+    # breathes, which is what the first attempt did.
+    #
+    # Four hills of ten rather than five of sixteen. Eighty animated
+    # ellipses at six bindings each was more than the viewer could repaint
+    # smoothly, and the flicker was that, not the animation.
+    #   cell 400 x 240, so half is 200 x 120
+    #   worst reach measured over a whole loop: 148 x 108, inside both.
+    #   The first numbers here were guessed and reached 130 vertically,
+    #   which would have let two hills touch, so they are measured now.
+    $topoCells = @(
+        @(0, 200, 120, 1, 2, 0.00, 'Accent1'),
+        @(1, 600, 120, 2, 3, 0.37, 'Accent2'),
+        @(2, 200, 360, 3, 1, 0.61, 'Accent3'),
+        @(3, 600, 360, 2, 1, 0.83, 'Accent1')
     )
-    foreach ($fam in $topoFam) {
-        $fi = $fam[0]; $fx = $fam[1]; $fy = $fam[2]
-        $fmx = $fam[3]; $fmy = $fam[4]; $fp = $fam[5]; $fac = $fam[6]
-        $cxJs = 'var cx=' + $fx + '+' + (& $w $fmx $fp) + '*130+' + (& $w (2 * $fmx) ($fp + 0.2)) + '*50;'
-        $cyJs = 'var cy=' + $fy + '+' + (& $wc $fmy $fp) + '*90+' + (& $wc (3 * $fmy) ($fp + 0.5)) + '*34;'
-        for ($ri = 0; $ri -lt 16; $ri++) {
-            # Not evenly spaced: even spacing reads as a target, widening
-            # spacing reads as ground that flattens away from a peak.
-            $base = 20 + $ri * $ri * 1.7 + $ri * 12
-            $rp = ($fp + $ri * 0.07) % 1.0
-            # The two axes swell on different harmonics and different
-            # phases, so the shape is never round twice in the same way.
-            $rw = 'var rw=' + $base + '+' + (& $w (1 + ($ri % 3)) $rp) + '*' + [math]::Round(10 + $ri * 1.6, 1) + ';'
-            $rh = 'var rh=' + $base + '*0.82+' + (& $wc (2 + ($ri % 4)) ($rp + 0.33)) + '*' + [math]::Round(9 + $ri * 1.4, 1) + ';'
+    foreach ($cell in $topoCells) {
+        $fi = $cell[0]; $fx = $cell[1]; $fy = $cell[2]
+        $fmx = $cell[3]; $fmy = $cell[4]; $fp = $cell[5]; $fac = $cell[6]
+        # Bounded drift: 56 across, 30 down, which with the widest contour
+        # keeps every ring inside this hill's own cell.
+        $cxJs = 'var cx=' + $fx + '+' + (& $w $fmx $fp) + '*40+' + (& $w (2 * $fmx) ($fp + 0.2)) + '*16;'
+        $cyJs = 'var cy=' + $fy + '+' + (& $wc $fmy $fp) + '*17+' + (& $wc (3 * $fmy) ($fp + 0.5)) + '*7;'
+        for ($ri = 0; $ri -lt 10; $ri++) {
+            # Widening spacing reads as ground that flattens away from a
+            # peak; even spacing reads as a target.
+            $base = 6 + $ri * $ri * 0.42 + $ri * 5.2
+            $rp = ($fp + $ri * 0.09) % 1.0
+            $amp = [math]::Round(3 + $ri * 0.9, 1)
+            $rw = 'var rw=' + [math]::Round($base, 1) + '+' + (& $w (1 + ($ri % 3)) $rp) + '*' + $amp + ';'
+            $rh = 'var rh=' + [math]::Round($base * 0.84, 1) + '+' + (& $wc (2 + ($ri % 4)) ($rp + 0.33)) + '*' + $amp + ';'
             $e = New-Ellipse "idle-topo$fi-$ri" 0 0 ($base * 2) ($base * 2) $script:MUTED 1
-            $e.Opacity = 0.0
+            $e.Opacity = [double]([math]::Round(10 + 30 * [math]::Exp(-$ri / 4.5), 1))
             $e.Bindings['EllipseColor'] = ThemeBind 'EllipseColor' $fac
             $e.Bindings['Width']  = BindJS 'Width'  ($rw + 'return rw*2')
             $e.Bindings['Height'] = BindJS 'Height' ($rh + 'return rh*2')
             $e.Bindings['Left']   = BindJS 'Left'   ($rw + $cxJs + 'return cx-rw')
             $e.Bindings['Top']    = BindJS 'Top'    ($rh + $cyJs + 'return cy-rh')
-            # A brightness wave travelling outward, so the contours move
-            # even where the shapes momentarily do not.
-            $e.Bindings['Opacity'] = BindJS 'Opacity' (
-                'var a=0.5+0.5*' + (& $w 1 $rp) + ';' +
-                'return ' + [math]::Round(7 + 30 * [math]::Exp(-$ri / 6.0), 1) + '*(0.4+0.6*a)')
+            # Opacity is STATIC. It was a sixth animated binding per ring
+            # for an effect the drifting already gives, and cutting it is
+            # forty fewer formulas a frame.
             $e.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Topo')
             $items.Add($e)
         }
@@ -1908,7 +1917,7 @@ function IdleCard([string]$P) {
     # the driver to aim at a 120px target on a screen whose entire job is
     # to be looked at rather than used. Added LAST so it sits over
     # everything, and named idle-exit so the hide pass leaves it alone.
-    $t = New-Text 'idle-hint' 0 442 800 22 12 'TAP ANYWHERE TO RETURN' '#FF39404C' 1
+    $t = New-Text 'idle-hint' 0 442 800 22 12 'TAP ANYWHERE TO RETURN' $script:LINE 1
     $t.Bindings['TextColor'] = ThemeBind 'TextColor' 'Muted'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis
     $items.Add($t)
@@ -2428,9 +2437,13 @@ ToastBar $P | ForEach-Object { $s4.Add($_) }
 # 32 ms ring (purple). Palette mirrors the FFB-architecture doc (base
 # amber / tf purple).
 # =====================================================================
-$SCOPE_AMBER  = '#FFE3A445'
-$SCOPE_PURPLE = '#FFA08CFF'
-$SCOPE_GRID   = '#FF262F3A'
+$SCOPE_AMBER  = '#FFE3A445'   # themed as Trace1
+$SCOPE_PURPLE = '#FFA08CFF'   # themed as Trace2
+$SCOPE_GRID   = '#FF262F3A'   # themed as Sub
+# Hairlines: ring outlines, rev sockets, tick marks. Inline literals until
+# the theme audit found 125 of them on one dashboard.
+$LINE     = '#FF39404C'   # themed as Dim
+$REVBG    = '#FF15181E'   # themed as Sub
 $s5 = [System.Collections.Generic.List[object]]::new()
 $s5.Add((New-Text 'sc-title' 16 18 300 34 22 'VISUALIZER' $WHITE 0 $null 'Bold'))
 # CLIP + SPIKE badges: gray at rest; a colored layer + text crossfade in
@@ -2704,7 +2717,7 @@ $steerVis = 'return ' + $pedOn + ' && (1*$prop("' + $P + '.Steer"))>-1.5'
 $stBg = New-Rect 'dr-st-bg' 302 428 196 8 $TILE $null 4
 $stBg.Bindings['Visible'] = BindJS 'Visible' $steerVis
 $s7.Add($stBg)
-$stTick = New-Rect 'dr-st-tick' 399 425 2 14 '#FF39404C' $null 0
+$stTick = New-Rect 'dr-st-tick' 399 425 2 14 $script:LINE $null 0
 $stTick.Bindings['Visible'] = BindJS 'Visible' $steerVis
 $s7.Add($stTick)
 $stDot = New-Rect 'dr-st' 393 426 12 12 $WHITE $null 6
@@ -2776,6 +2789,64 @@ function Hide-ButtonsUnderOverlay($items) {
     $items
 }
 
+# Themes every static palette colour on a finished screen, in one pass.
+#
+# Doing this at each call site meant most of them were missed: colours
+# were bound in a handful of places and hardcoded in hundreds, which is
+# why early themes only appeared to change the background. A pass over the
+# built items cannot miss one, and a new box is themed the day it is
+# added without anyone remembering to do it.
+#
+# An item that already binds a colour is left alone. Those are the ones
+# that MEAN something (a tyre at temperature, a delta against the best, a
+# flag), and a theme must not be able to repaint meaning.
+# Built imperatively rather than as a literal: the keys are COLOUR VALUES,
+# and a hashtable literal throws on a duplicate key. Two palette entries
+# sharing a colour is normal in a themed set (Ember's card edge and button
+# edge are the same orange), so first-wins is the rule and the order below
+# is the priority. As a literal this exploded the moment a palette reused
+# a colour, which is a trap waiting for whoever adds the next theme.
+$THEME_MAP = @{}
+function Map-Theme([string]$prop, [string]$colour, [string]$key) {
+    if ([string]::IsNullOrEmpty($colour)) { return }
+    if (-not $script:THEME_MAP.ContainsKey($prop)) { $script:THEME_MAP[$prop] = @{} }
+    if (-not $script:THEME_MAP[$prop].ContainsKey($colour)) { $script:THEME_MAP[$prop][$colour] = $key }
+}
+Map-Theme 'BackgroundColor' $SCOPE_AMBER  'Trace1'
+Map-Theme 'BackgroundColor' $SCOPE_PURPLE 'Trace2'
+Map-Theme 'BackgroundColor' $SCOPE_GRID   'Sub'
+Map-Theme 'BackgroundColor' $REVBG        'Sub'
+Map-Theme 'BackgroundColor' $PANEL        'Card'
+Map-Theme 'BackgroundColor' $SUBPANEL     'Sub'
+Map-Theme 'BackgroundColor' $BTN          'Btn'
+Map-Theme 'BackgroundColor' $TILE         'Tile'
+Map-Theme 'BackgroundColor' $TILEON       'TileOn'
+Map-Theme 'BackgroundColor' $BG           'Bg'
+Map-Theme 'TextColor'       $WHITE        'Text'
+Map-Theme 'TextColor'       $MUTED        'Muted'
+Map-Theme 'TextColor'       $GRAY         'Dim'
+Map-Theme 'TextColor'       $LINE         'Dim'
+Map-Theme 'BorderColor'     $CARD_EDGE    'CardEdge'
+Map-Theme 'BorderColor'     $BTN_EDGE     'BtnEdge'
+Map-Theme 'BorderColor'     $LINE         'Dim'
+Map-Theme 'EllipseColor'    $SCOPE_AMBER  'Trace1'
+Map-Theme 'EllipseColor'    $SCOPE_PURPLE 'Trace2'
+Map-Theme 'EllipseColor'    $MUTED        'Muted'
+
+function Apply-Theme($items) {
+    foreach ($it in $items) {
+        if (-not $it.Bindings) { continue }
+        foreach ($prop in $THEME_MAP.Keys) {
+            if (-not $it.Contains($prop)) { continue }
+            if ($it.Bindings.Contains($prop)) { continue }   # already means something
+            $cur = [string]$it.$prop
+            $key = $THEME_MAP[$prop][$cur]
+            if ($key) { $it.Bindings[$prop] = ThemeBind $prop $key }
+        }
+    }
+    $items
+}
+
 function New-Screen([string]$name, $items, [int]$tabIndex) {
     # Inserted at the FRONT so it sits under everything on the screen.
     $items = @((ThemePaint (New-Rect ('bg-' + $tabIndex) 0 0 800 480 $script:BG $null 0) 'Bg')) + @($items)
@@ -2787,7 +2858,7 @@ function New-Screen([string]$name, $items, [int]$tabIndex) {
         ScreenEnabledExpression  = [ordered]@{ JSExt = 1; Interpreter = 1; Expression = 'return (1*$prop("TrueforcePlugin.Dash.Tab"))==' + $tabIndex }
         OverlayMaxDuration = 0; OverlayMinDuration = 0; IsBackgroundLayer = $false
         BackgroundColor = $CLEAR
-        Items = @(Hide-ButtonsUnderOverlay $items)
+        Items = @(Apply-Theme (Hide-ButtonsUnderOverlay $items))
     }
 }
 
