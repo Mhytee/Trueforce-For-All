@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "c42abfd2-2da9-4150-9cfb-d331d464ccd5",
+    "Id":  "bcbfbf02-cd41-49f2-a160-9e60a680d0e1",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "e4281dc0-1654-4316-8d14-3f06ab26b979",
+                        "ScreenId":  "b64453d5-d8fd-439a-b7bb-5768842e9715",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -2588,7 +2588,7 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "",
+                                          "BackgroundColor":  "#FF15181E",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
                                                               "BorderTop":  0,
@@ -2627,14 +2627,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -2655,7 +2663,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -2671,14 +2679,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -2699,7 +2715,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -2715,14 +2731,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -2743,7 +2767,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -2759,14 +2783,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -2787,7 +2819,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -2803,14 +2835,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -2831,7 +2871,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -2847,14 +2887,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -2875,7 +2923,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -2891,14 +2939,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -2919,7 +2975,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -2935,14 +2991,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -2963,7 +3027,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -2979,14 +3043,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -3007,7 +3079,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -3023,14 +3095,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -3051,7 +3131,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -3067,14 +3147,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -3095,7 +3183,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -3111,14 +3199,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -3139,7 +3235,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -3155,14 +3251,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -3183,7 +3287,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -3199,14 +3303,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -3227,7 +3339,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -3243,14 +3355,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -3271,7 +3391,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -3287,14 +3407,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -3315,7 +3443,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -3331,7 +3459,15 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
@@ -12479,7 +12615,7 @@
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
                                           "Text":  "TAP ANYWHERE TO RETURN",
-                                          "TextColor":  "",
+                                          "TextColor":  "#FF39404C",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
@@ -12647,7 +12783,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "dd5a205b-266e-474d-a7d8-1d0ef8f176db",
+                        "ScreenId":  "c8f2aee7-6592-40e6-8f42-8fb351a4eb88",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -13474,7 +13610,7 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "",
+                                          "BackgroundColor":  "#FF15181E",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
                                                               "BorderTop":  0,
@@ -13513,14 +13649,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13541,7 +13685,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13557,14 +13701,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13585,7 +13737,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13601,14 +13753,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13629,7 +13789,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13645,14 +13805,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13673,7 +13841,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13689,14 +13857,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13717,7 +13893,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13733,14 +13909,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13761,7 +13945,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13777,14 +13961,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13805,7 +13997,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13821,14 +14013,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13849,7 +14049,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13865,14 +14065,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13893,7 +14101,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13909,14 +14117,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13937,7 +14153,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13953,14 +14169,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -13981,7 +14205,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -13997,14 +14221,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -14025,7 +14257,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -14041,14 +14273,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -14069,7 +14309,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -14085,14 +14325,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -14113,7 +14361,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -14129,14 +14377,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -14157,7 +14413,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -14173,14 +14429,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -14201,7 +14465,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -14217,7 +14481,15 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
@@ -28497,7 +28769,7 @@
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
                                           "Text":  "TAP ANYWHERE TO RETURN",
-                                          "TextColor":  "",
+                                          "TextColor":  "#FF39404C",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
@@ -28665,7 +28937,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "0b337858-f449-4806-a96b-9de9d6344dc2",
+                        "ScreenId":  "d49635bc-6328-477c-a779-f02522544d12",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -36221,7 +36493,7 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "",
+                                          "BackgroundColor":  "#FF15181E",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
                                                               "BorderTop":  0,
@@ -36260,14 +36532,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36288,7 +36568,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36304,14 +36584,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36332,7 +36620,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36348,14 +36636,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36376,7 +36672,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36392,14 +36688,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36420,7 +36724,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36436,14 +36740,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36464,7 +36776,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36480,14 +36792,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36508,7 +36828,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36524,14 +36844,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36552,7 +36880,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36568,14 +36896,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36596,7 +36932,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36612,14 +36948,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36640,7 +36984,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36656,14 +37000,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36684,7 +37036,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36700,14 +37052,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36728,7 +37088,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36744,14 +37104,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36772,7 +37140,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36788,14 +37156,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36816,7 +37192,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36832,14 +37208,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36860,7 +37244,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36876,14 +37260,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36904,7 +37296,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36920,14 +37312,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -36948,7 +37348,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -36964,7 +37364,15 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
@@ -46748,7 +47156,7 @@
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
                                           "Text":  "TAP ANYWHERE TO RETURN",
-                                          "TextColor":  "",
+                                          "TextColor":  "#FF39404C",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
@@ -46916,7 +47324,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "bbffdb0f-3bcc-45ca-88ed-9a7e07f3b2dd",
+                        "ScreenId":  "335f9973-7c14-4a1b-9c5e-e3f34b881551",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -48867,7 +49275,7 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
-                                          "BackgroundColor":  "",
+                                          "BackgroundColor":  "#FF15181E",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
                                                               "BorderTop":  0,
@@ -48906,14 +49314,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -48934,7 +49350,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -48950,14 +49366,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -48978,7 +49402,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -48994,14 +49418,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49022,7 +49454,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49038,14 +49470,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49066,7 +49506,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49082,14 +49522,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49110,7 +49558,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49126,14 +49574,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49154,7 +49610,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49170,14 +49626,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49198,7 +49662,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49214,14 +49678,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49242,7 +49714,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49258,14 +49730,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49286,7 +49766,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49302,14 +49782,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49330,7 +49818,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49346,14 +49834,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49374,7 +49870,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49390,14 +49886,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49418,7 +49922,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49434,14 +49938,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49462,7 +49974,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49478,14 +49990,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49506,7 +50026,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49522,14 +50042,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49550,7 +50078,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49566,14 +50094,22 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#00FFFFFF",
                                           "BorderStyle":  {
-                                                              "BorderColor":  null,
+                                                              "BorderColor":  "#FF39404C",
                                                               "BorderTop":  1,
                                                               "BorderBottom":  1,
                                                               "BorderLeft":  1,
@@ -49594,7 +50130,7 @@
                                           "Visible":  true,
                                           "Width":  46,
                                           "BorderBottom":  1,
-                                          "BorderColor":  null,
+                                          "BorderColor":  "#FF39404C",
                                           "BorderLeft":  1,
                                           "BorderRight":  1,
                                           "BorderTop":  1,
@@ -49610,7 +50146,15 @@
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
-                                                                       }
+                                                                       },
+                                                           "BorderColor":  {
+                                                                               "Formula":  {
+                                                                                               "Interpreter":  1,
+                                                                                               "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                           },
+                                                                               "Mode":  2,
+                                                                               "TargetPropertyName":  "BorderColor"
+                                                                           }
                                                        }
                                       },
                                       {
@@ -58378,7 +58922,7 @@
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
                                           "Text":  "TAP ANYWHERE TO RETURN",
-                                          "TextColor":  "",
+                                          "TextColor":  "#FF39404C",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
                                           "BackgroundColor":  "#00FFFFFF",
@@ -58546,7 +59090,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "87350997-cb85-4969-b551-94a5daa27b09",
+                        "ScreenId":  "7acbe8a6-fad6-4d6c-b158-957bc034605a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -77364,7 +77908,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a276f53a-08f8-4228-abde-0e589fbf49a7",
+                        "ScreenId":  "50d01099-4c9c-4137-9083-f96049d67b99",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -92822,7 +93366,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "b91ef549-961b-48fd-81fc-134b7da55668",
+                        "ScreenId":  "013fb7df-a7bf-4f01-a513-5ffb7d187b79",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,

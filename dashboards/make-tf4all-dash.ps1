@@ -50,6 +50,14 @@ $HEAD_DROP = 6
 $SUBPANEL = '#FF0E0E10'
 $BTN      = '#FF1C1C20'
 $BTN_EDGE = '#FF3A4150'
+# Hairlines: ring outlines, rev sockets, tick marks. These live HERE with
+# the rest of the palette, not beside the scope colours further down: the
+# screens are built as the file runs, so a colour defined halfway through
+# is null for everything above it. That shipped 72 items with an empty
+# BackgroundColor, which SimHub cannot parse, and the dashboard stopped
+# opening at all.
+$LINE     = '#FF39404C'   # themed as Dim
+$REVBG    = '#FF15181E'   # themed as Sub
 
 # Every big container goes through here, so a new box cannot quietly opt
 # out of the theme. The border is always ONE pixel and only its COLOUR
@@ -2440,10 +2448,6 @@ ToastBar $P | ForEach-Object { $s4.Add($_) }
 $SCOPE_AMBER  = '#FFE3A445'   # themed as Trace1
 $SCOPE_PURPLE = '#FFA08CFF'   # themed as Trace2
 $SCOPE_GRID   = '#FF262F3A'   # themed as Sub
-# Hairlines: ring outlines, rev sockets, tick marks. Inline literals until
-# the theme audit found 125 of them on one dashboard.
-$LINE     = '#FF39404C'   # themed as Dim
-$REVBG    = '#FF15181E'   # themed as Sub
 $s5 = [System.Collections.Generic.List[object]]::new()
 $s5.Add((New-Text 'sc-title' 16 18 300 34 22 'VISUALIZER' $WHITE 0 $null 'Bold'))
 # CLIP + SPIKE badges: gray at rest; a colored layer + text crossfade in
@@ -2913,6 +2917,25 @@ $doc = [ordered]@{
 # its static value, which looks like a dead control rather than a broken
 # formula (the Inputs pedal bars sat at zero for a release this way).
 # Unbalanced quotes or brackets catch that class of mistake here instead.
+# An empty colour is a constant that was read before it was assigned.
+# SimHub rejects the whole dashboard for one of them, with an error that
+# names a screen index and nothing else, so catch it here where the item
+# name is still known.
+$blank = @()
+foreach ($scr in $doc.Screens) {
+    foreach ($it in $scr.Items) {
+        foreach ($ck in 'BackgroundColor', 'TextColor', 'BorderColor', 'EllipseColor', 'FillColor') {
+            if ($it.Contains($ck) -and [string]::IsNullOrEmpty([string]$it.$ck)) {
+                $blank += "$($it.Name).$ck"
+            }
+        }
+    }
+}
+if ($blank.Count) {
+    $blank | Select-Object -First 10 | ForEach-Object { Write-Host "EMPTY COLOUR  $_" -ForegroundColor Red }
+    throw "$($blank.Count) item(s) with an empty colour; dashboard NOT written."
+}
+
 $bad = @()
 foreach ($scr in $doc.Screens) {
     foreach ($it in $scr.Items) {
