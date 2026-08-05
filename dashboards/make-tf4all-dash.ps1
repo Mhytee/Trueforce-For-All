@@ -72,7 +72,11 @@ function New-Card([string]$name, $x, $y, $w, $h, [int]$radius = 10) {
         $r."Border$sd" = 1
     }
     $r.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' 'Card'
-    $r.Bindings['BorderColor']     = ThemeBind 'BorderColor' 'CardEdge'
+    # Into BorderStyle.Bindings, NOT the item's own. The viewer takes the
+    # outline from BorderStyle and looks for its binding in the same place;
+    # one put on the item is accepted, saved, and never read. That is why
+    # themes appeared to leave every box edge alone.
+    $r.BorderStyle.Bindings['BorderColor'] = ThemeBind 'BorderColor' 'CardEdge'
     $r
 }
 
@@ -85,7 +89,7 @@ function New-Btn([string]$name, $x, $y, $w, $h, [int]$radius = 4) {
         $r."Border$sd" = 1
     }
     $r.Bindings['BackgroundColor'] = ThemeBind 'BackgroundColor' 'Btn'
-    $r.Bindings['BorderColor']     = ThemeBind 'BorderColor' 'BtnEdge'
+    $r.BorderStyle.Bindings['BorderColor'] = ThemeBind 'BorderColor' 'BtnEdge'
     $r
 }
 
@@ -1685,7 +1689,7 @@ function TabBar([string]$P) {
             $bg.BorderStyle."Border$sd" = 1
             $bg."Border$sd" = 1
         }
-        $bg.Bindings['BorderColor'] = ThemeBind 'BorderColor' 'CardEdge'
+        $bg.BorderStyle.Bindings['BorderColor'] = ThemeBind 'BorderColor' 'CardEdge'
         $bg.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($bg)
         $t = New-Text "tab$i-t" $x 446 127 32 13 '' $MUTED 1 @{
@@ -1848,7 +1852,7 @@ function IdleCard([string]$P) {
         $r.Bindings['Left']   = BindJS 'Left'   ($g + $drift + 'return 400+dx-(40+g*640)/2')
         $r.Bindings['Top']    = BindJS 'Top'    ($g + $drift + 'return 240+dy-(40+g*640)/2')
         $r.Bindings['Opacity'] = BindJS 'Opacity' ($g + 'return 60*(1-g)*(g<0.08?g/0.08:1)')
-        $r.Bindings['BorderColor'] = ThemeBind 'BorderColor' 'Accent1'
+        $r.BorderStyle.Bindings['BorderColor'] = ThemeBind 'BorderColor' 'Accent1'
         $r.Bindings['Visible'] = BindJS 'Visible' (& $styleVis 'Pulse')
         $items.Add($r)
     }
@@ -2841,11 +2845,27 @@ function Apply-Theme($items) {
     foreach ($it in $items) {
         if (-not $it.Bindings) { continue }
         foreach ($prop in $THEME_MAP.Keys) {
+            if ($prop -eq 'BorderColor') { continue }        # lives in BorderStyle, below
             if (-not $it.Contains($prop)) { continue }
             if ($it.Bindings.Contains($prop)) { continue }   # already means something
             $cur = [string]$it.$prop
             $key = $THEME_MAP[$prop][$cur]
             if ($key) { $it.Bindings[$prop] = ThemeBind $prop $key }
+        }
+        # The outline is a special case in BOTH directions: the colour the
+        # viewer draws comes from BorderStyle, not from the item's own
+        # BorderColor, and so does the binding it reads. The old pass got
+        # both wrong, so it compared against a value nothing renders and
+        # wrote to a slot nothing reads. Rings, rev sockets and every card
+        # edge went untouched by a theme as a result.
+        if (-not $it.Contains('BorderStyle') -or -not $it.BorderStyle) { continue }
+        if ($it.BorderStyle.Bindings.Contains('BorderColor')) { continue }
+        $key = $THEME_MAP['BorderColor'][[string]$it.BorderStyle.BorderColor]
+        if ($key) {
+            $it.BorderStyle.Bindings['BorderColor'] = ThemeBind 'BorderColor' $key
+            # Keep the legacy top-level copy agreeing with it, so the two
+            # never disagree about what colour the box is meant to be.
+            if ($it.Contains('BorderColor')) { $it.BorderColor = $it.BorderStyle.BorderColor }
         }
     }
     $items
@@ -2930,6 +2950,25 @@ foreach ($scr in $doc.Screens) {
 if ($blank.Count) {
     $blank | Select-Object -First 10 | ForEach-Object { Write-Host "EMPTY COLOUR  $_" -ForegroundColor Red }
     throw "$($blank.Count) item(s) with an empty colour; dashboard NOT written."
+}
+
+# A BorderColor binding on the ITEM is accepted by the viewer, saved, and
+# then ignored: the outline is drawn from BorderStyle and the binding is
+# read from BorderStyle.Bindings. Nothing warns, the edge simply never
+# moves. 257 of them shipped that way and made themes look like they only
+# touched backgrounds, so it is a hard error now rather than a thing to
+# notice by eye.
+$misplaced = @()
+foreach ($scr in $doc.Screens) {
+    foreach ($it in $scr.Items) {
+        if ($it.Bindings -and $it.Bindings.Contains('BorderColor')) { $misplaced += $it.Name }
+    }
+}
+if ($misplaced.Count) {
+    $misplaced | Select-Object -First 10 | ForEach-Object {
+        Write-Host "BORDER BIND ON ITEM  $_  (belongs in BorderStyle.Bindings)" -ForegroundColor Red
+    }
+    throw "$($misplaced.Count) item(s) bind BorderColor where it is never read; dashboard NOT written."
 }
 
 $bad = @()
