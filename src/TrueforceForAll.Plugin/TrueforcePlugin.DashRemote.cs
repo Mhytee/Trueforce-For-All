@@ -324,65 +324,75 @@ namespace TrueforceForAll.Plugin
         // the dashboard generator needs to know it exists.
         internal sealed class DashTheme
         {
-            public string Name, Bg, Card, CardEdge, Sub, Btn, BtnEdge, Tile, TileOn, Text, Muted;
+            public string Name, Bg, Card, CardEdge, Sub, Btn, BtnEdge, Tile, TileOn;
             // Three accents for the idle card's ambient art. Not used for
             // anything that carries meaning, so a theme is free to be loud
             // here without a loud theme being able to misreport anything.
             public string Accent1, Accent2, Accent3;
-            // The faintest readable text. The visualizer lanes are NOT here:
-            // amber is the game's force and purple is Trueforce, the legend
-            // says so, and the trace itself carries a bound colour for the
-            // clip glow that no theme can reach. Theming the swatch alone
-            // made the key disagree with the line it was keying.
-            public string Dim;
+
+            // The three text tones are the SAME in every theme, and are
+            // read-only so that a palette cannot set them. A warm grey under
+            // Ember and a green one under Forest read as the dashboard being
+            // tinted rather than themed, and nearly every value on screen is
+            // text, so that tint lands on everything at once. Colour belongs
+            // in the outlines, the tiles and the idle art, all of which a
+            // theme still owns.
+            public string Text => "#FFF4F4F4";
+            public string Muted => "#FFA0A0A0";
+            // The faintest readable tone. The visualizer lanes are not here
+            // either: amber is the game's force and purple is Trueforce, the
+            // legend says so, and theming the swatch alone made the key
+            // disagree with the line it was keying.
+            public string Dim => "#FF6E6E6E";
         }
 
         internal static readonly DashTheme[] DashThemes =
         {
-            // Colour lives in the card OUTLINE, not in the ground and not
-            // in the text. Tinting the background and every shade of text
-            // made the bolder themes look washed rather than styled, and
-            // less clean than the plain ones they were meant to beat.
+            // Colour lives in the OUTLINES, the tiles and the idle art. It
+            // is deliberately absent from the ground and from the text: a
+            // theme that tints those looks washed rather than styled, and
+            // less clean than the plain ones it was meant to beat. The text
+            // tones are not even fields here, so this cannot drift back.
             new DashTheme {
                 Name = "Midnight", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FF5C6478",
                 Sub = "#FF0E0E10", Btn = "#FF1C1C20", BtnEdge = "#FF3A4150",
-                Tile = "#FF141414", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7",
-                Accent1 = "#FF3D7FC4", Accent2 = "#FF35A98A", Accent3 = "#FF7A55C0", Dim = "#FF5A6274" },
+                Tile = "#FF141414", TileOn = "#FF23503A",
+                Accent1 = "#FF3D7FC4", Accent2 = "#FF35A98A", Accent3 = "#FF7A55C0" },
             new DashTheme {
                 Name = "Slate", Bg = "#FF101216", Card = "#FF1B1F27", CardEdge = "#00FFFFFF",
                 Sub = "#FF232936", Btn = "#FF232936", BtnEdge = "#00FFFFFF",
-                Tile = "#FF232936", TileOn = "#FF23503A", Text = "#FFF2F4F8", Muted = "#FF8B93A7",
-                Accent1 = "#FF3D6FB5", Accent2 = "#FF37D67A", Accent3 = "#FF5A6478", Dim = "#FF6B7280" },
+                Tile = "#FF232936", TileOn = "#FF23503A",
+                Accent1 = "#FF3D6FB5", Accent2 = "#FF37D67A", Accent3 = "#FF5A6478" },
             new DashTheme {
                 Name = "Carbon", Bg = "#FF0A0B0D", Card = "#FF141619", CardEdge = "#FF6E7684",
                 Sub = "#FF101216", Btn = "#FF1E222A", BtnEdge = "#FF4A5262",
-                Tile = "#FF1E222A", TileOn = "#FF3A4450", Text = "#FFEDEFF3", Muted = "#FF9AA3B2",
-                Accent1 = "#FF7E8899", Accent2 = "#FF5C6674", Accent3 = "#FF98A2B3", Dim = "#FF6A727E" },
+                Tile = "#FF1E222A", TileOn = "#FF3A4450",
+                Accent1 = "#FF7E8899", Accent2 = "#FF5C6674", Accent3 = "#FF98A2B3" },
             new DashTheme {
                 Name = "Blueprint", Bg = "#FF04070C", Card = "#00FFFFFF", CardEdge = "#FF35A7E8",
                 Sub = "#FF0A1119", Btn = "#FF0E1620", BtnEdge = "#FF2C7DA8",
-                Tile = "#FF0E1620", TileOn = "#FF124E6B", Text = "#FFF0F6FA", Muted = "#FF8FA8B8",
-                Accent1 = "#FF35A7E8", Accent2 = "#FF57D0F0", Accent3 = "#FF1F6E9E", Dim = "#FF5E7280" },
+                Tile = "#FF0E1620", TileOn = "#FF124E6B",
+                Accent1 = "#FF35A7E8", Accent2 = "#FF57D0F0", Accent3 = "#FF1F6E9E" },
             new DashTheme {
                 Name = "Ember", Bg = "#FF090706", Card = "#00FFFFFF", CardEdge = "#FFE8642A",
                 Sub = "#FF150F0C", Btn = "#FF1C1512", BtnEdge = "#FFA8501F",
-                Tile = "#FF1C1512", TileOn = "#FF6B3110", Text = "#FFFAF3F0", Muted = "#FFA89890",
-                Accent1 = "#FFE8642A", Accent2 = "#FFFFA23D", Accent3 = "#FFC42020", Dim = "#FF6E625C" },
+                Tile = "#FF1C1512", TileOn = "#FF6B3110",
+                Accent1 = "#FFE8642A", Accent2 = "#FFFFA23D", Accent3 = "#FFC42020" },
             new DashTheme {
                 Name = "Neon", Bg = "#FF06060A", Card = "#00FFFFFF", CardEdge = "#FFC63BFF",
                 Sub = "#FF0E0E16", Btn = "#FF15151F", BtnEdge = "#FF8A2FB4",
-                Tile = "#FF15151F", TileOn = "#FF4A1F66", Text = "#FFF6F4FA", Muted = "#FF9E9AAC",
-                Accent1 = "#FFC63BFF", Accent2 = "#FF2BE0FF", Accent3 = "#FFFF3DA6", Dim = "#FF66637A" },
+                Tile = "#FF15151F", TileOn = "#FF4A1F66",
+                Accent1 = "#FFC63BFF", Accent2 = "#FF2BE0FF", Accent3 = "#FFFF3DA6" },
             new DashTheme {
                 Name = "Forest", Bg = "#FF050806", Card = "#00FFFFFF", CardEdge = "#FF3FBF6A",
                 Sub = "#FF0C120E", Btn = "#FF111A14", BtnEdge = "#FF2A8049",
-                Tile = "#FF111A14", TileOn = "#FF1F5C38", Text = "#FFF1F7F3", Muted = "#FF93A89A",
-                Accent1 = "#FF3FBF6A", Accent2 = "#FF8FE04A", Accent3 = "#FF1F7A5A", Dim = "#FF5E6E64" },
+                Tile = "#FF111A14", TileOn = "#FF1F5C38",
+                Accent1 = "#FF3FBF6A", Accent2 = "#FF8FE04A", Accent3 = "#FF1F7A5A" },
             new DashTheme {
                 Name = "Mono", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FFFFFFFF",
                 Sub = "#FF121212", Btn = "#FF1C1C1C", BtnEdge = "#FFCFCFCF",
-                Tile = "#FF1C1C1C", TileOn = "#FF4A4A4A", Text = "#FFFFFFFF", Muted = "#FFB4B4B4",
-                Accent1 = "#FFFFFFFF", Accent2 = "#FFB4B4B4", Accent3 = "#FF6E6E6E", Dim = "#FF7A7A7A" },
+                Tile = "#FF1C1C1C", TileOn = "#FF4A4A4A",
+                Accent1 = "#FFFFFFFF", Accent2 = "#FFB4B4B4", Accent3 = "#FF6E6E6E" },
         };
 
         internal static string[] DashThemeNames()
@@ -406,7 +416,7 @@ namespace TrueforceForAll.Plugin
 
         // ---------- radar ----------
         // Opponents carry RelativeCoordinatesToPlayer, a PointF already in
-        // the player's own frame, and a length in metres. SimHub's own
+        // the player's own frame, plus a length in metres. SimHub's own
         // SpotterCarLeft/Right is a bare yes or no with no distance in it,
         // and its radar item colours every opponent alike, so both the dot
         // colours and the proximity warning are worked out here.
