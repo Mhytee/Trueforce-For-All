@@ -90,7 +90,7 @@ namespace TrueforceForAll.Plugin
             "ModeBPhaseLead", "ModeBPhaseLeadMs",
             "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
             "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
-            "ModeBLateralDemand",
+            "ModeBLateralDemand", "ModeBAutoStrength",
             "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
             "CarGripCalibration",
             // Per-effect settings blocks (all taste).
@@ -218,7 +218,7 @@ namespace TrueforceForAll.Plugin
             "ModeBPhaseLead", "ModeBPhaseLeadMs",
             "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
             "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
-            "ModeBLateralDemand",
+            "ModeBLateralDemand", "ModeBAutoStrength",
             "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
             "CarGripCalibration",
         };

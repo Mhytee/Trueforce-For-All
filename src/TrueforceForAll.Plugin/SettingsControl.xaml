@@ -2689,6 +2689,10 @@
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Overall steering force. Your wheel's defaults set the starting point."/>
 
+            <CheckBox x:Name="ModeBAutoStrengthCheck" Margin="0,0,0,2" Content="Auto strength per car"
+                      Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Learns how hard each car actually pushes the wheel and scales its strength so every car uses your wheel's range. Each car settles at its own strength over a few laps of driving; the Strength slider stays your baseline."/>
+
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Min force:" Style="{StaticResource LabelText}"/>

@@ -779,6 +779,7 @@ namespace TrueforceForAll.Plugin
         public bool  ModeBCenterPd           { get; set; } = true;   // centering springs on the wheel's OWN position (HID reader) with a velocity look-ahead, so the pull toward straight is fresh and cannot ring (MBCPD); default ON 2026-08-01
         public float ModeBCenterLeadMs       { get; set; } = 40f;    // direct-centering look-ahead in ms (BCLEAD): how far ahead of the wheel's motion the spring aims
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
+        public bool  ModeBAutoStrength       { get; set; } = false;  // per-car auto strength (BAUTOS): learned force-peak scale so each car lands at its own strength, iRacing style. Default off until owner on-wheel validation.
         public bool  ModeBFrictionCircle     { get; set; } = true;   // friction-circle braking law replaces the lockup gate (BCIRCLE); default ON as of 0.2.5 (owner on-wheel: generally better than the gate)
         public bool  ModeBLongitudinalGripLearn { get; set; } = true;  // auto braking-grip: circle/gate radius follows each car's grip-cal peak instead of the manual point (BLEARN); default ON as of 0.2.5
         public float ModeBGripTrim { get; set; } = 1.0f; // radius = trim x grip-cal peak when auto braking-grip is on (BGTRIM; 1 = the raw detected grip)
