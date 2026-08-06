@@ -382,15 +382,21 @@ function KeyboardOverlay([string]$P) {
             $act = switch ($ch) { '-' { 'DashKbdDash' } '.' { 'DashKbdDot' } default { 'DashKbd' + $ch } }
             $safe = switch ($ch) { '-' { 'dash' } '.' { 'dot' } default { $ch } }
             $items.Add((OnOverlay (New-Rect  "kb-k$safe-bg" $x $row.Y 68 52 $script:TILE $null 5) 'kbd'))
-            $items.Add((OnOverlay (New-Text  "kb-k$safe-t"  $x $row.Y 68 52 22 $ch $script:WHITE 1 $null 'Bold') 'kbd'))
+            $kt = New-Text "kb-k$safe-t" $x $row.Y 68 52 22 $ch $script:WHITE 1 $null 'Bold'
+            # A letter key shows the letter it will type. Reading CAPS off a
+            # single lamp means checking one corner of the screen before every
+            # word; the key faces say it without being looked for.
+            if ($ch -cmatch '^[A-Z]$') {
+                $kt.Bindings['Text'] = BindJS 'Text' (
+                    'return $prop("' + $P + '.KbdCaps")?"' + $ch + '":"' + $ch.ToLowerInvariant() + '"')
+            }
+            $items.Add((OnOverlay $kt 'kbd'))
             $items.Add((OnOverlay (New-Button "kb-k$safe"   $x $row.Y 68 52 $act) 'kbd'))
         }
     }
 
-    # Bottom row. CAPS lights up when it is on, which is the only way to know
-    # from the dash: the letter keys stay drawn in capitals either way,
-    # because relabelling thirty six keys twice a word is worse than reading
-    # one lamp.
+    # Bottom row. CAPS lights when it is on, which the key faces already
+    # say; the lamp is for the moment before you have looked at them.
     $capsOn = 'return $prop("' + $P + '.KbdCaps")'
     $items.Add((OnOverlay (New-Rect 'kb-caps-bg' 22 330 130 52 $script:TILE $null 5) 'kbd'))
     $items[$items.Count - 1].Bindings['BackgroundColor'] = BindJS 'BackgroundColor' (

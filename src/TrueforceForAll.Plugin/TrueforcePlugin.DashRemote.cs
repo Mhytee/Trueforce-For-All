@@ -63,9 +63,10 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashKbdEntry = "";
         private volatile string _dashKbdTitle = "";
         private volatile string _dashKbdTarget = "";
-        // Sticky, and on when the keyboard opens, because a car name starts
-        // with a capital and model names are full of them (GT3, RS, AMG).
-        private volatile bool _dashKbdCaps = true;
+        // Sticky rather than one-shot, because model names run in blocks of
+        // capitals and a shift that dropped after every letter would mean
+        // three presses to type GT3. Starts OFF.
+        private volatile bool _dashKbdCaps = false;
         private const int DashKbdMaxLen = 40;
 
         private volatile string _dashKeypadEntry = "";    // digits being typed
@@ -2048,7 +2049,7 @@ namespace TrueforceForAll.Plugin
                 _dashKbdEntry = cur.Length > DashKbdMaxLen ? cur.Substring(0, DashKbdMaxLen) : cur;
                 _dashKbdTarget = "carname";
                 _dashKbdTitle = "CAR NAME";
-                _dashKbdCaps = true;
+                _dashKbdCaps = false;
                 _dashOverlay = "kbd";
             });
             this.AddAction("DashKbdCancel", (a, b) =>
@@ -2073,15 +2074,15 @@ namespace TrueforceForAll.Plugin
                 DashNoteActivity();
                 string name = (_dashKbdEntry ?? "").Trim();
                 if (_dashKbdTarget != "carname") { _dashOverlay = ""; return; }
-                // Matches WriteCarNameFact's own floor, so the failure is
-                // explained here rather than looking like the button did
-                // nothing.
-                if (name.Length < 2) { DashToast("NAME IS TOO SHORT"); return; }
-                if (!CarNameShareFlow.SetNameFromDash(this, _activeGame, _activeCarId, name))
-                {
-                    DashToast("COULD NOT SAVE THAT NAME");
-                    return;
-                }
+                // Checked here so the reason can be said out loud. The save
+                // itself just returns on a name it will not take, which from
+                // the dash looks like the button did nothing.
+                if (name.Length < 2)  { DashToast("NAME IS TOO SHORT"); return; }
+                if (name.Length > 96) { DashToast("NAME IS TOO LONG"); return; }
+                // The SAME call the desktop makes. A second save path would be
+                // a second set of rules about what a name is, what gets
+                // shared and what gets deduped, and they would drift.
+                CarNameShareFlow.SetNameAndMaybeShare(this, _activeGame, _activeCarId, name, null);
                 _dashOverlay = "";
                 _dashKbdEntry = "";
                 _dashKbdTarget = "";

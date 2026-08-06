@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "e4fd22e9-6b84-4128-9334-46f4965e1e92",
+    "Id":  "5a61a945-6dba-4d2f-9912-e5fc8ca65da7",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "35a326e8-26bb-4754-9fa4-02d14d7c902b",
+                        "ScreenId":  "97b5d006-6568-4d33-aa0a-6fe522acd169",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14700,7 +14700,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c209199b-47ed-4312-809f-cf97ab642c55",
+                        "ScreenId":  "502d2a2a-a696-4793-8af2-9ad87bd81d1e",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -22984,6 +22984,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kQ-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"Q\":\"q\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -23119,6 +23127,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kW-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"W\":\"w\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -23254,6 +23270,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kE-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"E\":\"e\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -23389,6 +23413,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kR-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"R\":\"r\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -23524,6 +23556,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kT-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"T\":\"t\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -23659,6 +23699,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kY-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"Y\":\"y\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -23794,6 +23842,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kU-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"U\":\"u\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -23929,6 +23985,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kI-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"I\":\"i\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -24064,6 +24128,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kO-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"O\":\"o\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -24199,6 +24271,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kP-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"P\":\"p\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -24334,6 +24414,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kA-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"A\":\"a\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -24469,6 +24557,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kS-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"S\":\"s\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -24604,6 +24700,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kD-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"D\":\"d\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -24739,6 +24843,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kF-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"F\":\"f\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -24874,6 +24986,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kG-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"G\":\"g\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -25009,6 +25129,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kH-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"H\":\"h\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -25144,6 +25272,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kJ-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"J\":\"j\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -25279,6 +25415,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kK-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"K\":\"k\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -25414,6 +25558,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kL-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"L\":\"l\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -25549,6 +25701,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kZ-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"Z\":\"z\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -25684,6 +25844,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kX-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"X\":\"x\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -25819,6 +25987,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kC-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"C\":\"c\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -25954,6 +26130,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kV-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"V\":\"v\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -26089,6 +26273,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kB-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"B\":\"b\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -26224,6 +26416,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kN-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"N\":\"n\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -26359,6 +26559,14 @@
                                           "IsFreezed":  false,
                                           "Name":  "kb-kM-t",
                                           "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return $prop(\"TrueforcePlugin.Dash.KbdCaps\")?\"M\":\"m\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
@@ -39068,7 +39276,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "083a7204-cf52-46b1-a170-1b5732f6ce9f",
+                        "ScreenId":  "3e2e6384-0a45-490b-966b-265298d14bc5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -59647,7 +59855,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "0594deae-5e7a-4516-bec7-aef588aa1450",
+                        "ScreenId":  "b51b3976-c039-423a-8e3c-194de749bb4b",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -73282,7 +73490,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a16a11ae-3c0a-4ca0-83a1-32104b7d86ef",
+                        "ScreenId":  "bc8bcffb-d150-494c-bd61-b3955a912e1e",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -93254,7 +93462,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "d32276f7-f7ce-4266-b39b-7fb1b0695fae",
+                        "ScreenId":  "d8d8d431-6127-4884-bb2e-cee189624bac",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -110715,7 +110923,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "5156b3b9-79c6-4a33-a7d5-093ef1723a6d",
+                        "ScreenId":  "8f176e28-48aa-4f22-9355-8cb63e6132ba",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
