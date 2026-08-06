@@ -53,6 +53,14 @@ namespace TrueforceForAll.Plugin
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
             "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
             "DashDriveSlots", "DashDriveTwoRows", "DashFlagsEnabled",
+            // Per-game Drive layouts travel with the shared one: same kind of
+            // choice, and the games they are keyed to are the same games on
+            // the second PC.
+            "DashDriveSlotsPerGame", "DashDriveSlotsByGame",
+            // Learned per-game telemetry capability. Travels for the same
+            // reason CarGripCalibration does: it is knowledge that costs seat
+            // time to rebuild, and it is about the games, not this PC.
+            "DashDriveSeen", "DashDriveDrivenSec",
             "DashRevStripCentered", "DashDrivePedals",
             "DashSpotterEnabled",
             "DashIdleEnabled", "DashIdleDelaySeconds", "DashIdleStyle",

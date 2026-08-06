@@ -3080,6 +3080,12 @@
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                             Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tyre and fuel readouts come from the game, so what they show depends on what that game reports."/>
 
+                            <CheckBox x:Name="RemoteDashDrivePerGameCheck" Content="Remember box layout per game" Margin="0,14,0,0"
+                            Checked="RemoteDashDrivePerGame_Changed" Unchecked="RemoteDashDrivePerGame_Changed"
+                            ToolTip="Each game keeps its own set of four boxes, and switching games loads the one you last used there."/>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="20,2,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="Games report different telemetry, so a layout that fills up in one can be half empty in another. With this on, boxes you pick while a game is running are remembered for that game. A game you have not set up yet uses the layout above, and so do changes you make with no game running."/>
+
                             <CheckBox x:Name="RemoteDashPedalsCheck" Content="Show pedals and steering around the gear" Margin="0,14,0,0"
                             Checked="RemoteDashPedals_Changed" Unchecked="RemoteDashPedals_Changed"
                             ToolTip="Thin throttle and brake bars either side of the gear on the Drive tab, with steering underneath."/>

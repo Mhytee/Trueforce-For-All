@@ -6373,6 +6373,8 @@ namespace TrueforceForAll.Plugin
                     foreach (ComboBoxItem it in cb.Items)
                         if ((it.Tag as string) == want) { cb.SelectedItem = it; break; }
                 }
+                if (RemoteDashDrivePerGameCheck != null)
+                    RemoteDashDrivePerGameCheck.IsChecked = _plugin.Settings?.DashDriveSlotsPerGame == true;
                 if (RemoteDashFlagsCheck != null)
                     RemoteDashFlagsCheck.IsChecked = _plugin.Settings?.DashFlagsEnabled == true;
                 if (RemoteDashPedalsCheck != null)
@@ -6625,7 +6627,18 @@ namespace TrueforceForAll.Plugin
             var list = new List<string>(combos.Length);
             foreach (var cb in combos)
                 list.Add((cb?.SelectedItem as ComboBoxItem)?.Tag as string ?? "None");
-            _plugin.Settings.DashDriveSlots = list;
+            _plugin.SetDashDriveSlots(list);
+            SaveRemoteDashDriveLayout();
+        }
+
+        /// <summary>Per-game layouts on or off. Nothing is copied either way:
+        /// the save below republishes the slot map and re-reads the pickers
+        /// from whichever list is in force now, which is the same list as a
+        /// moment ago until the user actually re-picks a box.</summary>
+        private void RemoteDashDrivePerGame_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashDriveSlotsPerGame = RemoteDashDrivePerGameCheck?.IsChecked == true;
             SaveRemoteDashDriveLayout();
         }
 

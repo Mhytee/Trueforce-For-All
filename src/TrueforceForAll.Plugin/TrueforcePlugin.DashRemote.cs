@@ -137,7 +137,7 @@ namespace TrueforceForAll.Plugin
         // Friendly labels for the Settings-tab pickers, index-matched above.
         internal static readonly string[] DashDriveContentLabels =
             { "Car facts", "Damage", "Friction circle", "Fuel", "G circle",
-              "Gains", "Inputs", "Lap delta + times", "Presets", "Radar",
+              "Gains", "Inputs", "Lap times", "Presets", "Radar",
               "Relative", "Tyre temps", "Tyre wear", "Visualizer", "Empty" };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
@@ -152,13 +152,234 @@ namespace TrueforceForAll.Plugin
         // property getters never re-walk settings per poll.
         private volatile string[] _dashDriveSlots = (string[])DashDriveFactorySlots.Clone();
 
+        // Content keys a game NEVER reports, comma-wrapped so the dash can
+        // test one with a plain indexOf(",Key,"). The wrapping is what stops
+        // a substring match; without it "Radar" would also be found inside a
+        // hypothetical "RadarRange".
+        //
+        // The bar for an entry here is high, and deliberately so: this is the
+        // list that takes a box AWAY from someone, and a wrong entry is worse
+        // than no entry. "The game does not report it", not "there is nothing
+        // to show right now". A gap we have not confirmed simply stays off
+        // the list, and the box keeps its own "this game does not report it"
+        // notice for the cases we cannot know in advance.
+        //
+        // Horizon: no lap timing, no opponents in the packet, no damage, no
+        // tyre wear (those fields exist but stay zero), and a fuel level
+        // pinned at 100%, which is worse than missing because it reads like a
+        // real number.
+        // Motorsport (FM7/FM8) is deliberately absent: its fuel and lap
+        // reporting are unconfirmed, so nothing of its is greyed out.
+        private const string HorizonGaps = ",Damage,Delta,Fuel,Radar,Relative,TyreWear,";
+        private static readonly Dictionary<string, string> DashUnsupportedByGame =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "FH4", HorizonGaps },
+                { "FH5", HorizonGaps },
+                { "FH6", HorizonGaps },
+            };
+
+        // The boxes we can learn about by watching. A game that reports one of
+        // these reports it early and in every session, so never having seen it
+        // after a decent amount of driving is real evidence. The rest of the
+        // gated boxes are not learnable and rely on the table above.
+        private static readonly string[] DashLearnableKeys =
+            { "Delta", "Fuel", "TyreTemps", "TyreWear" };
+        // How long a game has to be DRIVEN before absence counts as evidence.
+        // Ten minutes is far past the point where a game that reports tyre
+        // temperatures has reported them, and short enough that a Horizon
+        // player is not waiting a week for the picker to tell them the truth.
+        private const int DashCapLearnSeconds = 600;
+        // Flush cadence. The learner runs per frame and settings writes hit
+        // the disk, so evidence is banked in memory and written in batches.
+        private const double DashCapFlushSeconds = 60;
+
+        private string _capGame;
+        private readonly HashSet<string> _capSeenRun = new HashSet<string>(StringComparer.Ordinal);
+        private double _capSec;
+        private double _capUnflushedSec;
+        private int _capLastTick;
+        // What the dash reads. Rebuilt on a game change and after each flush
+        // rather than per poll, since it only changes when one of those does.
+        private volatile string _dashUnsupported = "";
+
+        /// <summary>The comma-wrapped content keys the running game never
+        /// reports: the hand-written table, plus anything learnable this game
+        /// has never produced in enough driving to judge. Empty for a game
+        /// with no known gaps, and for no game at all, so an unknown title
+        /// greys out nothing.</summary>
+        private string DashUnsupportedFor(string game)
+        {
+            if (string.IsNullOrEmpty(game)) return "";
+            string curated = DashUnsupportedByGame.TryGetValue(game, out var gaps) ? gaps : "";
+            var s = Settings;
+            if (s == null) return curated;
+            int driven = 0;
+            if (s.DashDriveDrivenSec != null) s.DashDriveDrivenSec.TryGetValue(game, out driven);
+            driven += (int)_capUnflushedSec;
+            if (driven < DashCapLearnSeconds) return curated;
+
+            string seen = "";
+            if (s.DashDriveSeen != null && s.DashDriveSeen.TryGetValue(game, out var sv) && sv != null) seen = sv;
+            var sb = new System.Text.StringBuilder(curated.Length == 0 ? "," : curated);
+            foreach (var k in DashLearnableKeys)
+            {
+                if (seen.IndexOf("," + k + ",", StringComparison.Ordinal) >= 0) continue;
+                if (_capSeenRun.Contains(k)) continue;                     // seen this run, not banked yet
+                if (sb.ToString().IndexOf("," + k + ",", StringComparison.Ordinal) >= 0) continue;
+                sb.Append(k).Append(",");
+            }
+            return sb.Length <= 1 ? "" : sb.ToString();
+        }
+
+        /// <summary>Republish what the running game cannot do. Cheap, but not
+        /// per-poll cheap, so it runs when the answer can actually change: a
+        /// game change, and each time learned evidence is banked.</summary>
+        internal void RecomputeDashUnsupported()
+        {
+            _dashUnsupported = DashUnsupportedFor(_activeGame);
+        }
+
+        /// <summary>Watch what the game actually reports, so the picker can
+        /// tell a box this title cannot fill from one that simply has nothing
+        /// to show right now. Per frame, allocation-free on the common path
+        /// (everything already seen, nothing to bank).</summary>
+        internal void DashLearnCapabilities(GameReaderCommon.GameData data)
+        {
+            var s = Settings;
+            var nd = data?.NewData;
+            string game = _activeGame;
+            if (s == null || nd == null || string.IsNullOrEmpty(game)) { _capLastTick = 0; return; }
+            if (!string.Equals(game, _capGame, StringComparison.Ordinal))
+            {
+                DashFlushCapabilities();
+                _capGame = game;
+                _capSeenRun.Clear();
+                _capSec = 0; _capUnflushedSec = 0; _capLastTick = 0;
+            }
+
+            // Driving time only. A car sitting in the pits reports no lap
+            // time and no wear however long you leave it there, and counting
+            // that would teach us the game reports neither.
+            int now = Environment.TickCount;
+            if (nd.SpeedKmh > 20)
+            {
+                if (_capLastTick != 0)
+                {
+                    int dt = unchecked(now - _capLastTick);
+                    // A negative or huge step is a wrapped tick count or a
+                    // stalled feed, not elapsed driving.
+                    if (dt > 0 && dt < 2000) { _capSec += dt / 1000.0; _capUnflushedSec += dt / 1000.0; }
+                }
+                _capLastTick = now;
+            }
+            else _capLastTick = 0;
+
+            var fz = ForzaUdpSource?.DashExtras;
+            if (!_capSeenRun.Contains("TyreTemps")
+                && (nd.TyreTemperatureFrontLeft > 0 || (fz?.TireTempFL ?? 0f) > 0))
+                _capSeenRun.Add("TyreTemps");
+            if (!_capSeenRun.Contains("TyreWear")
+                && (nd.TyreWearFrontLeft > 0 || (fz?.HasWear == true && (fz?.TireWearFL ?? 0f) > 0)))
+                _capSeenRun.Add("TyreWear");
+            if (!_capSeenRun.Contains("Fuel")
+                && (nd.MaxFuel > 0 || (fz?.FuelFraction ?? 0f) > 0))
+                _capSeenRun.Add("Fuel");
+            // Lap timing, not a lap DELTA: a running lap clock is the proof
+            // that the game times laps at all, and it is there from the moment
+            // you leave the pits rather than after a reference lap exists.
+            if (!_capSeenRun.Contains("Delta") && nd.CurrentLapTime.TotalSeconds > 0)
+                _capSeenRun.Add("Delta");
+
+            if (_capUnflushedSec >= DashCapFlushSeconds) DashFlushCapabilities();
+        }
+
+        /// <summary>Bank this run's evidence into settings. Merges rather than
+        /// replaces: what a game was seen to report is never unlearned.</summary>
+        internal void DashFlushCapabilities()
+        {
+            var s = Settings;
+            if (s == null || string.IsNullOrEmpty(_capGame)) return;
+            if (_capSeenRun.Count == 0 && _capSec < 1) return;
+            try
+            {
+                if (s.DashDriveSeen == null) s.DashDriveSeen = new Dictionary<string, string>();
+                if (s.DashDriveDrivenSec == null) s.DashDriveDrivenSec = new Dictionary<string, int>();
+
+                s.DashDriveSeen.TryGetValue(_capGame, out var seen);
+                if (string.IsNullOrEmpty(seen)) seen = ",";
+                bool changed = false;
+                foreach (var k in _capSeenRun)
+                {
+                    if (seen.IndexOf("," + k + ",", StringComparison.Ordinal) >= 0) continue;
+                    seen += k + ",";
+                    changed = true;
+                }
+                if (changed) s.DashDriveSeen[_capGame] = seen;
+
+                if (_capSec >= 1)
+                {
+                    s.DashDriveDrivenSec.TryGetValue(_capGame, out var had);
+                    s.DashDriveDrivenSec[_capGame] = had + (int)_capSec;
+                    changed = true;
+                }
+                _capSec = 0; _capUnflushedSec = 0;
+                if (changed)
+                {
+                    PersistSettings();
+                    RecomputeDashUnsupported();
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Banking game capabilities failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>The stored slot list in force right now: the running
+        /// game's own when per-game layouts are on and that game has one,
+        /// otherwise the shared list. A game with no entry deliberately reads
+        /// the shared one rather than the factory defaults, so switching to a
+        /// title you have never set up lands on the layout you were already
+        /// using instead of resetting the dash under you.</summary>
+        private List<string> ActiveDashDriveSlotList()
+        {
+            var s = Settings;
+            if (s == null) return null;
+            if (s.DashDriveSlotsPerGame && s.DashDriveSlotsByGame != null
+                && !string.IsNullOrEmpty(_activeGame)
+                && s.DashDriveSlotsByGame.TryGetValue(_activeGame, out var per)
+                && per != null && per.Count > 0)
+                return per;
+            return s.DashDriveSlots;
+        }
+
+        /// <summary>Store a new set of four slots where the current mode says
+        /// they belong: the running game's entry with per-game layouts on, the
+        /// shared list otherwise. With no game running there is nothing to key
+        /// against, so those changes go to the shared list even when per-game
+        /// is on. Callers persist; this only decides the destination.</summary>
+        internal void SetDashDriveSlots(IList<string> slots)
+        {
+            var s = Settings;
+            if (s == null || slots == null) return;
+            var list = new List<string>(slots);
+            if (s.DashDriveSlotsPerGame && !string.IsNullOrEmpty(_activeGame))
+            {
+                if (s.DashDriveSlotsByGame == null)
+                    s.DashDriveSlotsByGame = new Dictionary<string, List<string>>();
+                s.DashDriveSlotsByGame[_activeGame] = list;
+            }
+            else s.DashDriveSlots = list;
+        }
+
         /// <summary>The four Drive-screen slot contents, sanitized: an unknown
         /// or missing entry falls back to that slot's factory default, so an
         /// empty stored list is exactly the shipped layout.</summary>
         internal string[] GetDashDriveSlots()
         {
             var outp = new string[DashDriveSlotCount];
-            var stored = Settings?.DashDriveSlots;
+            var stored = ActiveDashDriveSlotList();
             for (int i = 0; i < DashDriveSlotCount; i++)
             {
                 string v = stored != null && i < stored.Count ? stored[i] : null;
@@ -1264,6 +1485,12 @@ namespace TrueforceForAll.Plugin
                 });
             }
             this.AttachDelegate("Dash.Drive.TwoRows", () => Settings?.DashDriveTwoRows != false);
+            // Which boxes this GAME can never fill, for the picker to grey
+            // out. Capability, not "is there data this instant": being alone
+            // on track is not the same as a game having no opponent data, and
+            // a radar tile you cannot pick because nobody else turned up
+            // would be wrong about Assetto Corsa.
+            this.AttachDelegate("Dash.Drive.Unsupported", () => _dashUnsupported);
             this.AttachDelegate("Dash.Drive.EditSlot", () =>
             {
                 switch (_dashDriveEditSlot)
@@ -1600,8 +1827,9 @@ namespace TrueforceForAll.Plugin
                     if (slot < 0 || slot >= cur.Length) { _dashOverlay = ""; return; }
                     cur[slot] = DashDriveContentKeys[idx];
                     // Stored as a plain list of four, which is what the
-                    // sanitizer expects to read back.
-                    Settings.DashDriveSlots = new List<string>(cur);
+                    // sanitizer expects to read back. Which list it lands in
+                    // is the per-game setting's business, not the picker's.
+                    SetDashDriveSlots(cur);
                     PersistSettings();
                     RefreshDashTabSlots();
                     _dashOverlay = "";

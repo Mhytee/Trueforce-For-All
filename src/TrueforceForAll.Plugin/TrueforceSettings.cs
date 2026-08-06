@@ -441,6 +441,52 @@ namespace TrueforceForAll.Plugin
         public List<string> DashDriveSlots { get; set; } = new List<string>();
         public bool DashDriveTwoRows { get; set; } = true;
 
+        // Per-game Drive-tab layouts. The boxes read game telemetry and the
+        // games disagree wildly about what they report, so a layout that fills
+        // up in one title is half "this game does not report it" in the next.
+        //
+        // Off is the old single-layout behaviour and stays the default: this
+        // only earns its keep for someone who plays several titles, and a
+        // setting that silently splits one layout into many is a bad surprise
+        // for everyone else.
+        //
+        // On, a change made while a game is running is stored against that
+        // game, and DashDriveSlots above keeps its job as the layout for every
+        // game with no entry of its own (which is also where a change made
+        // with no game running still goes). So turning this on changes nothing
+        // until you actually re-pick a box, and turning it off again returns
+        // you to the shared layout with the per-game ones kept.
+        //
+        // Keyed by SimHub GameName, like GameEnabled and GameDefaults.
+        // MUST default EMPTY for the same loader reason as DashDriveSlots.
+        public bool DashDriveSlotsPerGame { get; set; } = false;
+        public Dictionary<string, List<string>> DashDriveSlotsByGame { get; set; }
+            = new Dictionary<string, List<string>>();
+
+        // What each game has been SEEN to report, so the box picker can grey
+        // out a box the game cannot fill without anyone hand-listing every
+        // title. Keyed by SimHub GameName; the value is the comma-wrapped set
+        // of content keys that have arrived at least once, and it only ever
+        // grows.
+        //
+        // Positive evidence only. "Seen once" is proof a game reports
+        // something; "not seen yet" is proof of nothing, which is why the
+        // seconds below exist: a box is greyed out only after that game has
+        // been DRIVEN for long enough that never having seen the value means
+        // something. Parked time does not count, or a session spent sitting
+        // in the pit box would teach us the game has no lap timing.
+        //
+        // Deliberately not the whole list of boxes. Damage cannot be learned
+        // (SimHub reports zero damage and no damage identically), and the two
+        // car-list boxes cannot either, since a driver who only ever hotlaps
+        // alone would otherwise teach us their game has no opponents. Those
+        // stay with the hand-written table in the plugin.
+        // MUST default EMPTY for the same loader reason as DashDriveSlots.
+        public Dictionary<string, string> DashDriveSeen { get; set; }
+            = new Dictionary<string, string>();
+        public Dictionary<string, int> DashDriveDrivenSec { get; set; }
+            = new Dictionary<string, int>();
+
         // TF4ALL Dash: show a coloured race-flag band across the top of
         // whichever screen is open. Reads SimHub's own flag properties, so it
         // only ever lights up in games that report flags (the Forza titles

@@ -98,6 +98,11 @@ $TILEON  = '#FF23503A'   # toggle tile on state
 $GREEN   = '#FF37D67A'
 $RED     = '#FFE5484D'
 $YELLOW  = '#FFE8C547'   # spike-reduction badge lit state
+# Best lap. Violet is what every timing screen in the sport uses for a
+# fastest time, so it needs no legend, and it is the one highlight that
+# cannot be mistaken for the green/red of a delta sitting two rows above
+# it. A meaning colour like those two, so no theme repaints it.
+$VIOLET  = '#FFB388FF'
 # Text is white or grey, never coloured, and these three match the tones
 # the plugin serves for Text/Muted/Dim. They used to be a blue-tinted white
 # and a blue-grey, which is subtle in isolation and obvious once a theme
@@ -468,15 +473,129 @@ function FmtLapDualJs([string]$fzProp, [string]$simProp) {
     'return (t==""||t.indexOf("00:00.00")==0)?"--":t'
 }
 
+# The lap delta, as the one expression both readouts share: the headline
+# in the Drive box and the line above the gear. Leaves `d` in scope, either
+# null when there is nothing to compare against or {v: seconds, lap: 1 if
+# this is the finished lap's delta rather than the running one}.
+#
+# Live against the session best, holding the finished lap's delta for a few
+# seconds after the line. It used to be SessionBestLastLapDelta alone, which
+# moves only when a lap completes and is exactly zero whenever the lap that
+# just ended set the best, so a session where you keep improving reads 0.00
+# from start to finish and the number never moves while you drive.
+#
+# The hold is on lap CLOCK, not on a change watcher. SimHub's changed()
+# belongs to the NCalc interpreter and every formula here is JS, and the JS
+# alternative is a global that survives between evaluations, which is state
+# this dashboard has nowhere to put. Seconds into the current lap says the
+# same thing without remembering anything, and it covers a case a watcher
+# does not: the live delta in the opening seconds of a lap is noise
+# hovering around zero anyway.
+#
+# Gated on the session best rather than on isNaN. A property the game never
+# sets comes back null, and 1*null is 0 rather than NaN, so the old guard
+# could not fire: with nothing to compare against, the box printed a
+# confident green 0.00 instead of "--". SessionBest is a TimeSpan, so it
+# reads as a string here, empty or 00:00:00 until a lap has been banked.
+# That gate is also what keeps the hold from firing on an out lap, when
+# there is no finished lap to hold.
+function DeltaJs([int]$holdSec = 5) {
+    'var d=(function(){' +
+    'var b=""+($prop("' + $script:TRK + 'SessionBest")||"");' +
+    'if(b==""||b.indexOf("00:00:00")==0)return null;' +
+    'var t=""+($prop("' + $script:SIM + 'CurrentLapTime")||"");var p=t.split(":");' +
+    'var sec=p.length>=3?(1*p[0])*3600+(1*p[1])*60+(1*p[2]):-1;' +
+    'if(sec>=0&&sec<' + $holdSec + '){' +
+    'var l=1*$prop("' + $script:TRK + 'SessionBestLastLapDelta");' +
+    'if(!isNaN(l))return {v:l,lap:1};}' +
+    'var v=1*$prop("' + $script:TRK + 'SessionBestLiveDeltaSeconds");' +
+    'return isNaN(v)?null:{v:v,lap:0};})();'
+}
+# The text for that `d`, shared for the same reason. $empty is what shows
+# with no reference lap yet: the box has the room to say "--", the gear
+# column just goes away.
+function DeltaTextJs([string]$empty) {
+    'return d===null?"' + $empty + '":(d.v>0?"+":"")+d.v.toFixed(2)'
+}
+# A lap that took the session best lands on a delta of exactly zero, because
+# the best it is measured against is that same lap. Flashing "0.00" for your
+# best lap of the day is the very thing that made this readout look broken,
+# so that case hands over to a pair of items that say BEST and print the lap
+# you just set. Both readouts swap the same way: this says which state we are
+# in, and the two sides gate on it in opposite directions.
+function DeltaIsBestJs {
+    'if(d&&d.lap&&d.v===0)'
+}
+function DeltaColorJs {
+    'return d===null?"' + $script:MUTED + '":(d.v>0?"' + $script:RED + '":"' + $script:GREEN + '")'
+}
+
 # One labelled value line inside a box.
-function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [string]$vis, [int]$size = 20) {
-    $l = New-Text "$name-l" $x $y ($w * 0.46) 30 14 $label $script:MUTED 0
+# The two trailing sizes and the colour are for a box that has room to
+# spare and a row worth picking out; every caller that says nothing keeps
+# exactly what it had.
+function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [string]$vis, [int]$size = 20,
+                 [int]$labelSize = 14, [string]$valueColor = '') {
+    $l = New-Text "$name-l" $x $y ($w * 0.46) 30 $labelSize $label $script:MUTED 0
     $l.Bindings['Visible'] = BindJS 'Visible' $vis
-    $v = New-Text "$name-v" ($x + $w * 0.46) $y ($w * 0.54) 30 $size '' $script:WHITE 2 @{
+    $vc = if ($valueColor) { $valueColor } else { $script:WHITE }
+    $v = New-Text "$name-v" ($x + $w * 0.46) $y ($w * 0.54) 30 $size '' $vc 2 @{
         Text = BindJS 'Text' $valueJs
     } 'Bold'
     $v.Bindings['Visible'] = BindJS 'Visible' $vis
     @($l, $v)
+}
+
+# What each box NEEDS the game to report, as a JS test. One table, because
+# two places ask the same question: the box itself, which puts up "this game
+# does not report it" in place of its readouts, and the box picker, which
+# greys the tile out so you cannot pick it in the first place. Keyed by
+# content key, the same key the plugin stores and the picker indexes by, so
+# neither list can drift from the other.
+#
+# Forza first, SimHub second. A Forza player normally leaves "Also forward
+# to SimHub" off, so SimHub's own properties stay empty all session while our
+# UDP listener has the data; every one of these would otherwise report "not
+# reported" to exactly the audience the Drive tab was built for. Zero from
+# our parse still means "this title does not report it" (Horizon leaves parts
+# of the dash block empty), so the test still does its job.
+#
+# Boxes of ours have NO entry and are never greyed out: car facts, gains,
+# presets, the visualizer and inputs run on our own data in every game.
+function BoxDataJs([string]$P) {
+    # Accelerations: the g circle's own test, and half the friction one.
+    $g   = '!isNaN(1*$prop("' + $P + '.Drive.GLat"))'
+    # One test for both car-list boxes: they need someone else out there.
+    $opp = '(1*$prop("' + $script:SIM + 'OpponentsCount"))>1'
+    $t = [ordered]@{
+        Damage    = '(""+$prop("' + $script:SIM + 'CarDamage1")||"")!=""'
+        Friction  = '($prop("' + $P + '.ModeB.On"))||(' + $g + ')'
+        Fuel      = '((1*$prop("' + $P + '.Forza.FuelPct"))>0)||((1*$prop("' + $script:SIM + 'MaxFuel"))>0)'
+        GCircle   = $g
+        Delta     = '(""+$prop("' + $script:TRK + 'EstimatedLapTime")||"")!=""'
+        Radar     = $opp
+        Relative  = $opp
+        TyreTemps = '((1*$prop("' + $P + '.Forza.TempFL"))>0)||((1*$prop("' + $script:SIM + 'TyreTemperatureFrontLeft"))>0)'
+        TyreWear  = '($prop("' + $P + '.Forza.HasWear")&&(1*$prop("' + $P + '.Forza.WearFL"))>0)||((1*$prop("' + $script:SIM + 'TyreWearFrontLeft"))>0)'
+    }
+    # A box needs BOTH: the game has to be able to report it at all, and the
+    # value has to be there right now. The capability half catches what a
+    # live reading cannot, Horizon's fuel being the case that proves it:
+    # pinned at 100%, it passes any test asking "is there a number here" and
+    # the box would show a full tank all session rather than admitting the
+    # game never fills it.
+    $out = [ordered]@{}
+    foreach ($k in $t.Keys) { $out[$k] = '(' + (BoxCapJs $P $k) + ')&&(' + $t[$k] + ')' }
+    $out
+}
+
+# Can this GAME ever fill this box? Reads the plugin's list of what the
+# running title never reports. Comma-wrapped on both sides so one key cannot
+# match inside another, and an empty list (unknown game, or a plugin too old
+# to publish it) means everything is available, which is the direction an
+# unknown should fail in.
+function BoxCapJs([string]$P, [string]$key) {
+    '(""+$prop("' + $P + '.Drive.Unsupported")).indexOf(",' + $key + ',")<0'
 }
 
 # ---------------------------------------------------------------------
@@ -724,37 +843,30 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $script:slotN = $slot; $script:ixN = $ix; $script:iyN = $iy; $script:iwN = $iw
 
     # --- data tests, per content type ---
-    # Forza first, SimHub second. A Forza player normally leaves "Also
-    # forward to SimHub" off, so SimHub's own properties stay empty all
-    # session while our UDP listener has the data; every one of these
-    # boxes would otherwise show its "not reported" notice to exactly
-    # the audience the Drive tab was built for. Zero from our parse
-    # still means "this title does not report it" (Horizon leaves parts
-    # of the dash block empty), so the notice still does its job.
-    $fzTempJs = 'function(){var t=1*$prop("' + $P + '.Forza.TempFL");return t>0}'
-    # Having a BEST lap means a lap has been COMPLETED, which is not the
-    # same as the game reporting lap times: before the first flying lap this
-    # claimed Assetto Corsa does not report them. A running current lap is
-    # the honest test, and it is there from the moment you leave the pits.
-    $dLap   = '((1*$prop("' + $P + '.Forza.BestLap"))>0)' +
-              '||((1*$prop("' + $P + '.Forza.CurLap"))>0)' +
-              '||((""+$prop("' + $SIM + 'CurrentLapTime")||"")!="")' +
-              '||((""+$prop("' + $SIM + 'BestLapTime")||"")!=""&&(""+$prop("' + $SIM + 'BestLapTime")).indexOf("00:00:00")!=0)'
-    $dTemp  = '((1*$prop("' + $P + '.Forza.TempFL"))>0)||((1*$prop("' + $SIM + 'TyreTemperatureFrontLeft"))>0)'
-    $dWear  = '($prop("' + $P + '.Forza.HasWear")&&(1*$prop("' + $P + '.Forza.WearFL"))>0)||((1*$prop("' + $SIM + 'TyreWearFrontLeft"))>0)'
-    $dFuel  = '((1*$prop("' + $P + '.Forza.FuelPct"))>0)||((1*$prop("' + $SIM + 'MaxFuel"))>0)'
-    $dDelta = '(""+$prop("' + $TRK + 'EstimatedLapTime")||"")!=""'
-    $dOpp   = '(1*$prop("' + $SIM + 'OpponentsCount"))>1'
-    $dG     = '!isNaN(1*$prop("' + $P + '.Drive.GLat"))'
-    # Telemetry FFB gives the better grip number, but it is no longer the
-    # only one: with it off the box runs on measured accelerations, so it
-    # needs whatever the g circle needs.
-    # SimHub's CarDamage1-5. Forza's packet carries no damage at all, so
-    # this is one of the few boxes with no telemetry of our own behind it.
-    # A panel reporting a number at all counts as reported, zero included,
-    # because a pristine car is a real reading.
-    $dDmg   = '(""+$prop("' + $SIM + 'CarDamage1")||"")!=""'
-    $dFric  = '($prop("' + $P + '.ModeB.On"))||(' + $dG + ')'
+    # Hoisted into BoxDataJs so the picker can grey out a tile using the
+    # SAME test that decides whether the box shows its "not reported"
+    # notice. Two tests that could disagree about one game is the bug this
+    # avoids. (A dead $fzTempJs and $dLap lived here too, defined and never
+    # read; the lap one lost its last caller when the box moved to the
+    # EstimatedLapTime test below.)
+    #
+    # Telemetry FFB gives the better grip number for the friction circle,
+    # but it is no longer the only one: with it off the box runs on measured
+    # accelerations, so it needs whatever the g circle needs.
+    #
+    # Damage is SimHub's CarDamage1-5, one of the few boxes with no
+    # telemetry of our own behind it (Forza's packet carries no damage at
+    # all). A panel reporting a number at all counts as reported, zero
+    # included, because a pristine car is a real reading.
+    $bd     = BoxDataJs $P
+    $dTemp  = $bd['TyreTemps']
+    $dWear  = $bd['TyreWear']
+    $dFuel  = $bd['Fuel']
+    $dDelta = $bd['Delta']
+    $dOpp   = $bd['Radar']       # same test serves Relative
+    $dG     = $bd['GCircle']
+    $dDmg   = $bd['Damage']
+    $dFric  = $bd['Friction']
 
     # ---------------- CAR FACTS (ours, always available) -------------
     # Tappable exactly like the Car facts tab: the engine row opens the
@@ -1104,32 +1216,61 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     BoxLine "d$slot-fu-lit" $ix ($iy + 142) $iw 'In tank' ('var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)||v<=0?"--":v.toFixed(1)+" L"') $vis 17 | ForEach-Object { $items.Add($_) }
     $items.Add((AddNote 'fu' 'This game does not report fuel.' 'Fuel' $dFuel))
 
-    # ---------------- LAP DELTA --------------------------------------
-    # One box for the whole lap picture. A separate Lap times box repeated
-    # two of these rows and only the delta ever needed a headline, so the
-    # running lap joins it here: that number was the reason to keep both.
+    # ---------------- LAP TIMES ---------------------------------------
+    # One box for the whole lap picture: the four times, with the delta as
+    # its headline. A separate Lap times box used to repeat two of these
+    # rows, and the delta now has a line of its own above the gear, so the
+    # merged box takes the plainer of the two names. The stored key stays
+    # "Delta" either way, since it is what four saved slot lists say.
     $vis = KeyVis 'Delta' $dDelta
-    $hd = AddHead 'dl' 'LAP DELTA' 'Delta'
+    $hd = AddHead 'dl' 'LAP TIMES' 'Delta'
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
     $items.Add($hd)
+    $dlJs = DeltaJs
     $t = New-Text "d$slot-dl-v" $ix ($iy + 22) $iw 44 32 '' $script:WHITE 1 @{
-        Text = BindJS 'Text' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"--":(v>0?"+":"")+v.toFixed(2)')
-        TextColor = BindJS 'TextColor' ('var v=1*$prop("' + $TRK + 'SessionBestLastLapDelta");return isNaN(v)?"' + $script:MUTED + '":(v>0?"' + $script:RED + '":"' + $script:GREEN + '")')
+        Text = BindJS 'Text' ($dlJs + (DeltaTextJs '--'))
+        TextColor = BindJS 'TextColor' ($dlJs + (DeltaColorJs))
     } 'Bold'
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    # Four rows at 28 rather than three at 32: the extra one has to fit the
-    # short box as well as the tall one.
+    # Stands down for the best-lap pair below rather than trying to be them.
+    $t.Bindings['Visible'] = BindJS 'Visible' ($dlJs + (DeltaIsBestJs) + 'return false;' + $vis)
+    $items.Add($t)
+    # The best-lap flash: the word, and the time you just set under it. One
+    # number in the delta's place cannot be both, and of the two the lap time
+    # is the one you want to read, so it gets the size. Violet, the same
+    # violet as the Best row four lines down, because it is the same fact.
+    # "if best, whatever the box's own visibility says; otherwise no." The
+    # semicolon matters: $vis is a bare `return ...` with nothing after it.
+    $onBest = $dlJs + (DeltaIsBestJs) + $vis + '; return false;'
+    $t = New-Text "d$slot-dl-bw" $ix ($iy + 20) $iw 18 15 'BEST' $script:VIOLET 1 $null 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $onBest; $items.Add($t)
+    $t = New-Text "d$slot-dl-bt" $ix ($iy + 38) $iw 28 26 '' $script:VIOLET 1 @{
+        Text = BindJS 'Text' (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime'))
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $onBest; $items.Add($t)
+    # Sized to be read at speed from a phone clamped to the wheel, which is
+    # what these numbers are for. The old 14/17 was a settings-panel size on
+    # a screen nobody reads parked. The rows still have to clear the SHORT
+    # box: content runs to iy+196 there, and four rows of 30 from iy+68 end
+    # at iy+188.
+    $dlY0 = $iy + 68; $dlGap = 30
     $dlRows = @(
-        @('cur',  'Current',   (FmtLapDualJs ($P + '.Forza.CurLap')  ($SIM + 'CurrentLapTime'))),
-        @('est',  'Estimated', (FmtLapJs ($TRK + 'EstimatedLapTime'))),
-        @('last', 'Last',      (FmtLapDualJs ($P + '.Forza.LastLap') ($SIM + 'LastLapTime'))),
-        @('best', 'Best',      (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime')))
+        @('cur',  'Current',   (FmtLapDualJs ($P + '.Forza.CurLap')  ($SIM + 'CurrentLapTime')), 20, ''),
+        @('est',  'Estimated', (FmtLapJs ($TRK + 'EstimatedLapTime')), 20, ''),
+        @('last', 'Last',      (FmtLapDualJs ($P + '.Forza.LastLap') ($SIM + 'LastLapTime')), 20, ''),
+        @('best', 'Best',      (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime')), 23, $script:VIOLET)
     )
+    # The best lap gets a chip behind it as well as the violet, because on
+    # the dimmer themes colour alone is doing all the work. Added before the
+    # rows so it sits under them, and inset past the text on both sides so it
+    # reads as a band on the row rather than a button someone could tap.
+    $r = ThemePaint (New-Rect "d$slot-dl-hl" ($ix - 6) ($dlY0 + ($dlRows.Count - 1) * $dlGap) ($iw + 12) 30 $script:SUBPANEL $null 6) 'Sub'
+    $r.Bindings['Visible'] = BindJS 'Visible' $vis
+    $items.Add($r)
     for ($d = 0; $d -lt $dlRows.Count; $d++) {
-        BoxLine "d$slot-dl-$($dlRows[$d][0])" $ix ($iy + 70 + $d * 28) $iw $dlRows[$d][1] $dlRows[$d][2] $vis 17 |
-            ForEach-Object { $items.Add($_) }
+        BoxLine "d$slot-dl-$($dlRows[$d][0])" $ix ($dlY0 + $d * $dlGap) $iw $dlRows[$d][1] $dlRows[$d][2] $vis `
+            $dlRows[$d][3] 16 $dlRows[$d][4] | ForEach-Object { $items.Add($_) }
     }
-    $items.Add((AddNote 'dl' 'This game does not report lap deltas.' 'Delta' $dDelta))
+    $items.Add((AddNote 'dl' 'This game does not report lap times.' 'Delta' $dDelta))
 
     # ---------------- G CIRCLE (game accelerations) ------------------
     # Classic g-g diagram: the dot is where the car's acceleration
@@ -2287,21 +2428,57 @@ function DriveBoxOverlay([string]$P) {
         Text = BindJS 'Text' ('return "' + 'BOX: ' + '"+(""+$prop("' + $P + '.Drive.EditSlot"))')
     } 'Bold') 'drivebox'))
     # Index-matched with DashDriveContentKeys: the plugin indexes a tile
-    # straight into that array, so these must stay in the same order.
+    # straight into that array, so these must stay in the same order. The
+    # keys are here as well as the labels because a tile has to look up what
+    # its box needs from the game, and BoxDataJs is keyed the plugin's way.
     $labels = @('Car facts', 'Damage', 'Friction circle', 'Fuel', 'G circle', 'Gains',
-                'Inputs', 'Lap delta + times', 'Presets', 'Radar', 'Relative',
+                'Inputs', 'Lap times', 'Presets', 'Radar', 'Relative',
                 'Tyre temps', 'Tyre wear', 'Visualizer', 'Empty')
+    $keys   = @('CarFacts', 'Damage', 'Friction', 'Fuel', 'GCircle', 'Home',
+                'Inputs', 'Delta', 'Presets', 'Radar', 'Relative',
+                'TyreTemps', 'TyreWear', 'Scope', 'None')
+    $onOv = '(""+$prop("' + $P + '.Overlay"))=="drivebox"'
+    # Which boxes depend on the game at all: exactly the ones BoxDataJs has a
+    # test for. Everything else is ours and can never be unavailable.
+    $gated = @((BoxDataJs $P).Keys)
     $cols = 4; $tw = 176; $th = 62; $gx = 12; $gy = 12
     $x0 = (800 - ($cols * $tw + ($cols - 1) * $gx)) / 2
     $y0 = 58
     for ($i = 0; $i -lt $labels.Count; $i++) {
         $cx = $x0 + ($i % $cols) * ($tw + $gx)
         $cy = $y0 + [math]::Floor($i / $cols) * ($th + $gy)
+        # Greyed out ONLY where the game cannot report it at all. Not on
+        # whether the data happens to be there this instant: going out alone
+        # is not Assetto Corsa lacking a radar, and a tile you could not pick
+        # until someone else joined would be wrong about the game and
+        # infuriating in a practice session. The box itself still says "no
+        # other cars in this session" when that is the actual situation.
+        $sup = if ($gated -contains $keys[$i]) { '(' + (BoxCapJs $P $keys[$i]) + ')' } else { '' }
         $bg = New-Rect "db-t$i-bg" $cx $cy $tw $th $script:TILE $null 6
         $items.Add((OnOverlay $bg 'drivebox'))
         $t = New-Text "db-t$i-t" $cx $cy $tw $th 15 $labels[$i] $script:WHITE 1
         $items.Add((OnOverlay $t 'drivebox'))
-        $items.Add((OnOverlay (New-Button "db-t$i" $cx $cy $tw $th "DashDriveBoxPick$i") 'drivebox'))
+        $btn = OnOverlay (New-Button "db-t$i" $cx $cy $tw $th "DashDriveBoxPick$i") 'drivebox'
+        if ($sup) {
+            # Themed on both sides rather than switched between two literals:
+            # a bound colour is one the theme pass leaves alone, so a hard
+            # -coded grey here would be the one tile label no palette could
+            # repaint. Tile and label dim together; the label alone read as
+            # a rendering glitch rather than a disabled control.
+            $bg.Bindings['BackgroundColor'] = BindJS 'BackgroundColor' (
+                'return ' + $sup + '?(""+$prop("' + $script:TH + 'Tile")):(""+$prop("' + $script:TH + 'Sub"))')
+            $t.Bindings['TextColor'] = BindJS 'TextColor' (
+                'return ' + $sup + '?(""+$prop("' + $script:TH + 'Text")):(""+$prop("' + $script:TH + 'Dim"))')
+            # The label lifts to make room for the reason underneath it.
+            $t.Bindings['Top'] = BindJS 'Top' ('return ' + $sup + '?' + $cy + ':' + ($cy - 9))
+            $nd = New-Text "db-t$i-nd" $cx ($cy + 26) $tw 24 11 'NOT IN THIS GAME' $script:GRAY 1
+            $nd.Bindings['Visible'] = BindJS 'Visible' ('return ' + $onOv + ' && !' + $sup)
+            $items.Add($nd)
+            # Disabled means it cannot be tapped, not just that it looks
+            # unavailable: the button goes away entirely while unsupported.
+            $btn.Bindings['Visible'] = BindJS 'Visible' ('return ' + $onOv + ' && ' + $sup)
+        }
+        $items.Add($btn)
     }
     $cyc = $y0 + 4 * ($th + $gy) + 6
     # Red and bold, like every other cancel on the dash. This one was muted
@@ -2911,6 +3088,50 @@ $rpm = New-Text 'dr-rpm' 300 26 200 28 22 '' $MUTED 1 @{
     Top  = BindJS 'Top' $rpmTop
 } 'Bold'
 $s7.Add($rpm)
+
+# Delta under the revs, still above the gear. The number you actually chase
+# in a race, and hunting for it in a corner of the screen is how you lose
+# the corner, so it sits in the one column your eyes are already on.
+#
+# Follows the revs down through all four band positions rather than picking
+# its own, one line below them, and the gear column has the room for it: the
+# digits are centred in a 210px box, so their glyphs do not begin until well
+# below this line in either layout.
+#
+# No text at all when there is nothing to compare against, which is most of
+# a Horizon session. The Drive box can afford to sit there saying "--"
+# because it has a title explaining what the dashes are for; a bare number
+# floating over the gear cannot, so it simply goes away.
+$dlJs = DeltaJs
+# Its resting place in each of the four band positions, and the same again
+# shifted down for the second line of the best-lap flash. Built once here
+# because three items have to agree about where this line starts.
+function DrDeltaTop([int]$off) {
+    'return ' + $twoRows + '?(' + $revCen + '?' + (64 + $off) + ':' + (56 + $off) + '):(' +
+        $revCen + '?' + (101 + $off) + ':' + (93 + $off) + ')'
+}
+$dlt = New-Text 'dr-delta' 300 56 200 30 26 '' $GREEN 1 @{
+    Text = BindJS 'Text' ($dlJs + (DeltaTextJs ''))
+    TextColor = BindJS 'TextColor' ($dlJs + (DeltaColorJs))
+    Top  = BindJS 'Top' (DrDeltaTop 0)
+} 'Bold'
+$dlt.Bindings['Visible'] = BindJS 'Visible' ($dlJs + (DeltaIsBestJs) + 'return false; return d!==null')
+$s7.Add($dlt)
+# Best-lap flash, same two lines as the box. Smaller than in the box: this
+# column has the gear underneath it, and in the tightest of the four layouts
+# there are 44px between the revs and the top of the digits.
+$onBestDr = $dlJs + (DeltaIsBestJs) + 'return true; return false;'
+$dlb = New-Text 'dr-delta-bw' 300 56 200 14 13 'BEST' $VIOLET 1 @{
+    Top = BindJS 'Top' (DrDeltaTop 0)
+} 'Bold'
+$dlb.Bindings['Visible'] = BindJS 'Visible' $onBestDr
+$s7.Add($dlb)
+$dlb = New-Text 'dr-delta-bt' 300 70 200 24 20 '' $VIOLET 1 @{
+    Text = BindJS 'Text' (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime'))
+    Top  = BindJS 'Top' (DrDeltaTop 14)
+} 'Bold'
+$dlb.Bindings['Visible'] = BindJS 'Visible' $onBestDr
+$s7.Add($dlb)
 # Speed follows SimHub's unit setting when SimHub has the data; from our
 # own frame it is km/h, converted here when the user is set to MPH.
 $spd = New-Text 'dr-speed' 300 268 200 40 26 '' $MUTED 1 @{
@@ -3252,14 +3473,20 @@ if ($misplaced.Count) {
 }
 
 # Text is white or grey. The only colours allowed on it are the ones that
-# MEAN something, and they are listed here by hand so that adding a fifth
+# MEAN something, and they are listed here by hand so that adding another
 # is a decision rather than an accident.
 #
 # This is checked rather than trusted because a text colour can arrive from
 # three places: the item, the theme, or a literal baked into a computed
 # expression. The last kind is invisible to the theme pass, and ~120 of
 # them sat there holding a blue-grey through every palette.
-$SEMANTIC_TEXT = @('#FF37D67A', '#FFE5484D', '#FFE8A33D', '#FFE8C547')
+#
+# The violet is the fifth, added for the best lap in the Drive box. It earns
+# a place on this list on the same terms as the others: it is not decoration
+# but the answer to "which of these four times is the one to beat", and the
+# sport has meant exactly that by violet for long enough that it needs no
+# legend.
+$SEMANTIC_TEXT = @('#FF37D67A', '#FFE5484D', '#FFE8A33D', '#FFE8C547', '#FFB388FF')
 function ColorSpread([string]$hex) {
     $r = [Convert]::ToInt32($hex.Substring(3, 2), 16)
     $g = [Convert]::ToInt32($hex.Substring(5, 2), 16)
@@ -3751,12 +3978,13 @@ foreach ($k in $pvModeB.Keys) {
     $ovModeB["mb-$k-up-t"]   = @{ Show = $true }
 }
 
-# Drive tab: show the factory box assignment (car facts / lap times /
-# scope / tyre temps) in the two-row layout, since every box item is
+# Drive tab: show the factory box assignment (car facts / tyre temps /
+# scope / g circle) in the two-row layout, since every box item is
 # slot-gated and therefore hidden to the preview renderer by default.
 $ovDriveTab = PreviewChrome 78 0
 $ovDriveTab['dr-gear']  = @{ Text = '4' }
 $ovDriveTab['dr-rpm']   = @{ Text = '6420 rpm' }
+$ovDriveTab['dr-delta'] = @{ Show = $true; Text = '-0.42'; TextColor = $GREEN }
 $ovDriveTab['dr-speed'] = @{ Text = '148 kph' }
 foreach ($sl in 0, 1, 2, 3) { $ovDriveTab["d$sl-panel"] = @{ Show = $true } }
 # slot 0: car facts
@@ -3811,9 +4039,9 @@ $scPts = @()
 for ($i = 0; $i -lt 90; $i++) { $scPts += (0.72 * [math]::Sin($i / 7.5) + 0.24 * [math]::Sin($i / 2.6 + 0.8)) }
 $ovDriveTab['d2-sc-tr'] = @{ Show = $true; Points = $scPts }
 # The preview shows the SHIPPED defaults, so boxes that are not part of
-# the default set (lap times, wear, fuel, delta, gains, presets, friction,
-# relative, radar, inputs) have no override here and correctly stay hidden
-# in the thumbnail.
+# the default set (lap times, wear, fuel, gains, presets, friction,
+# relative, radar, inputs, damage) have no override here and correctly
+# stay hidden in the thumbnail.
 # slot 3: the g circle
 $ovDriveTab['d3-gc-h']   = @{ Show = $true }
 $ovDriveTab['d3-gc-r1']  = @{ Show = $true }

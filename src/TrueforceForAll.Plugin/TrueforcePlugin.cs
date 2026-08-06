@@ -3966,7 +3966,38 @@ namespace TrueforceForAll.Plugin
                     if (Settings.PluginEnabled != wantEnabled)
                         SetPluginEnabled(wantEnabled, persistForActiveGame: false);
                 }
+
+                // Drive-tab boxes follow the game, when the user asked them
+                // to. Nothing is written here: the refresh re-reads which
+                // stored list is in force now that _activeGame has moved, so
+                // a game with no layout of its own simply keeps showing the
+                // shared one. Cheap enough to run unconditionally, but gated
+                // anyway so an install that never turned this on cannot be
+                // affected by it at all.
+                if (Settings?.DashDriveSlotsPerGame == true)
+                {
+                    try { RefreshDashTabSlots(); }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Per-game Drive layout refresh failed: " + ex.Message);
+                    }
+                }
+                // What the picker greys out is a fact about the GAME, so it is
+                // rebuilt here rather than polled. Unconditional: this one is
+                // not behind a setting.
+                try { RecomputeDashUnsupported(); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Game capability refresh failed: " + ex.Message);
+                }
             }
+
+            // Watch what this game reports, so the picker learns which boxes
+            // it can never fill. After the block above, so a frame of the new
+            // game's data is never credited to the old one.
+            try { DashLearnCapabilities(data); } catch { /* display only */ }
 
             // Track car changes and apply per-car override (or revert).
             string carId = data?.NewData?.CarId ?? data?.NewData?.CarModel;
