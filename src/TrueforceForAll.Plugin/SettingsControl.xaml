@@ -2988,10 +2988,6 @@
                     <TextBlock Text="TF4ALL Dash" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
-                    <!-- Phone-access funnel: same handler as the header phone
-                         button; the QR dialog itself carries the scan / same
-                         network / Add to Home Screen guidance. -->
-                    <Button x:Name="DashPhoneSettingsButton" Content="Open on your phone or tablet…"
                     <!-- Grouped rather than one flat scroll: this section had grown to
                          six unrelated concerns in a single list. Phone access stays at
                          the top because it is how you first get the dash onto a device,
@@ -3013,7 +3009,7 @@
                     Click="DashPhoneAccess_Click"
                     ToolTip="Shows a QR code and link that open TF4ALL Dash on your phone."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="Applies to the rev LED strip on the TF4ALL Dash dashboard. The strip scales to the current car's redline and flashes in step with the wheel's rev lights; direction changes apply instantly, no dashboard reload needed."/>
+                    Text="Control effects, gains, and presets from your phone or tablet while driving. No SimHub setup needed: scan the QR code and the dash opens in your phone's browser."/>
 
                     <Expander IsExpanded="True" Margin="0,8,0,0">
                         <Expander.Header>
@@ -3171,16 +3167,6 @@
                 </StackPanel>
             </Expander>
 
-                        <TextBlock Text="Font" VerticalAlignment="Center" Margin="24,0,0,0"/>
-                        <ComboBox x:Name="RemoteDashIdleFontCombo" Width="118" Margin="8,0,0,0"
-                                  SelectionChanged="RemoteDashIdleFont_Changed"
-                                  ToolTip="Applies to the name and number on the idle card. The font has to exist on the device showing the dash, so an unknown one quietly falls back to the default."/>
-                        <CheckBox x:Name="RemoteDashIdleNameAboveCheck" Content="Name above" VerticalAlignment="Center" Margin="24,0,0,0"
-                                  Checked="RemoteDashIdleNameAbove_Changed" Unchecked="RemoteDashIdleNameAbove_Changed"
-                                  ToolTip="Puts the driver name over the number instead of under it."/>
-                        <CheckBox x:Name="RemoteDashIdleNameAboveCheck" Content="Name above" VerticalAlignment="Center" Margin="24,0,0,0"
-                                  Checked="RemoteDashIdleNameAbove_Changed" Unchecked="RemoteDashIdleNameAbove_Changed"
-                                  ToolTip="Puts the driver name over the number instead of under it."/>
             <!-- UDP telemetry: Forza UDP setup as its own collapsible, so it
                  reads as a primary setting rather than trailing Diagnostics.
                  Forza is the only UDP-telemetry game, so the body is the Forza
