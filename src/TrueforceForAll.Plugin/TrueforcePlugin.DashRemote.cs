@@ -56,6 +56,18 @@ namespace TrueforceForAll.Plugin
         // read on the property-poll thread; strings are reference-atomic so
         // torn reads are impossible and eventual consistency is fine here.
         private volatile string _dashOverlay = "";        // "" | "layout" | "keypad" | "presets"
+        // On-screen keyboard (Dash.Overlay == "kbd"). The numeric keypad next
+        // to this one covers gains and the redline; a car name is the one fact
+        // on the dash that needs letters, and without this it could only be
+        // changed at the PC.
+        private volatile string _dashKbdEntry = "";
+        private volatile string _dashKbdTitle = "";
+        private volatile string _dashKbdTarget = "";
+        // Sticky, and on when the keyboard opens, because a car name starts
+        // with a capital and model names are full of them (GT3, RS, AMG).
+        private volatile bool _dashKbdCaps = true;
+        private const int DashKbdMaxLen = 40;
+
         private volatile string _dashKeypadEntry = "";    // digits being typed
         // What the keypad edits when SET is pressed: "master" | "audio" |
         // "redline" | "fx:<Key>" (a _dashFx table key) | "modeb:<Key>" (a
@@ -840,20 +852,39 @@ namespace TrueforceForAll.Plugin
         private int _dashToastAtTick;
         private const int DashToastMs = 2000;
 
-        // A control that changes a number says what it changed it TO.
+        // For the BOUND controls only: Trueforce gain up and down, mapped to
+        // a wheel button in SimHub's Controls tab.
         //
-        // Nothing on the card is beside the buttons that move it: the value
-        // tile can be on another tab, and on the Drive tab the steppers have
-        // no readout at all, so pressing one told you nothing about whether
-        // it had done anything or where you had got to. This rides the same
-        // bar the messages use, so it costs no space and no bindings.
-        //
-        // Named in the same words as the control, not the setting: the label
-        // is what is printed next to the button being pressed.
+        // That is the one place where a control has no readout anywhere near
+        // it, because there is no screen involved at all. Everything on the
+        // dash itself sits next to a tile showing its value, so announcing
+        // those as well is noise, and every press of a stepper putting a card
+        // over the middle of the screen is worse than saying nothing.
         private void DashReadout(string label, string value)
         {
             _dashReadoutAtTick = Environment.TickCount;
+            _dashReadoutLabel = (label ?? "").ToUpperInvariant();
+            _dashReadoutValue = (value ?? "").ToUpperInvariant();
             _dashReadout = (label + "   " + value).ToUpperInvariant();
+        }
+
+        // The same readout, kept unjoined for surfaces that lay the label and
+        // the value out themselves. The wheel's OLED is one: its firmware
+        // draws the two on separate rows in different sizes, so it needs the
+        // halves, not the joined bar string.
+        private volatile string _dashReadoutLabel = "";
+        private volatile string _dashReadoutValue = "";
+
+        /// <summary>The readout that is live right now, or false when none is.
+        /// Same signal and the same expiry the dash's Dash.Readout property
+        /// uses, so every surface that shows it agrees on when it is up.</summary>
+        internal bool TryGetActiveReadout(out string label, out string value)
+        {
+            label = _dashReadoutLabel;
+            value = _dashReadoutValue;
+            if (label.Length == 0 && value.Length == 0) return false;
+            int age = unchecked(Environment.TickCount - _dashReadoutAtTick);
+            return age >= 0 && age <= DashReadoutMs;
         }
 
         // Gains read as a percentage, which is how the desktop sliders and
@@ -872,6 +903,17 @@ namespace TrueforceForAll.Plugin
 
         // Gate for the per-car surfaces (car facts, car presets). Explains
         // WHY the tap did nothing instead of silently no-opping.
+        // Caps is sticky rather than one-shot: model names run in blocks of
+        // capitals, so a shift that dropped after every letter would mean
+        // pressing it three times to type GT3.
+        private void DashKbdAppend(char c)
+        {
+            var e = _dashKbdEntry ?? "";
+            if (e.Length >= DashKbdMaxLen) return;
+            if (c >= 'A' && c <= 'Z' && !_dashKbdCaps) c = char.ToLowerInvariant(c);
+            _dashKbdEntry = e + c;
+        }
+
         private bool DashRequireCar()
         {
             if (string.IsNullOrEmpty(_activeGame))
@@ -1371,9 +1413,6 @@ namespace TrueforceForAll.Plugin
                 ApplyModeBFromSettings();
                 PersistSettings();
                 RaiseDashRemoteChanged();
-                // k.Fmt is the format the tile uses, so the message and the
-                // tile cannot disagree about how many decimals a knob has.
-                DashReadout(k.Label, value.ToString(k.Fmt));
             }
             catch (Exception ex)
             {
@@ -1449,6 +1488,9 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.MaxRpm",             () => DashSnap().MaxRpm);
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
             this.AttachDelegate("Dash.Tab",                () => _dashTab);
+            this.AttachDelegate("Dash.KbdEntry",          () => _dashKbdEntry);
+            this.AttachDelegate("Dash.KbdTitle",          () => _dashKbdTitle);
+            this.AttachDelegate("Dash.KbdCaps",           () => _dashKbdCaps);
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
             // ---------- properties: tuning save / revert ----------
@@ -1756,23 +1798,14 @@ namespace TrueforceForAll.Plugin
                 this.AttachDelegate("Dash.Fx." + f.Key + ".On", () =>
                     Settings != null && f.GetOn());
                 this.AddAction("DashFx" + f.Key + "Toggle", (a, b) =>
-                {
-                    DashMutateFx(f, () => f.SetOn(!f.GetOn()));
-                    DashReadout(f.Key, f.GetOn() ? "ON" : "OFF");
-                });
+                    DashMutateFx(f, () => f.SetOn(!f.GetOn())));
                 if (f.GetGain == null) continue;
                 this.AttachDelegate("Dash.Fx." + f.Key + ".Gain", () =>
                     Settings == null ? 0f : f.GetGain());
                 this.AddAction("DashFx" + f.Key + "GainUp", (a, b) =>
-                {
-                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: true, max: f.Max)));
-                    DashReadoutGain(f.Key + " GAIN", f.GetGain());
-                });
+                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: true, max: f.Max))));
                 this.AddAction("DashFx" + f.Key + "GainDown", (a, b) =>
-                {
-                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: false, max: f.Max)));
-                    DashReadoutGain(f.Key + " GAIN", f.GetGain());
-                });
+                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: false, max: f.Max))));
                 this.AddAction("DashFx" + f.Key + "GainOpen", (a, b) =>
                     DashOpenKeypad("fx:" + f.Key, f.Key.ToUpperInvariant() + " GAIN (now "
                         + (Settings == null ? 0f : f.GetGain()).ToString("0.###")
@@ -1797,12 +1830,9 @@ namespace TrueforceForAll.Plugin
                 PersistSettings();
                 DashRecordDirty(SectionKind.Audio);
                 RaiseDashRemoteChanged();
-                DashReadout("AUDIO", ActiveAudioEnabled ? "ON" : "OFF");
             });
-            this.AddAction("DashAudioGainUp",   (a, b) =>
-                { DashNudgeAudioGain(+DashAudioGainStep); DashReadoutGain("AUDIO GAIN", ActiveAudioGain); });
-            this.AddAction("DashAudioGainDown", (a, b) =>
-                { DashNudgeAudioGain(-DashAudioGainStep); DashReadoutGain("AUDIO GAIN", ActiveAudioGain); });
+            this.AddAction("DashAudioGainUp",   (a, b) => DashNudgeAudioGain(+DashAudioGainStep));
+            this.AddAction("DashAudioGainDown", (a, b) => DashNudgeAudioGain(-DashAudioGainStep));
 
             // ---------- properties + actions: Telemetry FFB (Tele-FFB tab) ----------
             // Mode B settings are global (no preset/car scope), so the
@@ -1931,10 +1961,8 @@ namespace TrueforceForAll.Plugin
             // ---------- actions: global ----------
             // Master gain reuses NudgeMasterGain (applies + persists + raises
             // MasterGainChangedExternally) with the user's configured step.
-            this.AddAction("DashMasterGainUp",   (a, b) =>
-                { DashNoteActivity(); NudgeMasterGain(+MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); });
-            this.AddAction("DashMasterGainDown", (a, b) =>
-                { DashNoteActivity(); NudgeMasterGain(-MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); });
+            this.AddAction("DashMasterGainUp",   (a, b) => { DashNoteActivity(); NudgeMasterGain(+MasterGainStep); });
+            this.AddAction("DashMasterGainDown", (a, b) => { DashNoteActivity(); NudgeMasterGain(-MasterGainStep); });
             this.AddAction("DashPluginToggle",   (a, b) =>
             {
                 DashNoteActivity();
@@ -2007,6 +2035,61 @@ namespace TrueforceForAll.Plugin
                 DashOpenKeypad("master", "MASTER GAIN (now " + MasterGain.ToString("0.00") + ", max 2)", 0f, 2f));
             this.AddAction("DashAudioGainOpen", (a, b) =>
                 DashOpenKeypad("audio", "AUDIO GAIN (now " + ActiveAudioGain.ToString("0.00") + ", max 3)", 0f, DashAudioGainMax));
+            // ---------- on-screen keyboard ----------
+            this.AddAction("DashCarNameOpen", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                if (!DashRequireCar()) return;
+                // Prefilled with the name in use, since a rename is usually a
+                // correction to what is already there rather than a fresh
+                // start. DEL is one tap away if it is not.
+                string cur = DashSnap().CarName ?? "";
+                _dashKbdEntry = cur.Length > DashKbdMaxLen ? cur.Substring(0, DashKbdMaxLen) : cur;
+                _dashKbdTarget = "carname";
+                _dashKbdTitle = "CAR NAME";
+                _dashKbdCaps = true;
+                _dashOverlay = "kbd";
+            });
+            this.AddAction("DashKbdCancel", (a, b) =>
+                { _dashOverlay = ""; _dashKbdEntry = ""; _dashKbdTarget = ""; });
+            this.AddAction("DashKbdCaps", (a, b) => { _dashKbdCaps = !_dashKbdCaps; });
+            this.AddAction("DashKbdBack", (a, b) =>
+            {
+                var e = _dashKbdEntry;
+                if (e.Length > 0) _dashKbdEntry = e.Substring(0, e.Length - 1);
+            });
+            this.AddAction("DashKbdSpace", (a, b) => DashKbdAppend(' '));
+            foreach (char ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+            {
+                char c = ch;   // capture per iteration
+                this.AddAction("DashKbd" + c, (a, b) => DashKbdAppend(c));
+            }
+            this.AddAction("DashKbdDash", (a, b) => DashKbdAppend('-'));
+            this.AddAction("DashKbdDot",  (a, b) => DashKbdAppend('.'));
+            this.AddAction("DashKbdSet", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                string name = (_dashKbdEntry ?? "").Trim();
+                if (_dashKbdTarget != "carname") { _dashOverlay = ""; return; }
+                // Matches WriteCarNameFact's own floor, so the failure is
+                // explained here rather than looking like the button did
+                // nothing.
+                if (name.Length < 2) { DashToast("NAME IS TOO SHORT"); return; }
+                if (!CarNameShareFlow.SetNameFromDash(this, _activeGame, _activeCarId, name))
+                {
+                    DashToast("COULD NOT SAVE THAT NAME");
+                    return;
+                }
+                _dashOverlay = "";
+                _dashKbdEntry = "";
+                _dashKbdTarget = "";
+                _dashSnapValid = false;   // the header shows the new name at once
+                RaiseDashRemoteChanged();
+                DashToast("CAR RENAMED");
+            });
+
             this.AddAction("DashKeypadCancel", (a, b) => { _dashOverlay = ""; _dashKeypadEntry = ""; _dashKeypadTarget = ""; });
             this.AddAction("DashKeypadBack", (a, b) =>
             {

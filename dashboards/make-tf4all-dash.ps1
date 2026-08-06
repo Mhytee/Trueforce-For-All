@@ -339,6 +339,83 @@ function KeypadOverlay([string]$P) {
     $items
 }
 
+# On-screen keyboard overlay (Dash.Overlay == "kbd"). The numeric keypad
+# beside it covers gains and the redline; this covers the one fact on the
+# dash that needs letters, the car name.
+#
+# QWERTY, not alphabetical. Alphabetical is faster to read for someone who
+# has never seen a keyboard and slower for everyone else, and everyone else
+# is who is holding the phone.
+#
+# Keys are 68 wide and 52 tall with a 4px gap. That is bigger than a phone
+# keyboard's because this gets tapped one handed, at arm's length, with a
+# wheel in the way, and a fat key costs nothing here: there is no other use
+# for the space while the keyboard is open.
+function KeyboardOverlay([string]$P) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $items.Add((OnOverlay (New-Rect 'kb-backdrop' 0 0 800 480 $script:BACKDROP $null 0) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-title' 0 10 800 24 15 '' $script:MUTED 1 @{
+        Text = BindJS 'Text' ('return ""+$prop("' + $P + '.KbdTitle")')
+    } 'Bold') 'kbd'))
+
+    # Entry line. The caret is drawn as part of the text so it needs no item
+    # of its own, and it does not blink: a blinking caret on a dash that
+    # repaints on telemetry looks like a fault.
+    $items.Add((OnOverlay (New-Card 'kb-entry-bg' 22 38 756 56 6) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-entry' 36 38 728 56 30 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' ('var e=""+$prop("' + $P + '.KbdEntry");return e+"_"')
+    } 'Bold') 'kbd'))
+
+    $rows = @(
+        @{ Keys = '1234567890'; X = 22;  Y = 106 },
+        @{ Keys = 'QWERTYUIOP'; X = 22;  Y = 162 },
+        @{ Keys = 'ASDFGHJKL';  X = 58;  Y = 218 },
+        @{ Keys = 'ZXCVBNM-.';  X = 58;  Y = 274 }
+    )
+    foreach ($row in $rows) {
+        $chars = $row.Keys.ToCharArray()
+        for ($i = 0; $i -lt $chars.Count; $i++) {
+            $ch = [string]$chars[$i]
+            $x = $row.X + $i * 72
+            # Action names have to be identifier safe, and the two punctuation
+            # keys are the only ones that are not.
+            $act = switch ($ch) { '-' { 'DashKbdDash' } '.' { 'DashKbdDot' } default { 'DashKbd' + $ch } }
+            $safe = switch ($ch) { '-' { 'dash' } '.' { 'dot' } default { $ch } }
+            $items.Add((OnOverlay (New-Rect  "kb-k$safe-bg" $x $row.Y 68 52 $script:TILE $null 5) 'kbd'))
+            $items.Add((OnOverlay (New-Text  "kb-k$safe-t"  $x $row.Y 68 52 22 $ch $script:WHITE 1 $null 'Bold') 'kbd'))
+            $items.Add((OnOverlay (New-Button "kb-k$safe"   $x $row.Y 68 52 $act) 'kbd'))
+        }
+    }
+
+    # Bottom row. CAPS lights up when it is on, which is the only way to know
+    # from the dash: the letter keys stay drawn in capitals either way,
+    # because relabelling thirty six keys twice a word is worse than reading
+    # one lamp.
+    $capsOn = 'return $prop("' + $P + '.KbdCaps")'
+    $items.Add((OnOverlay (New-Rect 'kb-caps-bg' 22 330 130 52 $script:TILE $null 5) 'kbd'))
+    $items[$items.Count - 1].Bindings['BackgroundColor'] = BindJS 'BackgroundColor' (
+        $capsOn + '?"' + $script:TILEON + '":"' + $script:TILE + '"')
+    $items.Add((OnOverlay (New-Text 'kb-caps-t' 22 330 130 52 16 'CAPS' $script:WHITE 1 $null 'Bold') 'kbd'))
+    $items.Add((OnOverlay (New-Button 'kb-caps' 22 330 130 52 'DashKbdCaps') 'kbd'))
+
+    $items.Add((OnOverlay (New-Rect 'kb-space-bg' 158 330 330 52 $script:TILE $null 5) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-space-t' 158 330 330 52 15 'SPACE' $script:MUTED 1 $null 'Bold') 'kbd'))
+    $items.Add((OnOverlay (New-Button 'kb-space' 158 330 330 52 'DashKbdSpace') 'kbd'))
+
+    $items.Add((OnOverlay (New-Rect 'kb-del-bg' 494 330 130 52 $script:TILE $null 5) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-del-t' 494 330 130 52 16 'DEL' $script:MUTED 1 $null 'Bold') 'kbd'))
+    $items.Add((OnOverlay (New-Button 'kb-del' 494 330 130 52 'DashKbdBack') 'kbd'))
+
+    $items.Add((OnOverlay (New-Rect 'kb-cancel-bg' 630 330 148 52 $script:TILE $null 5) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-cancel-t' 630 330 148 52 16 'CANCEL' $script:RED 1 $null 'Bold') 'kbd'))
+    $items.Add((OnOverlay (New-Button 'kb-cancel' 630 330 148 52 'DashKbdCancel') 'kbd'))
+
+    $items.Add((OnOverlay (New-Rect 'kb-set-bg' 22 392 756 56 $script:TILEON $null 6) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-set-t' 22 392 756 56 20 'SAVE NAME' $script:WHITE 1 $null 'Bold') 'kbd'))
+    $items.Add((OnOverlay (New-Button 'kb-set' 22 392 756 56 'DashKbdSet') 'kbd'))
+    $items
+}
+
 # Rev LED strip (topmost, every screen): 16 thin segments across the top,
 # lighting progressively from 50% to ~97% of the plugin's EFFECTIVE redline
 # (Dash.RpmPct: user pin > community > telemetry > estimate). Green,
@@ -2416,16 +2493,20 @@ function ToastBar([string]$P) {
 }
 
 # Value readout (Dash.Readout): what a control just set, in the words
-# printed next to it. Sits low and centred, above the tab bar and clear of
-# the toast, because it appears while you are looking at the control you
-# pressed and should not cover it.
+# printed next to it.
 #
-# Separate from the toast on purpose. The toast is a red bar across the
-# middle for something that could not be done; this confirms something that
-# could, so it is quiet and it leaves on its own.
+# Exactly where the toast appears, and the same size, because that is where
+# the dash has already taught you to look when it has something to say. What
+# changes is the tone: the toast is red because it means something could not
+# be done, and this one is a plain themed card because a value landing is
+# not a failure.
+#
+# It stands down while a toast is up. They occupy the same band, and a
+# message about something being blocked matters more than a number that
+# just moved.
 function ReadoutPill([string]$P) {
-    $visExpr = 'return (""+$prop("' + $P + '.Readout"))!=""'
-    $bg = New-Rect 'readout-bg' 250 388 300 40 $script:SUBPANEL $null 8
+    $visExpr = 'return (""+$prop("' + $P + '.Readout"))!="" && (""+$prop("' + $P + '.Toast"))==""'
+    $bg = New-Rect 'readout-bg' 100 204 600 72 $script:SUBPANEL $null 10
     $bg.BorderStyle.BorderColor = $script:CARD_EDGE
     $bg.BorderColor = $script:CARD_EDGE
     foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
@@ -2433,7 +2514,7 @@ function ReadoutPill([string]$P) {
         $bg."Border$sd" = 1
     }
     $bg.Bindings['Visible'] = BindJS 'Visible' $visExpr
-    $t = New-Text 'readout-t' 250 388 300 40 17 '' $script:WHITE 1 @{
+    $t = New-Text 'readout-t' 116 204 568 72 19 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ('return ""+$prop("' + $P + '.Readout")')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $visExpr
@@ -2641,13 +2722,19 @@ ToastBar $P | ForEach-Object { $s1.Add($_) }
 $s2 = [System.Collections.Generic.List[object]]::new()
 
 $s2.Add((New-Text 'cf-title' 16 16 200 36 24 'CAR FACTS' $WHITE 0 $null 'Bold'))
-$s2.Add((New-Text 'cf-car' 224 16 560 36 18 '' $MUTED 2 @{
+$s2.Add((New-Text 'cf-car' 224 16 424 36 18 '' $MUTED 2 @{
     Text = BindJS 'Text' ('return ""+($prop("' + $P + '.CarName")||"No car detected")')
 }))
 
 # Engine row: tap the value to open the layout picker. The two cards +
 # info line sit 32px below the natural flow so the block reads centered
 # between the title and the footer note.
+# Renaming a car needs letters, so it is the one control here that opens the
+# keyboard rather than the number pad.
+$s2.Add((New-Btn 'cf-name-bg' 664 14 120 40 4))
+$s2.Add((New-Text 'cf-name-t' 664 14 120 40 14 'RENAME' $WHITE 1 $null 'Bold'))
+$s2.Add((New-Button 'cf-name-btn' 664 14 120 40 'DashCarNameOpen'))
+
 $s2.Add((New-Card 'cf-eng-panel' 16 92 768 108))
 $s2.Add((New-Text 'cf-eng-label' 32 102 400 24 15 'ENGINE LAYOUT' $MUTED 0))
 $s2.Add((New-Text 'cf-eng-value' 32 128 600 60 34 '' $WHITE 0 @{
@@ -2730,6 +2817,7 @@ function EngineLayoutOverlay([string]$P) {
 # Under the overlays: a backdrop is meant to dim this, not sit beneath it.
 RevStrip $P | ForEach-Object { $s2.Add($_) }
 EngineLayoutOverlay $P | ForEach-Object { $s2.Add($_) }
+KeyboardOverlay $P | ForEach-Object { $s2.Add($_) }
 
 TabBar $P | ForEach-Object { $s2.Add($_) }
 # ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----

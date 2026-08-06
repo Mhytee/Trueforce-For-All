@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 
@@ -58,6 +58,39 @@ namespace TrueforceForAll.Plugin
                 if (!_submittedThisSession.Add(key)) return;   // same name already sent this session
             }
             plugin.SubmitCarNameToCommunity(game, carId, newName);
+        }
+
+        /// <summary>Rename from the phone dash. Saves locally, and shares only
+        /// when sharing is already settled as yes.</summary>
+        /// <remarks>
+        /// The desktop path can put a consent modal on screen. That is right
+        /// at a keyboard and wrong from a phone: the dialog would open on the
+        /// PC, behind the game, with nobody there to answer it, and the dash
+        /// would sit waiting on a window the driver cannot see. So the ask is
+        /// simply skipped here. The name still saves, and the next rename from
+        /// the desktop asks properly.
+        /// </remarks>
+        public static bool SetNameFromDash(
+            TrueforcePlugin plugin, string game, string carId, string newName)
+        {
+            if (plugin == null) return false;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return false;
+            if (string.IsNullOrWhiteSpace(newName)) return false;
+            newName = newName.Trim();
+
+            if (!plugin.WriteCarNameFact(game, carId, newName)) return false;
+
+            var s = plugin.Settings;
+            bool canShareSilently = s != null && s.AutoSubmitCarFacts && s.CommunityEnabled;
+            if (!canShareSilently) return true;   // saved locally, nothing asked
+
+            string key = game + "/" + carId + "|name|" + newName.ToLowerInvariant();
+            lock (_submittedLock)
+            {
+                if (!_submittedThisSession.Add(key)) return true;
+            }
+            plugin.SubmitCarNameToCommunity(game, carId, newName);
+            return true;
         }
     }
 }
