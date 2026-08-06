@@ -2359,10 +2359,17 @@ namespace TrueforceForAll.Plugin
             // can't abort Init.
             try
             {
+                // The readout goes on BOTH paths. A wheel button bound here
+                // and the dash's own stepper are different entry points to
+                // the same setting, and the button is the one you press
+                // without looking at a screen, so it is the one that most
+                // needs to say where it got to.
                 pluginManager.AddInputMapping("MasterGainUp", GetType(),
-                    (pm, a) => NudgeMasterGain(+MasterGainStep), (pm, a) => { });
+                    (pm, a) => { NudgeMasterGain(+MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); },
+                    (pm, a) => { });
                 pluginManager.AddInputMapping("MasterGainDown", GetType(),
-                    (pm, a) => NudgeMasterGain(-MasterGainStep), (pm, a) => { });
+                    (pm, a) => { NudgeMasterGain(-MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); },
+                    (pm, a) => { });
             }
             catch (Exception ex)
             {
@@ -4402,11 +4409,13 @@ namespace TrueforceForAll.Plugin
                         if (!string.IsNullOrEmpty(_gripCalKey))
                             lock (_carFactsLock) { Settings?.CarGripCalibration?.Remove(_gripCalKey); }
                         _gripCal.Reset();
+                        _strengthCal.Reset();   // the removed slot carried the force peak too
+                        _mbAutoStrengthScale = 1f;
                         _mbCalPeak = _mbAutoCalOn ? (float)_gripCal.EffectivePeak : 1f;
                         _calConvergedLogged = false;
                         ScheduleSettingsFlush();
                         SimHub.Logging.Current.Info(
-                            $"[TF4ALL] Grip auto-cal reset for '{_gripCalKey}' (RESETGRIP): peak back to {_gripCal.EffectivePeak:0.000}, confidence 0; re-learning.");
+                            $"[TF4ALL] Grip auto-cal reset for '{_gripCalKey}' (RESETGRIP): peak back to {_gripCal.EffectivePeak:0.000}, confidence 0; re-learning (auto strength included).");
                     }
                     long nowCal = Stopwatch.GetTimestamp();
                     double dtMsCal = _calPrevTicks == 0
@@ -4415,6 +4424,17 @@ namespace TrueforceForAll.Plugin
                     _calPrevTicks = nowCal;
                     _gripCal.Tick(frame.FrontGrip01.Value, _lastSpeedKmh, dtMsCal);
                     if (_mbAutoCalOn) _mbCalPeak = (float)_gripCal.EffectivePeak;
+                    // Auto strength: learn the composed-force ceiling from the
+                    // FFB thread's pre-scale peak. Learning runs whenever Mode B
+                    // is live (like the grip cal); the toggle only gates whether
+                    // the scale leaves 1.0, so flipping it on later applies
+                    // everything learned so far.
+                    _strengthCal.Tick(_mbForceRawPeak, _lastSpeedKmh, dtMsCal);
+                    _mbAutoStrengthScale = _mbAutoStrengthOn
+                        ? (float)ModeBComposer.AutoStrengthScale(
+                            _strengthCal.EffectivePeak, AutoStrengthTarget,
+                            AutoStrengthMinScale, AutoStrengthMaxScale)
+                        : 1f;
                     // Learned grip peak for the braking-grip radius (friction
                     // circle / gate). Tracked ALWAYS, regardless of the
                     // u-normalization toggle, so the radius follows each car's
@@ -5128,6 +5148,35 @@ namespace TrueforceForAll.Plugin
         private volatile bool _mbAutoCalOn;
         private readonly GripPeakLearner _gripCal = new GripPeakLearner();
         private volatile float _mbCalPeak = 1f;   // telemetry thread writes
+
+        // Per-car auto strength (BAUTOS / "Auto strength per car"): a SECOND
+        // GripPeakLearner instance watching the composed Mode B force in
+        // INTRINSIC units (Strength slider divided out), so each car variant
+        // learns its own force ceiling and gets its own scale toward
+        // AutoStrengthTarget, iRacing style: a weak car boosts, a monster
+        // trims, each settles at its own strength, and the user's Strength
+        // slider stays the true baseline underneath (delivered ceiling moves
+        // with the slider; the learned peaks survive Strength retunes).
+        // NominalPeak == target makes an unlearned car exactly identity
+        // (scale 1) via the confidence fade. The learner MUST see the
+        // PRE-scale force (see AutoStrengthScale's doc: feeding the scaled
+        // force back converges to only sqrt of the correction), so the FFB
+        // thread publishes a decaying pre-scale intrinsic peak
+        // (_mbForceRawPeak) and this learner ticks on the telemetry thread
+        // next to the grip cal, sharing its variant swap, flush, and RESETGRIP.
+        private const double AutoStrengthTarget   = 0.90;   // intrinsic (SatGain-normalized) ceiling
+        private const double AutoStrengthMinScale = 0.60;
+        private const double AutoStrengthMaxScale = 1.60;
+        private volatile bool _mbAutoStrengthOn;
+        private readonly GripPeakLearner _strengthCal = new GripPeakLearner
+        {
+            NominalPeak    = AutoStrengthTarget,
+            CorneringFloor = 0.15,   // intrinsic force units: only meaningful-force time teaches
+            PeakMin        = 0.30,
+            PeakMax        = 1.50,   // intrinsic can exceed 1 when SatGain < 1 (f01 clamps at 1)
+        };
+        private volatile float _mbAutoStrengthScale = 1f;  // telemetry writes, FFB reads
+        private volatile float _mbForceRawPeak;            // FFB writes (decaying max), telemetry reads
         // Braking-grip radius source (issue #38 follow-up): when the
         // ModeBLongitudinalGripLearn toggle is on, the friction-circle / gate
         // radius follows each car's grip-cal learned peak (times _pModeBGripTrim)
@@ -5163,7 +5212,7 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(key))
                 return "No car variant loaded yet. Drive with Telemetry Based FFB active, then run RESETGRIP.";
             _gripCalResetRequested = true;
-            return $"Grip auto-cal reset queued for '{key}'; applies on the next Telemetry Based FFB tick, then re-learns as you corner.";
+            return $"Grip auto-cal reset queued for '{key}' (auto strength included); applies on the next Telemetry Based FFB tick, then re-learns as you corner.";
         }
 
         // Mode B contention watchdog state (see DataUpdate). Warned resets on
@@ -5179,7 +5228,8 @@ namespace TrueforceForAll.Plugin
         private void FlushGripCal()
         {
             if (Settings == null || string.IsNullOrEmpty(_gripCalKey)) return;
-            if (_gripCal.QualifyingSec <= 0.0) return;   // never learned: don't pollute the dict
+            if (_gripCal.QualifyingSec <= 0.0
+                && _strengthCal.QualifyingSec <= 0.0) return;   // never learned: don't pollute the dict
             // Structural dict mutation from the TELEMETRY thread: a new variant
             // key is an Add, which bumps the dictionary version and throws
             // "Collection was modified" inside any concurrent serialize
@@ -5196,6 +5246,8 @@ namespace TrueforceForAll.Plugin
                 {
                     Peak          = (float)_gripCal.Peak,
                     QualifyingSec = (float)_gripCal.QualifyingSec,
+                    ForcePeak     = (float)_strengthCal.Peak,
+                    ForceQualSec  = (float)_strengthCal.QualifyingSec,
                 };
             }
         }
@@ -5224,6 +5276,19 @@ namespace TrueforceForAll.Plugin
             if (key != null) Settings?.CarGripCalibration?.TryGetValue(key, out saved);
             if (saved != null) _gripCal.Restore(saved.Peak, saved.QualifyingSec);
             else _gripCal.Reset();
+            // Auto strength rides the same slot; ForcePeak 0 (older entries)
+            // means never learned. Recompute the cached scale for the incoming
+            // car immediately so the first ticks don't run the old car's scale.
+            if (saved != null && saved.ForcePeak > 0f)
+                _strengthCal.Restore(saved.ForcePeak, saved.ForceQualSec);
+            else
+                _strengthCal.Reset();
+            _mbForceRawPeak = 0f;
+            _mbAutoStrengthScale = _mbAutoStrengthOn
+                ? (float)ModeBComposer.AutoStrengthScale(
+                    _strengthCal.EffectivePeak, AutoStrengthTarget,
+                    AutoStrengthMinScale, AutoStrengthMaxScale)
+                : 1f;
             // Honour the adaptive-grip toggle, exactly like ApplyModeBFeel. With
             // auto-cal OFF the force path multiplies the manual Grip limit by
             // _mbCalPeak, so writing the learned peak here silently double-scaled
@@ -5277,6 +5342,14 @@ namespace TrueforceForAll.Plugin
             // everything learned so far.
             _mbAutoCalOn = s.ModeBGripAutoCal;
             _mbCalPeak = s.ModeBGripAutoCal ? (float)_gripCal.EffectivePeak : 1f;
+            // Per-car auto strength: same shape as auto-cal (the learner keeps
+            // accumulating either way; the toggle gates only the applied scale).
+            _mbAutoStrengthOn = s.ModeBAutoStrength;
+            _mbAutoStrengthScale = s.ModeBAutoStrength
+                ? (float)ModeBComposer.AutoStrengthScale(
+                    _strengthCal.EffectivePeak, AutoStrengthTarget,
+                    AutoStrengthMinScale, AutoStrengthMaxScale)
+                : 1f;
             // Friction circle: on a toggle, seed the INCOMING law's EMA from the
             // live ratio so its first gated tick eases in instead of stepping
             // from a value the other branch left frozen (each branch's EMA stops
@@ -5406,6 +5479,7 @@ namespace TrueforceForAll.Plugin
             "ModeBCenterPd", "ModeBCenterLeadMs",
             "ModeBGripAutoCal", "ModeBFrictionCircle",
             "ModeBLongitudinalGripLearn", "ModeBGripTrim", "ModeBLateralDemand",
+            "ModeBAutoStrength",
         };
 
         // Per-field defaults merge: every recipe field in <paramref name="s"/> still
@@ -5488,6 +5562,7 @@ namespace TrueforceForAll.Plugin
             s.ModeBCenterPd           = d.ModeBCenterPd;
             s.ModeBCenterLeadMs       = d.ModeBCenterLeadMs;
             s.ModeBGripAutoCal        = d.ModeBGripAutoCal;
+            s.ModeBAutoStrength       = d.ModeBAutoStrength;
             s.ModeBFrictionCircle     = d.ModeBFrictionCircle;
             s.ModeBLongitudinalGripLearn = d.ModeBLongitudinalGripLearn;
             s.ModeBGripTrim              = d.ModeBGripTrim;
@@ -5648,6 +5723,28 @@ namespace TrueforceForAll.Plugin
                 _mbKickEma += (_mbKickCached - _mbKickEma) * kickAlpha;
                 f01 += _mbKickEma * _pRoadKickGain * 0.5 * trail;
             }
+            // Per-car auto strength. MEASURE the car's INTRINSIC force ceiling:
+            // the pre-scale force with the Strength slider divided out, so the
+            // learner sees what the CAR produces, not what the user dialed.
+            // Measuring downstream of SatGain would turn the loop into an
+            // absolute-target controller that cancels the Strength slider and
+            // the per-wheel strength defaults (adversarial review of this
+            // feature proved it), and every stored peak would go stale on a
+            // Strength change; intrinsic units keep the slider as the real
+            // baseline and the stored peaks valid across retunes. Decaying max
+            // (~140 ms half-life at the 1 kHz tick) so the 60 Hz telemetry
+            // sampling can't miss inter-sample peaks. Measuring before the
+            // scale multiply is load-bearing: feeding the loop its own output
+            // converges to only sqrt of the correction. Before the compressor
+            // on purpose: it keeps shaping the top of whatever the scale makes.
+            {
+                float satGainNow = (float)_satModel.SatGain;
+                if (satGainNow < 0.05f) satGainNow = 0.05f;
+                float rawAbs = (float)Math.Abs(f01) / satGainNow;
+                float held = _mbForceRawPeak * 0.995f;
+                _mbForceRawPeak = rawAbs > held ? rawAbs : held;
+            }
+            if (_mbAutoStrengthOn) f01 *= _mbAutoStrengthScale;
             if (_mbCompressorOn) f01 = _mbCompressor.Apply(f01);   // soft-knee compressor
             // Low-speed validity gate (twelfth wheel test: stuck off-road at
             // crawl speed, slip signals garbage, force buzzing the rim).
@@ -6016,6 +6113,17 @@ namespace TrueforceForAll.Plugin
                     _pModeBGripTrim = C(value, 0.3f, 1.5f);
                     if (Settings != null) { Settings.ModeBGripTrim = _pModeBGripTrim; PersistSettings(); }
                     return $"Braking-grip trim = {_pModeBGripTrim:0.00} (radius = trim x grip-cal peak; 1.00 = the raw detected grip, lower lightens sooner)";
+                case "BAUTOS":
+                    _mbAutoStrengthOn = value >= 0.5f;
+                    _mbAutoStrengthScale = _mbAutoStrengthOn
+                        ? (float)ModeBComposer.AutoStrengthScale(
+                            _strengthCal.EffectivePeak, AutoStrengthTarget,
+                            AutoStrengthMinScale, AutoStrengthMaxScale)
+                        : 1f;
+                    if (Settings != null) { Settings.ModeBAutoStrength = _mbAutoStrengthOn; PersistSettings(); }
+                    return _mbAutoStrengthOn
+                        ? $"Auto strength per car ON: each car's strength scales toward its learned force ceiling (this car now x{_mbAutoStrengthScale:0.00}; learns over a few laps)."
+                        : "Auto strength per car OFF: the Strength slider applies to every car equally.";
                 case "BLDEM":
                     _mbLateralDemandOn = value >= 0.5f;
                     if (Settings != null) { Settings.ModeBLateralDemand = _mbLateralDemandOn; PersistSettings(); }
@@ -6057,7 +6165,7 @@ namespace TrueforceForAll.Plugin
                     if (Settings != null) { Settings.ModeBCenterLeadMs = _pModeBCenterLeadMs; PersistSettings(); }
                     return $"Direct centering look-ahead = {_pModeBCenterLeadMs:0} ms (how far ahead of the wheel's motion the centering aims; raise if a released wheel still overshoots center, 0 = position only)";
                 default:
-                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBREV/BREVG/MBLEAD/BLEAD/BLDEM/BMINF/MBCPD/BCLEAD)";
+                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/BAUTOS/MBREV/BREVG/MBLEAD/BLEAD/BLDEM/BMINF/MBCPD/BCLEAD)";
             }
         }
 
@@ -10996,6 +11104,17 @@ namespace TrueforceForAll.Plugin
             if (BuiltinCarCylinders.TryGetDisplayName(game, carId, out var catalogName)
                 && !string.IsNullOrWhiteSpace(catalogName))
                 return catalogName.Trim();
+            // AC only, and last: the name AC's own car picker shows, read out
+            // of the car's ui_car.json. The baked table carries no AC display
+            // names (the folder ids were assumed descriptive, which holds for
+            // "ks_toyota_ae86" and not at all for mod ids), so without this
+            // every AC car falls through to the bare carId. Display-only, it
+            // never becomes a CarFacts fact or a community submission; see
+            // CarCylinderResolver.TryGetAcLocalDisplayName.
+            if (string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
+                && CarCylinderResolver.TryGetAcLocalDisplayName(carId, out var acName)
+                && !string.IsNullOrWhiteSpace(acName))
+                return acName;
             return null;
         }
 
