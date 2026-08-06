@@ -827,9 +827,42 @@ namespace TrueforceForAll.Plugin
         // now (no game / no car / desktop edit open). The dash shows a bar on
         // every screen while Dash.Toast is non-empty; expiry is served by the
         // getter so no timer is needed.
+        // Separate from the toast, which is a red bar across the middle of the
+        // card for things that could not be done. Confirming a value is not a
+        // problem report, and putting every press of a stepper into that bar
+        // would be shouting. This one is small, quiet, out of the way, and
+        // gone in well under two seconds.
+        private volatile string _dashReadout = "";
+        private int _dashReadoutAtTick;
+        private const int DashReadoutMs = 1600;
+
         private volatile string _dashToast = "";
         private int _dashToastAtTick;
         private const int DashToastMs = 2000;
+
+        // A control that changes a number says what it changed it TO.
+        //
+        // Nothing on the card is beside the buttons that move it: the value
+        // tile can be on another tab, and on the Drive tab the steppers have
+        // no readout at all, so pressing one told you nothing about whether
+        // it had done anything or where you had got to. This rides the same
+        // bar the messages use, so it costs no space and no bindings.
+        //
+        // Named in the same words as the control, not the setting: the label
+        // is what is printed next to the button being pressed.
+        private void DashReadout(string label, string value)
+        {
+            _dashReadoutAtTick = Environment.TickCount;
+            _dashReadout = (label + "   " + value).ToUpperInvariant();
+        }
+
+        // Gains read as a percentage, which is how the desktop sliders and
+        // the tiles show them. 1.0 is 100%, and a stepper that moves 1.00 to
+        // 1.12 should not report "1.1".
+        private void DashReadoutGain(string label, float gain)
+        {
+            DashReadout(label, Math.Round(gain * 100f).ToString("0") + "%");
+        }
 
         private void DashToast(string message)
         {
@@ -1338,6 +1371,9 @@ namespace TrueforceForAll.Plugin
                 ApplyModeBFromSettings();
                 PersistSettings();
                 RaiseDashRemoteChanged();
+                // k.Fmt is the format the tile uses, so the message and the
+                // tile cannot disagree about how many decimals a knob has.
+                DashReadout(k.Label, value.ToString(k.Fmt));
             }
             catch (Exception ex)
             {
@@ -1677,6 +1713,12 @@ namespace TrueforceForAll.Plugin
                 long nowMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
                 return ((nowMs / 185L) & 1L) == 0L;
             });
+            this.AttachDelegate("Dash.Readout", () =>
+            {
+                if (_dashReadout.Length == 0) return "";
+                int rage = unchecked(Environment.TickCount - _dashReadoutAtTick);
+                return rage < 0 || rage > DashReadoutMs ? "" : _dashReadout;
+            });
             this.AttachDelegate("Dash.Toast", () =>
             {
                 if (_dashToast.Length == 0) return "";
@@ -1714,14 +1756,23 @@ namespace TrueforceForAll.Plugin
                 this.AttachDelegate("Dash.Fx." + f.Key + ".On", () =>
                     Settings != null && f.GetOn());
                 this.AddAction("DashFx" + f.Key + "Toggle", (a, b) =>
-                    DashMutateFx(f, () => f.SetOn(!f.GetOn())));
+                {
+                    DashMutateFx(f, () => f.SetOn(!f.GetOn()));
+                    DashReadout(f.Key, f.GetOn() ? "ON" : "OFF");
+                });
                 if (f.GetGain == null) continue;
                 this.AttachDelegate("Dash.Fx." + f.Key + ".Gain", () =>
                     Settings == null ? 0f : f.GetGain());
                 this.AddAction("DashFx" + f.Key + "GainUp", (a, b) =>
-                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: true, max: f.Max))));
+                {
+                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: true, max: f.Max)));
+                    DashReadoutGain(f.Key + " GAIN", f.GetGain());
+                });
                 this.AddAction("DashFx" + f.Key + "GainDown", (a, b) =>
-                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: false, max: f.Max))));
+                {
+                    DashMutateFx(f, () => f.SetGain(DashStepGain(f.GetGain(), up: false, max: f.Max)));
+                    DashReadoutGain(f.Key + " GAIN", f.GetGain());
+                });
                 this.AddAction("DashFx" + f.Key + "GainOpen", (a, b) =>
                     DashOpenKeypad("fx:" + f.Key, f.Key.ToUpperInvariant() + " GAIN (now "
                         + (Settings == null ? 0f : f.GetGain()).ToString("0.###")
@@ -1746,9 +1797,12 @@ namespace TrueforceForAll.Plugin
                 PersistSettings();
                 DashRecordDirty(SectionKind.Audio);
                 RaiseDashRemoteChanged();
+                DashReadout("AUDIO", ActiveAudioEnabled ? "ON" : "OFF");
             });
-            this.AddAction("DashAudioGainUp",   (a, b) => DashNudgeAudioGain(+DashAudioGainStep));
-            this.AddAction("DashAudioGainDown", (a, b) => DashNudgeAudioGain(-DashAudioGainStep));
+            this.AddAction("DashAudioGainUp",   (a, b) =>
+                { DashNudgeAudioGain(+DashAudioGainStep); DashReadoutGain("AUDIO GAIN", ActiveAudioGain); });
+            this.AddAction("DashAudioGainDown", (a, b) =>
+                { DashNudgeAudioGain(-DashAudioGainStep); DashReadoutGain("AUDIO GAIN", ActiveAudioGain); });
 
             // ---------- properties + actions: Telemetry FFB (Tele-FFB tab) ----------
             // Mode B settings are global (no preset/car scope), so the
@@ -1877,8 +1931,10 @@ namespace TrueforceForAll.Plugin
             // ---------- actions: global ----------
             // Master gain reuses NudgeMasterGain (applies + persists + raises
             // MasterGainChangedExternally) with the user's configured step.
-            this.AddAction("DashMasterGainUp",   (a, b) => { DashNoteActivity(); NudgeMasterGain(+MasterGainStep); });
-            this.AddAction("DashMasterGainDown", (a, b) => { DashNoteActivity(); NudgeMasterGain(-MasterGainStep); });
+            this.AddAction("DashMasterGainUp",   (a, b) =>
+                { DashNoteActivity(); NudgeMasterGain(+MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); });
+            this.AddAction("DashMasterGainDown", (a, b) =>
+                { DashNoteActivity(); NudgeMasterGain(-MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); });
             this.AddAction("DashPluginToggle",   (a, b) =>
             {
                 DashNoteActivity();

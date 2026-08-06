@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "7a0e6f19-6d3a-46c3-b361-d14281917c02",
+    "Id":  "0104d777-9b04-4c38-9442-80fca8b4d2b5",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a1ec87f5-8076-4b0c-9fd5-63d08ba7978e",
+                        "ScreenId":  "8010b410-d40b-4773-b8a1-be90fb2d1c12",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14496,6 +14496,113 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF0E0E10",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF4E5668",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "8,8,8,8",
+                                                              "RadiusTopLeft":  8,
+                                                              "RadiusTopRight":  8,
+                                                              "RadiusBottomLeft":  8,
+                                                              "RadiusBottomRight":  8,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.CardEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF4E5668",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Readout\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#F25A2626",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -14593,7 +14700,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a2d33f72-4e09-4f0f-9e0b-34b37ad2c0f3",
+                        "ScreenId":  "c1aa701a-2582-4d3c-a09c-b7602c6510ad",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -32642,6 +32749,113 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF0E0E10",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF4E5668",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "8,8,8,8",
+                                                              "RadiusTopLeft":  8,
+                                                              "RadiusTopRight":  8,
+                                                              "RadiusBottomLeft":  8,
+                                                              "RadiusBottomRight":  8,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.CardEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF4E5668",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Readout\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#F25A2626",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -32739,7 +32953,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "1c5c054f-8a7c-4554-9c6f-721f02506edb",
+                        "ScreenId":  "f7936038-3328-463f-a464-8e8f077c27f5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -53114,6 +53328,113 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF0E0E10",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF4E5668",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "8,8,8,8",
+                                                              "RadiusTopLeft":  8,
+                                                              "RadiusTopRight":  8,
+                                                              "RadiusBottomLeft":  8,
+                                                              "RadiusBottomRight":  8,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.CardEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF4E5668",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Readout\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#F25A2626",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -53211,7 +53532,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f60a4ca5-c85a-4aa4-83a3-b9aefa6b70c9",
+                        "ScreenId":  "036b7fd1-7219-4ee7-895e-11f5c2602e1f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -66642,6 +66963,113 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF0E0E10",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF4E5668",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "8,8,8,8",
+                                                              "RadiusTopLeft":  8,
+                                                              "RadiusTopRight":  8,
+                                                              "RadiusBottomLeft":  8,
+                                                              "RadiusBottomRight":  8,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.CardEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF4E5668",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Readout\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#F25A2626",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -66739,7 +67167,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "6a98cbb7-20cc-4d20-a3a0-a3cb6230ac8e",
+                        "ScreenId":  "9aefa817-396f-480d-b677-609ca165cf3f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -84807,6 +85235,113 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF0E0E10",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF4E5668",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "8,8,8,8",
+                                                              "RadiusTopLeft":  8,
+                                                              "RadiusTopRight":  8,
+                                                              "RadiusBottomLeft":  8,
+                                                              "RadiusBottomRight":  8,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.CardEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF4E5668",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Readout\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#F25A2626",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -86604,7 +87139,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f66adee3-f35b-4f11-86d6-068c324d39a4",
+                        "ScreenId":  "5b093e11-e731-441a-9ff0-da74a5c63552",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -103861,6 +104396,113 @@
                                       },
                                       {
                                           "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF0E0E10",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF4E5668",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "8,8,8,8",
+                                                              "RadiusTopLeft":  8,
+                                                              "RadiusTopRight":  8,
+                                                              "RadiusBottomLeft":  8,
+                                                              "RadiusBottomRight":  8,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.CardEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF4E5668",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Readout\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
                                           "BackgroundColor":  "#F25A2626",
                                           "BorderStyle":  {
                                                               "BorderColor":  "#00FFFFFF",
@@ -103958,7 +104600,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "af4581a2-373e-4226-92d8-df3acbfeb49a",
+                        "ScreenId":  "6d55a5f1-d07c-4939-9706-0d7123d7f2cf",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -187398,6 +188040,113 @@
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
                                                                        }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF0E0E10",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF4E5668",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "8,8,8,8",
+                                                              "RadiusTopLeft":  8,
+                                                              "RadiusTopRight":  8,
+                                                              "RadiusBottomLeft":  8,
+                                                              "RadiusBottomRight":  8,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.CardEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF4E5668",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-bg",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Sub\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  40,
+                                          "Left":  250,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "readout-t",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Readout\")"
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Readout\"))!=\"\""
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
                                                        }
                                       },
                                       {

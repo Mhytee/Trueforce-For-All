@@ -2415,6 +2415,31 @@ function ToastBar([string]$P) {
     @($bg, $t)
 }
 
+# Value readout (Dash.Readout): what a control just set, in the words
+# printed next to it. Sits low and centred, above the tab bar and clear of
+# the toast, because it appears while you are looking at the control you
+# pressed and should not cover it.
+#
+# Separate from the toast on purpose. The toast is a red bar across the
+# middle for something that could not be done; this confirms something that
+# could, so it is quiet and it leaves on its own.
+function ReadoutPill([string]$P) {
+    $visExpr = 'return (""+$prop("' + $P + '.Readout"))!=""'
+    $bg = New-Rect 'readout-bg' 250 388 300 40 $script:SUBPANEL $null 8
+    $bg.BorderStyle.BorderColor = $script:CARD_EDGE
+    $bg.BorderColor = $script:CARD_EDGE
+    foreach ($sd in 'Top', 'Bottom', 'Left', 'Right') {
+        $bg.BorderStyle."Border$sd" = 1
+        $bg."Border$sd" = 1
+    }
+    $bg.Bindings['Visible'] = BindJS 'Visible' $visExpr
+    $t = New-Text 'readout-t' 250 388 300 40 17 '' $script:WHITE 1 @{
+        Text = BindJS 'Text' ('return ""+$prop("' + $P + '.Readout")')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $visExpr
+    @($bg, $t)
+}
+
 # Preset picker overlay (Dash.Overlay == "presets"): 8 name slots + paging.
 # What a Drive box shows, picked on the dash. Sixteen options is too many
 # for the eight-slot list the preset picker uses, so this is a grid: four
@@ -2607,6 +2632,7 @@ RevStrip $P | ForEach-Object { $s1.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
 FlagBar $P | ForEach-Object { $s1.Add($_) }
 IdleCard $P | ForEach-Object { $s1.Add($_) }
+ReadoutPill $P | ForEach-Object { $s1.Add($_) }
 ToastBar $P | ForEach-Object { $s1.Add($_) }
 
 # =====================================================================
@@ -2710,6 +2736,7 @@ TabBar $P | ForEach-Object { $s2.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
 FlagBar $P | ForEach-Object { $s2.Add($_) }
 IdleCard $P | ForEach-Object { $s2.Add($_) }
+ReadoutPill $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
 
 # =====================================================================
@@ -2816,6 +2843,7 @@ $s3.Add((OnOverlay (New-Text 'ss-cancel-t' 220 372 360 44 15 'CANCEL' $RED 1 $nu
 $s3.Add((OnOverlay (New-Button 'ss-cancel' 220 372 360 44 'DashTuneSaveCancel') 'savescope'))
 FlagBar $P | ForEach-Object { $s3.Add($_) }
 IdleCard $P | ForEach-Object { $s3.Add($_) }
+ReadoutPill $P | ForEach-Object { $s3.Add($_) }
 ToastBar $P | ForEach-Object { $s3.Add($_) }
 
 # =====================================================================
@@ -2852,6 +2880,7 @@ RevStrip $P | ForEach-Object { $s4.Add($_) }
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
 FlagBar $P | ForEach-Object { $s4.Add($_) }
 IdleCard $P | ForEach-Object { $s4.Add($_) }
+ReadoutPill $P | ForEach-Object { $s4.Add($_) }
 ToastBar $P | ForEach-Object { $s4.Add($_) }
 
 # =====================================================================
@@ -2957,6 +2986,7 @@ $s5.Add((New-Text 'sc-hint' 16 428 768 16 12 'Scrolls left, about 2.5 seconds of
 TabBar $P | ForEach-Object { $s5.Add($_) }
 FlagBar $P | ForEach-Object { $s5.Add($_) }
 IdleCard $P | ForEach-Object { $s5.Add($_) }
+ReadoutPill $P | ForEach-Object { $s5.Add($_) }
 ToastBar $P | ForEach-Object { $s5.Add($_) }
 RevStrip $P | ForEach-Object { $s5.Add($_) }
 
@@ -3045,6 +3075,7 @@ RevStrip $P | ForEach-Object { $s6.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s6.Add($_) }
 FlagBar $P | ForEach-Object { $s6.Add($_) }
 IdleCard $P | ForEach-Object { $s6.Add($_) }
+ReadoutPill $P | ForEach-Object { $s6.Add($_) }
 ToastBar $P | ForEach-Object { $s6.Add($_) }
 
 # =====================================================================
@@ -3215,6 +3246,7 @@ EngineLayoutOverlay $P | ForEach-Object { $s7.Add($_) }
 PresetOverlay $P | ForEach-Object { $s7.Add($_) }
 FlagBar $P | ForEach-Object { $s7.Add($_) }
 IdleCard $P | ForEach-Object { $s7.Add($_) }
+ReadoutPill $P | ForEach-Object { $s7.Add($_) }
 ToastBar $P | ForEach-Object { $s7.Add($_) }
 DriveBoxOverlay $P | ForEach-Object { $s7.Add($_) }
 
