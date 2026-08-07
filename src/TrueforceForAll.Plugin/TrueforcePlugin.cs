@@ -188,6 +188,11 @@ namespace TrueforceForAll.Plugin
         private WheelSteeringReader _steeringReader;
         private MairaIpcSource _mairaIpc;
 
+        // Farming Simulator enhanced source (TF4ALL Telemetry game mod pipe).
+        // Lifecycle mirrors _forzaUdp: created on the FS game swap, kept
+        // alive for the session, torn down on leaving FS.
+        private FarmingSimulatorTelemetrySource _fsPipeSource;
+
         // Snapshot of the HID-side wheel match (Vid/Pid/Model) we found in Init.
         // Held so the manual USB-device picker can highlight the row that
         // matches the wheel HID has already enumerated.
@@ -236,6 +241,12 @@ namespace TrueforceForAll.Plugin
         // Trueforce stream). Lazily opens its own HID handle on first gated
         // frame; never touches the ep3 audio-haptic device.
         private RpmLedController _rpmLeds;
+
+        // EXPERIMENTAL: the Dynamic OLED on the base of a G PRO / RS50. Shares
+        // the rev lights' HID++ pipe and therefore their Mode B + quiet-FFB
+        // gate exactly (see OledDashController). Lazily opens its own HID
+        // handle on the first gated frame; never touches the ep3 stream.
+        private OledDashController _oledDash;
 
         // EXPERIMENTAL: kernel-driver IOCTL channel for the wheel-ownership
         // architecture. Null when the ExperimentalDriverIntercept setting is
@@ -1068,6 +1079,49 @@ namespace TrueforceForAll.Plugin
         /// slider's [0, 2] range. Applies live (mixer + Settings), persists, and
         /// raises MasterGainChangedExternally. Backs the bindable Controls-tab
         /// "master gain +/-" actions.</summary>
+        /// <summary>Step the Telemetry Based FFB strength from a bound control.
+        /// Same slider the Mode B tab shows, same range, and it applies live so
+        /// it can be trimmed a corner at a time without leaving the car.</summary>
+        public void NudgeModeBStrength(float delta)
+        {
+            if (Settings == null) return;
+            const float lo = 0.05f, hi = 1.5f;
+            float cur = Settings.ModeBSatGain;
+            float next = cur + delta;
+            if (next < lo) next = lo; else if (next > hi) next = hi;
+            // Report even at the rail: a silent no-op is indistinguishable from
+            // a binding that never arrived, which is the bug this pattern
+            // already had to fix once for master gain.
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] NudgeModeBStrength delta={delta:+0.00;-0.00;0.00} "
+                + $"cur={cur:F2} -> next={next:F2}"
+                + (Math.Abs(next - cur) < 0.0001f ? " (no-op, already at limit)" : ""));
+            Settings.ModeBSatGain = next;
+            ApplyModeBFromSettings();
+            ScheduleSettingsFlush();
+            DashReadout("TELEMETRY FFB", next.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+            RaiseDashRemoteChanged();
+        }
+
+        /// <summary>Step the wheel screen through the ready-made arrangements
+        /// and the custom one, wrapping at the end. Bound to a button this is
+        /// the only way to change screens without leaving the car.</summary>
+        public void CycleOledScreen(int direction)
+        {
+            if (Settings == null) return;
+            int count = OledScreenModel.ScreenShortNames.Length;
+            int i = (int)Settings.OledScreen + (direction < 0 ? -1 : 1);
+            if (i < 0) i = count - 1; else if (i >= count) i = 0;
+            var next = (OledScreen)i;
+            Settings.OledScreen = next;
+            ScheduleSettingsFlush();
+            // Names the arrangement rather than showing it, because the screen
+            // itself is about to show it anyway once the readout clears.
+            DashReadout("SCREEN", OledScreenModel.ScreenShortNames[i]);
+            RaiseDashRemoteChanged();
+            SimHub.Logging.Current.Info($"[TF4ALL] OLED screen -> {next}");
+        }
+
         public void NudgeMasterGain(float delta)
         {
             float cur = MasterGain;
@@ -1271,6 +1325,256 @@ namespace TrueforceForAll.Plugin
         {
             if (_device != null) _device.FfbSpikeUseSlewLimiter = v;
             if (Settings != null) Settings.FfbSpikeUseSlewLimiter = v;
+        }
+
+        // ---- Spring mode (Mode B value 2): classic-spring games ------------
+        //
+        // Games on the classic Logitech protocol can command force as a
+        // parametric spring instead of a streamed value; the wheel's firmware
+        // normally computes the torque from its own position, but in
+        // Trueforce mode it doesn't, so the game's centering silently dies
+        // while every plugin effect keeps working (the FS25/G923 report,
+        // 2026-08-06). Spring mode runs the firmware's math in the Mode B
+        // pipeline: the tap captures the spring parameters, the steering
+        // reader supplies the wheel's physical position, MaybeReshapeFfb
+        // substitutes the evaluated force and applies the Mode B velocity
+        // damper (a spring on a physical wheel with no damping is an
+        // oscillator; the firmware damps its own rendering, so we must damp
+        // ours). Riding _forceModeB also inherits the Mode B contracts for
+        // free: rev-light/OLED gating, GameFfbExpected suppression, and the
+        // StopStreamOnPause exemption.
+        //
+        // Armed DYNAMICALLY, not per game: toggle on + the tap shows a
+        // playing spring + no scalar game force for a sustained window. A
+        // scalar force appearing disarms instantly (that game streams real
+        // values; pass-through must own the wheel again), which also keeps
+        // the Mode B contention warning unreachable in spring mode. Real
+        // Mode B (value 1) always wins; spring mode only arms from 0.
+        private long _springArmCandidateSinceTicks;   // 0 = no candidate window open
+
+        private void UpdateSpringModeArming()
+        {
+            var tap = _ffbTap;
+            bool toggleOn = Settings != null && Settings.ClassicSpringEmulationEnabled
+                            && Settings.PluginEnabled;
+
+            if (_forceModeB == 2)
+            {
+                bool scalar = tap != null && tap.TryGetFreshFfbTarget(2000).HasValue;
+                if (!toggleOn || tap == null || !tap.IsRunning || scalar)
+                {
+                    _forceModeB = 0;
+                    _springArmCandidateSinceTicks = 0;
+                    SimHub.Logging.Current.Info("[TF4ALL] Spring mode disarmed"
+                        + (scalar ? " (the game is streaming force values; pass-through resumes)." : "."));
+                }
+                return;
+            }
+
+            if (_forceModeB != 0) { _springArmCandidateSinceTicks = 0; return; }
+            if (!toggleOn || tap == null || !tap.IsRunning
+                || !tap.AnyClassicSpringPlaying
+                || tap.TryGetFreshFfbTarget(2000).HasValue)
+            {
+                _springArmCandidateSinceTicks = 0;
+                return;
+            }
+
+            long now = Stopwatch.GetTimestamp();
+            if (_springArmCandidateSinceTicks == 0) { _springArmCandidateSinceTicks = now; return; }
+            if (now - _springArmCandidateSinceTicks < Stopwatch.Frequency) return;   // 1 s spring-only
+            _springArmCandidateSinceTicks = 0;
+            _springRamp = 0f;
+            _springRampPrevTicks = 0;
+            _forceModeB = 2;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Spring mode armed: the game commands spring-based force feedback " +
+                "(no streamed values); rendering the game's spring from the wheel's physical position.");
+        }
+
+        // ---- Terrain feel (spring-mode enhancement #1) ----------------------
+        //
+        // No machinery of its own: the FS enhanced source fills the frame's
+        // SuspTravelM quad, DispatchFrame runs the SAME RoadKickModel +
+        // _mbKickCached pipeline Mode B's road kick uses (its own compute
+        // site there, because FS frames carry suspension without slip
+        // quads), and ComputeSpringModeForce consumes the cached kick with
+        // the same short EMA. One model, one cache, both games.
+
+        // ---- TF4ALL Telemetry game mod install (Farming Simulator) ---------
+        //
+        // The enhanced FS telemetry needs a mod in the game's own mods
+        // folder (a game constraint; FS loads mods from nowhere else). The
+        // zip travels EMBEDDED in this assembly so a plain DLL deploy
+        // carries it. Consent-once: the first FS session offers the install,
+        // a decline is remembered forever, and after one accepted install
+        // newer plugin versions upgrade the mod silently (the consent was to
+        // the file, not to one version of it).
+        private const string FsModVersion = "0.2.0";
+        private bool _fsModPromptShown;   // once per SimHub session
+
+        private static string FsModTargetPath()
+        {
+            string docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            return Path.Combine(docs, "My Games", "FarmingSimulator2025", "mods", "TF4ALLTelemetry.zip");
+        }
+
+        private void MaybeOfferFsModInstall()
+        {
+            var s = Settings;
+            if (s == null || _fsModPromptShown) return;
+            if (!string.Equals(_activeGame, "FarmingSimulator25", StringComparison.Ordinal)) return;
+
+            string target, modsDir;
+            try
+            {
+                target = FsModTargetPath();
+                modsDir = Path.GetDirectoryName(target);
+                if (modsDir == null || !Directory.Exists(modsDir)) return;   // game not installed here
+            }
+            catch { return; }
+
+            _fsModPromptShown = true;
+
+            bool installed = false;
+            try { installed = File.Exists(target); } catch { }
+            if (installed)
+            {
+                // Silent upgrade path: consent was given when the file first
+                // went in; a version bump only refreshes it.
+                if (!string.IsNullOrEmpty(s.FsModInstalledVersion)
+                    && !string.Equals(s.FsModInstalledVersion, FsModVersion, StringComparison.Ordinal)
+                    && TryWriteFsMod(target))
+                {
+                    s.FsModInstalledVersion = FsModVersion;
+                    PersistSettingsCore();
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] TF4ALL Telemetry game mod updated to {FsModVersion} (loads on the game's next start).");
+                }
+                return;
+            }
+            if (s.FsModInstallDeclined) return;
+
+            try
+            {
+                System.Windows.Application.Current?.Dispatcher?.BeginInvoke((Action)(() =>
+                {
+                    try
+                    {
+                        bool? ok = TrueforceDialog.Show(null,
+                            "Better Farming Simulator feel",
+                            "Farming Simulator can send richer physics to this plugin: terrain reaches "
+                            + "the wheel and the telemetry runs at physics rate. Install the TF4ALL "
+                            + "Telemetry mod into your Farming Simulator mods folder? The game loads "
+                            + "it on its next start.",
+                            DialogKind.Confirm, "Install", "Not now");
+                        var st = Settings;
+                        if (st == null) return;
+                        if (ok == true)
+                        {
+                            if (TryWriteFsMod(FsModTargetPath()))
+                            {
+                                st.FsModInstalledVersion = FsModVersion;
+                                SimHub.Logging.Current.Info(
+                                    "[TF4ALL] TF4ALL Telemetry game mod installed (loads on the game's next start).");
+                            }
+                        }
+                        else st.FsModInstallDeclined = true;
+                        PersistSettingsCore();
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn("[TF4ALL] FS mod install prompt failed: " + ex.Message);
+                    }
+                }));
+            }
+            catch { }
+        }
+
+        private static bool TryWriteFsMod(string target)
+        {
+            try
+            {
+                using (var res = typeof(TrueforcePlugin).Assembly.GetManifestResourceStream(
+                    "TrueforceForAll.Plugin.TF4ALLTelemetry.zip"))
+                {
+                    if (res == null)
+                    {
+                        SimHub.Logging.Current.Warn("[TF4ALL] TF4ALL Telemetry mod resource missing from this build.");
+                        return false;
+                    }
+                    using (var f = new FileStream(target, FileMode.Create, FileAccess.Write))
+                        res.CopyTo(f);
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] Could not install the TF4ALL Telemetry game mod: " + ex.Message);
+                return false;
+            }
+        }
+
+        // Evaluate the captured springs at the wheel's physical position.
+        // Null when the position is stale or the tap is gone: emulating a
+        // spring against a frozen position would hold a constant torque.
+        private short? EvaluateClassicSpringForce()
+        {
+            var s = Settings;
+            if (s == null || !s.ClassicSpringEmulationEnabled) return null;
+            var tap = _ffbTap;
+            if (tap == null || !tap.IsRunning) return null;
+            var sr = _steeringReader;
+            if (sr == null || sr.LastUpdateTicks == 0) return null;
+            if (Stopwatch.GetTimestamp() - sr.LastUpdateTicks > SteerMaxAgeTicks) return null;
+            return tap.TryEvaluateClassicSprings(sr.SteerNorm);
+        }
+
+        // Spring mode's engage/stall ramp. Mode B's _mbRamp is driven by
+        // Forza slip-sample freshness, which a spring game never feeds, so
+        // spring mode keeps its own: force ramps in over ~250 ms while the
+        // spring evaluates, out over ~100 ms when it stops (spring gone,
+        // position stale, capture dead). The reshape damper is scaled by the
+        // same ramp, so disengage fades rather than steps. Runs on the pump
+        // thread only.
+        private float _springRamp;
+        private long  _springRampPrevTicks;
+        private float _springKickEma;   // pump-thread EMA over the shared road-kick cache
+
+        private short ComputeSpringModeForce()
+        {
+            long now = Stopwatch.GetTimestamp();
+            double dtMs = _springRampPrevTicks == 0
+                ? 1.0
+                : (now - _springRampPrevTicks) * 1000.0 / Stopwatch.Frequency;
+            if (dtMs < 0.05) dtMs = 0.05; else if (dtMs > 50.0) dtMs = 50.0;
+            _springRampPrevTicks = now;
+
+            short? f = EvaluateClassicSpringForce();
+            _springRamp += f.HasValue ? (float)(dtMs / 250.0) : (float)(-dtMs / 100.0);
+            if (_springRamp < 0f) _springRamp = 0f; else if (_springRamp > 1f) _springRamp = 1f;
+            if (_springRamp <= 0f || !f.HasValue) return 0;
+
+            // Terrain kick (spring-mode enhancement #1): the shared road-kick
+            // cache, computed in DispatchFrame from the FS source's suspension
+            // quad, consumed here through the same short EMA Mode B's force
+            // path uses so 60 Hz telemetry steps do not land as clicks.
+            // Kick full scale at gain 1.0 = half of full force, mirroring the
+            // Mode B mapping.
+            float terrainLsb = 0f;
+            var s = Settings;
+            if (s != null && s.SpringModeTerrainEnabled)
+            {
+                float kickAlpha = (float)(1.0 - Math.Exp(-dtMs / 8.0));
+                _springKickEma += (_mbKickCached - _springKickEma) * kickAlpha;
+                terrainLsb = _springKickEma * (float)s.SpringModeTerrainGain * 0.5f * 32767f;
+            }
+            else _springKickEma = 0f;
+
+            int v = (int)Math.Round((f.Value + terrainLsb) * _springRamp);
+            if (v > short.MaxValue) v = short.MaxValue;
+            else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
         }
 
         // Stationary-spring setters. Settings-only: the FfbTargetProvider
@@ -2370,6 +2674,25 @@ namespace TrueforceForAll.Plugin
                 pluginManager.AddInputMapping("MasterGainDown", GetType(),
                     (pm, a) => { NudgeMasterGain(-MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); },
                     (pm, a) => { });
+
+                // Telemetry Based FFB strength, and the wheel screen, from the
+                // rim. These are the two things worth changing mid-stint: one
+                // is how hard the wheel pushes, the other is what you can see
+                // while it does. Each reports through the same readout channel
+                // as the gain controls, so the dash bar and the wheel's screen
+                // both answer without either needing to know about these.
+                pluginManager.AddInputMapping("ModeBStrengthUp", GetType(),
+                    (pm, a) => NudgeModeBStrength(+0.05f), (pm, a) => { });
+                pluginManager.AddInputMapping("ModeBStrengthDown", GetType(),
+                    (pm, a) => NudgeModeBStrength(-0.05f), (pm, a) => { });
+                pluginManager.AddInputMapping("OledScreenNext", GetType(),
+                    (pm, a) => CycleOledScreen(+1), (pm, a) => { });
+                pluginManager.AddInputMapping("OledScreenPrev", GetType(),
+                    (pm, a) => CycleOledScreen(-1), (pm, a) => { });
+                pluginManager.AddInputMapping("DashTabNext", GetType(),
+                    (pm, a) => CycleDashTab(+1), (pm, a) => { });
+                pluginManager.AddInputMapping("DashTabPrev", GetType(),
+                    (pm, a) => CycleDashTab(-1), (pm, a) => { });
             }
             catch (Exception ex)
             {
@@ -2564,6 +2887,7 @@ namespace TrueforceForAll.Plugin
                     _mairaIpc = new MairaIpcSource(msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"));
                 }
 
+
                 var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
                 _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, Settings?.UsbPcapCmdPathOverride)
                 {
@@ -2676,6 +3000,9 @@ namespace TrueforceForAll.Plugin
                         chosen = _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "pcap";
                     }
+                    // Classic-spring games (FS25) are handled by spring mode
+                    // (_forceModeB == 2): MaybeReshapeFfb below substitutes
+                    // the evaluated spring force, so no tail branch here.
                     if (_driverChannel != null)
                     {
                         long diagTick = System.Threading.Interlocked.Increment(ref _ffbDiagTick);
@@ -2925,6 +3252,7 @@ namespace TrueforceForAll.Plugin
             ApplyModeBFeel();
 
             _rpmLeds = new RpmLedController(msg => SimHub.Logging.Current.Info(msg));
+            _oledDash = new OledDashController(msg => SimHub.Logging.Current.Info(msg));
 
             // EXPERIMENTAL: open the kernel-driver IOCTL channel ONLY when the
             // user has opted in via ExperimentalDriverIntercept (hidden DRIVER
@@ -3685,6 +4013,9 @@ namespace TrueforceForAll.Plugin
             try { _rpmLeds?.Dispose(); } catch { }
             _rpmLeds = null;
 
+            try { _oledDash?.Dispose(); } catch { }
+            _oledDash = null;
+
             // Release kernel-driver ownership early in the shutdown sequence so
             // any in-flight RECV IOCTL completes promptly. Dispose closes the
             // control-device handle, which reverts the driver to passthrough.
@@ -3740,6 +4071,11 @@ namespace TrueforceForAll.Plugin
             // clears the no-FFB notice once force feedback is captured again.
             if (_ffbTap != null)
             {
+                // Spring mode (Mode B value 2) arms/disarms on the live bus
+                // picture; run it before GameFfbExpected below reads the mode.
+                UpdateSpringModeArming();
+                // One-time offer to install the FS game mod (no-op elsewhere).
+                MaybeOfferFsModInstall();
                 // Mode B: the game is SUPPOSED to send nothing (in-game FFB
                 // off, synthesis owns the wheel), so an empty tap is correct
                 // and the "no game FFB reaching the plugin" escalation chain
@@ -3763,6 +4099,43 @@ namespace TrueforceForAll.Plugin
             // RpmLedController already owns the iRacing LED path. _driverLedChannel
             // is null unless ExperimentalDriverIntercept is on, so this is a
             // no-op in the default case.
+            // Race context for the wheel's OLED. Read here because this is the
+            // only place SimHub's own status object is in scope; DispatchFrame,
+            // which draws the panel, sees a TelemetryFrame and nothing else.
+            // Stored as ints (milliseconds, not TimeSpan ticks) deliberately:
+            // SimHub is a 32-bit host, so a 64-bit field could tear across the
+            // telemetry and dispatch threads, and no lap is long enough to need
+            // the range.
+            if (data?.NewData != null)
+            {
+                try
+                {
+                    var race = data.NewData;
+                    _shPosition   = race.Position;
+                    _shCurrentLap = race.CurrentLap;
+                    _shTotalLaps  = race.TotalLaps;
+                    _shLastLapMs  = (int)race.LastLapTime.TotalMilliseconds;
+                    _shBestLapMs  = (int)race.BestLapTime.TotalMilliseconds;
+                }
+                catch { /* a game that reports none of this must not break DataUpdate */ }
+            }
+
+            // The OLED with no game running. There is no force anywhere, so the
+            // panel is free and a readout is still worth seeing: the gain you
+            // just nudged with a wheel button, or a message. Lives here because
+            // DispatchFrame only runs on telemetry frames and there are none
+            // without a game. With nothing to report this hands the screen back,
+            // so the wheel's own menu is what you see at rest.
+            if (_oledDash != null && (Settings?.ModeBOledEnabled ?? false)
+                && string.IsNullOrEmpty(_activeGame))
+            {
+                string idleLabel = null, idleValue = null;
+                if (TryGetActiveReadout(out string il, out string iv))
+                { idleLabel = il; idleValue = iv; }
+                try { _oledDash.OnIdle(idleLabel, idleValue); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] OLED idle error", ex); }
+            }
+
             var ledCh = _driverLedChannel;
             if (ledCh != null && ledCh.IsReady && data?.NewData != null
                 && !string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
@@ -3912,6 +4285,16 @@ namespace TrueforceForAll.Plugin
                 _contentionWarned = false;
                 _contentionSinceTicks = 0;
                 ModeBContentionDetected = false;
+                // Spring mode is armed against ONE game's bus picture; a game
+                // switch invalidates it (and must not suppress the new game's
+                // GameFfbExpected escalation while stale-armed). The arming
+                // machine re-arms within ~1 s if the new game springs too.
+                if (_forceModeB == 2)
+                {
+                    _forceModeB = 0;
+                    _springArmCandidateSinceTicks = 0;
+                    SimHub.Logging.Current.Info("[TF4ALL] Spring mode disarmed (game changed).");
+                }
                 ApplyModeBFromSettings();
                 // Auto-apply the bound game default, UNLESS the user is
                 // offline-editing a preset. In that case we don't clobber
@@ -4265,6 +4648,8 @@ namespace TrueforceForAll.Plugin
             // whether a Forza session should run on the enhanced UDP source or
             // the SimHub fallback. No-op outside Forza.
             EvaluateForzaTelemetryFallback();
+            // Same decision for Farming Simulator's pipe source. No-op outside FS.
+            EvaluateFsTelemetryFallback();
 
             // Cache the SimHub-computed redline RPM after the push (it's derived
             // there from CarSettings_RedLineRPM). Overlaid onto enhanced-source
@@ -4413,6 +4798,7 @@ namespace TrueforceForAll.Plugin
                         _mbAutoStrengthScale = 1f;
                         _mbCalPeak = _mbAutoCalOn ? (float)_gripCal.EffectivePeak : 1f;
                         _calConvergedLogged = false;
+                        _autoStrengthAnnounced = false;   // re-announce once it re-learns
                         ScheduleSettingsFlush();
                         SimHub.Logging.Current.Info(
                             $"[TF4ALL] Grip auto-cal reset for '{_gripCalKey}' (RESETGRIP): peak back to {_gripCal.EffectivePeak:0.000}, confidence 0; re-learning (auto strength included).");
@@ -4443,6 +4829,16 @@ namespace TrueforceForAll.Plugin
                     // peak is that budget; a trim absorbs any braking-vs-cornering
                     // offset.
                     _mbGripPeakForRadius = (float)_gripCal.EffectivePeak;
+                    // Auto strength decided a number for this car and nothing
+                    // ever showed it. Say it once per car, when the learner is
+                    // confident enough for the scale to mean something (either
+                    // freshly converged or restored from the car's saved slot).
+                    if (!_autoStrengthAnnounced && _mbAutoStrengthOn
+                        && _strengthCal.Confidence >= 1.0)
+                    {
+                        _autoStrengthAnnounced = true;
+                        DashReadoutGain("AUTO STRENGTH", _mbAutoStrengthScale);
+                    }
                     if (!_calConvergedLogged && _gripCal.Confidence >= 1.0)
                     {
                         _calConvergedLogged = true;
@@ -4475,9 +4871,6 @@ namespace TrueforceForAll.Plugin
                 _lastFrontSlipRatio = 0f;   // no signed slip on a scalar source: gate stays open
                 _lastFrontSlipRatioAbs = 0f; // friction circle: full lateral share
             }
-            // Same grip model Telemetry FFB uses, kept running for the dash
-            // whether or not its force path is. See DashUpdateModelGrip.
-            DashUpdateModelGrip();
             // Suspension-load input: front suspension compression vs its own
             // slow baseline = live front-axle load ratio. The baseline EMA
             // (~3 s) learns the car's ride height, so the ratio reads dive,
@@ -4517,6 +4910,25 @@ namespace TrueforceForAll.Plugin
 
                 _lastSteerNorm = newSteer;
                 System.Threading.Interlocked.Exchange(ref _lastSteerTicks, nowTicks);
+            }
+
+            // Spring-mode terrain: the same road-kick model and cache Mode B's
+            // road kick uses, at its own compute site because FS frames carry
+            // a suspension quad without the slip quads that gate the Mode B
+            // branch above. Mode-exclusive with that branch (_forceModeB is
+            // one value at a time), so sharing _roadKick / _mbKickCached /
+            // _kickPrevTicks is safe, and the input is the same physical
+            // quantity in the same units on both paths.
+            if (_forceModeB == 2 && (Settings?.SpringModeTerrainEnabled ?? false)
+                && (frame.SuspTravelM.FL != 0.0 || frame.SuspTravelM.FR != 0.0))
+            {
+                long nowK = Stopwatch.GetTimestamp();
+                double dtMsK = _kickPrevTicks == 0
+                    ? 16.0
+                    : (nowK - _kickPrevTicks) * 1000.0 / Stopwatch.Frequency;
+                _kickPrevTicks = nowK;
+                _mbKickCached = (float)_roadKick.Tick(
+                    frame.SuspTravelM.FL, frame.SuspTravelM.FR, dtMsK);
             }
 
             // Cache the front slip angle for the FFB thread (Forza populates
@@ -4616,6 +5028,19 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
+            // Which preset is live, announced when it changes. Watched here
+            // rather than hooked onto every apply path: presets land from the
+            // panel, the phone, a game switch and a car switch, and a change
+            // detector cannot miss one of them. Rides the same readout channel
+            // as the gain controls, so the answer to "did the right preset
+            // load" appears on the dash bar and the wheel screen together.
+            string livePreset = _activePresetName ?? "";
+            if (!string.Equals(livePreset, _lastAnnouncedPreset, StringComparison.Ordinal))
+            {
+                _lastAnnouncedPreset = livePreset;
+                if (livePreset.Length > 0) DashReadout("PRESET", livePreset);
+            }
+
             // Rim rev/shift LEDs. Two sanctioned contexts, both defined by
             // the same rule: LED writes are only SAFE when no game PID is on
             // the wheel's HID++ pipe (an LED write against live PID stalls
@@ -4665,6 +5090,12 @@ namespace TrueforceForAll.Plugin
                 // the game FFB is proven quiet (Mode B owns the wheel); the
                 // driver lifts this later.
                 var ledTap = _ffbTap;
+                // Scalar captures only: a playing classic spring does NOT
+                // count as loud here. In spring mode (2) the spring is our
+                // INPUT (we render it; only our ep3 stream commands force),
+                // and on the F8 wheel (C266) LED writes interleaving with
+                // classic FFB is native-game behavior (owner's ACC capture:
+                // ~13k f8 12 writes alongside slot traffic).
                 bool gameFfbQuiet = ledTap != null && ledTap.IsRunning
                             && !ledTap.TryGetFreshFfbTarget(2000).HasValue;
                 // Only while actively driving. On pause / menu / replay the
@@ -4673,8 +5104,20 @@ namespace TrueforceForAll.Plugin
                 // paused RPM (flashing if you paused near the redline, since
                 // the latch stays set). Mirrors the force pause-release.
                 bool sessionActive = _telemetrySource?.IsSessionActive ?? false;
-                bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true)
-                            && _forceModeB != 0 && gameFfbQuiet && sessionActive;
+                // The one safety condition both HID++ surfaces share: Mode B
+                // armed, the game's FFB tap-proven quiet, session live.
+                bool hidppFree = _forceModeB != 0 && gameFfbQuiet && sessionActive;
+                bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
+                // EXPERIMENTAL wheel-base OLED. Same pipe, same rule, its own
+                // opt-in (default off). Not gated on iracingGate: the MAIRA
+                // passthrough path is proven for the rev lights only.
+                // OLEDANY lifts the gate on purpose, to find out whether a
+                // screen write really does disturb a game's own HID++ force.
+                bool modeBOled = (Settings?.ModeBOledEnabled ?? false)
+                            && (hidppFree || (Settings?.OledIgnoreModeBGate ?? false));
+                // Latched for the settings panel, which needs to know whether a
+                // preview is safe to draw and runs on another thread.
+                _oledHidppFree = hidppFree;
 
                 double pct     = frame.RpmPercent;
                 bool   redline = frame.RedlineReached;
@@ -4700,15 +5143,28 @@ namespace TrueforceForAll.Plugin
                         // RevLimiter's own 0.85-of-MaxRpm default, so the
                         // fallback still agrees with the buzz.
                         : frame.MaxRpm * 0.85;
-                    pct = ForzaRevBar(frame.Rpms, full);
-                    // Flash on AT the redline, release as soon as you drop back
-                    // below it. The 1% dead band only de-bounces telemetry
-                    // jitter while holding right at the line; wider than that
-                    // and the flash stays stuck on after you have clearly
-                    // backed off (a 4% band did exactly that).
-                    if (_forzaRedlineLatch) { if (frame.Rpms < full * 0.99) _forzaRedlineLatch = false; }
-                    else if (frame.Rpms >= full) _forzaRedlineLatch = true;
-                    redline = _forzaRedlineLatch;
+                    if (full > 100)
+                    {
+                        pct = ForzaRevBar(frame.Rpms, full);
+                        // Flash on AT the redline, release as soon as you drop
+                        // back below it. The 1% dead band only de-bounces
+                        // telemetry jitter while holding right at the line;
+                        // wider than that and the flash stays stuck on after
+                        // you have clearly backed off (a 4% band did that).
+                        if (_forzaRedlineLatch) { if (frame.Rpms < full * 0.99) _forzaRedlineLatch = false; }
+                        else if (frame.Rpms >= full) _forzaRedlineLatch = true;
+                        redline = _forzaRedlineLatch;
+                    }
+                    else
+                    {
+                        // No usable rev ceiling from this game (spring-mode
+                        // titles may report Rpms with MaxRpm 0). Without this
+                        // guard, full=0 makes Rpms >= full latch the redline
+                        // flash permanently. Dark bar instead.
+                        pct = 0;
+                        redline = false;
+                        _forzaRedlineLatch = false;
+                    }
                 }
                 else
                 {
@@ -4737,6 +5193,71 @@ namespace TrueforceForAll.Plugin
                     // now (the iRacing+MAIRA path stays on the level channel). The
                     // G923 Xbox is NOT here; it takes the HID++ 0x807A path above.
                     DriveG923Leds(pct, redline, modeBLeds);
+                }
+
+                // Wheel-base Dynamic OLED (feature 0x8130), G PRO / RS50 only.
+                // Lives inside this block because it needs the same tap probe
+                // the LEDs just computed; _oledDash is created and nulled in
+                // lockstep with _rpmLeds, so the outer null check covers both.
+                // A wheel without the screen never resolves the feature and
+                // this stays inert.
+                if (_oledDash != null)
+                {
+                    try
+                    {
+                        var ctx = new OledFrameContext
+                        {
+                            GateOpen = modeBOled,
+                            Screen   = Settings?.OledScreen ?? OledScreen.GearAndSpeed,
+                            UseMph   = Settings?.OledUseMph ?? false,
+                            CustomLayout = Settings?.OledCustomLayout ?? OledLayoutKind.FourCenter,
+                            CustomSlots  = Settings?.OledCustomSlots?.ToArray(),
+                            CustomTexts  = Settings?.OledCustomTexts?.ToArray(),
+                            // Same evidence the dash's box picker greys "Lap
+                            // times" out with: the curated per-game gaps plus
+                            // what this title has been driven long enough to
+                            // never have reported.
+                            DeltaSupported = GameReportsLapDelta,
+                            GameFfbContending = ModeBContentionDetected,
+                            Position   = _shPosition,
+                            CurrentLap = _shCurrentLap,
+                            TotalLaps  = _shTotalLaps,
+                            LastLapMs  = _shLastLapMs,
+                            BestLapMs  = _shBestLapMs,
+                            GreetingEnabled = Settings?.OledGreetingEnabled != false,
+                            GreetingText    = Settings?.OledGreetingText,
+                            WriteIntervalMs = Settings?.OledWriteIntervalMs ?? 100,
+                            ShiftFlashEnabled = Settings?.OledShiftFlash != false,
+                            FlashStyle = Settings?.OledShiftFlashStyle ?? OledFlashStyle.CenteredGear,
+                            LapResultEnabled  = Settings?.OledLapResult != false,
+                        };
+                        // A finished lap is the moment its TIME lands, not the
+                        // moment the counter ticks: the counter moves at the
+                        // line and the time can arrive a frame later, and it is
+                        // the time we are about to show.
+                        if (_shLastLapMs != _oledPrevLastLapMs)
+                        {
+                            _oledPrevLastLapMs = _shLastLapMs;
+                            // Back to zero is a session reset, not a lap.
+                            ctx.LapJustCompleted = _shLastLapMs > 0;
+                        }
+                        // Only pay for the delta lookup when the panel is live
+                        // and the game actually has one to give. Also needed on
+                        // the lap-result frame, whatever screen is selected.
+                        if (modeBOled && ctx.DeltaSupported)
+                            ctx.LapDelta = TryGetLiveLapDelta(PluginManager);
+                        // A bound control that just changed a number takes the
+                        // screen over for its readout window, same signal and
+                        // same expiry as the dash's readout bar.
+                        if (modeBOled && TryGetActiveReadout(out string rl, out string rv))
+                        { ctx.ReadoutLabel = rl; ctx.ReadoutValue = rv; }
+
+                        _oledDash.OnFrame(frame, ctx);
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Error("[TF4ALL] OLED telemetry error", ex);
+                    }
                 }
             }
         }
@@ -4813,6 +5334,9 @@ namespace TrueforceForAll.Plugin
             // it here on the same fire-once stall path. Idempotent: ForceOff
             // no-ops once cleared and yields to an active test sweep.
             _rpmLeds?.ForceOff();
+            // Same reasoning for the OLED: with frames stopped the gate-off
+            // path never runs and the panel would hold a stale speed forever.
+            _oledDash?.ForceOff();
             SimHub.Logging.Current.Info("[TF4ALL] Telemetry stalled; settling sustained effects on the engine tick.");
         }
 
@@ -5095,18 +5619,23 @@ namespace TrueforceForAll.Plugin
                             : s.ModeBMinForce > 0.5f ? 0.5f : s.ModeBMinForce;
 
             bool want = ModeBEnabledForActiveGame;
-            if (want && _forceModeB == 0)
+            if (want && _forceModeB != 1)
             {
                 // Clean engage: ramp from zero, EMAs seeded from current state.
                 // Contention watchdog re-arms so a fixed in-game FFB setting
-                // gets a fresh verdict.
+                // gets a fresh verdict. (Covers the 2->1 handoff too: real
+                // Mode B taking over from spring mode still seeds.)
                 _contentionWarned = false;
                 _contentionSinceTicks = 0;
                 ModeBContentionDetected = false;
                 _crashDuck.Reset();
                 SeedModeBEngageState();
             }
-            _forceModeB = want ? 1 : 0;
+            // Preserve an armed spring mode (2): this method runs on every
+            // settings apply (slider drags included), and clobbering 2 -> 0
+            // here would blip the force out until the arming machine re-arms
+            // a second later. Game switches disarm explicitly instead.
+            _forceModeB = want ? 1 : (_forceModeB == 2 ? 2 : 0);
 
             if (save) PersistSettings();
         }
@@ -5194,6 +5723,16 @@ namespace TrueforceForAll.Plugin
         private long   _calPrevTicks;             // telemetry thread only
         private string _gripCalKey;               // settings key of the loaded state
         private bool   _calConvergedLogged;       // one log line per variant per load
+        private bool   _autoStrengthAnnounced;    // one readout per car per load
+        private string _lastAnnouncedPreset;      // change detector for the preset readout
+
+        // Race context for the OLED, captured from SimHub in DataUpdate and
+        // read on the dispatch thread. See the capture site for why these are
+        // ints rather than TimeSpans.
+        private volatile int _shPosition, _shCurrentLap, _shTotalLaps;
+        private volatile int _shLastLapMs, _shBestLapMs;
+        private int _oledPrevLastLapMs;           // lap-completion edge detector
+        private volatile bool _oledHidppFree;     // last computed gate, for the settings panel
 
         // RESETGRIP access code. The learner and the calibration dict are
         // owned by the telemetry thread (Tick / LoadGripCal / FlushGripCal),
@@ -5298,6 +5837,8 @@ namespace TrueforceForAll.Plugin
             _mbGripPeakForRadius = (float)_gripCal.EffectivePeak;   // radius follows the new car's grip cal
             _calPrevTicks = 0;
             _calConvergedLogged = _gripCal.Confidence >= 1.0;
+            // New car: say its auto strength once, restored slot or not.
+            _autoStrengthAnnounced = false;
             if (saved != null)
                 SimHub.Logging.Current.Info(
                     $"[TF4ALL] Grip auto-cal restored for '{key}': peak={_gripCal.Peak:0.000}, "
@@ -5862,8 +6403,17 @@ namespace TrueforceForAll.Plugin
 
         private short? MaybeReshapeFfb(short? target)
         {
+            bool springMode = _forceModeB == 2;
             bool modeB = _forceModeB != 0;
-            if (modeB)
+            if (springMode)
+            {
+                // Spring mode: the force IS the game's own spring, evaluated
+                // at the wheel's physical position. Always a value while
+                // armed (0 with no playing spring), so the damper below stays
+                // active to catch residual wheel motion.
+                target = ComputeSpringModeForce();
+            }
+            else if (modeB)
             {
                 // Mode B: the game-derived target is REPLACED by synthesis.
                 // Centering and the damper below still apply; they're
@@ -5888,7 +6438,14 @@ namespace TrueforceForAll.Plugin
             // naked damper chattered against HID quantization ("buzzes
             // out like crazy at center in the menu", ninth wheel test).
             // Ramp-gated, menus get a true zero stream: wheel free AND silent.
-            float centerGain = _pModeBCenterGain * _mbRamp
+            // Spring mode swaps the ramp source (its own engage/stall ramp;
+            // _mbRamp is slip-sample-driven and a spring game never feeds it)
+            // and drops the centering fight entirely: the game's spring IS
+            // the centering, adding ours would double-center. The damper
+            // stays; it is the anti-ring half of rendering a spring.
+            float ramp = springMode ? _springRamp : _mbRamp;
+            float centerGain = springMode ? 0f
+                : _pModeBCenterGain * _mbRamp
                 * (float)Math.Min(_lastSpeedKmh / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
             // Velocity damper gain, computed early because the physical-state
             // block below serves both stability terms. Adds a torque opposing
@@ -5902,7 +6459,7 @@ namespace TrueforceForAll.Plugin
             // sign (corr 0.999), so a force that OPPOSES velocity is +Kd*vel
             // (the original `-=` was anti-damping and grew the oscillation).
             // Clamped to half scale.
-            float damperGain = _pModeBDamperGain * _mbRamp;
+            float damperGain = _pModeBDamperGain * ramp;
 
             // Physical wheel state (position + velocity), shared by the
             // damper and, when Direct centering (MBCPD) is on, the centering
@@ -6236,6 +6793,111 @@ namespace TrueforceForAll.Plugin
 
         public string RpmLedStatus => _rpmLeds?.Status ?? "(n/a)";
         public bool RpmLedIsTesting => _rpmLeds?.IsTesting ?? false;
+
+        // ---------- Wheel-base Dynamic OLED (experimental) ----------
+
+        /// <summary>Walk the OLED through its screens (settings "Test"
+        /// button). Opens the HID++ channel on demand so it works with nothing
+        /// running.</summary>
+        public void TestOled()
+        {
+            if (_oledDash == null) { SimHub.Logging.Current.Info("[OLED] controller not initialized"); return; }
+            int ms = _oledDash.RunTest();
+            SimHub.Logging.Current.Info($"[OLED] Test started, duration={ms} ms ({_oledDash.Status})");
+        }
+
+        /// <summary>Dump this wheel's own layout table to the log and show a
+        /// ruler frame on the two layouts in question, so what the panel does
+        /// can be established rather than inferred from another wheel's
+        /// captures.</summary>
+        public void ReportOledLayouts()
+        {
+            if (_oledDash == null) { SimHub.Logging.Current.Info("[OLED] controller not initialized"); return; }
+            int ms = _oledDash.RunLayoutReport();
+            SimHub.Logging.Current.Info($"[OLED] Layout report started, duration={ms} ms");
+        }
+
+        /// <summary>Hand the OLED back to the wheel's own firmware (feature
+        /// unchecked / plugin disabled). No telemetry frames arrive after that
+        /// to drive the gate-off path, so callers must invoke this.</summary>
+        public void TurnOffOled() => _oledDash?.ForceOff();
+
+        /// <summary>True only on the wheels that actually have the base screen:
+        /// the G PRO (either edition, and an RS50 in G PRO compatibility mode
+        /// spoofs the Xbox PID) and the RS50 natively. The G923 has no screen at
+        /// all, so its owners should never be offered the settings for one.
+        /// False with no wheel detected: there is nothing to configure.</summary>
+        public bool WheelHasOledScreen =>
+            _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268 || _hidWheelPid == 0xC276;
+
+        public string OledStatus => _oledDash?.Status ?? "(n/a)";
+        public bool OledIsTesting => _oledDash?.IsTesting ?? false;
+
+        /// <summary>Whether writing the screen right now cannot disturb anyone's
+        /// force feedback: no game at all, or Mode B holding the HID++ pipe
+        /// free, or the user has taken the gate off deliberately.</summary>
+        public bool OledWritesSafeNow =>
+            (Settings?.OledIgnoreModeBGate ?? false)
+            || string.IsNullOrEmpty(_activeGame)
+            || _oledHidppFree;
+
+        /// <summary>Put the screen currently being edited on the wheel with
+        /// stand-in telemetry. Returns how long it will be up, 0 if the channel
+        /// is not ready yet, or -1 when a game is running and holding the pipe,
+        /// which the caller turns into an explanation rather than silence.</summary>
+        public int PreviewOledScreen()
+        {
+            if (_oledDash == null || Settings == null) return 0;
+            if (!OledWritesSafeNow) return -1;
+            var ctx = new OledFrameContext
+            {
+                Screen       = Settings.OledScreen,
+                UseMph       = Settings.OledUseMph,
+                CustomLayout = Settings.OledCustomLayout,
+                CustomSlots  = Settings.OledCustomSlots?.ToArray(),
+                CustomTexts  = Settings.OledCustomTexts?.ToArray(),
+                // Stand-ins chosen to fill their fields: a preview whose values
+                // are all blank teaches you nothing about a layout.
+                DeltaSupported = true,
+                LapDelta   = -0.42,
+                Position   = 4,
+                CurrentLap = 3,
+                TotalLaps  = 12,
+                LastLapMs  = 92481,
+            };
+            return _oledDash.ShowPreview(ctx);
+        }
+
+        /// <summary>Whether the running game reports a lap delta at all, from
+        /// the SAME evidence the dash's box picker uses to grey out "Lap
+        /// times": the curated per-game gap table plus anything this title has
+        /// been driven long enough to have never reported. One source of truth,
+        /// so the wheel screen and the phone agree about what a game can do.
+        /// True with no game running, so nothing is hidden pre-emptively.</summary>
+        public bool GameReportsLapDelta =>
+            (_dashUnsupported ?? "").IndexOf(",Delta,", StringComparison.Ordinal) < 0;
+
+        /// <summary>SimHub's running lap delta against the session best, or
+        /// null when there is no reference lap yet. Gated on SessionBest (a
+        /// TimeSpan, genuinely absent until a lap is banked) because the delta
+        /// property itself reads a confident 0 when unset, which would print
+        /// "+0.00" all session on a screen with no way to say "no data".
+        /// PersistantTracker computes both, so this is game-agnostic.</summary>
+        private double? TryGetLiveLapDelta(PluginManager pluginManager)
+        {
+            if (pluginManager == null) return null;
+            try
+            {
+                if (!(pluginManager.GetPropertyValue("PersistantTrackerPlugin.SessionBest")
+                        is TimeSpan best) || best.TotalSeconds <= 0.0)
+                    return null;
+                object v = pluginManager.GetPropertyValue(
+                    "PersistantTrackerPlugin.SessionBestLiveDeltaSeconds");
+                if (v == null) return null;
+                return Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch { return null; }
+        }
 
         // ---------- F8SWEEP test code (legacy F8 12 LED experiment) ----------
 
@@ -6822,6 +7484,34 @@ namespace TrueforceForAll.Plugin
                 // SimHub is the one actually receiving Forza's telemetry.
                 if (_forzaUdp != null) newSource = _forzaUdp;
             }
+            else if (game != null && game.StartsWith("FarmingSimulator", StringComparison.Ordinal))
+            {
+                // Farming Simulator's enhanced source is the TF4ALL Telemetry
+                // game mod's pipe. Kept alive for the whole FS session even
+                // with no client (one parked thread), so the mod connecting
+                // mid-session upgrades within a tick; a silent pipe demotes to
+                // the SimHub fallback the same way a silent Forza UDP does
+                // (EvaluateFsTelemetryFallback).
+                if (_fsPipeSource == null)
+                {
+                    try
+                    {
+                        var fs = new FarmingSimulatorTelemetrySource
+                        {
+                            Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
+                        };
+                        fs.Start();
+                        _fsPipeSource = fs;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!silent)
+                            SimHub.Logging.Current.Info(
+                                $"[TF4ALL] Farming Simulator enhanced source unavailable ({ex.GetType().Name}): {ex.Message}; falling back to SimHub.");
+                    }
+                }
+                if (_fsPipeSource != null) newSource = _fsPipeSource;
+            }
             if (newSource == null) newSource = _simHubSource;
 
             if (newSource != _telemetrySource)
@@ -6845,7 +7535,8 @@ namespace TrueforceForAll.Plugin
                 // Dispose the previous enhanced source. _simHubSource is the
                 // long-lived fallback and the Forza listener (_forzaUdp) is torn
                 // down separately below; neither is disposed here.
-                if (old != null && old != _simHubSource && old != _forzaUdp && old != newSource)
+                if (old != null && old != _simHubSource && old != _forzaUdp
+                    && old != _fsPipeSource && old != newSource)
                 {
                     try { old.Dispose(); } catch { }
                 }
@@ -6861,6 +7552,14 @@ namespace TrueforceForAll.Plugin
                 try { _forzaUdp.Dispose(); } catch { }
                 _forzaUdp = null;
                 _forzaOnSimHubFallback = false;
+            }
+
+            // Leaving Farming Simulator: same for the keep-alive pipe server.
+            bool gameIsFs = game != null && game.StartsWith("FarmingSimulator", StringComparison.Ordinal);
+            if (!gameIsFs && _fsPipeSource != null)
+            {
+                try { _fsPipeSource.Dispose(); } catch { }
+                _fsPipeSource = null;
             }
         }
 
@@ -6915,6 +7614,43 @@ namespace TrueforceForAll.Plugin
             // else: neither source has telemetry yet (startup, or Data Out not
             // set up anywhere). Stay on the optimistic enhanced source and leave
             // the fallback flag as-is; the no-telemetry setup banner covers it.
+        }
+
+        // The same decision for Farming Simulator: the enhanced pipe source
+        // while the TF4ALL Telemetry game mod is feeding it, the SimHub
+        // fallback otherwise (mod not installed / not enabled). Upgrades back
+        // within a tick of the mod's first frame, so installing or enabling
+        // it mid-session needs no restart.
+        private void EvaluateFsTelemetryFallback()
+        {
+            var fs = _fsPipeSource;
+            if (fs == null) return;                        // not an FS session
+
+            if (fs.MsSinceLastFrame < 2000)
+            {
+                if (_telemetrySource != fs)
+                {
+                    var old = _telemetrySource;
+                    if (old != null) old.OnFrame = null;
+                    fs.OnFrame = DispatchFrame;
+                    _telemetrySource = fs;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] TF4ALL Telemetry game mod is feeding the plugin; using the enhanced Farming Simulator source.");
+                }
+                return;
+            }
+
+            if (_simHubSource != null && _simHubSource.MeasuredHz > 0
+                && _telemetrySource != _simHubSource)
+            {
+                var old = _telemetrySource;
+                if (old != null) old.OnFrame = null;
+                _simHubSource.OnFrame = DispatchFrame;
+                _telemetrySource = _simHubSource;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] TF4ALL Telemetry game mod not detected; using the SimHub fallback. " +
+                    "Install the mod for terrain feel and physics-rate telemetry.");
+            }
         }
 
         // ---------- Port discovery ----------
@@ -22235,6 +22971,8 @@ namespace TrueforceForAll.Plugin
 
         private void CleanupDevice()
         {
+            try { _fsPipeSource?.Dispose(); } catch { }
+            _fsPipeSource = null;
             try { _mairaIpc?.Dispose(); } catch { }
             _mairaIpc = null;
             try { _ffbTap?.Dispose(); } catch { }

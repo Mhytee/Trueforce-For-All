@@ -57,6 +57,74 @@ namespace TrueforceForAll.Plugin
         // stored false darkened the wheel with no visible cause.)
         public bool ModeBRevLightsEnabled { get; set; } = true;
 
+        // EXPERIMENTAL: drive the Dynamic OLED on the wheel's base (G PRO /
+        // RS50 only) while Telemetry Based FFB (Mode B) is on. Same pipe and
+        // therefore the same rule as the rev lights above: a non-force write
+        // to HID++ cuts any force flowing there, so this shares the Mode B +
+        // tap-proven-quiet gate exactly. Default OFF because the protocol
+        // (feature 0x8130) is documented from third-party captures and
+        // hardware-confirmed on an RS50 only, and because the panel is also
+        // the wheel's own settings menu, which we take over while it is on.
+        public bool ModeBOledEnabled { get; set; } = false;
+
+        // Which arrangement the OLED shows. The firmware owns font size and
+        // alignment, so picking a screen IS picking how big each value is
+        // drawn. See OledScreen; Custom uses the three fields below.
+        public OledScreen OledScreen { get; set; } = OledScreen.GearAndSpeed;
+
+        // A user-built screen: which firmware layout, and which field goes in
+        // each of its slots, with the text for any slot set to Custom.
+        //
+        // Both lists MUST default EMPTY for the same loader reason as
+        // DashDriveSlots: SimHub's bare serializer APPENDS a stored array onto
+        // a non-empty initializer. Empty means "nothing chosen yet", and
+        // OledScreenModel.Sanitize* fills a short or unknown list with Empty
+        // slots, so a layout change needs no migration.
+        public OledLayoutKind OledCustomLayout { get; set; } = OledLayoutKind.FourCenter;
+        public List<string> OledCustomSlots { get; set; } = new List<string>();
+        public List<string> OledCustomTexts { get; set; } = new List<string>();
+
+        // Show the OLED speed in mph instead of km/h. Local to the display
+        // only; nothing else in the plugin changes units.
+        public bool OledUseMph { get; set; } = false;
+
+        // Flash the gear on the OLED for a moment when you shift. On by
+        // default and self-suppressing: it never fires on a screen that already
+        // shows the gear, which includes the default one, so turning it on
+        // costs nothing until you pick a screen where the gear is not visible.
+        public bool OledShiftFlash { get; set; } = true;
+
+        // Which of the two shift flashes to draw. Centred is the default: the
+        // wheel cannot centre its largest font, so the big one sits off to one
+        // side, and a flash you read at a glance is better centred than large.
+        public OledFlashStyle OledShiftFlashStyle { get; set; } = OledFlashStyle.CenteredGear;
+
+        // Minimum gap between writes to the OLED, in milliseconds. 100 = 10 Hz.
+        // Lower is smoother and costs more of the shared HID++ pipe; the pipe
+        // is force-free whenever this feature is allowed to run, so the old
+        // 200 ms was caution rather than a measured limit. Tunable live with
+        // the OLEDMS access code so the real ceiling can be found on hardware.
+        public int OledWriteIntervalMs { get; set; } = 100;
+
+        // A greeting the first time the screen comes up in a SimHub run: the
+        // plugin name on the small row and this scrolling under it. Once per
+        // run, not per session, so it stays a hello rather than a habit.
+        public bool OledGreetingEnabled { get; set; } = true;
+        public string OledGreetingText { get; set; } = "HELLO WORLD";
+
+        // TEST OVERRIDE (access code OLEDANY). Runs the OLED regardless of the
+        // Mode B + quiet-FFB gate, so someone can find out whether a screen
+        // write actually disturbs a game's own HID++ force the way an LED write
+        // does. That has never been tested for this feature: the restriction is
+        // inherited from the rev lights. If it turns out to be harmless the
+        // screen could work in every game, which is why the question is worth a
+        // deliberately unsafe switch. Off by default and undocumented.
+        public bool OledIgnoreModeBGate { get; set; } = false;
+
+        // Take the OLED over for a few seconds when a lap finishes: the time
+        // alone for a personal best, the time over the delta otherwise.
+        public bool OledLapResult { get; set; } = true;
+
         // Retired unlock for the old rim-LED / MAIRA-passthrough settings
         // section (access codes MAIRA / TEST). The section is permanently
         // hidden since 2026-08-01: Marvin declined the passthrough, so the
@@ -599,6 +667,28 @@ namespace TrueforceForAll.Plugin
         // confirmed on hardware that the centering force must be inverted, so
         // that's now unconditional (no toggle).
         public bool   StationarySpringEnabled   { get; set; } = true;
+
+        // Classic-spring emulation: for games that command their force
+        // feedback as a parametric spring on the classic Logitech protocol
+        // (Farming Simulator 25; the wheel firmware normally renders it, but
+        // not while in Trueforce mode). The plugin evaluates the game's
+        // spring against the wheel's physical position instead. Default on
+        // (owner call 2026-08-07): arming requires spring-only FFB on the
+        // bus, so games with streamed FFB never see it.
+        public bool ClassicSpringEmulationEnabled { get; set; } = true;
+
+        // Spring-mode enhancements, each its own toggle so they can be
+        // hardware-tested one at a time. Terrain feel: ground roughness from
+        // the game's rigid-body physics (FS25 vehicleComponents), high-passed
+        // into steering kicks on top of the emulated spring. Default off
+        // until validated on hardware.
+        public bool   SpringModeTerrainEnabled { get; set; } = false;
+        public double SpringModeTerrainGain    { get; set; } = 1.0;
+
+        // TF4ALL Telemetry game-mod install state (Farming Simulator).
+        // Machine-local: the mod lives in THIS PC's game folder.
+        public bool   FsModInstallDeclined  { get; set; }
+        public string FsModInstalledVersion { get; set; }
         // 1.0 = full felt scale at full lock when parked; slider allows up to
         // 2.0 for headroom, though past ~1/FfbScale the ±full-scale clamp /
         // motor ceiling caps it (you can't exceed the wheel's max torque).
@@ -1191,11 +1281,16 @@ namespace TrueforceForAll.Plugin
 
     /// <summary>Persisted per-car grip-calibration snapshot (telemetry based
     /// FFB). Mirrors GripPeakLearner's export surface: the learned metric
-    /// ceiling and the near-limit seconds that back it (confidence).</summary>
+    /// ceiling and the near-limit seconds that back it (confidence). Also
+    /// carries the auto-strength learner's force-peak pair (same learner
+    /// class, force domain); ForcePeak 0 = never learned, so entries written
+    /// by older builds deserialize as strength-unlearned and stay identity.</summary>
     public sealed class CarGripCal
     {
         public float Peak          { get; set; } = 1.0f;
         public float QualifyingSec { get; set; }
+        public float ForcePeak     { get; set; }
+        public float ForceQualSec  { get; set; }
     }
 
     /// <summary>User-authored engine definition. Stored in

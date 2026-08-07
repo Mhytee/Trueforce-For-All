@@ -43,6 +43,17 @@
     <ProjectReference Include="..\TrueforceForAll.Engine\TrueforceForAll.Engine.csproj" />
   </ItemGroup>
 
+  <!-- The Farming Simulator game mod travels embedded in the plugin DLL so a
+       plain DLL deploy carries it; the plugin writes it into the game's mods
+       folder on user consent (MaybeOfferFsModInstall). Rebuild the zip with
+       gamemods\FarmingSimulator\build-mod.py after editing the mod. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\gamemods\FarmingSimulator\TF4ALLTelemetry.zip">
+      <Link>TF4ALLTelemetry.zip</Link>
+      <LogicalName>TrueforceForAll.Plugin.TF4ALLTelemetry.zip</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <!-- SimHub provides these at runtime; don't copy them to the output dir. -->
   <ItemGroup>
     <Reference Include="SimHub.Plugins">

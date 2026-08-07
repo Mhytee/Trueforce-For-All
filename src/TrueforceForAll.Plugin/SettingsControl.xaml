@@ -2658,8 +2658,11 @@
             <!-- The Mode B controls. Always visible; the Enable box greys out and the
                  badge above appears when the active game can't use it. -->
             <StackPanel x:Name="ModeBSupportedPanel">
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
-                       Text="The wheel's steering force is built from telemetry: slip angle, tire load, and speed, instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel."/>
+            <!-- Contextual: RefreshFromPlugin swaps this text when a
+                 spring-mode game (Farming Simulator) is active, so each game's
+                 player reads only the sentence that applies to them. -->
+            <TextBlock x:Name="ModeBIntroText" Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
+                       Text="The wheel's steering force is built from telemetry instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel. Farming Simulator 25 is supported too, through the spring option below."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
                        Text="It also enables your wheel's rev lights. For now rev lights only work with Telemetry Based FFB: writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel, and replacing the game's force feedback frees them. A custom driver that would enable rev lights in every game is in testing, but it needs to be signed by Microsoft first."/>
 
@@ -2675,11 +2678,156 @@
             <TextBlock x:Name="ModeBGameNote" Style="{StaticResource HelpText}" Margin="22,0,0,12"
                        Text="Enable this per game, for whichever game is running. Set that game's own force feedback and vibration to 0."/>
 
+            <!-- Spring mode (Mode B value 2). Same rendered-FFB pipeline, but
+                 the force comes from the GAME's own commanded spring (captured
+                 off the bus, evaluated at the wheel's physical position)
+                 instead of telemetry synthesis. Arms itself when a game
+                 commands spring-only FFB; global, not per game. Default on
+                 (owner call 2026-08-07). -->
+            <CheckBox x:Name="SpringEmulationCheck" Content="Recreate spring-based force feedback (Farming Simulator)"
+                      Margin="0,4,0,2" Checked="SpringEmulation_Changed" Unchecked="SpringEmulation_Changed"
+                      ToolTip="On by default. Some games (Farming Simulator 25) steer the wheel with a centering spring instead of streaming forces, and that spring goes silent while this plugin is running. With this on, the plugin uses the game's built-in force feedback to drive the wheel again, and can enhance it."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
+                       Text="Engages by itself when such a game is detected and stays out of the way everywhere else."/>
+
             <CheckBox x:Name="ModeBRevLightsCheck" Content="Rev lights"
                       Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
                        Text="Your wheel's rev lights follow the engine: the strip fills as revs climb and flashes at the shift point. Turn this off if a game drives the wheel's lights itself."/>
 
+            <!-- Wheel-base Dynamic OLED (HID++ feature 0x8130). Shares the rev
+                 lights' HID++ pipe, so it shares their Mode B + tap-proven-quiet
+                 gate and sits with them here. Default off: experimental.
+                 Collapsed by default: it grew into the largest block on this
+                 tab, and it is an optional extra rather than part of tuning the
+                 force, so it should not be the first thing you scroll past. -->
+            <Expander x:Name="OledSection" IsExpanded="False" Margin="0,4,0,4">
+                <Expander.Header>
+                    <TextBlock Text="Wheel screen (experimental)" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+            <CheckBox x:Name="ModeBOledCheck" Content="Show telemetry on the wheel's screen"
+                      Margin="0,0,0,2" Checked="ModeBOled_Changed" Unchecked="ModeBOled_Changed"/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
+                       Text="Puts your speed, gear and lap delta on the little screen in the middle of the wheel, so you can read them without looking away from the road. G PRO and RS50 only. It borrows the screen that normally shows the wheel's own menu, and gives it back when you stop driving."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
+                       Text="The screen speaks up on its own too. It names a preset when one loads, shows the new number when a bound button changes a gain, tells you the strength Auto strength settled on for the car you are in, and warns you there if the game is still sending its own force feedback. Each of those replaces the driving screen for a moment and then gives it back."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
+                       Text="This one is new and only lightly tested. The wheel's screen was worked out from captures rather than documented by Logitech. It rides the same channel as the rev lights, so it needs Telemetry Based FFB for the same reason."/>
+            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                <TextBlock Text="Show:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                <ComboBox x:Name="OledScreenCombo" Width="230" Margin="8,0,0,0"
+                          SelectionChanged="OledScreen_Changed">
+                    <ComboBoxItem Content="Big gear, speed beside it"/>
+                    <ComboBoxItem Content="Big speed, gear beside it"/>
+                    <ComboBoxItem Content="Speed over lap delta"/>
+                    <ComboBoxItem Content="Speed, gear and lap delta"/>
+                    <ComboBoxItem Content="Speed above gear"/>
+                    <ComboBoxItem Content="Build my own"/>
+                </ComboBox>
+                <CheckBox x:Name="OledMphCheck" Content="mph" Margin="12,0,0,0"
+                          VerticalAlignment="Center"
+                          Checked="OledMph_Changed" Unchecked="OledMph_Changed"
+                          ToolTip="Show the speed in mph instead of km/h. Affects this screen only."/>
+                <Button Content="Layout report" Style="{StaticResource EffectTestButton}" Margin="12,0,0,0"
+                        Click="OledLayoutReport_Click"
+                        ToolTip="Asks the wheel what layouts it actually has, writes them to the log, then shows a lettered ruler on two of them so the field boundaries can be read straight off the screen. Everything known about these layouts so far comes from captures of one RS50, so this is how we find out what your wheel does."/>
+                <Button Content="Test" Style="{StaticResource EffectTestButton}" Margin="8,0,0,0"
+                        Click="OledTest_Click"
+                        ToolTip="Shows four sample screens on the wheel so you can check it works. Run it with no game driving the wheel: writing to the screen while a game is sending force feedback will cut that force feedback out."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                <CheckBox x:Name="OledShiftFlashCheck" Content="Flash the gear when I shift"
+                          VerticalAlignment="Center"
+                          Checked="OledShiftFlash_Changed" Unchecked="OledShiftFlash_Changed"
+                          ToolTip="Shows the gear for a moment on each shift. Skipped automatically on a screen that already shows the gear."/>
+                <ComboBox x:Name="OledFlashStyleCombo" Width="180" Margin="8,0,0,0"
+                          VerticalAlignment="Center"
+                          IsEnabled="{Binding IsChecked, ElementName=OledShiftFlashCheck}"
+                          SelectionChanged="OledFlashStyle_Changed"
+                          ToolTip="The wheel cannot centre its biggest text, so the large gear sits to one side with the speed next to it. The centered one is a size smaller but sits in the middle with a label.">
+                    <ComboBoxItem Content="Big gear, speed beside it"/>
+                    <ComboBoxItem Content="Centered gear with a label"/>
+                </ComboBox>
+                <CheckBox x:Name="OledLapResultCheck" Content="Show the lap when I cross the line"
+                          Margin="18,0,0,0" VerticalAlignment="Center"
+                          Checked="OledLapResult_Changed" Unchecked="OledLapResult_Changed"
+                          ToolTip="A personal best gets the time on its own. Any other lap gets the time with the delta under it."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                <CheckBox x:Name="OledGreetingCheck" Content="Say hello when the screen first comes up"
+                          VerticalAlignment="Center"
+                          Checked="OledGreeting_Changed" Unchecked="OledGreeting_Changed"
+                          ToolTip="Once each time SimHub runs, not once per session."/>
+                <TextBox x:Name="OledGreetingBox" Width="150" Margin="8,0,0,0" MaxLength="40"
+                         VerticalAlignment="Center" TextChanged="OledGreetingText_Changed"
+                         IsEnabled="{Binding IsChecked, ElementName=OledGreetingCheck}"
+                         ToolTip="Scrolls across the lower row under the plugin name. Anything longer than the row scrolls past."/>
+            </StackPanel>
+
+            <!-- The custom screen editor. Only visible for "Build my own"; the
+                 wheel's firmware fixes the size and position of every slot, so
+                 what you choose is a layout and then one field per slot. -->
+            <StackPanel x:Name="OledCustomPanel" Visibility="Collapsed" Margin="22,2,0,8">
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" TextWrapping="Wrap"
+                           Text="Pick a layout, then what goes in each of its slots. The wheel decides how big each slot is drawn and where it sits, so the layout is the shape and the slots are the contents. Anything set to Custom text shows exactly what you type."/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="Layout:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="OledLayoutCombo" Width="230" Margin="8,0,0,0"
+                              SelectionChanged="OledLayout_Changed"/>
+                </StackPanel>
+                <Grid x:Name="OledSlot0Row" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="OledSlot0Label" Text="Slot 1:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox   Grid.Column="1" x:Name="OledSlot0Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
+                    <TextBox    Grid.Column="2" x:Name="OledSlot0Text" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
+                </Grid>
+                <Grid x:Name="OledSlot1Row" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="OledSlot1Label" Text="Slot 2:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox   Grid.Column="1" x:Name="OledSlot1Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
+                    <TextBox    Grid.Column="2" x:Name="OledSlot1Text" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
+                </Grid>
+                <Grid x:Name="OledSlot2Row" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="OledSlot2Label" Text="Slot 3:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox   Grid.Column="1" x:Name="OledSlot2Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
+                    <TextBox    Grid.Column="2" x:Name="OledSlot2Text" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
+                </Grid>
+                <Grid x:Name="OledSlot3Row" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="OledSlot3Label" Text="Slot 4:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox   Grid.Column="1" x:Name="OledSlot3Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
+                    <TextBox    Grid.Column="2" x:Name="OledSlot3Text" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
+                </Grid>
+            </StackPanel>
+
+            <TextBlock x:Name="OledDeltaUnavailableText" Visibility="Collapsed"
+                       Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="22,0,0,8"
+                       Text=""/>
+
+            <Grid Margin="22,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Screen status:" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="1" x:Name="OledStatusText" Text="(idle)" FontSize="11"
+                           Opacity="0.85" TextWrapping="Wrap"/>
+            </Grid>
+                </StackPanel>
+            </Expander> <!-- /OledSection -->
+
+            <!-- The Forza tuning recipe. Hidden as one block while a
+                 spring-mode game (Farming Simulator) is active: the sliders
+                 shape the telemetry composer, which spring mode does not run.
+                 Rev lights, the wheel screen, and the spring toggle above
+                 stay: they work in spring mode too. -->
+            <StackPanel x:Name="ModeBForzaTuningPanel">
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"/>
@@ -2715,6 +2863,12 @@
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Extra weight per g of cornering load. Fast sweepers get heavy, slow hairpins stay light. 0 = off."/>
 
+            </StackPanel><!-- ModeBForzaTuningPanel (part 1) -->
+
+            <!-- Damping sits OUTSIDE the Forza-only panels: it is live in
+                 spring mode too (the anti-ring half of rendering a spring),
+                 so it stays visible in Farming Simulator. The panel split
+                 around it keeps the Forza layout identical. -->
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Damping:" Style="{StaticResource LabelText}"/>
@@ -2723,6 +2877,27 @@
                 <TextBox Grid.Column="2" x:Name="ModeBDamperText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.07"/>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Resistance to wheel motion. The heavy, planted feel that is not grip force."/>
+
+            <!-- Spring-mode enhancements. Visible only in spring-mode games
+                 (Farming Simulator); each is its own toggle so they can be
+                 tested one at a time. Terrain feel is the first. -->
+            <StackPanel x:Name="SpringTerrainPanel" Visibility="Collapsed">
+                <CheckBox x:Name="SpringTerrainCheck" Content="Terrain feel (experimental)"
+                          Margin="0,4,0,2" Checked="SpringTerrain_Changed" Unchecked="SpringTerrain_Changed"
+                          ToolTip="Off by default. Reads the vehicle's physics motion from the game and turns ground roughness into steering force: field texture, ruts, and edges reach the wheel instead of only the spring's centering."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8"
+                           Text="Bumps and ground texture from the game's physics, added to the steering force. Needs the TF4ALL Telemetry mod in the game (the plugin offers to install it)."/>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Terrain strength:" Style="{StaticResource LabelText}"/>
+                    <Slider     Grid.Column="1" x:Name="SpringTerrainStrengthSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
+                                TickFrequency="0.1" ValueChanged="SpringTerrainStrength_ValueChanged" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="2" x:Name="SpringTerrainStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                </Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="How hard the ground hits back."/>
+            </StackPanel>
+
+            <StackPanel x:Name="ModeBForzaTuningPanel2">
 
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -2888,6 +3063,7 @@
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" TextWrapping="Wrap"
                            Text="Restores your wheel's defaults. The G PRO, RS50, and G923 each get their own strength, and the G923 also gets its own damping. Your per-game on/off choices and each car's learned grip calibration are kept."/>
             </StackPanel>
+            </StackPanel><!-- ModeBForzaTuningPanel2 -->
             </StackPanel><!-- ModeBSupportedPanel -->
 
                     </StackPanel>
@@ -2932,6 +3108,42 @@
                             <TextBlock Grid.Column="0" Text="Master gain down" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.MasterGainDown"
                                                  FriendlyName="TF4ALL: master gain down"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Telemetry FFB up" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.ModeBStrengthUp"
+                                                 FriendlyName="TF4ALL: telemetry FFB strength up"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Telemetry FFB down" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.ModeBStrengthDown"
+                                                 FriendlyName="TF4ALL: telemetry FFB strength down"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Wheel OLED next" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.OledScreenNext"
+                                                 FriendlyName="TF4ALL: wheel OLED next"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Wheel OLED back" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.OledScreenPrev"
+                                                 FriendlyName="TF4ALL: wheel OLED back"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Dash tab next" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.DashTabNext"
+                                                 FriendlyName="TF4ALL: dash tab next"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Dash tab back" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.DashTabPrev"
+                                                 FriendlyName="TF4ALL: dash tab back"/>
                         </Grid>
 
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,8,0,0" FontSize="11"

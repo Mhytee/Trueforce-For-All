@@ -267,6 +267,27 @@ namespace TrueforceForAll.Core
             return sign * outMag;
         }
 
+        /// <summary>Per-car auto-strength scale: how much to multiply the composed
+        /// force so THIS car's learned force ceiling lands on the target, iRacing
+        /// style (each car settles at its own strength; a weak car gets boosted, a
+        /// monster trimmed, and the user's Strength slider stays the baseline
+        /// underneath). <paramref name="effectivePeak"/> is the confidence-faded
+        /// learned peak of the PRE-scale composed force in INTRINSIC units (the
+        /// user's strength gain divided out, so the estimate survives strength
+        /// retunes and the delivered ceiling moves with the slider); feeding the
+        /// post-scale force back in would make the loop converge to only the
+        /// square root of the correction, so callers must measure before
+        /// applying. Clamped so a sparse or corrupt estimate can neither kill
+        /// the force nor double it.</summary>
+        public static double AutoStrengthScale(double effectivePeak, double target,
+                                               double minScale, double maxScale)
+        {
+            if (double.IsNaN(effectivePeak) || effectivePeak <= 1e-6) return 1.0;
+            double s = target / effectivePeak;
+            if (double.IsNaN(s)) return 1.0;
+            return s < minScale ? minScale : (s > maxScale ? maxScale : s);
+        }
+
         /// <summary>Compose the final Mode B force: the front-axle SAT term scaled
         /// by cornering weight, clamped to the normalized range. Once the
         /// countersteer term was retired (see the file header) this is all that

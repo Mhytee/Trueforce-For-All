@@ -549,6 +549,16 @@ namespace TrueforceForAll.Plugin
                 SpikeTamingEnabledCheck.IsChecked  = _plugin.Settings?.FfbSpikeTamingEnabled  ?? false;
                 if (StopStreamOnPauseCheck != null)
                     StopStreamOnPauseCheck.IsChecked = _plugin.Settings?.StopStreamOnPause ?? false;
+                if (SpringEmulationCheck != null)
+                    SpringEmulationCheck.IsChecked = _plugin.Settings?.ClassicSpringEmulationEnabled ?? true;
+                if (SpringTerrainCheck != null)
+                    SpringTerrainCheck.IsChecked = _plugin.Settings?.SpringModeTerrainEnabled ?? false;
+                if (SpringTerrainStrengthSlider != null)
+                {
+                    SpringTerrainStrengthSlider.Value = _plugin.Settings?.SpringModeTerrainGain ?? 1.0;
+                    if (SpringTerrainStrengthText != null)
+                        SpringTerrainStrengthText.Text = SpringTerrainStrengthSlider.Value.ToString("F2");
+                }
                 bool spikeSlewMode = _plugin.Settings?.FfbSpikeUseSlewLimiter ?? true;
                 SpikeModeSlewRadio.IsChecked      = spikeSlewMode;
                 SpikeModeTransientRadio.IsChecked = !spikeSlewMode;
@@ -572,6 +582,46 @@ namespace TrueforceForAll.Plugin
                     // Mode B support (or none is running).
                     string mbGame = _plugin.ActiveGame;
                     bool mbSupported = _plugin.ActiveGameSupportsModeB;
+                    // Spring-mode game (Farming Simulator): the force is the
+                    // game's own spring, so the Forza tuning recipe and the
+                    // per-game Enable are irrelevant and hide as a block. The
+                    // spring toggle, rev lights, and the wheel screen stay:
+                    // they work in spring mode. The "not available here" badge
+                    // also stays hidden; it would tell the user to go start a
+                    // Forza while the tab IS relevant to this game.
+                    bool springGame = !string.IsNullOrEmpty(mbGame)
+                        && mbGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
+                    if (ModeBForzaTuningPanel != null)
+                        ModeBForzaTuningPanel.Visibility = springGame
+                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    if (ModeBForzaTuningPanel2 != null)
+                        ModeBForzaTuningPanel2.Visibility = springGame
+                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    // Spring-mode enhancements show ONLY in spring games; in
+                    // Forza the composer has its own kick layer and these
+                    // controls would be dead weight there.
+                    if (SpringTerrainPanel != null)
+                        SpringTerrainPanel.Visibility = springGame
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Contextual intro: each game's player reads only the
+                    // sentence that applies to them. The FS text carries the
+                    // one instruction that is OPPOSITE to Forza's: the game's
+                    // own FFB must stay ON (its spring commands are the input
+                    // the plugin renders).
+                    if (ModeBIntroText != null)
+                        ModeBIntroText.Text = springGame
+                            ? "In Farming Simulator the plugin uses the game's built-in force feedback " +
+                              "and can enhance it, so the steering keeps the game's own feel. Leave the " +
+                              "game's force feedback on; this engages by itself. Also works in Forza " +
+                              "Motorsport (2023) and Forza Horizon 4, 5, and 6, where the force is " +
+                              "built from telemetry instead."
+                            : "The wheel's steering force is built from telemetry instead of the game's " +
+                              "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
+                              "Set the game's force feedback and vibration to 0 so this is the only " +
+                              "force on the wheel. Farming Simulator 25 is supported too, through the " +
+                              "spring option below.";
+                    ModeBEnabledCheck.Visibility = springGame
+                        ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     // The controls stay visible in every game so the section can be
                     // seen and pre-tuned without a supported title running. When the
                     // active game can't feed Mode B, a badge at the top of the tab
@@ -579,15 +629,19 @@ namespace TrueforceForAll.Plugin
                     ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                     ModeBEnabledCheck.IsEnabled = mbSupported;
                     if (ModeBUnsupportedBadge != null)
-                        ModeBUnsupportedBadge.Visibility = mbSupported
+                        ModeBUnsupportedBadge.Visibility = mbSupported || springGame
                             ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     if (!mbSupported && ModeBUnsupportedBadgeText != null)
                         ModeBUnsupportedBadgeText.Text = string.IsNullOrEmpty(mbGame)
-                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Start one of those to turn it on. You can still see and pre-tune the controls below."
-                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. It also enables your wheel's rev lights. Start one of those to turn it on.";
+                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 25. Start one of those to turn it on. You can still see and pre-tune the controls below."
+                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 25. It also enables your wheel's rev lights. Start one of those to turn it on.";
                     if (ModeBGameNote != null)
                     {
-                        if (mbSupported)
+                        if (springGame)
+                        {
+                            ModeBGameNote.Visibility = System.Windows.Visibility.Collapsed;
+                        }
+                        else if (mbSupported)
                         {
                             string note = $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
                             if (mbGame == "FM8")
@@ -699,6 +753,34 @@ namespace TrueforceForAll.Plugin
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
                 if (ModeBRevLightsCheck != null)
                     ModeBRevLightsCheck.IsChecked = _plugin.Settings?.ModeBRevLightsEnabled != false;
+
+                // Wheel-base Dynamic OLED (experimental, default off). The whole
+                // section is hidden on a wheel with no screen: a G923 owner has
+                // no use for any of it, and an option you cannot use reads as a
+                // feature you are missing.
+                if (OledSection != null)
+                    OledSection.Visibility = _plugin.WheelHasOledScreen
+                        ? Visibility.Visible : Visibility.Collapsed;
+                if (ModeBOledCheck != null)
+                    ModeBOledCheck.IsChecked = _plugin.Settings?.ModeBOledEnabled == true;
+                if (OledScreenCombo != null)
+                    OledScreenCombo.SelectedIndex = (int)(_plugin.Settings?.OledScreen ?? OledScreen.GearAndSpeed);
+                if (OledMphCheck != null)
+                    OledMphCheck.IsChecked = _plugin.Settings?.OledUseMph == true;
+                if (OledShiftFlashCheck != null)
+                    OledShiftFlashCheck.IsChecked = _plugin.Settings?.OledShiftFlash != false;
+                if (OledFlashStyleCombo != null)
+                    OledFlashStyleCombo.SelectedIndex =
+                        (int)(_plugin.Settings?.OledShiftFlashStyle ?? OledFlashStyle.CenteredGear);
+                if (OledLapResultCheck != null)
+                    OledLapResultCheck.IsChecked = _plugin.Settings?.OledLapResult != false;
+                if (OledGreetingCheck != null)
+                    OledGreetingCheck.IsChecked = _plugin.Settings?.OledGreetingEnabled != false;
+                if (OledGreetingBox != null)
+                    OledGreetingBox.Text = _plugin.Settings?.OledGreetingText ?? "HELLO WORLD";
+                if (OledStatusText != null)
+                    OledStatusText.Text = _plugin.OledStatus;
+                RefreshOledEditor();
 
                 // Forza section
                 var fz = _plugin.Settings?.Forza;
@@ -5191,6 +5273,36 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null || ExperimentalFfbCheck == null) return;
             _plugin.SetExperimentalFfbCapture(ExperimentalFfbCheck.IsChecked == true);
+        }
+
+        // Classic-spring emulation. Settings-only toggle: the FfbTargetProvider
+        // lambda reads it every tick, so the change applies live.
+        private void SpringEmulation_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringEmulationCheck == null) return;
+            _plugin.Settings.ClassicSpringEmulationEnabled = SpringEmulationCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        // Terrain feel (spring-mode enhancement). Settings-only: the sampler
+        // reads both every telemetry tick, so changes apply live.
+        private void SpringTerrain_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringTerrainCheck == null) return;
+            _plugin.Settings.SpringModeTerrainEnabled = SpringTerrainCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void SpringTerrainStrength_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringTerrainStrengthSlider == null) return;
+            _plugin.Settings.SpringModeTerrainGain = SpringTerrainStrengthSlider.Value;
+            if (SpringTerrainStrengthText != null)
+                SpringTerrainStrengthText.Text = SpringTerrainStrengthSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
         }
 
         // Driver testing mode checkbox (hidden until the DRIVER access code
@@ -10934,6 +11046,8 @@ namespace TrueforceForAll.Plugin
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
             "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BAUTOS 1/0 auto strength per car, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "OLEDMS <ms>    How often the wheel's OLED may be redrawn, in milliseconds (20-1000; default 100 = 10 per second). Lower is smoother and uses more of the wheel's shared command channel. Type OLEDMS with no number to read the current value. Persists.\n" +
+            "OLEDANY        Run the wheel's OLED screen regardless of Telemetry Based FFB, to find out whether writing the screen really does cut a game's own force feedback the way the rev lights do (never tested for the screen; the restriction is inherited). EXPECT THE FORCE TO DROP OUT. Persists. Toggle.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -11803,6 +11917,44 @@ namespace TrueforceForAll.Plugin
 
             // Issue #13 test: stop the Trueforce stream while paused so the wheel
             // hands back to the game's native FFB / auto-center. Persists. Toggle.
+            if (code.StartsWith("OLEDMS", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_plugin?.Settings == null) return;
+                string arg = code.Substring(6).Trim();
+                if (int.TryParse(arg, System.Globalization.NumberStyles.Integer,
+                                 System.Globalization.CultureInfo.InvariantCulture, out int ms))
+                {
+                    if (ms < 20) ms = 20; else if (ms > 1000) ms = 1000;
+                    _plugin.Settings.OledWriteIntervalMs = ms;
+                    _plugin.PersistSettings();
+                }
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                {
+                    int cur = _plugin.Settings.OledWriteIntervalMs;
+                    AccessCodeStatus.Text = $"OLED write interval: {cur} ms (about {1000 / Math.Max(1, cur)} "
+                        + "updates a second). Lower is smoother and uses more of the wheel's command channel. "
+                        + "Drive with it and watch the force feedback: if it starts to feel soft or cuts, "
+                        + "you have found the limit. OLEDMS with no number just reports the current value.";
+                }
+                return;
+            }
+
+            if (code.Equals("OLEDANY", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_plugin?.Settings == null) return;
+                bool on = !_plugin.Settings.OledIgnoreModeBGate;
+                _plugin.Settings.OledIgnoreModeBGate = on;
+                _plugin.PersistSettings();
+                if (!on) _plugin.TurnOffOled();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "OLED gate OFF: the wheel screen now runs in any game, including ones sending their own force feedback. This is the experiment, so EXPECT the force to cut out; if it does, that confirms the screen shares the rev lights' limitation. Type OLEDANY again to put the gate back."
+                        : "OLED gate back on: the wheel screen runs only under Telemetry Based FFB again.";
+                return;
+            }
+
             if (code.Equals("NOLOCK", StringComparison.OrdinalIgnoreCase))
             {
                 bool on = _plugin.DebugToggleStopStreamOnPause();
@@ -11962,6 +12114,281 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.ModeBRevLightsEnabled = ModeBRevLightsCheck.IsChecked == true;
             _plugin.PersistSettings();
             if (!_plugin.Settings.ModeBRevLightsEnabled) _plugin.TurnOffRpmLeds();
+        }
+
+        // ---- Wheel-base Dynamic OLED (experimental) ----------------------
+        // Mirrors the rev-light handlers: the screen shares that HID++ pipe and
+        // its Mode B gate, so turning it off must hand the panel back at once
+        // rather than leaving the last frame frozen on the wheel.
+
+        private void ModeBOled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.ModeBOledEnabled = ModeBOledCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            if (!_plugin.Settings.ModeBOledEnabled) _plugin.TurnOffOled();
+        }
+
+        private void OledScreen_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = OledScreenCombo.SelectedIndex;
+            if (i < 0) return;
+            var s = _plugin.Settings;
+            var was = s.OledScreen;
+            s.OledScreen = (OledScreen)i;
+            // First time into the editor, start from the screen they were just
+            // on instead of four empty slots. Nobody wants to build a screen
+            // from nothing, and a blank panel on the wheel looks like a bug.
+            if (s.OledScreen == OledScreen.Custom && was != OledScreen.Custom
+                && (s.OledCustomSlots == null || s.OledCustomSlots.Count == 0))
+            {
+                OledScreenModel.Preset(was, s.OledUseMph, deltaOk: true,
+                                       out var kind, out var slots, out var texts);
+                s.OledCustomLayout = kind;
+                s.OledCustomSlots = new List<string>(slots);
+                s.OledCustomTexts = new List<string>(
+                    OledScreenModel.SanitizeTexts(texts, OledScreenModel.MaxSlots));
+            }
+            _plugin.PersistSettings();
+            RefreshOledEditor();
+            PreviewOledNow();
+        }
+
+        private ComboBox[] OledSlotCombos() => new[]
+            { OledSlot0Combo, OledSlot1Combo, OledSlot2Combo, OledSlot3Combo };
+        private TextBox[] OledSlotTexts() => new[]
+            { OledSlot0Text, OledSlot1Text, OledSlot2Text, OledSlot3Text };
+        private TextBlock[] OledSlotLabels() => new[]
+            { OledSlot0Label, OledSlot1Label, OledSlot2Label, OledSlot3Label };
+        private UIElement[] OledSlotRows() => new UIElement[]
+            { OledSlot0Row, OledSlot1Row, OledSlot2Row, OledSlot3Row };
+
+        /// <summary>Show the custom editor only for "Build my own", size it to
+        /// the chosen layout's slot count, and put each slot's fixed size and
+        /// capacity in its label. The firmware owns all of that, so stating it
+        /// is the only way someone can plan a screen instead of guessing and
+        /// watching text get cut off on the wheel.</summary>
+        private void RefreshOledEditor()
+        {
+            if (OledCustomPanel == null || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            bool custom = s.OledScreen == OledScreen.Custom;
+            OledCustomPanel.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+
+            bool prevSuppress = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (OledLayoutCombo != null && OledLayoutCombo.Items.Count == 0)
+                    foreach (string lbl in OledScreenModel.LayoutLabels)
+                        OledLayoutCombo.Items.Add(lbl);
+                int li = Array.IndexOf(OledScreenModel.LayoutKinds, s.OledCustomLayout);
+                if (OledLayoutCombo != null) OledLayoutCombo.SelectedIndex = li < 0 ? 0 : li;
+
+                var kind = s.OledCustomLayout;
+                int n = OledScreenModel.SlotCount(kind);
+                var slots = OledScreenModel.SanitizeSlots(s.OledCustomSlots, kind);
+                var texts = OledScreenModel.SanitizeTexts(s.OledCustomTexts, OledScreenModel.MaxSlots);
+
+                var combos = OledSlotCombos();
+                var boxes = OledSlotTexts();
+                var labels = OledSlotLabels();
+                var rows = OledSlotRows();
+                for (int i = 0; i < OledScreenModel.MaxSlots; i++)
+                {
+                    if (rows[i] != null)
+                        rows[i].Visibility = i < n ? Visibility.Visible : Visibility.Collapsed;
+                    if (i >= n) continue;
+
+                    if (labels[i] != null)
+                        labels[i].Text = $"Slot {i + 1} ({OledScreenModel.SlotHint(kind, i)}):";
+
+                    var cb = combos[i];
+                    if (cb != null)
+                    {
+                        if (cb.Items.Count != OledScreenModel.FieldKeys.Length)
+                        {
+                            cb.Items.Clear();
+                            for (int k = 0; k < OledScreenModel.FieldKeys.Length; k++)
+                                cb.Items.Add(new ComboBoxItem
+                                {
+                                    Content = OledScreenModel.FieldLabels[k],
+                                    Tag = OledScreenModel.FieldKeys[k],
+                                });
+                        }
+                        foreach (ComboBoxItem it in cb.Items)
+                            if ((it.Tag as string) == slots[i]) { cb.SelectedItem = it; break; }
+                    }
+
+                    if (boxes[i] != null)
+                    {
+                        boxes[i].Visibility = slots[i] == OledScreenModel.FieldCustom
+                            ? Visibility.Visible : Visibility.Collapsed;
+                        boxes[i].Text = texts[i] ?? "";
+                        boxes[i].MaxLength = OledScreenModel.SlotWidths(kind)[i];
+                    }
+                }
+            }
+            finally { _suppressEvents = prevSuppress; }
+
+            RefreshOledDeltaNotice();
+        }
+
+        /// <summary>Draw whatever the editor currently describes on the wheel,
+        /// so a layout can be judged where it will be read rather than guessed
+        /// at from a dropdown. Silent when the channel is not up yet; explains
+        /// itself when a game is holding the pipe, since a preview that just
+        /// does nothing looks broken.</summary>
+        private void PreviewOledNow()
+        {
+            if (_plugin?.Settings == null) return;
+            if (_plugin.Settings.ModeBOledEnabled != true) return;
+            int ms = _plugin.PreviewOledScreen();
+            if (ms >= 0 || OledStatusText == null) return;
+            OledStatusText.Text = "preview held back: a game is running and sending its own force "
+                + "feedback, so writing the screen now could cut it. Preview works with the game closed.";
+        }
+
+        /// <summary>Say so when the running game never reports a lap delta,
+        /// rather than letting a delta screen sit blank with no explanation.
+        /// Same evidence the dash's box picker greys "Lap times" out with.</summary>
+        private void RefreshOledDeltaNotice()
+        {
+            if (OledDeltaUnavailableText == null || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            bool wantsDelta =
+                s.OledScreen == OledScreen.SpeedAndDelta ||
+                s.OledScreen == OledScreen.SpeedGearAndDelta ||
+                (s.OledScreen == OledScreen.Custom && s.OledCustomSlots != null
+                 && s.OledCustomSlots.Contains(OledScreenModel.FieldDelta));
+
+            bool show = wantsDelta && !_plugin.GameReportsLapDelta;
+            OledDeltaUnavailableText.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (show)
+                OledDeltaUnavailableText.Text =
+                    (_plugin.ActiveGame ?? "This game") + " does not report a lap delta, so that "
+                    + "part of the screen stays empty. The rest still works.";
+        }
+
+        private void OledLayout_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = OledLayoutCombo.SelectedIndex;
+            if (i < 0 || i >= OledScreenModel.LayoutKinds.Length) return;
+            _plugin.Settings.OledCustomLayout = OledScreenModel.LayoutKinds[i];
+            _plugin.PersistSettings();
+            RefreshOledEditor();
+            PreviewOledNow();
+        }
+
+        private void OledSlot_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            var combos = OledSlotCombos();
+            int n = OledScreenModel.SlotCount(s.OledCustomLayout);
+            var slots = OledScreenModel.SanitizeSlots(s.OledCustomSlots, s.OledCustomLayout);
+            for (int i = 0; i < n; i++)
+            {
+                var it = combos[i]?.SelectedItem as ComboBoxItem;
+                if (it?.Tag is string key) slots[i] = key;
+            }
+            s.OledCustomSlots = new List<string>(slots);
+            _plugin.PersistSettings();
+            RefreshOledEditor();
+            PreviewOledNow();
+        }
+
+        private void OledSlotText_Changed(object sender, TextChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            var boxes = OledSlotTexts();
+            var texts = OledScreenModel.SanitizeTexts(s.OledCustomTexts, OledScreenModel.MaxSlots);
+            for (int i = 0; i < OledScreenModel.MaxSlots; i++)
+                if (boxes[i] != null) texts[i] = boxes[i].Text ?? "";
+            s.OledCustomTexts = new List<string>(texts);
+            _plugin.PersistSettings();
+            PreviewOledNow();
+            // Deliberately no RefreshOledEditor here: rebuilding the boxes while
+            // someone is typing in one of them would move the caret.
+        }
+
+        private void OledShiftFlash_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledShiftFlash = OledShiftFlashCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void OledFlashStyle_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = OledFlashStyleCombo.SelectedIndex;
+            if (i < 0) return;
+            _plugin.Settings.OledShiftFlashStyle = (OledFlashStyle)i;
+            _plugin.PersistSettings();
+        }
+
+        private void OledGreeting_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledGreetingEnabled = OledGreetingCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void OledGreetingText_Changed(object sender, TextChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledGreetingText = OledGreetingBox.Text ?? "";
+            _plugin.PersistSettings();
+        }
+
+        private void OledLapResult_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledLapResult = OledLapResultCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void OledMph_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledUseMph = OledMphCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            PreviewOledNow();
+        }
+
+        private void OledLayoutReport_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            _plugin.ReportOledLayouts();
+            PollOledStatus();
+        }
+
+        private void OledTest_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            _plugin.TestOled();
+            PollOledStatus();
+        }
+
+        /// <summary>Live-poll the controller's status while a sequence runs, so
+        /// a wheel that never answers says so in the panel and not only in the
+        /// log, and so each step names itself while it is on screen.</summary>
+        private void PollOledStatus()
+        {
+            var t = new System.Windows.Threading.DispatcherTimer
+            { Interval = TimeSpan.FromMilliseconds(250) };
+            int idleTicks = 0;
+            t.Tick += (s2, e2) =>
+            {
+                if (OledStatusText != null) OledStatusText.Text = _plugin.OledStatus;
+                if (_plugin.OledIsTesting) idleTicks = 0;
+                else if (++idleTicks > 4) t.Stop();   // ~1s after it ends
+            };
+            t.Start();
         }
 
         private void MairaPassthrough_Changed(object sender, RoutedEventArgs e)

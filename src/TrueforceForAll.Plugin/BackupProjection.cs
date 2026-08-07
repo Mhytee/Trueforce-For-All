@@ -47,6 +47,13 @@ namespace TrueforceForAll.Plugin
             // Feature toggles the user opted into.
             "PluginEnabled", "MairaFfbPassthrough", "ModeBRevLightsEnabled", "ShowFeedbackBox",
             "ShowAchievementCelebrations",
+            // Wheel-base OLED. Travels with the rev-light toggle for the same
+            // reason: it is a preference about how the wheel presents, and the
+            // wheel goes to the second PC with the driver.
+            "ModeBOledEnabled", "OledScreen", "OledUseMph",
+            "OledCustomLayout", "OledCustomSlots", "OledCustomTexts",
+            "OledShiftFlash", "OledShiftFlashStyle", "OledLapResult",
+            "OledGreetingEnabled", "OledGreetingText", "OledWriteIntervalMs",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
             "MotdLevel", "ShowEffectsTabShareButtons",
@@ -69,12 +76,14 @@ namespace TrueforceForAll.Plugin
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
-            "DevModeUnlocked", "ImportPreviewBypass",
+            "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb",
             "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
+            "ClassicSpringEmulationEnabled",
+            "SpringModeTerrainEnabled", "SpringModeTerrainGain",
             "DuckingEnabled", "DuckDepth", "DuckAttackMs", "DuckReleaseMs",
             "DuckFrequencyAware",
             // Telemetry based FFB (Mode B): all global feel choices, same
@@ -122,6 +131,9 @@ namespace TrueforceForAll.Plugin
             "RememberSignInEmail", "LastSignInEmail",
             // Last wheel detected on this PC (Account session list display); per-PC hardware.
             "LastUsedWheel",
+            // TF4ALL Telemetry game-mod install state: the mod lives in THIS
+            // PC's Farming Simulator folder, and consent was given here.
+            "FsModInstallDeclined", "FsModInstalledVersion",
             // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
             // per-PC hardware state like LastUsedWheel.
             "WheelDefaultsApplied",
