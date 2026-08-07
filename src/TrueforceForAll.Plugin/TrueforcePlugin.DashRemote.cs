@@ -68,6 +68,10 @@ namespace TrueforceForAll.Plugin
         // three presses to type GT3. Starts OFF.
         private volatile bool _dashKbdCaps = false;
         private const int DashKbdMaxLen = 40;
+        // Where the next character lands. Without it the only edit possible
+        // was deleting back to the mistake and retyping the rest, which on a
+        // forty character name means retyping most of it to fix a letter.
+        private volatile int _dashKbdCaret;
 
         private volatile string _dashKeypadEntry = "";    // digits being typed
         // What the keypad edits when SET is pressed: "master" | "audio" |
@@ -177,13 +181,21 @@ namespace TrueforceForAll.Plugin
         // the list, and the box keeps its own "this game does not report it"
         // notice for the cases we cannot know in advance.
         //
-        // Horizon: no lap timing, no opponents in the packet, no damage, no
-        // tyre wear (those fields exist but stay zero), and a fuel level
-        // pinned at 100%, which is worse than missing because it reads like a
-        // real number.
+        // Horizon: no opponents in the packet, no damage, no tyre wear (those
+        // fields exist but stay zero), and a fuel level pinned at 100%, which
+        // is worse than missing because it reads like a real number.
+        //
+        // Lap timing is DELIBERATELY NOT HERE any more. Horizon was listed as
+        // having none, and it does report lap times in races (confirmed on a
+        // wheel, 2026-08-06); it is free roam that has nothing to time. That
+        // fails this list's own bar, which is "the game does not report it"
+        // rather than "there is nothing to show right now". So it goes to the
+        // learner instead, which is the half of this system built for exactly
+        // that shape: a player who only ever free-roams stops being offered it
+        // after enough driving, and one race is enough to earn it back.
         // Motorsport (FM7/FM8) is deliberately absent: its fuel and lap
         // reporting are unconfirmed, so nothing of its is greyed out.
-        private const string HorizonGaps = ",Damage,Delta,Fuel,Radar,Relative,TyreWear,";
+        private const string HorizonGaps = ",Damage,Fuel,Radar,Relative,TyreWear,";
         private static readonly Dictionary<string, string> DashUnsupportedByGame =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -487,65 +499,15 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashLiveGear = "";
         private volatile float _dashLiveSpeedKmh;
 
-        // Telemetry FFB's own grip model, run for the dash while its force
-        // path is off. Utilization was never a product of composing a force:
-        // it is an EMA of the front combined-slip channel over the learned
-        // grip peak, and both of those exist whenever telemetry does. Kept in
-        // its own EMA so a dash box can never perturb the FFB state, and fed
-        // from DispatchFrame, which runs regardless.
-        private volatile float _dashModelGripEma;
-        private volatile float _dashModelUtil;
-        private volatile bool  _dashGripChannelSeen;
-
-        // Fallback reference for games with no slip channel at all: the
-        // hardest combined load this car has actually taken. Every car and
-        // surface has its own ceiling, so a fixed number would read 40% in a
-        // road car and peg in a race car. Floored at 0.8 g so a gentle cruise
-        // cannot make itself the reference and report being at the limit, and
-        // it bleeds down slowly so one kerb strike does not flatten the scale.
+        // The friction circle's reference: the hardest combined load this car
+        // has actually taken. Every car and surface has its own ceiling, so a
+        // fixed number would read 40% in a road car and peg in a race car.
+        // Floored at 0.8 g so a gentle cruise cannot make itself the reference
+        // and report being at the limit, and it bleeds down slowly so one kerb
+        // strike does not flatten the scale.
         private const float DashGripFloorG = 0.8f;
         private float _dashGripPeakG = DashGripFloorG;
         private int   _dashGripCarKey;
-
-        private int _dashGripTick;
-
-        /// <summary>Runs the grip half of the Telemetry FFB model on the
-        /// telemetry thread, so the friction circle reads the same number
-        /// whether or not that model is driving the wheel. Mirrors the EMA and
-        /// the peak divisor in ComputeModeBForce, including the asymmetry:
-        /// breaking away tracks fast because the go-light cue must be instant,
-        /// re-gripping is slowed 4x because a tyre reloads over its relaxation
-        /// length rather than snapping.</summary>
-        private void DashUpdateModelGrip()
-        {
-            float combined = _lastFrontCombined;
-            if (combined > 0f) _dashGripChannelSeen = true;
-            if (!_dashGripChannelSeen) return;
-
-            int now = Environment.TickCount;
-            int last = _dashGripTick;
-            _dashGripTick = now;
-            // First frame, or a gap (paused, alt-tabbed): seed rather than
-            // integrate across it.
-            double dtMs = last == 0 ? 0 : unchecked(now - last);
-            if (dtMs <= 0 || dtMs > 250)
-            {
-                _dashModelGripEma = combined;
-            }
-            else
-            {
-                double tau = Math.Max(2f, _pModeBEmaMs);
-                float alpha = (float)(1.0 - Math.Exp(-dtMs / tau));
-                float a = combined >= _dashModelGripEma
-                    ? alpha
-                    : (float)(1.0 - Math.Exp(-dtMs / (4.0 * tau)));
-                _dashModelGripEma += (combined - _dashModelGripEma) * a;
-            }
-            double peakBase = _mbAutoCalOn ? 1.0 : _pModeBPeakU;
-            double peakDiv  = Math.Max(0.2, peakBase * (double)_mbCalPeak);
-            _dashModelUtil  = (float)TrueforceForAll.Core.ModeBComposer
-                .UtilizationFloor(_dashModelGripEma / peakDiv);
-        }
 
         // ---------- themes ----------
         // A theme is a PALETTE, not a layout: the dashboard binds its
@@ -804,15 +766,20 @@ namespace TrueforceForAll.Plugin
                 : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
         }
 
-        /// <summary>Grip in use for the friction circle, with Telemetry FFB's
-        /// force path switched off. Same model and same numbers where the game
-        /// gives a slip channel; measured load against this car's hardest where
-        /// it does not.</summary>
+        /// <summary>How much of this car's grip the CAR is using: combined
+        /// lateral and longitudinal acceleration against the hardest it has
+        /// managed. This is the friction circle's distance from centre.
+        ///
+        /// Deliberately NOT Telemetry FFB's grip model. That model reads
+        /// FRONT AXLE slip, because front slip is what makes a force at the
+        /// wheel, and in a rear-wheel slide the fronts are still gripping and
+        /// steering: it reads moderate while the car is sideways. Right for
+        /// force feedback, wrong for an instrument asking what the CAR is
+        /// doing. Sharing one vector with the direction also stops the dot
+        /// pointing one way while its length argues for another.</summary>
         private float DashMeasuredGripUse()
         {
             if (_telemetryStalled) return 0f;
-            if (_dashGripChannelSeen) return _dashModelUtil;
-
             float lat = _lastSwayAccel / 9.81f, lon = _lastSurgeAccel / 9.81f;
             if (float.IsNaN(lat) || float.IsNaN(lon)) return 0f;
             float g = (float)Math.Sqrt(lat * lat + lon * lon);
@@ -912,7 +879,20 @@ namespace TrueforceForAll.Plugin
             var e = _dashKbdEntry ?? "";
             if (e.Length >= DashKbdMaxLen) return;
             if (c >= 'A' && c <= 'Z' && !_dashKbdCaps) c = char.ToLowerInvariant(c);
-            _dashKbdEntry = e + c;
+            int at = DashKbdClampCaret(e);
+            _dashKbdEntry = e.Insert(at, c.ToString());
+            _dashKbdCaret = at + 1;
+        }
+
+        // The caret is held separately from the text, so anything that
+        // shortens the text can leave it past the end.
+        private int DashKbdClampCaret(string e)
+        {
+            int c = _dashKbdCaret;
+            if (c < 0) c = 0;
+            if (c > e.Length) c = e.Length;
+            _dashKbdCaret = c;
+            return c;
         }
 
         private bool DashRequireCar()
@@ -1490,6 +1470,11 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
             this.AttachDelegate("Dash.Tab",                () => _dashTab);
             this.AttachDelegate("Dash.KbdEntry",          () => _dashKbdEntry);
+            // Which CELL the caret sits in, for the dash to draw a bar at.
+            // Putting a caret character into the text instead shifted
+            // everything right of it by one cell, which pushed the tap
+            // targets out of step with the letters they sit under.
+            this.AttachDelegate("Dash.KbdCaret", () => DashKbdClampCaret(_dashKbdEntry ?? ""));
             this.AttachDelegate("Dash.KbdTitle",          () => _dashKbdTitle);
             this.AttachDelegate("Dash.KbdCaps",           () => _dashKbdCaps);
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
@@ -1713,15 +1698,12 @@ namespace TrueforceForAll.Plugin
             // empty clutch bar rather than losing it.
             this.AttachDelegate("Dash.Clutch",    () => (float?)ForzaUdpSource?.DashExtras?.Clutch01 ?? -1f);
             this.AttachDelegate("Dash.Handbrake", () => (float?)ForzaUdpSource?.DashExtras?.Handbrake01 ?? -1f);
-            // Grip in use, for the friction circle. Telemetry FFB has the
-            // better answer, because its model knows what the tyre is doing
-            // rather than only what the car ended up doing, so it wins when
-            // it is running. With it off the measured accelerations still
-            // say plenty: how hard the car is loaded right now against the
-            // hardest it has been loaded, which needs nothing but the
-            // accelerations the g circle already uses.
-            this.AttachDelegate("Dash.Drive.Util", () =>
-                ActiveGameSupportsModeB && DashSnap().ModeBOn ? ModeBUtilization : DashMeasuredGripUse());
+            // Grip in use, for the friction circle: the car's own combined
+            // acceleration against the hardest it has managed. Same vector
+            // that sets the dot's direction, so length and bearing can never
+            // disagree. See DashMeasuredGripUse for why Telemetry FFB's grip
+            // model, which reads the front axle, is the wrong quantity here.
+            this.AttachDelegate("Dash.Drive.Util", () => DashMeasuredGripUse());
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
 
@@ -2047,6 +2029,7 @@ namespace TrueforceForAll.Plugin
                 // start. DEL is one tap away if it is not.
                 string cur = DashSnap().CarName ?? "";
                 _dashKbdEntry = cur.Length > DashKbdMaxLen ? cur.Substring(0, DashKbdMaxLen) : cur;
+                _dashKbdCaret = _dashKbdEntry.Length;
                 _dashKbdTarget = "carname";
                 _dashKbdTitle = "CAR NAME";
                 _dashKbdCaps = false;
@@ -2057,9 +2040,35 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashKbdCaps", (a, b) => { _dashKbdCaps = !_dashKbdCaps; });
             this.AddAction("DashKbdBack", (a, b) =>
             {
-                var e = _dashKbdEntry;
-                if (e.Length > 0) _dashKbdEntry = e.Substring(0, e.Length - 1);
+                var e = _dashKbdEntry ?? "";
+                int c = DashKbdClampCaret(e);
+                if (c == 0) return;              // nothing to the left of it
+                _dashKbdEntry = e.Remove(c - 1, 1);
+                _dashKbdCaret = c - 1;
             });
+            this.AddAction("DashKbdLeft", (a, b) =>
+            {
+                int c = DashKbdClampCaret(_dashKbdEntry ?? "");
+                if (c > 0) _dashKbdCaret = c - 1;
+            });
+            this.AddAction("DashKbdRight", (a, b) =>
+            {
+                var e = _dashKbdEntry ?? "";
+                int c = DashKbdClampCaret(e);
+                if (c < e.Length) _dashKbdCaret = c + 1;
+            });
+            // One tap target per character cell in the entry line. Tapping
+            // past the end of the text lands at the end, which is what the
+            // gesture means there.
+            for (int cell = 0; cell <= DashKbdMaxLen; cell++)
+            {
+                int at = cell;   // capture per iteration
+                this.AddAction("DashKbdCaret" + at, (a, b) =>
+                {
+                    var e = _dashKbdEntry ?? "";
+                    _dashKbdCaret = at > e.Length ? e.Length : at;
+                });
+            }
             this.AddAction("DashKbdSpace", (a, b) => DashKbdAppend(' '));
             foreach (char ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
             {
@@ -2205,6 +2214,25 @@ namespace TrueforceForAll.Plugin
         // Shared tab switch for slot taps and the legacy direct-select
         // actions. Tapping the already-active tab is a no-op past the
         // overlay drop (the slot buttons stay live on the active slot).
+        /// <summary>Step the dash to the next or previous tab, wrapping. Walks
+        /// the SLOT list rather than the tab indices, so it follows the order
+        /// the user arranged and skips anything they disabled instead of
+        /// stopping on a hidden screen.
+        ///
+        /// Deliberately produces no readout: the dash is the feedback, and
+        /// putting the tab name on the wheel would cost the driving screen to
+        /// say something the phone already shows.</summary>
+        public void CycleDashTab(int direction)
+        {
+            var slots = _dashTabSlots;
+            if (slots == null || slots.Length == 0) return;
+            int cur = Array.IndexOf(slots, _dashTab);
+            int next = (cur < 0 ? 0 : cur) + (direction < 0 ? -1 : 1);
+            if (next < 0) next = slots.Length - 1;
+            else if (next >= slots.Length) next = 0;
+            DashSelectTab(slots[next]);
+        }
+
         private void DashSelectTab(int tab)
         {
             if (tab < 0 || tab >= DashTabCount) return;

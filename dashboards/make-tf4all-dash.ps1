@@ -109,6 +109,14 @@ $VIOLET  = '#FFB388FF'
 # put a warm or green outline next to it. They are also baked into ~120
 # computed colour expressions where no theme pass can reach them, so the
 # constants themselves have to be right.
+# Entry line of the on-screen keyboard. 40 characters is the longest name it
+# takes, and Consolas advances 0.55 of its size, so 30pt gives an 16.5px cell
+# and 41 of them fit the 728px line with room to spare.
+$KB_TXT_X = 36
+$KB_TXT_W = 728
+$KB_CELLS = 40
+$KB_CELL_W = 16.5
+
 $WHITE   = '#FFF4F4F4'
 $MUTED   = '#FFA0A0A0'
 $GRAY    = '#FF6E6E6E'
@@ -362,9 +370,27 @@ function KeyboardOverlay([string]$P) {
     # of its own, and it does not blink: a blinking caret on a dash that
     # repaints on telemetry looks like a fault.
     $items.Add((OnOverlay (New-Card 'kb-entry-bg' 22 38 756 56 6) 'kbd'))
-    $items.Add((OnOverlay (New-Text 'kb-entry' 36 38 728 56 30 '' $script:WHITE 0 @{
-        Text = BindJS 'Text' ('var e=""+$prop("' + $P + '.KbdEntry");return e+"_"')
-    } 'Bold') 'kbd'))
+    # MONOSPACE, and that is the whole reason tapping the line can place the
+    # caret. Every character is the same width, so a tap target can own a
+    # character cell; in a proportional face the cells drift and a tap lands
+    # somewhere near where you pointed, which is worse than not offering it.
+    $ent = New-Text 'kb-entry' $script:KB_TXT_X 38 $script:KB_TXT_W 56 30 '' $script:WHITE 0 @{
+        Text = BindJS 'Text' ('return ""+$prop("' + $P + '.KbdEntry")')
+    } 'Bold' -Fontable
+    $ent.Font = 'Consolas'
+    $items.Add((OnOverlay $ent 'kbd'))
+    # The caret is its own bar sitting on a cell boundary, so the text it is
+    # in front of does not move when it moves.
+    $car = New-Rect 'kb-caret' $script:KB_TXT_X 48 2 36 $script:WHITE $null 0
+    $car.Bindings['Left'] = BindJS 'Left' (
+        'return ' + $script:KB_TXT_X + '+' + $script:KB_CELL_W + '*(1*$prop("' + $P + '.KbdCaret"))')
+    $items.Add((OnOverlay $car 'kbd'))
+
+    # One invisible target per cell, plus one past the last character.
+    for ($cell = 0; $cell -le $script:KB_CELLS; $cell++) {
+        $cx = $script:KB_TXT_X + $cell * $script:KB_CELL_W
+        $items.Add((OnOverlay (New-Button "kb-caret$cell" $cx 38 $script:KB_CELL_W 56 ("DashKbdCaret" + $cell)) 'kbd'))
+    }
 
     $rows = @(
         @{ Keys = '1234567890'; X = 22;  Y = 106 },
@@ -404,9 +430,20 @@ function KeyboardOverlay([string]$P) {
     $items.Add((OnOverlay (New-Text 'kb-caps-t' 22 330 130 52 16 'CAPS' $script:WHITE 1 $null 'Bold') 'kbd'))
     $items.Add((OnOverlay (New-Button 'kb-caps' 22 330 130 52 'DashKbdCaps') 'kbd'))
 
-    $items.Add((OnOverlay (New-Rect 'kb-space-bg' 158 330 330 52 $script:TILE $null 5) 'kbd'))
-    $items.Add((OnOverlay (New-Text 'kb-space-t' 158 330 330 52 15 'SPACE' $script:MUTED 1 $null 'Bold') 'kbd'))
-    $items.Add((OnOverlay (New-Button 'kb-space' 158 330 330 52 'DashKbdSpace') 'kbd'))
+    # Arrows as well as tapping. Tapping gets you to the right word, arrows
+    # get you to the right letter, and on a phone in a car the second one is
+    # not reliably a tap.
+    $items.Add((OnOverlay (New-Rect 'kb-lt-bg' 158 330 62 52 $script:TILE $null 5) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-lt-t' 158 330 62 52 22 '<' $script:WHITE 1 $null 'Bold') 'kbd'))
+    $items.Add((OnOverlay (New-Button 'kb-lt' 158 330 62 52 'DashKbdLeft') 'kbd'))
+
+    $items.Add((OnOverlay (New-Rect 'kb-rt-bg' 224 330 62 52 $script:TILE $null 5) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-rt-t' 224 330 62 52 22 '>' $script:WHITE 1 $null 'Bold') 'kbd'))
+    $items.Add((OnOverlay (New-Button 'kb-rt' 224 330 62 52 'DashKbdRight') 'kbd'))
+
+    $items.Add((OnOverlay (New-Rect 'kb-space-bg' 290 330 198 52 $script:TILE $null 5) 'kbd'))
+    $items.Add((OnOverlay (New-Text 'kb-space-t' 290 330 198 52 15 'SPACE' $script:MUTED 1 $null 'Bold') 'kbd'))
+    $items.Add((OnOverlay (New-Button 'kb-space' 290 330 198 52 'DashKbdSpace') 'kbd'))
 
     $items.Add((OnOverlay (New-Rect 'kb-del-bg' 494 330 130 52 $script:TILE $null 5) 'kbd'))
     $items.Add((OnOverlay (New-Text 'kb-del-t' 494 330 130 52 16 'DEL' $script:MUTED 1 $null 'Bold') 'kbd'))
