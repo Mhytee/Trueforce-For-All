@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<modDesc descVersion="92">
+    <author>Mhytee</author>
+    <authorContact>https://github.com/Mhytee/SimHubTrueforce</authorContact>
+    <version>0.2.0.0</version>
+    <title>
+        <en>TF4ALL Telemetry</en>
+        <de>TF4ALL Telemetry</de>
+    </title>
+    <description>
+        <en>Physics telemetry for the Trueforce For All SimHub plugin: per-wheel suspension and ground contact, steering, and engine load, so the plugin can render terrain and load in the wheel's force feedback. Keep the SimHub Telemetry Interface mod installed too; this one only adds the physics channel.</en>
+        <de>Physik-Telemetrie fuer das Trueforce For All SimHub-Plugin.</de>
+    </description>
+    <iconFilename>tf4all.dds</iconFilename>
+    <multiplayer supported="true" />
+    <extraSourceFiles>
+        <sourceFile filename="TF4ALLTelemetry.lua"/>
+    </extraSourceFiles>
+</modDesc>

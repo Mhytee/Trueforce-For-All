@@ -784,6 +784,13 @@ namespace TrueforceForAll.Core
         public void ClearLastFfbTarget()
         {
             _classicResetRequested = true;
+            // Drop the spring snapshot NOW, from this thread: the parser only
+            // honours the reset request at its next command, and a paused game
+            // may send none. A published spring must not keep producing
+            // emulated force across the pause (the spring analogue of the
+            // stale-force replay this method exists to prevent). Safe here: a
+            // volatile reference write; slot state itself stays parser-owned.
+            _playingSprings = null;
             System.Threading.Interlocked.Exchange(ref _packed, 0);
         }
 
@@ -892,6 +899,11 @@ namespace TrueforceForAll.Core
 
             if (_ffbIndexConfirmed) return false;                 // working; never thrash
             if (FfbSamplesCaptured > _ffbAtCaptureStart) return false; // FFB flowing this capture
+            // Spring-parameter captures are FFB flowing too (FS25-class games
+            // never produce a force value); without this the escalation chain
+            // would tell a user with working spring emulation that no FFB is
+            // reaching the plugin.
+            if (SpringUpdatesCaptured > _springsAtCaptureStart) return false;
             if (!_gameFfbExpected) return false;                  // not driving -> no FFB expected
 
             // If the user pinned a device that isn't a Logitech wheel, there's
@@ -1158,6 +1170,7 @@ namespace TrueforceForAll.Core
             // Baselines for the watchdog: FFB count at the start of this capture
             // session, and the next watchdog tick.
             _ffbAtCaptureStart = FfbSamplesCaptured;
+            _springsAtCaptureStart = SpringUpdatesCaptured;
             _nextWatchdogMs = Environment.TickCount + WatchdogIntervalMs;
             // Liveness baseline: fresh capture gets a full grace window before
             // a stall can be declared. Uses the same selector the watchdog
@@ -1433,6 +1446,7 @@ namespace TrueforceForAll.Core
         // prefix (rev LEDs on this wheel), not a slot/command pair.
         private const int  ClassicSlotCount   = 4;
         private const byte ClassicTypeVariable = 0x08;   // params: force X at byte 2, offset-binary
+        private const byte ClassicTypeHiResSpring = 0x0b; // params: dead band + slopes + clip (see ParseHiResSpring)
         private const byte ClassicMaxForceType = 0x0e;   // highest defined type (high-res auto-center)
         private const byte ClassicCmdDownload        = 0x0;
         private const byte ClassicCmdDownloadAndPlay = 0x1;
@@ -1458,8 +1472,130 @@ namespace TrueforceForAll.Core
             Array.Clear(_classicSlotForce, 0, ClassicSlotCount);
             Array.Clear(_classicSlotDecoded, 0, ClassicSlotCount);
             Array.Clear(_classicSlotPlaying, 0, ClassicSlotCount);
+            Array.Clear(_classicSlotSpring, 0, ClassicSlotCount);
+            _playingSprings = null;
             _classicLastPublished = 0;
             _classicHavePublished = false;
+        }
+
+        // ---------- classic spring emulation (FS25-class games) --------------
+        //
+        // Some classic-protocol games never stream a force value at all: they
+        // command force as a parametric HIGH-RESOLUTION SPRING (type 0x0b) and
+        // let the wheel's firmware compute torque from its own position.
+        // Farming Simulator 25 drives its entire FFB this way (a servo spring
+        // whose dead band tracks where the game wants the wheel; reporter
+        // capture 2026-08-06), and the owner's FH5 capture shows the same type
+        // holding an auto-center at 0x80. In Trueforce mode the firmware does
+        // not run that math, which reads as "FFB dead" even though the game is
+        // commanding centering the whole time. The parser stores the playing
+        // springs' parameters here; the plugin evaluates them against the
+        // wheel's PHYSICAL position (WheelSteeringReader) at the 1 kHz pump
+        // via TryEvaluateClassicSprings and streams the result as cur on ep3.
+        //
+        // Wire layout (classic 7-byte report, after the slot/cmd + type pair):
+        //   byte2 = D1 upper 8 bits, byte3 = D2 upper 8 bits (11-bit dead band
+        //   edges over the full lock range), byte4 = K2<<4 | K1 (per-side
+        //   slope nibbles), byte5 = [D2 low 3][S2][D1 low 3][S1] (dead band
+        //   LSBs + per-side invert bits), byte6 = CLIP (torque saturation).
+        // Validated against the FS25 corpus (dead band tracks steering, edges
+        // ordered, S bits zero); the torque model below (fraction = deviation
+        // * 2^K, capped at CLIP) is the plausible reading of the slope nibble
+        // and is the one thing that still needs an on-wheel confirmation.
+        private sealed class ClassicSpring
+        {
+            public float D1, D2;     // dead band edges, 0..1 of full lock range
+            public int   K1, K2;     // per-side slope exponents (0..15)
+            public bool  S1, S2;     // per-side invert (push away, not toward)
+            public float Clip;       // torque saturation, 0..1
+        }
+
+        // Slot springs are parser-thread state, like the force arrays above.
+        // _playingSprings is the cross-thread snapshot: rebuilt (fresh array,
+        // reference-swapped) whenever a change touches a spring, read by the
+        // pump thread. Elements are never mutated after publish.
+        private readonly ClassicSpring[] _classicSlotSpring = new ClassicSpring[ClassicSlotCount];
+        private volatile ClassicSpring[] _playingSprings;
+
+        /// <summary>Spring parameter writes captured into a playing slot. The
+        /// spring analogue of FfbSamplesCaptured: proof the game is commanding
+        /// FFB even though no force value ever appears on the wire.</summary>
+        public long SpringUpdatesCaptured { get; private set; }
+        private long _springsAtCaptureStart;
+
+        /// <summary>True while any captured classic spring is playing. LED /
+        /// OLED writes gate on "game FFB is quiet"; a playing spring is game
+        /// FFB even though TryGetFreshFfbTarget stays null, so the quiet
+        /// probe must consult this too.</summary>
+        public bool AnyClassicSpringPlaying => !SimulateNoFfbCapture && _playingSprings != null;
+
+        private static ClassicSpring ParseHiResSpring(byte[] p, int off, int len)
+        {
+            if (len < 7) return null;
+            byte lo = p[off + 5];
+            int d1 = (p[off + 2] << 3) | ((lo >> 1) & 0x07);
+            int d2 = (p[off + 3] << 3) | ((lo >> 5) & 0x07);
+            return new ClassicSpring
+            {
+                // Guard an inverted band; the force math assumes D1 <= D2.
+                D1   = Math.Min(d1, d2) / 2047f,
+                D2   = Math.Max(d1, d2) / 2047f,
+                K1   = p[off + 4] & 0x0f,
+                K2   = (p[off + 4] >> 4) & 0x0f,
+                S1   = (lo & 0x01) != 0,
+                S2   = (lo & 0x10) != 0,
+                Clip = p[off + 6] / 255f,
+            };
+        }
+
+        private void PublishSpringSnapshot()
+        {
+            int n = 0;
+            for (int i = 0; i < ClassicSlotCount; i++)
+                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null) n++;
+            if (n == 0) { _playingSprings = null; return; }
+            var arr = new ClassicSpring[n];
+            int j = 0;
+            for (int i = 0; i < ClassicSlotCount; i++)
+                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null) arr[j++] = _classicSlotSpring[i];
+            _playingSprings = arr;
+        }
+
+        /// <summary>Evaluate the playing classic springs at the wheel's
+        /// physical position. steerNorm is -1..1 (full left..full right).
+        /// Returns null when no spring is playing; 0 when the wheel sits
+        /// inside every dead band (the game commands a spring, the spring
+        /// commands nothing right now). Sign space matches the variable-force
+        /// decode and the stationary spring: positive pulls toward lower
+        /// steer, so a wheel right of the band gets a positive (leftward)
+        /// pull. Allocation-free; safe at 1 kHz.</summary>
+        public short? TryEvaluateClassicSprings(float steerNorm)
+        {
+            if (SimulateNoFfbCapture) return null;
+            var springs = _playingSprings;
+            if (springs == null) return null;
+            if (steerNorm < -1f) steerNorm = -1f; else if (steerNorm > 1f) steerNorm = 1f;
+            float p = (steerNorm + 1f) * 0.5f;
+            float sum = 0f;
+            for (int i = 0; i < springs.Length; i++)
+            {
+                var s = springs[i];
+                if (p > s.D2)
+                {
+                    float f = (p - s.D2) * (1 << s.K2);
+                    if (f > s.Clip) f = s.Clip;
+                    sum += s.S2 ? -f : f;
+                }
+                else if (p < s.D1)
+                {
+                    float f = (s.D1 - p) * (1 << s.K1);
+                    if (f > s.Clip) f = s.Clip;
+                    sum += s.S1 ? f : -f;
+                }
+            }
+            int v = (int)(sum * 32767f);
+            if (v > 32767) v = 32767; else if (v < -32768) v = -32768;
+            return (short)v;
         }
 
         private void HandleClassicFfbCommand(byte[] payload, int off, int len)
@@ -1491,48 +1627,85 @@ namespace TrueforceForAll.Core
             if (typeOrPad > ClassicMaxForceType) return;
 
             bool decodedForce = false;
+            bool springsTouched = false;
+            bool springIntoPlayingSlot = false;
             switch (cmd)
             {
                 case ClassicCmdDownload:          // load a slot, do NOT play it
                 case ClassicCmdDownloadAndPlay:
                 case ClassicCmdRefreshForce:      // retune a force already playing
                 {
-                    // Only VARIABLE is decoded. Any other type still marks the
-                    // slot playing so a later STOP is accounted for, but
-                    // contributes nothing: guessing at an undecoded payload is
-                    // how you invent a force the game never asked for.
+                    // VARIABLE decodes to a scalar force; HI-RES SPRING decodes
+                    // to parameters the plugin evaluates against the wheel's
+                    // physical position. Any other type still marks the slot
+                    // playing so a later STOP is accounted for, but contributes
+                    // nothing: guessing at an undecoded payload is how you
+                    // invent a force the game never asked for.
                     bool isVariable = typeOrPad == ClassicTypeVariable && len >= 3;
                     short f = isVariable ? (short)((payload[off + 2] - 0x80) << 8) : (short)0;
+                    ClassicSpring spring = typeOrPad == ClassicTypeHiResSpring
+                        ? ParseHiResSpring(payload, off, len) : null;
                     for (int i = 0; i < ClassicSlotCount; i++)
                     {
                         if ((slots & (1 << i)) == 0) continue;
                         if (cmd == ClassicCmdRefreshForce && !_classicSlotPlaying[i]) continue;
+                        // Whatever this download is, it overwrites the slot:
+                        // a spring replaced by a variable force (or any other
+                        // type) must stop contributing spring torque.
+                        if (_classicSlotSpring[i] != null) { _classicSlotSpring[i] = null; springsTouched = true; }
                         if (isVariable)
                         {
                             _classicSlotForce[i]   = f;
                             _classicSlotDecoded[i] = true;
                             decodedForce = true;
                         }
+                        else if (spring != null)
+                        {
+                            _classicSlotSpring[i]  = spring;
+                            _classicSlotDecoded[i] = false;   // no scalar; the spring path owns this slot
+                            springsTouched = true;
+                        }
                         else
                         {
                             _classicSlotDecoded[i] = false;
                         }
                         if (cmd == ClassicCmdDownloadAndPlay) _classicSlotPlaying[i] = true;
+                        if (spring != null && _classicSlotPlaying[i]) springIntoPlayingSlot = true;
                     }
                     break;
                 }
                 case ClassicCmdPlay:
                     for (int i = 0; i < ClassicSlotCount; i++)
-                        if ((slots & (1 << i)) != 0) _classicSlotPlaying[i] = true;
+                        if ((slots & (1 << i)) != 0)
+                        {
+                            _classicSlotPlaying[i] = true;
+                            if (_classicSlotSpring[i] != null) springsTouched = true;
+                        }
                     break;
                 case ClassicCmdStop:
                     for (int i = 0; i < ClassicSlotCount; i++)
-                        if ((slots & (1 << i)) != 0) _classicSlotPlaying[i] = false;
+                        if ((slots & (1 << i)) != 0)
+                        {
+                            _classicSlotPlaying[i] = false;
+                            if (_classicSlotSpring[i] != null) springsTouched = true;
+                        }
                     break;
                 default:
                     // Default spring on/off, set default spring, dead band and
                     // the rest do not change the commanded force.
                     return;
+            }
+
+            if (springsTouched) PublishSpringSnapshot();
+            // A spring landing in a playing slot is captured game FFB, even
+            // though no force value exists to publish: count it so the no-FFB
+            // escalation chain (whole-bus retry + user warning) stands down.
+            // A bare download into a stopped slot does NOT count, same
+            // reasoning as the never-played zero below.
+            if (springIntoPlayingSlot && !SimulateNoFfbCapture)
+            {
+                SpringUpdatesCaptured++;
+                NoteExtraction("interrupt-out", -1, -1, "classic-spring 0x0b (hi-res spring params)");
             }
 
             int sum = 0;
@@ -1720,6 +1893,9 @@ namespace TrueforceForAll.Core
                 $"ep0ctrl={Ep0ControlTransfersOnOurDevice} setrep={SetReportsOnOurDevice} " +
                 $"ffbIdx=0x{_ffbFeatureIndex:X2}{(_ffbIndexConfirmed ? "**" : _ffbIndexResolved ? "*" : "")} " +
                 $"matched={FfbSamplesCaptured} tuples=[{tuples}]" +
+                (SpringUpdatesCaptured > 0
+                    ? $" springs={SpringUpdatesCaptured}{(_playingSprings != null ? " (playing)" : "")}"
+                    : "") +
                 (_rawLogStream != null ? $" trace={RawLogBytesWritten}b" : ""));
         }
 
