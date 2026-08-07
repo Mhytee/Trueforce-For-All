@@ -1405,55 +1405,126 @@ namespace TrueforceForAll.Plugin
         //
         // The enhanced FS telemetry needs a mod in the game's own mods
         // folder (a game constraint; FS loads mods from nowhere else). The
-        // zip travels EMBEDDED in this assembly so a plain DLL deploy
-        // carries it. Consent-once: the first FS session offers the install,
-        // a decline is remembered forever, and after one accepted install
-        // newer plugin versions upgrade the mod silently (the consent was to
-        // the file, not to one version of it).
+        // per-generation zips travel EMBEDDED in this assembly so a plain
+        // DLL deploy carries them. Offer model (owner spec 2026-08-07): a
+        // one-time dialog on the first FS session; declining only silences
+        // the DIALOG, the offer itself never goes away, it lives on as the
+        // Telemetry FFB tab banner with an Install button for as long as a
+        // spring game is active without the mod. After one accepted install,
+        // newer plugin versions refresh the file silently (the consent was
+        // to the file, not to one version of it).
         private const string FsModVersion = "0.2.0";
         private bool _fsModPromptShown;   // once per SimHub session
 
-        private static string FsModTargetPath()
+        /// <summary>Maps a Farming Simulator game name to its mods folder and
+        /// the embedded zip for that generation. False for FS titles we do
+        /// not ship a mod for (FS19 is a different scripting-API vintage,
+        /// pending validation).</summary>
+        private static bool TryGetFsModInfo(string game, out string modsDir, out string resource)
         {
-            string docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            return Path.Combine(docs, "My Games", "FarmingSimulator2025", "mods", "TF4ALLTelemetry.zip");
+            modsDir = null; resource = null;
+            string folder;
+            switch (game)
+            {
+                case "FarmingSimulator25":
+                    folder = "FarmingSimulator2025";
+                    resource = "TrueforceForAll.Plugin.TF4ALLTelemetry_FS25.zip";
+                    break;
+                case "FarmingSimulator22":
+                    folder = "FarmingSimulator2022";
+                    resource = "TrueforceForAll.Plugin.TF4ALLTelemetry_FS22.zip";
+                    break;
+                default:
+                    return false;
+            }
+            try
+            {
+                string docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                modsDir = Path.Combine(docs, "My Games", folder, "mods");
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>True when the active game either has our mod installed or
+        /// is not a game we ship one for. The tab banner shows on false.</summary>
+        public bool IsFsModInstalledForActiveGame()
+        {
+            string game = _activeGame;
+            if (!TryGetFsModInfo(game, out string modsDir, out _)) return true;
+            try
+            {
+                if (!Directory.Exists(modsDir)) return true;   // game not on this PC: nothing to offer
+                return File.Exists(Path.Combine(modsDir, "TF4ALLTelemetry.zip"));
+            }
+            catch { return true; }
+        }
+
+        /// <summary>Install (or refresh) the mod for the active game. Returns
+        /// null on success, else a short human-readable reason. Called from
+        /// the tab banner's Install button and the first-session dialog.</summary>
+        public string InstallFsModForActiveGame()
+        {
+            string game = _activeGame;
+            if (!TryGetFsModInfo(game, out string modsDir, out string resource))
+                return "this game is not supported yet";
+            try
+            {
+                if (!Directory.Exists(modsDir))
+                    return "the game's mods folder was not found";
+                string target = Path.Combine(modsDir, "TF4ALLTelemetry.zip");
+                using (var res = typeof(TrueforcePlugin).Assembly.GetManifestResourceStream(resource))
+                {
+                    if (res == null) return "the mod is missing from this plugin build";
+                    using (var f = new FileStream(target, FileMode.Create, FileAccess.Write))
+                        res.CopyTo(f);
+                }
+                var s = Settings;
+                if (s != null)
+                {
+                    if (s.FsModInstalledVersions == null)
+                        s.FsModInstalledVersions = new Dictionary<string, string>();
+                    s.FsModInstalledVersions[game] = FsModVersion;
+                    PersistSettingsCore();
+                }
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] TF4ALL Telemetry game mod installed for {game} (loads on the game's next start).");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] Could not install the TF4ALL Telemetry game mod: " + ex.Message);
+                return ex.Message;
+            }
         }
 
         private void MaybeOfferFsModInstall()
         {
             var s = Settings;
             if (s == null || _fsModPromptShown) return;
-            if (!string.Equals(_activeGame, "FarmingSimulator25", StringComparison.Ordinal)) return;
-
-            string target, modsDir;
-            try
-            {
-                target = FsModTargetPath();
-                modsDir = Path.GetDirectoryName(target);
-                if (modsDir == null || !Directory.Exists(modsDir)) return;   // game not installed here
-            }
-            catch { return; }
+            string game = _activeGame;
+            if (!TryGetFsModInfo(game, out string modsDir, out _)) return;
+            try { if (!Directory.Exists(modsDir)) return; } catch { return; }
 
             _fsModPromptShown = true;
 
             bool installed = false;
-            try { installed = File.Exists(target); } catch { }
+            try { installed = File.Exists(Path.Combine(modsDir, "TF4ALLTelemetry.zip")); } catch { }
             if (installed)
             {
-                // Silent upgrade path: consent was given when the file first
-                // went in; a version bump only refreshes it.
-                if (!string.IsNullOrEmpty(s.FsModInstalledVersion)
-                    && !string.Equals(s.FsModInstalledVersion, FsModVersion, StringComparison.Ordinal)
-                    && TryWriteFsMod(target))
+                // Silent refresh: consent was given when the file first went in.
+                string stamped = null;
+                s.FsModInstalledVersions?.TryGetValue(game, out stamped);
+                if (!string.IsNullOrEmpty(stamped)
+                    && !string.Equals(stamped, FsModVersion, StringComparison.Ordinal)
+                    && InstallFsModForActiveGame() == null)
                 {
-                    s.FsModInstalledVersion = FsModVersion;
-                    PersistSettingsCore();
                     SimHub.Logging.Current.Info(
-                        $"[TF4ALL] TF4ALL Telemetry game mod updated to {FsModVersion} (loads on the game's next start).");
+                        $"[TF4ALL] TF4ALL Telemetry game mod updated to {FsModVersion}.");
                 }
                 return;
             }
-            if (s.FsModInstallDeclined) return;
+            if (s.FsModInstallDeclined) return;   // dialog silenced; the tab banner carries the offer
 
             try
             {
@@ -1470,17 +1541,14 @@ namespace TrueforceForAll.Plugin
                             DialogKind.Confirm, "Install", "Not now");
                         var st = Settings;
                         if (st == null) return;
-                        if (ok == true)
+                        if (ok == true) InstallFsModForActiveGame();
+                        else
                         {
-                            if (TryWriteFsMod(FsModTargetPath()))
-                            {
-                                st.FsModInstalledVersion = FsModVersion;
-                                SimHub.Logging.Current.Info(
-                                    "[TF4ALL] TF4ALL Telemetry game mod installed (loads on the game's next start).");
-                            }
+                            // Silences only this dialog; the Telemetry FFB tab
+                            // banner keeps offering until the mod is installed.
+                            st.FsModInstallDeclined = true;
+                            PersistSettingsCore();
                         }
-                        else st.FsModInstallDeclined = true;
-                        PersistSettingsCore();
                     }
                     catch (Exception ex)
                     {
@@ -1489,30 +1557,6 @@ namespace TrueforceForAll.Plugin
                 }));
             }
             catch { }
-        }
-
-        private static bool TryWriteFsMod(string target)
-        {
-            try
-            {
-                using (var res = typeof(TrueforcePlugin).Assembly.GetManifestResourceStream(
-                    "TrueforceForAll.Plugin.TF4ALLTelemetry.zip"))
-                {
-                    if (res == null)
-                    {
-                        SimHub.Logging.Current.Warn("[TF4ALL] TF4ALL Telemetry mod resource missing from this build.");
-                        return false;
-                    }
-                    using (var f = new FileStream(target, FileMode.Create, FileAccess.Write))
-                        res.CopyTo(f);
-                }
-                return true;
-            }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Warn("[TF4ALL] Could not install the TF4ALL Telemetry game mod: " + ex.Message);
-                return false;
-            }
         }
 
         // Evaluate the captured springs at the wheel's physical position.

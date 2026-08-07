@@ -2637,6 +2637,28 @@
                 <TextBlock Text="Telemetry Based FFB" Style="{StaticResource SectionHeaderText}"/>
             </Border>
 
+            <!-- Standing offer to install the TF4ALL Telemetry game mod.
+                 Visible while a spring game (Farming Simulator) is active
+                 without the mod: declining the first-run dialog silences the
+                 dialog, never this. Hidden once installed. -->
+            <Border x:Name="FsModBanner" Visibility="Collapsed"
+                    Background="#3300A8FF" BorderBrush="#00A8FF" BorderThickness="1"
+                    CornerRadius="3" Padding="9,7" Margin="0,4,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="FsModBannerText" Foreground="#DCEBFA"
+                               FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               MaxWidth="540"
+                               Text="Install the TF4ALL Telemetry mod for enhanced force feedback in Farming Simulator."/>
+                    <Button Grid.Column="1" x:Name="FsModInstallButton" Content="Install"
+                            Padding="12,4" Margin="10,0,0,0" VerticalAlignment="Center"
+                            Click="FsModInstall_Click"/>
+                </Grid>
+            </Border>
+
             <!-- "Not available here" badge. The controls below stay visible (and
                  pre-tunable) in every game so the section can be explored without a
                  supported title running; this badge appears when the active game
@@ -2662,7 +2684,7 @@
                  spring-mode game (Farming Simulator) is active, so each game's
                  player reads only the sentence that applies to them. -->
             <TextBlock x:Name="ModeBIntroText" Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
-                       Text="The wheel's steering force is built from telemetry instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel. Farming Simulator 25 is supported too, through the spring option below."/>
+                       Text="The wheel's steering force is built from telemetry instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel. Farming Simulator 22 and 25 are supported too, through the spring option below."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
                        Text="It also enables your wheel's rev lights. For now rev lights only work with Telemetry Based FFB: writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel, and replacing the game's force feedback frees them. A custom driver that would enable rev lights in every game is in testing, but it needs to be signed by Microsoft first."/>
 
@@ -2686,7 +2708,7 @@
                  (owner call 2026-08-07). -->
             <CheckBox x:Name="SpringEmulationCheck" Content="Recreate spring-based force feedback (Farming Simulator)"
                       Margin="0,4,0,2" Checked="SpringEmulation_Changed" Unchecked="SpringEmulation_Changed"
-                      ToolTip="On by default. Some games (Farming Simulator 25) steer the wheel with a centering spring instead of streaming forces, and that spring goes silent while this plugin is running. With this on, the plugin uses the game's built-in force feedback to drive the wheel again, and can enhance it."/>
+                      ToolTip="On by default. Some games (Farming Simulator 22 and 25) steer the wheel with a centering spring instead of streaming forces, and that spring goes silent while this plugin is running. With this on, the plugin uses the game's built-in force feedback to drive the wheel again, and can enhance it."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
                        Text="Engages by itself when such a game is detected and stays out of the way everywhere else."/>
 

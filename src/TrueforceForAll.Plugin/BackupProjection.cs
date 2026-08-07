@@ -132,8 +132,8 @@ namespace TrueforceForAll.Plugin
             // Last wheel detected on this PC (Account session list display); per-PC hardware.
             "LastUsedWheel",
             // TF4ALL Telemetry game-mod install state: the mod lives in THIS
-            // PC's Farming Simulator folder, and consent was given here.
-            "FsModInstallDeclined", "FsModInstalledVersion",
+            // PC's Farming Simulator folders, and consent was given here.
+            "FsModInstallDeclined", "FsModInstalledVersions",
             // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
             // per-PC hardware state like LastUsedWheel.
             "WheelDefaultsApplied",

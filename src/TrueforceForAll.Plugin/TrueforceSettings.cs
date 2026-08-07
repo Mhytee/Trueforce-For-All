@@ -686,9 +686,14 @@ namespace TrueforceForAll.Plugin
         public double SpringModeTerrainGain    { get; set; } = 1.0;
 
         // TF4ALL Telemetry game-mod install state (Farming Simulator).
-        // Machine-local: the mod lives in THIS PC's game folder.
-        public bool   FsModInstallDeclined  { get; set; }
-        public string FsModInstalledVersion { get; set; }
+        // Machine-local: the mod lives in THIS PC's game folders. Declined
+        // silences only the first-run dialog; the Telemetry FFB tab banner
+        // keeps offering. Versions are per game generation (FS22/FS25 have
+        // separate installs); MUST default empty (SimHub's bare-serializer
+        // load appends stored entries onto non-empty initializers).
+        public bool FsModInstallDeclined { get; set; }
+        public Dictionary<string, string> FsModInstalledVersions { get; set; }
+            = new Dictionary<string, string>();
         // 1.0 = full felt scale at full lock when parked; slider allows up to
         // 2.0 for headroom, though past ~1/FfbScale the ±full-scale clamp /
         // motor ceiling caps it (you can't exceed the wheel's max torque).

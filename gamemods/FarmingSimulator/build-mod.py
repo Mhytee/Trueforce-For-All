@@ -1,14 +1,20 @@
 # Packages the TF4ALL Telemetry mod: generates the icon DDS (uncompressed
 # BGRA8, 256x256, no external tooling needed) and zips modDesc + Lua + icon
-# into TF4ALLTelemetry.zip next to this script. Run with any Python 3.
+# into one zip per supported game generation. FS22 and FS25 share the exact
+# same Lua (SimHub's own mod ships an identical file to both); only the
+# modDesc descVersion differs, matching what each game accepts (read from
+# SimHub's shipped paks: FS22=61, FS25=92). FS19 is a different API vintage
+# and is deliberately not built. Run with any Python 3.
 import os
+import re
 import struct
 import zipfile
 
 here = os.path.dirname(os.path.abspath(__file__))
 src = os.path.join(here, "TF4ALLTelemetry")
-out_zip = os.path.join(here, "TF4ALLTelemetry.zip")
 icon_path = os.path.join(src, "tf4all.dds")
+
+TARGETS = {"FS22": "61", "FS25": "92"}
 
 W = H = 256
 
@@ -40,12 +46,19 @@ def make_icon():
         f.write(header + pixelformat + caps + bytes(px))
 
 
-def make_zip():
-    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
-        for name in ("modDesc.xml", "TF4ALLTelemetry.lua", "tf4all.dds"):
-            z.write(os.path.join(src, name), name)
-    print("wrote", out_zip)
+def make_zips():
+    with open(os.path.join(src, "modDesc.xml"), encoding="utf-8") as f:
+        desc_template = f.read()
+    for tag, desc_version in TARGETS.items():
+        out_zip = os.path.join(here, "TF4ALLTelemetry_%s.zip" % tag)
+        desc = re.sub(r'descVersion="\d+"', 'descVersion="%s"' % desc_version,
+                      desc_template, count=1)
+        with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("modDesc.xml", desc)
+            for name in ("TF4ALLTelemetry.lua", "tf4all.dds"):
+                z.write(os.path.join(src, name), name)
+        print("wrote", out_zip)
 
 
 make_icon()
-make_zip()
+make_zips()

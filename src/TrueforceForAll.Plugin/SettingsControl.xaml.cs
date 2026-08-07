@@ -603,6 +603,29 @@ namespace TrueforceForAll.Plugin
                     if (SpringTerrainPanel != null)
                         SpringTerrainPanel.Visibility = springGame
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Standing mod-install offer: spring game active, mod not
+                    // installed. _fsModBannerHold keeps the success text up
+                    // after an install instead of blinking it away on the
+                    // next refresh tick, but the hold is FS-scoped: leaving
+                    // the game clears it and resets the banner, so switching
+                    // to Forza can never strand an FS banner on that layout.
+                    if (FsModBanner != null)
+                    {
+                        if (!springGame)
+                        {
+                            _fsModBannerHold = false;
+                            FsModBanner.Visibility = System.Windows.Visibility.Collapsed;
+                            if (FsModInstallButton != null)
+                                FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
+                            if (FsModBannerText != null)
+                                FsModBannerText.Text = "Install the TF4ALL Telemetry mod for enhanced force feedback in Farming Simulator.";
+                        }
+                        else if (!_fsModBannerHold)
+                        {
+                            FsModBanner.Visibility = _plugin.IsFsModInstalledForActiveGame()
+                                ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                        }
+                    }
                     // Contextual intro: each game's player reads only the
                     // sentence that applies to them. The FS text carries the
                     // one instruction that is OPPOSITE to Forza's: the game's
@@ -618,8 +641,8 @@ namespace TrueforceForAll.Plugin
                             : "The wheel's steering force is built from telemetry instead of the game's " +
                               "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
                               "Set the game's force feedback and vibration to 0 so this is the only " +
-                              "force on the wheel. Farming Simulator 25 is supported too, through the " +
-                              "spring option below.";
+                              "force on the wheel. Farming Simulator 22 and 25 are supported too, " +
+                              "through the spring option below.";
                     ModeBEnabledCheck.Visibility = springGame
                         ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     // The controls stay visible in every game so the section can be
@@ -633,8 +656,8 @@ namespace TrueforceForAll.Plugin
                             ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     if (!mbSupported && ModeBUnsupportedBadgeText != null)
                         ModeBUnsupportedBadgeText.Text = string.IsNullOrEmpty(mbGame)
-                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 25. Start one of those to turn it on. You can still see and pre-tune the controls below."
-                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 25. It also enables your wheel's rev lights. Start one of those to turn it on.";
+                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25. Start one of those to turn it on. You can still see and pre-tune the controls below."
+                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25. It also enables your wheel's rev lights. Start one of those to turn it on.";
                     if (ModeBGameNote != null)
                     {
                         if (springGame)
@@ -5283,6 +5306,22 @@ namespace TrueforceForAll.Plugin
                 || SpringEmulationCheck == null) return;
             _plugin.Settings.ClassicSpringEmulationEnabled = SpringEmulationCheck.IsChecked == true;
             _plugin.PersistSettings();
+        }
+
+        // Standing mod-install banner on the Telemetry FFB tab. The hold flag
+        // keeps the success text visible after an install; the banner state
+        // machine otherwise belongs to RefreshFromPlugin.
+        private bool _fsModBannerHold;
+        private void FsModInstall_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || FsModBannerText == null) return;
+            string err = _plugin.InstallFsModForActiveGame();
+            _fsModBannerHold = err == null;
+            FsModBannerText.Text = err == null
+                ? "Installed. Restart Farming Simulator to load it; the force feedback upgrades by itself."
+                : "Install failed: " + err + ".";
+            if (err == null && FsModInstallButton != null)
+                FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
         }
 
         // Terrain feel (spring-mode enhancement). Settings-only: the sampler
