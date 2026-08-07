@@ -762,7 +762,7 @@ namespace TrueforceForAll.Plugin
         public float ModeBDirSoft     { get; set; } = 0f;    // center flat-spot width (BDIRK); 0 = raw linear (Direct centering + the damper own center calm now)
         public float ModeBLockupRecoverMs { get; set; } = 30f; // "Lockup recovery" slider (BRECOVER): how fast force returns after lockup/wheelspin eases
         public float ModeBLockupPoint { get; set; } = 0.8f; // |slip ratio| treated as full lockup (BLOCKPT); higher = wheel keeps its weight deeper into braking before lightening (owner 2026-07-24 on-wheel)
-        public float ModeBMinForce  { get; set; } = 0.05f;   // "Min force" slider (BMINF): smallest force the wheel renders; lifts faint detail above the motor's friction floor. G PRO/RS50 default 0.05; G923 0.25 via ApplyWheelDefaults.
+        public float ModeBMinForce  { get; set; } = 0.05f;   // "Min force" slider (BMINF): smallest force the wheel renders; lifts faint detail above the motor's friction floor. 0.05 on every wheel since the 2026-08-07 retune (the G923 used to take 0.25 via ApplyWheelDefaults).
 
         // Mode B feel features (the haptic-engine layers 6-11, all validated
         // on-wheel and graduated to default ON there; the Mode B master

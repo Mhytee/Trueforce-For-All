@@ -2886,7 +2886,7 @@
                         HorizontalAlignment="Left" Click="ModeBReset_Click"
                         ToolTip="Put every Telemetry Based FFB slider and feel toggle back to your wheel's defaults."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="Restores your wheel's defaults. The G PRO, RS50, and G923 each get their own strength, and the G923 also gets a min force floor. Your per-game on/off choices and each car's learned grip calibration are kept."/>
+                           Text="Restores your wheel's defaults. The G PRO, RS50, and G923 each get their own strength, and the G923 also gets its own damping. Your per-game on/off choices and each car's learned grip calibration are kept."/>
             </StackPanel>
             </StackPanel><!-- ModeBSupportedPanel -->
 

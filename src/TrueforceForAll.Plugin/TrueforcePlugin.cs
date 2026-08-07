@@ -5367,14 +5367,21 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Per-wheel Mode B defaults, layered ON TOP of the coded
         /// factory values (which ARE the G PRO defaults). The table (owner
-        /// 2026-08-01): strength 0.50 / 0.60 / 1.25 for G PRO / RS50 / G923;
-        /// min force 0.05 for G PRO and RS50, 0.25 for the G923 (the belt
-        /// drive eats faint torques as internal friction); G923 damping held
-        /// at its gen-2 value 0.09 (chosen for the belt's own friction; the
-        /// G PRO factory damping later moved below it to 0.07). Everything
-        /// else is shared across all three. Used by "Reset tuning to
-        /// defaults" (wheel-aware) and by the one-time fresh-install
-        /// specialization on wheel detection.</summary>
+        /// 2026-08-07): strength 0.50 / 0.60 / 1.00 for G PRO / RS50 / G923;
+        /// min force 0.05 for all three; G923 damping held at its gen-2 value
+        /// 0.09 (chosen for the belt's own friction; the G PRO factory damping
+        /// later moved below it to 0.07). Weight buildup is 0.80 for every
+        /// wheel and lives in the factory values, not here.
+        ///
+        /// The G923's own strength (1.25) and stiction floor (0.25) are RETIRED
+        /// as of this generation, on the owner's retune. The floor was set on
+        /// the theory that a belt drive swallows the smallest commanded
+        /// torques, so the model's light states needed lifting to stay
+        /// perceptible; the wheel now takes the same 0.05 as the others.
+        /// Damping is the only thing still separating the G923 from the G PRO.
+        ///
+        /// Used by "Reset tuning to defaults" (wheel-aware) and by the one-time
+        /// fresh-install specialization on wheel detection.</summary>
         public static void ApplyWheelDefaults(TrueforceSettings s, string wheelModel)
         {
             if (s == null) return;
@@ -5384,9 +5391,10 @@ namespace TrueforceForAll.Plugin
                     s.ModeBSatGain  = 0.60f;   // "Strength": RS50 defaults
                     break;
                 case "G923":
-                    s.ModeBSatGain  = 1.25f;   // "Strength": more headroom on the weaker motor
-                    s.ModeBMinForce = 0.25f;   // real stiction floor
+                    s.ModeBSatGain  = 1.00f;   // "Strength": headroom on the weaker motor, retuned down from 1.25
                     s.ModeBDamper   = 0.09f;   // belt friction already damps; two clicks under the G PRO
+                    // Min force is NOT set here any more: the G923 takes the
+                    // factory 0.05 like every other wheel.
                     break;
                 // G PRO (and anything unrecognized): the coded defaults stand.
             }
@@ -5409,8 +5417,9 @@ namespace TrueforceForAll.Plugin
         /// than retuned), but the number is still bumped: it is
         /// monotone by contract and the recipe's SHAPE changed, so an install that
         /// re-evaluates once on the new build costs nothing and keeps the latch
-        /// honest.</summary>
-        private const int ModeBDefaultsGeneration = 4;
+        /// honest. Generation 5 = the 2026-08-07 G923 retune (strength 1.25 to
+        /// 1.00, min force 0.25 back to the shared 0.05).</summary>
+        private const int ModeBDefaultsGeneration = 5;
 
         /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
         /// current factory values: every previously SHIPPED defaults-set, expressed
@@ -5441,9 +5450,9 @@ namespace TrueforceForAll.Plugin
             // Beta lacked the recover/lead/duck/center-lead fields entirely
             // (they deserialize to the current initializers = the target, so
             // they need no coverage). The RS50 strength variant gets its own
-            // entry; the G923 variant (1.25/0.25/0.09) is unchanged in
-            // generation 3 and reachable via the prior-latch
-            // ApplyWheelDefaults path, so it needs none.
+            // entry; the G923 variant (1.25/0.25/0.09) was identical through
+            // generations 2 to 4 and is archived by the last entry below, now
+            // that generation 5 has retuned it.
             yield return new TrueforceSettings
             {
                 ModeBSatGain            = 0.80f,
@@ -5455,6 +5464,19 @@ namespace TrueforceForAll.Plugin
                 ModeBCenterLeadMs       = 30f,
             };
             yield return new TrueforceSettings { ModeBSatGain = 0.90f };
+            // The G923 variant as shipped in generations 2 through 4 (strength
+            // 1.25, min force 0.25; damping 0.09 is unchanged in 5 and still
+            // comes from the live table). Without this a G923 latched at any of
+            // those generations reads as USER-TUNED on both fields, because the
+            // prior-latch path rebuilds the old recipe by calling the CURRENT
+            // ApplyWheelDefaults, which now returns the new values. It would
+            // then keep 1.25/0.25 forever instead of upgrading. This entry is
+            // what makes the retune actually reach untouched G923 installs.
+            yield return new TrueforceSettings
+            {
+                ModeBSatGain  = 1.25f,
+                ModeBMinForce = 0.25f,
+            };
             // The 2026-08-02 dev builds only (never published): the slide gate was
             // a hard cap at 1.0 before on-wheel logging showed the excess spanning
             // 0.4 to 62 and forced the soft saturation. Only a machine that ran one
