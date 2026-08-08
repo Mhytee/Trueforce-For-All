@@ -54,9 +54,14 @@ namespace TrueforceForAll.Plugin
             // Opt-in: paint the affirmative button with the app's gold accent
             // instead of the flat gray. Off by default so other callers are
             // unaffected; ignored for Destructive (that stays red).
-            bool goldOk = false)
+            bool goldOk = false,
+            // Opt-in: render the cancel button small, gray, and flat (a text
+            // button) so the affirmative reads as the obvious path. For
+            // offers where declining costs the user something and accepting
+            // costs nothing. Off by default.
+            bool quietCancel = false)
         {
-            var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk);
+            var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk, quietCancel);
             if (owner != null)
             {
                 dlg.Owner = owner;
@@ -260,7 +265,7 @@ namespace TrueforceForAll.Plugin
         }
 
         private TrueforceDialog(string title, string body, DialogKind kind,
-            string okLabel, string cancelLabel, bool goldOk = false)
+            string okLabel, string cancelLabel, bool goldOk = false, bool quietCancel = false)
         {
             var btnRow = BuildChrome(title, body, kind);
 
@@ -287,6 +292,17 @@ namespace TrueforceForAll.Plugin
                     // path and the red affirmative needs a deliberate click.
                     IsDefault = isDestructive,
                 };
+                if (quietCancel && !isDestructive)
+                {
+                    // Small, gray, flat: still a real button (click + Esc),
+                    // visually a footnote next to the accented affirmative.
+                    cancel.FontSize = 11;
+                    cancel.Padding = new Thickness(10, 4, 10, 4);
+                    cancel.Foreground = MutedFg;
+                    cancel.Background = Brushes.Transparent;
+                    cancel.BorderThickness = new Thickness(0);
+                    cancel.VerticalAlignment = VerticalAlignment.Center;
+                }
                 cancel.Click += (s, e) => { DialogResult = false; Close(); };
                 btnRow.Children.Add(cancel);
             }
