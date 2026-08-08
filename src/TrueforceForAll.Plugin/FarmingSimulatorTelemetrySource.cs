@@ -9,7 +9,7 @@ using TrueforceForAll.Core;
 namespace TrueforceForAll.Plugin
 {
     /// <summary>Enhanced telemetry source for Farming Simulator, fed by the
-    /// TF4ALL Telemetry game mod over a named pipe this side hosts
+    /// TF4ALL Enhanced Telemetry game mod over a named pipe this side hosts
     /// (\\.\pipe\TF4ALLTelemetry, newline-delimited JSON at up to ~100 Hz).
     ///
     /// Same contract and station as the other enhanced sources
@@ -77,7 +77,7 @@ namespace TrueforceForAll.Plugin
                         if (!_connectedLogged)
                         {
                             _connectedLogged = true;
-                            Logger?.Invoke("Farming Simulator connected (TF4ALL Telemetry game mod).");
+                            Logger?.Invoke("Farming Simulator connected (TF4ALL Enhanced Telemetry game mod).");
                         }
                         using (var reader = new StreamReader(server, Encoding.UTF8))
                         {

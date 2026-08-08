@@ -618,7 +618,7 @@ namespace TrueforceForAll.Plugin
                             if (FsModInstallButton != null)
                                 FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
                             if (FsModBannerText != null)
-                                FsModBannerText.Text = "Install the TF4ALL Telemetry mod for enhanced force feedback in Farming Simulator.";
+                                FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
                         }
                         else if (!_fsModBannerHold)
                         {
@@ -5318,7 +5318,7 @@ namespace TrueforceForAll.Plugin
             string err = _plugin.InstallFsModForActiveGame();
             _fsModBannerHold = err == null;
             FsModBannerText.Text = err == null
-                ? "Installed. Restart Farming Simulator to load it; the force feedback upgrades by itself."
+                ? "Installed. It loads the next time Farming Simulator starts, so restart the game if it is running now."
                 : "Install failed: " + err + ".";
             if (err == null && FsModInstallButton != null)
                 FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;

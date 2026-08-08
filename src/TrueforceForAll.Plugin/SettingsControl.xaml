@@ -2637,7 +2637,7 @@
                 <TextBlock Text="Telemetry Based FFB" Style="{StaticResource SectionHeaderText}"/>
             </Border>
 
-            <!-- Standing offer to install the TF4ALL Telemetry game mod.
+            <!-- Standing offer to install the TF4ALL Enhanced Telemetry game mod.
                  Visible while a spring game (Farming Simulator) is active
                  without the mod: declining the first-run dialog silences the
                  dialog, never this. Hidden once installed. -->
@@ -2652,7 +2652,7 @@
                     <TextBlock Grid.Column="0" x:Name="FsModBannerText" Foreground="#DCEBFA"
                                FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
                                MaxWidth="540"
-                               Text="Install the TF4ALL Telemetry mod for enhanced force feedback in Farming Simulator."/>
+                               Text="Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator."/>
                     <Button Grid.Column="1" x:Name="FsModInstallButton" Content="Install"
                             Padding="12,4" Margin="10,0,0,0" VerticalAlignment="Center"
                             Click="FsModInstall_Click"/>
@@ -2908,7 +2908,7 @@
                           Margin="0,4,0,2" Checked="SpringTerrain_Changed" Unchecked="SpringTerrain_Changed"
                           ToolTip="Off by default. Reads the vehicle's physics motion from the game and turns ground roughness into steering force: field texture, ruts, and edges reach the wheel instead of only the spring's centering."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8"
-                           Text="Bumps and ground texture from the game's physics, added to the steering force. Needs the TF4ALL Telemetry mod in the game (the plugin offers to install it)."/>
+                           Text="Bumps and ground texture from the game's physics, added to the steering force. Needs the TF4ALL Enhanced Telemetry mod in the game (the plugin offers to install it)."/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Terrain strength:" Style="{StaticResource LabelText}"/>
