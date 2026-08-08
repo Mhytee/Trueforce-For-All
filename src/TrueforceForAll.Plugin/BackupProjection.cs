@@ -47,6 +47,9 @@ namespace TrueforceForAll.Plugin
             // Feature toggles the user opted into.
             "PluginEnabled", "MairaFfbPassthrough", "ModeBRevLightsEnabled", "ShowFeedbackBox",
             "ShowAchievementCelebrations",
+            // Has ever backed the project: a fact about the person, not the machine,
+            // so it travels and a supporter is never re-asked on a second PC.
+            "HasEverSupported",
             // Wheel-base OLED. Travels with the rev-light toggle for the same
             // reason: it is a preference about how the wheel presents, and the
             // wheel goes to the second PC with the driver.
@@ -131,7 +134,7 @@ namespace TrueforceForAll.Plugin
             "RememberSignInEmail", "LastSignInEmail",
             // Last wheel detected on this PC (Account session list display); per-PC hardware.
             "LastUsedWheel",
-            // TF4ALL Telemetry game-mod install state: the mod lives in THIS
+            // TF4ALL Enhanced Telemetry game-mod install state: the mod lives in THIS
             // PC's Farming Simulator folders, and consent was given here.
             "FsModInstallDeclined", "FsModInstalledVersions",
             // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
@@ -177,6 +180,10 @@ namespace TrueforceForAll.Plugin
             // MOTD audience / nag pacing: contribution-recency timestamps + nag cooldown.
             // Nag/learned state; re-learns harmlessly on a second PC.
             "LastSharedPresetOn", "LastVotedOn", "LastSubmittedFactOn", "MotdLastNagOn",
+            "MotdLastSupportNagOn",
+            // Support-prompt pacing. HasEverSupported is deliberately NOT here: it
+            // travels, so a supporter restoring onto a second PC is not asked again.
+            "SupportPromptCount", "SupportPromptDeclineCount", "SupportPromptLastUtc",
             "ExperimentalSuccessReportDismissed", "LogUsbBytesEnabled", "StopStreamOnPause",
             // Per-account achievement-celebration baseline + notify-dot (re-seed on PC2).
             "AchievementBaseline", "AchievementUnseen",

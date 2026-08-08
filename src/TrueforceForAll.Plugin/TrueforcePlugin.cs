@@ -3893,6 +3893,89 @@ namespace TrueforceForAll.Plugin
             PersistSettingsCore();
         }
 
+        // ---------------- support prompt (periodic Patreon modal) ----------------
+        //
+        // Paced off the same earned-seat-time odometer as the share CTA, so the ask
+        // only ever lands on someone the plugin has actually worked for. The ladder
+        // is cumulative hours: first ask well clear of the share banner's ~2h, then
+        // a long back-off, then gaps that close as the hours pile up, on the reading
+        // that the more someone uses it the more the ask is earned.
+        private static readonly double[] SupportPromptLadderHours = { 5, 30, 55, 75 };
+        private const double SupportPromptRepeatHours   = 20;   // spacing once past the ladder
+        private const double SupportPromptDeclineHours  = 10;   // added per consecutive decline
+        private const double SupportPromptDeclineCapHrs = 60;   // ceiling on that back-off
+        private const int    SupportPromptFloorDays     = 7;    // real-time floor between asks
+
+        /// <summary>True once this account has ever backed the project (current
+        /// supporter, or a past one via supporter_since). Latched locally, so it
+        /// survives being offline or signed out.</summary>
+        internal bool EverSupported => (Settings != null && Settings.HasEverSupported) || LastKnownSupporter;
+
+        /// <summary>Latches ever-supported on. Idempotent; persists once.</summary>
+        internal void NoteEverSupported()
+        {
+            if (Settings == null || Settings.HasEverSupported) return;
+            Settings.HasEverSupported = true;
+            PersistSettingsCore();
+        }
+
+        /// <summary>A game is currently being captured, i.e. the user is mid-session.
+        /// The support prompt waits for idle rather than interrupting that.</summary>
+        internal bool GameIsRunning => !string.IsNullOrEmpty(_currentGameName);
+
+        // Set once an entitlement read completes for the signed-in account. Guards the
+        // prompt against the window where a real supporter would still read as false.
+        private volatile bool _entResolvedThisSession;
+
+        /// <summary>Whether supporter status is settled enough to act on. Nothing to
+        /// resolve when signed out (entitlements are per-account), and that is the
+        /// common case since the community went account-free, so a signed-out user is
+        /// not held back; the prompt tells them how to sign in instead.</summary>
+        internal bool SupporterStatusSettled => !AuthIsSignedIn || _entResolvedThisSession;
+
+        /// <summary>Cumulative seat time at which the next support prompt is due.</summary>
+        private double NextSupportPromptHours()
+        {
+            int shown = Settings?.SupportPromptCount ?? 0;
+            double baseHours = shown < SupportPromptLadderHours.Length
+                ? SupportPromptLadderHours[shown]
+                : SupportPromptLadderHours[SupportPromptLadderHours.Length - 1]
+                  + (shown - (SupportPromptLadderHours.Length - 1)) * SupportPromptRepeatHours;
+            double penalty = Math.Min((Settings?.SupportPromptDeclineCount ?? 0) * SupportPromptDeclineHours,
+                                      SupportPromptDeclineCapHrs);
+            return baseHours + penalty;
+        }
+
+        /// <summary>Whether to show the support prompt on this open of the plugin page.</summary>
+        internal bool ShouldShowSupportPrompt
+        {
+            get
+            {
+                if (Settings == null) return false;
+                if (EverSupported) return false;            // supported once, never asked again
+                if (!SupporterStatusSettled) return false;  // don't ask before we'd know
+                if (GameIsRunning) return false;            // never mid-session
+                if (Settings.ActiveStreamingSeconds < NextSupportPromptHours() * 3600.0) return false;
+                var last = Settings.SupportPromptLastUtc;
+                if (last.HasValue && (DateTime.UtcNow - last.Value).TotalDays < SupportPromptFloorDays)
+                    return false;
+                return true;
+            }
+        }
+
+        /// <summary>Records that the prompt was shown and how it was answered.
+        /// Clicking through to Patreon clears the decline back-off; dismissing adds
+        /// to it, so repeated no's push the next ask further out.</summary>
+        internal void NoteSupportPromptShown(bool declined)
+        {
+            if (Settings == null) return;
+            Settings.SupportPromptCount++;
+            Settings.SupportPromptLastUtc = DateTime.UtcNow;
+            if (declined) Settings.SupportPromptDeclineCount++;
+            else Settings.SupportPromptDeclineCount = 0;
+            PersistSettingsCore();
+        }
+
         // Called once per producer iteration. Adds wall time to the odometer
         // only while we're actually driving a running game; a long gap (sleep,
         // debugger, wheel gone) is discarded by the dt ceiling so idle time
@@ -21331,12 +21414,18 @@ namespace TrueforceForAll.Plugin
             int gen = System.Threading.Volatile.Read(ref _accountStatusGen);
             try
             {
-                var result = await _entitlementClient
+                var r = await _entitlementClient
                     .GetMyEntitlementAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
+                var result = (r.isSupporter, r.tier, r.retainUntil);
                 lock (_entCacheLock)
                 {
                     if (gen != System.Threading.Volatile.Read(ref _accountStatusGen))
                         return (false, null, null);   // identity moved mid-fetch: don't cache
+                    // supporter_since is stamped once and never cleared, so either
+                    // signal means this account has backed the project at some point.
+                    // Latched locally so it survives going offline / signing out.
+                    if (r.isSupporter || r.supporterSince.HasValue) NoteEverSupported();
+                    _entResolvedThisSession = true;
                     _entCache = result;
                     _entCacheAtUtc = DateTime.UtcNow;
                     _entInFlight = null;

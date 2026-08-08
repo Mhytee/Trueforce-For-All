@@ -367,6 +367,30 @@ namespace TrueforceForAll.Plugin
         // back-to-back. EXCLUDED from backup. null = none yet.
         public string MotdLastNagOn { get; set; }
 
+        // Local date ("yyyy-MM-dd") a MOTD support message last appeared. Support
+        // draws on this cooldown instead of the shared nag one, so the money ask
+        // keeps a steady rate no matter how many other nags exist. Showing one
+        // also stamps MotdLastNagOn, so a day still carries at most one nag.
+        // EXCLUDED from backup. null = none yet.
+        public string MotdLastSupportNagOn { get; set; }
+
+        // ---- support prompt (the periodic Patreon modal on the plugin page) ----
+
+        // Latched true the first time the backend confirms this account has ever
+        // backed the project (is_supporter now, or a non-null supporter_since from
+        // any past membership). Never cleared: supporting once retires the prompt
+        // for good, and the latch keeps that true while offline or signed out.
+        // PORTABLE: a fact about the person, not the machine.
+        public bool HasEverSupported { get; set; }
+
+        // How many times the support prompt has been shown, which position on the
+        // seat-time ladder we're at, and when it last appeared (UTC, for the
+        // real-time floor). Consecutive declines push the next one further out;
+        // clicking through to Patreon resets that. All EXCLUDED from backup.
+        public int       SupportPromptCount { get; set; }
+        public int       SupportPromptDeclineCount { get; set; }
+        public DateTime? SupportPromptLastUtc { get; set; }
+
         // How recent a contribution must be to suppress its community nudge.
         [JsonIgnore]
         public static readonly TimeSpan MotdContributionRecency = TimeSpan.FromDays(60);
@@ -685,7 +709,7 @@ namespace TrueforceForAll.Plugin
         public bool   SpringModeTerrainEnabled { get; set; } = false;
         public double SpringModeTerrainGain    { get; set; } = 1.0;
 
-        // TF4ALL Telemetry game-mod install state (Farming Simulator).
+        // TF4ALL Enhanced Telemetry game-mod install state (Farming Simulator).
         // Machine-local: the mod lives in THIS PC's game folders. Declined
         // silences only the first-run dialog; the Telemetry FFB tab banner
         // keeps offering. Versions are per game generation (FS22/FS25 have

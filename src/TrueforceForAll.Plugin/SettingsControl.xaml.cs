@@ -206,11 +206,19 @@ namespace TrueforceForAll.Plugin
         {
             InitializeComponent();
             WireEditableReadouts();
+            // The banner's Install is the same action as the install modal's
+            // gold button; style them identically so it reads as one action.
+            if (FsModInstallButton != null)
+                ModalButtonTheme.Primary(FsModInstallButton);
         }
 
         public SettingsControl(TrueforcePlugin plugin) : this()
         {
             _plugin = plugin;
+
+            // Support prompt fires on entering the plugin page, so it is scoped to
+            // our own surface and never intrudes elsewhere in SimHub.
+            IsVisibleChanged += OnSupportPromptVisibilityChanged;
 
             // Host the preset library inline as the Presets tab. LibraryChanged
             // keeps the always-visible header combos + the live engine in sync
@@ -2263,6 +2271,44 @@ namespace TrueforceForAll.Plugin
         // link rather than make a post.
         private const string ShareNexusUrl =
             "https://www.nexusmods.com/forzahorizon6/mods/34";
+
+        // ---------------- support prompt ----------------
+        //
+        // Shown when the user navigates INTO the plugin page, never anywhere else
+        // in SimHub, and never mid-session (the plugin's own gate refuses while a
+        // game is running). Pacing, the ever-supported latch and every other guard
+        // live in TrueforcePlugin.ShouldShowSupportPrompt; this is only the trigger.
+        private bool _supportPromptShownThisRun;
+
+        // Stand-in hour count for the SUPPORT dev preview when nothing is banked.
+        private const int SupportPromptPreviewHours = 40;
+
+        private void OnSupportPromptVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (!IsVisible || _supportPromptShownThisRun) return;
+            if (_plugin == null || !_plugin.ShouldShowSupportPrompt) return;
+            _supportPromptShownThisRun = true;
+            // Let the page finish rendering first: a modal thrown up during the
+            // visibility change itself lands on a half-drawn tab.
+            Dispatcher.BeginInvoke(new Action(() => ShowSupportPrompt()),
+                System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        /// <summary>Shows the support modal and records how it was answered.
+        /// recordPacing:false is the dev preview, which leaves the ladder alone.</summary>
+        private void ShowSupportPrompt(bool recordPacing = true)
+        {
+            if (_plugin == null) return;
+            int hours = (int)((_plugin.Settings?.ActiveStreamingSeconds ?? 0.0) / 3600.0);
+            // The preview always shows the earned-hours line, even on a machine with
+            // no banked seat time, since checking that line renders is most of the
+            // point of previewing. Real hours win whenever there are any.
+            if (!recordPacing && hours < 1) hours = SupportPromptPreviewHours;
+            var win = new SupportPromptWindow(hours);
+            try { win.Owner = Window.GetWindow(this); } catch { }
+            try { win.ShowDialog(); } catch { return; }
+            if (recordPacing) _plugin.NoteSupportPromptShown(declined: !win.WentToPatreon);
+        }
 
         /// <summary>Shows the one-and-done word-of-mouth banner once the user
         /// has banked enough working seat time. Idempotent; safe to call
@@ -11046,6 +11092,8 @@ namespace TrueforceForAll.Plugin
             "Trueforce For All test codes (type one in the access box):\n\n" +
             "HELP / CODES   Show this list.\n" +
             "SHARE          Force the 'spread the word' banner on now.\n" +
+            "SUPPORT        Preview the periodic Patreon support modal now (pacing untouched).\n" +
+            "SUPPORTRESET   Reset the support-prompt ladder back to its first rung.\n" +
             "RATCHET        Play the auto-tuned ring-buffer banner sequence.\n" +
             "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
             "CAPTURE        Toggle the aligned telemetry+FFB capture CSV (v2 golden fixture format) under Documents\\TrueforceForAll.\n" +
@@ -11343,6 +11391,30 @@ namespace TrueforceForAll.Plugin
                             ex);
                     }
                 }
+                return;
+            }
+            // Dev-only: show the periodic support modal right now, ignoring the
+            // seat-time ladder, the idle gate and the ever-supported latch. Pacing
+            // is NOT advanced, so this is a pure preview and repeatable.
+            if (code.Equals("SUPPORT", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Support prompt shown (preview; pacing untouched).";
+                ShowSupportPrompt(recordPacing: false);
+                return;
+            }
+            // Dev-only: put the support-prompt ladder back to the start (next ask
+            // due at the first rung again) and clear the decline back-off.
+            if (code.Equals("SUPPORTRESET", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.SupportPromptCount = 0;
+                _plugin.Settings.SupportPromptDeclineCount = 0;
+                _plugin.Settings.SupportPromptLastUtc = null;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Support-prompt pacing reset.";
                 return;
             }
             // Dev-only: force the one-and-done word-of-mouth banner to show

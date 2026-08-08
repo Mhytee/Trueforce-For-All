@@ -33,12 +33,15 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Read the caller's entitlement (get_my_entitlement RPC). Returns
-        /// (false, null) when not configured / not signed in / unreachable.</summary>
-        public async Task<(bool isSupporter, string tier, DateTime? retainUntil)> GetMyEntitlementAsync(CancellationToken ct)
+        /// all-null when not configured / not signed in / unreachable.
+        /// supporterSince is stamped once on first support and never cleared, so a
+        /// non-null value means "has ever supported" even after a lapse.</summary>
+        public async Task<(bool isSupporter, string tier, DateTime? retainUntil, DateTime? supporterSince)>
+            GetMyEntitlementAsync(CancellationToken ct)
         {
-            if (!TryResolve(out string baseUrl, out string anonKey)) return (false, null, null);
+            if (!TryResolve(out string baseUrl, out string anonKey)) return (false, null, null, null);
             string bearer = await GetBearerAsync().ConfigureAwait(false);
-            if (string.IsNullOrEmpty(bearer)) return (false, null, null);
+            if (string.IsNullOrEmpty(bearer)) return (false, null, null, null);
             try
             {
                 using (var req = new HttpRequestMessage(HttpMethod.Post, baseUrl + "/rest/v1/rpc/get_my_entitlement"))
@@ -52,12 +55,12 @@ namespace TrueforceForAll.Plugin
                         if (!resp.IsSuccessStatusCode)
                         {
                             _log?.Invoke($"[TF4ALL] Entitlement read failed: {(int)resp.StatusCode} {Trunc(body)}");
-                            return (false, null, null);
+                            return (false, null, null, null);
                         }
                         var arr = JArray.Parse(body);
-                        if (arr.Count == 0) return (false, null, null);
+                        if (arr.Count == 0) return (false, null, null, null);
                         var row = arr[0] as JObject;
-                        if (row == null) return (false, null, null);
+                        if (row == null) return (false, null, null, null);
                         bool isSup = (bool?)row["is_supporter"] ?? false;
                         string tier = (string)row["tier"];
                         DateTime? retain = null;   // set on lapse to now()+2y; null while supporter / never-supporter
@@ -68,11 +71,21 @@ namespace TrueforceForAll.Plugin
                                 retain = ((DateTimeOffset)ru).UtcDateTime;
                         }
                         catch { retain = null; }
-                        return (isSup, tier, retain);
+                        // Absent on a backend older than migration 0104: treat as null
+                        // (the local latch then carries ever-supported state).
+                        DateTime? since = null;
+                        try
+                        {
+                            var ss = row["supporter_since"];
+                            if (ss != null && ss.Type != JTokenType.Null)
+                                since = ((DateTimeOffset)ss).UtcDateTime;
+                        }
+                        catch { since = null; }
+                        return (isSup, tier, retain, since);
                     }
                 }
             }
-            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Entitlement read exception: {ex.Message}"); return (false, null, null); }
+            catch (Exception ex) { _log?.Invoke($"[TF4ALL] Entitlement read exception: {ex.Message}"); return (false, null, null, null); }
         }
 
         private async Task<string> GetBearerAsync()
