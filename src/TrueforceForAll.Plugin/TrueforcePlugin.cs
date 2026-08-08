@@ -188,7 +188,7 @@ namespace TrueforceForAll.Plugin
         private WheelSteeringReader _steeringReader;
         private MairaIpcSource _mairaIpc;
 
-        // Farming Simulator enhanced source (TF4ALL Telemetry game mod pipe).
+        // Farming Simulator enhanced source (TF4ALL Enhanced Telemetry game mod pipe).
         // Lifecycle mirrors _forzaUdp: created on the FS game swap, kept
         // alive for the session, torn down on leaving FS.
         private FarmingSimulatorTelemetrySource _fsPipeSource;
@@ -1401,7 +1401,7 @@ namespace TrueforceForAll.Plugin
         // quads), and ComputeSpringModeForce consumes the cached kick with
         // the same short EMA. One model, one cache, both games.
 
-        // ---- TF4ALL Telemetry game mod install (Farming Simulator) ---------
+        // ---- TF4ALL Enhanced Telemetry game mod install (Farming Simulator) ---------
         //
         // The enhanced FS telemetry needs a mod in the game's own mods
         // folder (a game constraint; FS loads mods from nowhere else). The
@@ -1440,7 +1440,27 @@ namespace TrueforceForAll.Plugin
             try
             {
                 string docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-                modsDir = Path.Combine(docs, "My Games", folder, "mods");
+                string gameDir = Path.Combine(docs, "My Games", folder);
+                modsDir = Path.Combine(gameDir, "mods");
+                // FS lets players relocate their mods folder (gameSettings.xml
+                // modsDirectoryOverride), and heavy modders use it. Installing
+                // into the default folder would LOOK successful while the game
+                // never loads the mod, so honor the override when active.
+                try
+                {
+                    string gs = Path.Combine(gameDir, "gameSettings.xml");
+                    if (File.Exists(gs))
+                    {
+                        var el = System.Xml.Linq.XDocument.Load(gs).Root?.Element("modsDirectoryOverride");
+                        if (el != null && string.Equals((string)el.Attribute("active"), "true",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            string dir = (string)el.Attribute("directory");
+                            if (!string.IsNullOrWhiteSpace(dir)) modsDir = dir.Trim();
+                        }
+                    }
+                }
+                catch { /* malformed settings file: fall back to the default folder */ }
                 return true;
             }
             catch { return false; }
@@ -1488,12 +1508,12 @@ namespace TrueforceForAll.Plugin
                     PersistSettingsCore();
                 }
                 SimHub.Logging.Current.Info(
-                    $"[TF4ALL] TF4ALL Telemetry game mod installed for {game} (loads on the game's next start).");
+                    $"[TF4ALL] TF4ALL Enhanced Telemetry game mod installed for {game} (loads on the game's next start).");
                 return null;
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Warn("[TF4ALL] Could not install the TF4ALL Telemetry game mod: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Could not install the TF4ALL Enhanced Telemetry game mod: " + ex.Message);
                 return ex.Message;
             }
         }
@@ -1520,7 +1540,7 @@ namespace TrueforceForAll.Plugin
                     && InstallFsModForActiveGame() == null)
                 {
                     SimHub.Logging.Current.Info(
-                        $"[TF4ALL] TF4ALL Telemetry game mod updated to {FsModVersion}.");
+                        $"[TF4ALL] TF4ALL Enhanced Telemetry game mod updated to {FsModVersion}.");
                 }
                 return;
             }
@@ -1533,15 +1553,38 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         bool? ok = TrueforceDialog.Show(null,
-                            "Better Farming Simulator feel",
-                            "Farming Simulator can send richer physics to this plugin: terrain reaches "
-                            + "the wheel and the telemetry runs at physics rate. Install the TF4ALL "
-                            + "Telemetry mod into your Farming Simulator mods folder? The game loads "
-                            + "it on its next start.",
-                            DialogKind.Confirm, "Install", "Not now");
+                            "Install the TF4ALL Farming Simulator Enhanced Telemetry Mod?",
+                            "This mod provides more telemetry than SimHub receives from the game: "
+                            + "per-wheel suspension, ground contact, and more, at up to 100 Hz "
+                            + "where SimHub delivers 10 Hz (60 Hz with a licensed SimHub). This "
+                            + "unlocks Telemetry Based FFB enhancements to the game's force "
+                            + "feedback, such as Terrain feel.",
+                            DialogKind.Confirm, "Install", "Not now",
+                            goldOk: true, quietCancel: true);
                         var st = Settings;
                         if (st == null) return;
-                        if (ok == true) InstallFsModForActiveGame();
+                        if (ok == true)
+                        {
+                            // A failed install must not end in a closed dialog
+                            // and silence: say why, and point at the standing
+                            // retry (the Telemetry FFB tab banner). Success
+                            // needs a word too: the game only reads its mods
+                            // folder at startup, and this prompt only appears
+                            // while the game is running, so a restart is
+                            // always the missing step.
+                            string err = InstallFsModForActiveGame();
+                            if (err != null)
+                                TrueforceDialog.Show(null, "Install failed",
+                                    "The mod could not be installed: " + err + ". "
+                                    + "You can retry from the banner on the Telemetry FFB tab.",
+                                    DialogKind.Error);
+                            else
+                                TrueforceDialog.Show(null, "Mod installed",
+                                    "It loads the next time Farming Simulator starts, so restart "
+                                    + "the game if it is running now. The plugin picks it up by "
+                                    + "itself; no SimHub restart is needed.",
+                                    DialogKind.Info);
+                        }
                         else
                         {
                             // Silences only this dialog; the Telemetry FFB tab
@@ -7530,7 +7573,7 @@ namespace TrueforceForAll.Plugin
             }
             else if (game != null && game.StartsWith("FarmingSimulator", StringComparison.Ordinal))
             {
-                // Farming Simulator's enhanced source is the TF4ALL Telemetry
+                // Farming Simulator's enhanced source is the TF4ALL Enhanced Telemetry
                 // game mod's pipe. Kept alive for the whole FS session even
                 // with no client (one parked thread), so the mod connecting
                 // mid-session upgrades within a tick; a silent pipe demotes to
@@ -7661,7 +7704,7 @@ namespace TrueforceForAll.Plugin
         }
 
         // The same decision for Farming Simulator: the enhanced pipe source
-        // while the TF4ALL Telemetry game mod is feeding it, the SimHub
+        // while the TF4ALL Enhanced Telemetry game mod is feeding it, the SimHub
         // fallback otherwise (mod not installed / not enabled). Upgrades back
         // within a tick of the mod's first frame, so installing or enabling
         // it mid-session needs no restart.
@@ -7679,7 +7722,7 @@ namespace TrueforceForAll.Plugin
                     fs.OnFrame = DispatchFrame;
                     _telemetrySource = fs;
                     SimHub.Logging.Current.Info(
-                        "[TF4ALL] TF4ALL Telemetry game mod is feeding the plugin; using the enhanced Farming Simulator source.");
+                        "[TF4ALL] TF4ALL Enhanced Telemetry game mod is feeding the plugin; using the enhanced Farming Simulator source.");
                 }
                 return;
             }
@@ -7692,7 +7735,7 @@ namespace TrueforceForAll.Plugin
                 _simHubSource.OnFrame = DispatchFrame;
                 _telemetrySource = _simHubSource;
                 SimHub.Logging.Current.Info(
-                    "[TF4ALL] TF4ALL Telemetry game mod not detected; using the SimHub fallback. " +
+                    "[TF4ALL] TF4ALL Enhanced Telemetry game mod not detected; using the SimHub fallback. " +
                     "Install the mod for terrain feel and physics-rate telemetry.");
             }
         }
