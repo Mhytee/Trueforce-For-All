@@ -254,8 +254,13 @@ namespace TrueforceForAll.Core
                     return false;
                 }
 
-                foreach (var kv in groups)
-                    if (TryGroup(kv.Key, kv.Value)) return true;
+                // One HID++ probe on the wire at a time (see HidppProbeGate):
+                // racing the rev-light probe at startup cost whichever lost.
+                lock (WheelDiscovery.HidppProbeGate)
+                {
+                    foreach (var kv in groups)
+                        if (TryGroup(kv.Key, kv.Value)) return true;
+                }
 
                 _log("[OLED] probed all interface groups; none answered HID++ getFeature for 0x8130.");
                 return false;
@@ -394,12 +399,19 @@ namespace TrueforceForAll.Core
         private byte ReadFeatureReply(HidStream s, byte fn, ushort pageId)
         {
             if (s == null) return 0;
+            bool timedOut = false;
             for (int attempt = 0; attempt < 4; attempt++)
             {
                 byte[] resp = new byte[LenVeryLong];
                 int n;
                 try { n = s.Read(resp, 0, resp.Length); }
-                catch (TimeoutException) { return 0; }
+                catch (TimeoutException)
+                {
+                    // A single late reply (another HID++ talker such as G HUB
+                    // mid-transaction) must not read as "feature absent".
+                    if (timedOut) return 0;
+                    timedOut = true; continue;
+                }
                 catch (Exception ex) { _log($"[OLED] getFeature read failed: {ex.Message}"); return 0; }
                 if (n < 5) continue;
                 if (resp[1] != DevWired) continue;

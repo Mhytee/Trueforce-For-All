@@ -49,6 +49,16 @@ def make_icon():
 def make_zips():
     with open(os.path.join(src, "modDesc.xml"), encoding="utf-8") as f:
         desc_template = f.read()
+    # The Lua self-reports MOD_VERSION so the plugin can tell when the game
+    # is still running an older copy; a mismatch here would make every
+    # install nag for a restart forever. Fail the build instead.
+    with open(os.path.join(src, "TF4ALLTelemetry.lua"), encoding="utf-8") as f:
+        lua = f.read()
+    desc_ver = re.search(r"<version>(\d+\.\d+\.\d+)", desc_template)
+    lua_ver = re.search(r'MOD_VERSION = "([^"]+)"', lua)
+    if not desc_ver or not lua_ver or desc_ver.group(1) != lua_ver.group(1):
+        raise SystemExit("version mismatch: modDesc=%s lua=%s" % (
+            desc_ver and desc_ver.group(1), lua_ver and lua_ver.group(1)))
     for tag, desc_version in TARGETS.items():
         out_zip = os.path.join(here, "TF4ALLTelemetry_%s.zip" % tag)
         desc = re.sub(r'descVersion="\d+"', 'descVersion="%s"' % desc_version,

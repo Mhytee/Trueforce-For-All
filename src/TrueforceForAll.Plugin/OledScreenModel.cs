@@ -1,4 +1,4 @@
-// What can go on the wheel's OLED, and where.
+﻿// What can go on the wheel's OLED, and where.
 //
 // The firmware owns font size and alignment: picking a layout IS picking how
 // big each value is drawn and where it sits (see WheelOledChannel's header for
@@ -44,7 +44,9 @@ namespace TrueforceForAll.Plugin
         CenteredGear = 1,
     }
 
-    /// <summary>The shipped arrangements, plus Custom for a user-built one.</summary>
+    /// <summary>The shipped arrangements, plus Custom for a user-built one.
+    /// Values are PERSISTED, so new entries go on the end and nothing is ever
+    /// renumbered; the order they are offered in is ScreenOrder below.</summary>
     public enum OledScreen
     {
         GearAndSpeed = 0,
@@ -53,6 +55,12 @@ namespace TrueforceForAll.Plugin
         SpeedGearAndDelta = 3,
         Vertical = 4,
         Custom = 5,
+        SpeedOverGear = 6,
+        GearOverSpeed = 7,
+        SpeedOnly = 8,
+        GearOnly = 9,
+        SpeedOverGearPlain = 10,
+        GearOverSpeedPlain = 11,
     }
 
     public static class OledScreenModel
@@ -61,7 +69,36 @@ namespace TrueforceForAll.Plugin
         /// characters), for the readout when a bound control cycles them.
         /// Index-matched to OledScreen.</summary>
         public static readonly string[] ScreenShortNames =
-            { "GEAR+SPEED", "SPEED+GEAR", "SPD+DELTA", "SPD GEAR D", "SPD OVER G", "CUSTOM" };
+            { "GEAR+SPEED", "SPEED+GEAR", "SPD+DELTA", "SPD GEAR D", "SPD OVER G", "CUSTOM",
+              "SPEED/GEAR", "GEAR/SPEED", "SPEED", "GEAR", "SPD GEAR", "GEAR SPD" };
+
+        /// <summary>The order screens are offered and cycled in, which is NOT
+        /// the enum's numeric order: the labelled pair are the ones to reach
+        /// for, so they lead, and Build my own sits at the end where a
+        /// catch-all belongs. Enum values stay put because they are persisted.</summary>
+        public static readonly OledScreen[] ScreenOrder =
+        {
+            OledScreen.SpeedOverGear, OledScreen.GearOverSpeed,
+            OledScreen.SpeedOverGearPlain, OledScreen.GearOverSpeedPlain,
+            OledScreen.SpeedOnly, OledScreen.GearOnly,
+            OledScreen.GearAndSpeed, OledScreen.SpeedAndGear,
+            OledScreen.SpeedAndDelta, OledScreen.SpeedGearAndDelta,
+            OledScreen.Custom,
+        };
+        public static readonly string[] ScreenOrderLabels =
+        {
+            "Speed over gear, labelled",
+            "Gear over speed, labelled",
+            "Speed over gear",
+            "Gear over speed",
+            "Speed only",
+            "Gear only",
+            "Big gear, speed beside it",
+            "Big speed, gear beside it",
+            "Speed and lap delta",
+            "Speed, gear and lap delta",
+            "Build my own",
+        };
 
         // ---- Field catalog -------------------------------------------------
         // Only what the plugin can actually fill. Revs are deliberately absent:
@@ -202,16 +239,58 @@ namespace TrueforceForAll.Plugin
                         : new string[4];
                     return;
 
-                case OledScreen.Vertical:
-                    // Four-row CENTRED rather than the two-row layout this
-                    // used to be. The two-row layout's large row splits, so a
-                    // lone gear would be pinned to the left edge with nothing
-                    // beside it; the centred rows put it under the speed where
-                    // the name of the screen says it should be.
+                // The labelled pair. Four centred rows: a small caption over a
+                // large value, twice. The value carries the unit so the caption
+                // does not have to, and the gear gets a ten-character row, so
+                // this is also the arrangement that copes with a farm gearbox.
+                case OledScreen.SpeedOverGear:
                     kind = OledLayoutKind.FourCenter;
-                    slots = new[] { "SpeedUnit", "Gear", "None", "None" };
+                    slots = new[] { "Custom", "SpeedUnit", "Custom", "Gear" };
+                    texts = new[] { "Speed", null, "Gear", null };
+                    return;
+
+                case OledScreen.GearOverSpeed:
+                    kind = OledLayoutKind.FourCenter;
+                    slots = new[] { "Custom", "Gear", "Custom", "SpeedUnit" };
+                    texts = new[] { "Gear", null, "Speed", null };
+                    return;
+
+                // Values only, no captions. The four-row layout alternates
+                // small and large, so BOTH values take large rows and the small
+                // ones are left empty: a value in a small row reads as a label
+                // for whatever is under it, which is exactly what made the
+                // retired "speed above gear" screen look wrong.
+                case OledScreen.SpeedOverGearPlain:
+                    kind = OledLayoutKind.FourCenter;
+                    slots = new[] { "None", "SpeedUnit", "None", "Gear" };
                     texts = new string[4];
                     return;
+
+                case OledScreen.GearOverSpeedPlain:
+                    kind = OledLayoutKind.FourCenter;
+                    slots = new[] { "None", "Gear", "None", "SpeedUnit" };
+                    texts = new string[4];
+                    return;
+
+                // One value, captioned. The small row is a label and the large
+                // row is the number, which is what each row is shaped for.
+                case OledScreen.SpeedOnly:
+                    kind = OledLayoutKind.FourCenter;
+                    slots = new[] { "Custom", "SpeedUnit", "None", "None" };
+                    texts = new[] { "Speed", null, null, null };
+                    return;
+
+                case OledScreen.GearOnly:
+                    kind = OledLayoutKind.FourCenter;
+                    slots = new[] { "Custom", "Gear", "None", "None" };
+                    texts = new[] { "Gear", null, null, null };
+                    return;
+
+                // RETIRED, and no longer offered: it put the small speed VALUE
+                // over the gear, so the speed read as a caption for the gear.
+                // The enum value is persisted, so it stays and renders the
+                // labelled screen that replaced it.
+                case OledScreen.Vertical:
 
                 default:
                     kind = OledLayoutKind.BigLeft;
@@ -219,6 +298,36 @@ namespace TrueforceForAll.Plugin
                     texts = new string[2];
                     return;
             }
+        }
+
+        /// <summary>Swap a shipped screen for one that can show the whole gear,
+        /// when the one chosen cannot.
+        ///
+        /// The two side-by-side layouts give the gear exactly ONE character,
+        /// which is right for a game that counts 1 to 6 and useless in Farming
+        /// Simulator, where it runs -6 to 18 and some gears are named. Seeing
+        /// the whole gear matters more than seeing it huge, so those screens
+        /// step aside for the centred four rows: speed small on top, gear large
+        /// under it with ten characters to play with.
+        ///
+        /// Presets only. A custom screen is the user's own arrangement and is
+        /// left exactly as built; the editor's slot hint states each slot's
+        /// width so a narrow one is a choice rather than a surprise.</summary>
+        public static void FitGear(string gear, ref OledLayoutKind kind,
+                                   ref string[] slots, ref string[] texts)
+        {
+            int need = (gear ?? "").Trim().Length;
+            if (need <= 1) return;
+
+            int[] w = SlotWidths(kind);
+            bool cramped = false;
+            for (int i = 0; i < slots.Length && i < w.Length; i++)
+                if (slots[i] == "Gear" && w[i] < need) { cramped = true; break; }
+            if (!cramped) return;
+
+            kind = OledLayoutKind.FourCenter;
+            slots = new[] { "SpeedUnit", "Gear", "None", "None" };
+            texts = new string[4];
         }
 
         // ---- Rendering -----------------------------------------------------
@@ -229,11 +338,12 @@ namespace TrueforceForAll.Plugin
         public static string Render(string fieldKey, string customText,
                                     string gear, double speedKmh, bool useMph,
                                     double? lapDelta, bool deltaOk,
-                                    int position, int currentLap, int totalLaps, int lastLapMs)
+                                    int position, int currentLap, int totalLaps, int lastLapMs,
+                                    int slotWidth)
         {
             switch (fieldKey)
             {
-                case "Gear": return GearGlyph(gear);
+                case "Gear": return GearText(gear, slotWidth);
                 case "Speed": return SpeedText(speedKmh, useMph);
                 case "SpeedUnit": return SpeedText(speedKmh, useMph) + (useMph ? " MPH" : " KM/H");
                 case "Delta": return deltaOk ? DeltaText(lapDelta) : "";
@@ -266,15 +376,40 @@ namespace TrueforceForAll.Plugin
                  + milli.ToString("000", CultureInfo.InvariantCulture);
         }
 
-        /// <summary>SimHub's gear string squeezed into a single character.
-        /// Gears above 9 keep their first digit; no layout in the firmware's
-        /// vocabulary offers a wider field next to a large font.</summary>
-        public static string GearGlyph(string gear)
+        /// <summary>A gear, fitted to the space the layout actually gives it.
+        ///
+        /// Not every game counts 1 to 6. Farming Simulator runs -6 to 18, so
+        /// the old "take the first character" rule turned 18 into 1 and -6 into
+        /// a bare minus sign, which is worse than showing nothing: both read as
+        /// a plausible, wrong gear. Anything that fits is now printed in full.
+        ///
+        /// A one-character slot genuinely cannot hold "18", so it falls back to
+        /// what still means something: any negative gear is reverse, zero is
+        /// neutral, single digits are themselves, and a two-digit gear keeps
+        /// its LAST digit, because that is the one that changes as you shift.
+        /// That last case is ambiguous by construction; the editor's slot hint
+        /// says so, and the four-row screens have room for the real thing.</summary>
+        public static string GearText(string gear, int maxWidth)
         {
-            if (string.IsNullOrEmpty(gear)) return "-";
-            char c = gear[0];
-            if (c == '0') return "N";   // some sources report neutral as 0
-            return c.ToString();
+            string g = (gear ?? "").Trim();
+            if (g.Length == 0) return "-";
+            if (maxWidth <= 0) return "";
+            if (g.Length <= maxWidth) return g;
+
+            bool negative = g[0] == '-';
+            if (maxWidth == 1)
+            {
+                if (negative) return "R";
+                if (g == "0") return "N";
+                return g.Substring(g.Length - 1);
+            }
+            // Wider but still short: keep the sign, then the rightmost digits,
+            // so the sign is never the thing that gets dropped.
+            string digits = negative ? g.Substring(1) : g;
+            int room = negative ? maxWidth - 1 : maxWidth;
+            if (room < 1) room = 1;
+            if (digits.Length > room) digits = digits.Substring(digits.Length - room);
+            return negative ? "-" + digits : digits;
         }
 
         public static string SpeedText(double kmh, bool useMph)

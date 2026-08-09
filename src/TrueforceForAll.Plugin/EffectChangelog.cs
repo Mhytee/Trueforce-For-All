@@ -56,6 +56,7 @@ namespace TrueforceForAll.Plugin
             "Audio", "Engine", "Bumps", "Traction", "Shift",
             "Abs", "PitLimiter", "Drs", "Collision", "RevLimiter",
             "Airborne", "AxleSlip", "KerbThump", "LockupJudder",
+            "ImplementThud",
         };
 
         // Ordered oldest -> newest. Append-only.
@@ -636,6 +637,19 @@ namespace TrueforceForAll.Plugin
                         Group = "Bug fixes",
                         Headline = "Axle slip caused violent oscillations under braking",
                         Description = "A locked tire read as wheelspin and slammed the slip voices on at full strength. Locked tires are now recognized and stay quiet, so braking feel has one owner: the Lockup judder.",
+                    },
+                },
+            },
+            new ChangelogVersion {
+                Version = new Version(0, 2, 6),
+                Title = "Farming Simulator feel",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "New features",
+                        EffectId = "ImplementThud",
+                        Headline = "Implement thud",
+                        Description = "A mechanical clunk in the wheel when your equipment drops into work or lifts back out, the linkage landing and releasing. Farming Simulator with the TF4ALL Enhanced Telemetry mod; on by default.",
                     },
                 },
             },

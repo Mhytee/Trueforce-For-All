@@ -255,7 +255,7 @@ namespace TrueforceForAll.Plugin
                 "EnginePulse","RevLimiter","RoadBumps","TractionLoss",
                 "AxleSlip","KerbThump","LockupJudder",
                 "GearShift","AbsClick","PitLimiter","Drs","Collision",
-                "AudioCapture","Airborne",
+                "AudioCapture","Airborne","ImplementThud",
             });
             // CarOverrides on legacy snapshots is a dict, not a flat
             // field; also skip it from the headline overview.
@@ -490,6 +490,7 @@ namespace TrueforceForAll.Plugin
             AddSection(host, ovr, "Collision",    "Collision");
             AddSection(host, ovr, "AudioCapture", "Audio rumble");
             AddSection(host, ovr, "Airborne",     "Airborne ducking");
+            AddSection(host, ovr, "ImplementThud", "Implement thud");
         }
 
         private void AddBundledEngines(StackPanel host, JArray customs)

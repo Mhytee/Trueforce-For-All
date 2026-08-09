@@ -43,6 +43,7 @@ namespace TrueforceForAll.Core
         public AxleSlipEffect     AxleSlip;      // L1 tier, beside TractionLoss
         public LockupJudderEffect LockupJudder;  // L1 tier: a grip-state texture
         public KerbThumpEffect    KerbThump;     // L3 tier: momentary alert
+        public ImplementThudEffect ImplementThud; // L3 tier: momentary alert (FS linkage clunk)
         public GearShiftEffect    GearShift;
         public AbsClickEffect     AbsClick;
         public PitLimiterEffect   PitLimiter;
@@ -109,6 +110,7 @@ namespace TrueforceForAll.Core
             if (GearShift    != null) l3 = Math.Max(l3, GearShift.ActivityLevel);
             if (Collision    != null) l3 = Math.Max(l3, Collision.ActivityLevel);
             if (KerbThump    != null) l3 = Math.Max(l3, KerbThump.ActivityLevel);
+            if (ImplementThud != null) l3 = Math.Max(l3, ImplementThud.ActivityLevel);
 
             // Strongest activity strictly above each target tier.
             double above0 = Math.Max(l1, Math.Max(l2, l3));   // ducks L0 (engine/audio)
@@ -161,6 +163,9 @@ namespace TrueforceForAll.Core
             // Kerb thump is an L3 alert (base 1.0); it rides the road-bumps
             // airborne opt-in — mid-air there is no kerb.
             if (KerbThump    != null) KerbThump.DuckMultiplier      = fBumps;
+            // Implement thud: same L3 alert shape and same airborne ride as
+            // kerb thump — a linkage event is ground work.
+            if (ImplementThud != null) ImplementThud.DuckMultiplier = fBumps;
             if (Drs          != null) Drs.SustainedDuckMultiplier   = a1 * fDrs;
             if (RevLimiter   != null) RevLimiter.DuckMultiplier     = a2 * fRev;
             if (PitLimiter   != null) PitLimiter.DuckMultiplier     = a2 * fPit;
@@ -184,6 +189,7 @@ namespace TrueforceForAll.Core
                 if (AxleSlip     != null) list.Add(AxleSlip);
                 if (LockupJudder != null) list.Add(LockupJudder);
                 if (KerbThump    != null) list.Add(KerbThump);
+                if (ImplementThud != null) list.Add(ImplementThud);
                 if (GearShift    != null) list.Add(GearShift);
                 if (AbsClick     != null) list.Add(AbsClick);
                 if (PitLimiter   != null) list.Add(PitLimiter);
@@ -220,6 +226,7 @@ namespace TrueforceForAll.Core
             if (AxleSlip     != null) AxleSlip.DuckMultiplier       = Arbiter.MultiplierFor(AxleSlip) * fTraction;
             if (LockupJudder != null) LockupJudder.DuckMultiplier   = Arbiter.MultiplierFor(LockupJudder) * fTraction;
             if (KerbThump    != null) KerbThump.DuckMultiplier      = Arbiter.MultiplierFor(KerbThump) * fBumps;
+            if (ImplementThud != null) ImplementThud.DuckMultiplier = Arbiter.MultiplierFor(ImplementThud) * fBumps;
             if (Drs          != null) Drs.SustainedDuckMultiplier   = Arbiter.MultiplierFor(Drs) * fDrs;
             if (RevLimiter   != null) RevLimiter.DuckMultiplier     = Arbiter.MultiplierFor(RevLimiter) * fRev;
             if (PitLimiter   != null) PitLimiter.DuckMultiplier     = Arbiter.MultiplierFor(PitLimiter) * fPit;

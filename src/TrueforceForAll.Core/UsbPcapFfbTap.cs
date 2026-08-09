@@ -904,6 +904,10 @@ namespace TrueforceForAll.Core
             // would tell a user with working spring emulation that no FFB is
             // reaching the plugin.
             if (SpringUpdatesCaptured > _springsAtCaptureStart) return false;
+            // The plugin's synthetic spring owns FFB (FS on wheels the game
+            // sends only heartbeats to, so not even spring parameters arrive):
+            // no game FFB is expected at all, don't escalate or warn.
+            if (SyntheticFfbActive) return false;
             if (!_gameFfbExpected) return false;                  // not driving -> no FFB expected
 
             // If the user pinned a device that isn't a Logitech wheel, there's
@@ -1522,6 +1526,14 @@ namespace TrueforceForAll.Core
         /// FFB even though no force value ever appears on the wire.</summary>
         public long SpringUpdatesCaptured { get; private set; }
         private long _springsAtCaptureStart;
+
+        /// <summary>Set by the plugin while its synthetic spring owns the
+        /// wheel's FFB (FS spring mode): no game FFB is expected on the bus,
+        /// so the no-FFB watchdog must not escalate capture modes or warn.
+        /// Volatile-free by design: written from the plugin tick, read from
+        /// the parse loop, and a stale read for one watchdog interval is
+        /// harmless.</summary>
+        public bool SyntheticFfbActive { get; set; }
 
         /// <summary>True while any captured classic spring is playing. LED /
         /// OLED writes gate on "game FFB is quiet"; a playing spring is game

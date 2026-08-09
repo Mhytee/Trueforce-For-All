@@ -661,6 +661,23 @@ namespace TrueforceForAll.Core
             }
             finally
             {
+                // The wheel LATCHES the last cur it received when the stream
+                // dies, and every recovery path (deliberate startup re-attach
+                // fault, real fault, teardown) leaves seconds before the init
+                // sequence rewrites 0x8000, so a nonzero latch is a held pull
+                // for that whole window (2026-08-08 review). Best-effort: one
+                // final silent packet so the last thing on the wire is a
+                // released wheel. Harmless when paused (the wheel left
+                // Trueforce mode and ignores ep3) and a dead handle just
+                // throws into the catch.
+                try
+                {
+                    BuildSilentPacket(_packetBuf, _seq++);
+                    _stream?.Write(_packetBuf);
+                    _lastCurrent = 0x8000;
+                    _lastFfbOutput = 0;
+                }
+                catch { }
                 if (mmcss != IntPtr.Zero) AvRevertMmThreadCharacteristics(mmcss);
                 if (timer != IntPtr.Zero) CloseHandle(timer);
                 TimeEndPeriod(1);

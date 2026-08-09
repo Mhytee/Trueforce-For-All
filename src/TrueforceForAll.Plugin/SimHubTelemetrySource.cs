@@ -28,6 +28,12 @@ namespace TrueforceForAll.Plugin
         public void PushFromGameData(GameData data)
         {
             if (!_running) return;
+            // SimHub keeps re-delivering the last GameData for a while after
+            // a game dies; emitting those zombie frames kept MeasuredHz alive
+            // and telemetry freshness stamped through the game-close window,
+            // holding force paths open against frozen data (2026-08-08,
+            // trace-proven). No running game = no frames.
+            if (data?.GameRunning != true) return;
             var d = data?.NewData;
             if (d == null) return;
 

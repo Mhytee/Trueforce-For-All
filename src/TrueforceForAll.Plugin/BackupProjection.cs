@@ -87,6 +87,10 @@ namespace TrueforceForAll.Plugin
             "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
             "ClassicSpringEmulationEnabled",
             "SpringModeTerrainEnabled", "SpringModeTerrainGain",
+            "SpringModeCenterGain", "SpringModeCenterFirmness", "SpringModeSpeedEffect",
+            "SpringModeStrength", "SpringModeMinForce",
+            "SpringModeDragEnabled", "SpringModeDragGain", "SpringModeDragStrainFraction",
+            "SpringModeChassisWeightEnabled", "SpringModeChassisWeightGain",
             "DuckingEnabled", "DuckDepth", "DuckAttackMs", "DuckReleaseMs",
             "DuckFrequencyAware",
             // Telemetry based FFB (Mode B): all global feel choices, same
@@ -108,7 +112,7 @@ namespace TrueforceForAll.Plugin
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
-            "AxleSlip", "KerbThump", "LockupJudder",
+            "AxleSlip", "KerbThump", "LockupJudder", "ImplementThud",
             // Per-game/car data + the custom-engine library (lives in settings, not files).
             "GameEnabled", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
             "CustomEngines", "SharingAuthor",

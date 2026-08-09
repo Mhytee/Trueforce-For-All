@@ -96,6 +96,10 @@ namespace TrueforceForAll.Plugin
         private readonly WheelOledChannel _channel;
 
         private int _openState;        // 0=idle 1=opening 2=open-ok 3=open-failed
+        private int _openFails;        // completed failed open attempts (auto path only)
+        private long _nextOpenRetryMs; // no automatic re-probe before this
+        private const int OpenRetryCooldownMs = 30_000;
+        private const int OpenMaxAttempts = 5;
         private bool _showing;         // something is on screen (drives the release path)
         private volatile bool _testing;
         private volatile string _testStatus = "";
@@ -309,10 +313,16 @@ namespace TrueforceForAll.Plugin
                     // layout that sits left and has room for the speed beside
                     // it, or a centred labelled gear at the middle size.
                     setter = ctx.FlashStyle == OledFlashStyle.BigGearAndSpeed
-                        ? _channel.BuildBigSmall(
-                            OledScreenModel.GearGlyph(frame.Gear),
-                            OledScreenModel.SpeedText(frame.SpeedKmh, ctx.UseMph))
-                        : Stacked("GEAR", OledScreenModel.GearGlyph(frame.Gear));
+                        // BigSmall's first field is ONE character. A gear that
+                        // needs more than that takes the labelled flash instead,
+                        // whatever the setting says: the point of the flash is
+                        // to tell you the gear, and half a gear does not.
+                        ? (((frame.Gear ?? "").Trim().Length > 1)
+                            ? Stacked("GEAR", OledScreenModel.GearText(frame.Gear, 10))
+                            : _channel.BuildBigSmall(
+                                OledScreenModel.GearText(frame.Gear, 1),
+                                OledScreenModel.SpeedText(frame.SpeedKmh, ctx.UseMph)))
+                        : Stacked("GEAR", OledScreenModel.GearText(frame.Gear, 10));
                 else
                     setter = Compose(frame, ctx);
 
@@ -491,7 +501,7 @@ namespace TrueforceForAll.Plugin
         /// only takes the other one away.</summary>
         private void NoteShift(in OledFrameContext ctx, string gear)
         {
-            string g = OledScreenModel.GearGlyph(gear);
+            string g = OledScreenModel.GearText(gear, 10);
             string was = _prevGear;
             _prevGear = g;
             if (!ctx.ShiftFlashEnabled || was == null || was == g) return;
@@ -540,8 +550,12 @@ namespace TrueforceForAll.Plugin
             {
                 OledScreenModel.Preset(ctx.Screen, ctx.UseMph, ctx.DeltaSupported,
                                        out kind, out slots, out texts);
+                // A gear that will not fit the arrangement wins over the
+                // arrangement. Presets only; a custom screen is left alone.
+                OledScreenModel.FitGear(frame.Gear, ref kind, ref slots, ref texts);
             }
 
+            int[] widths = OledScreenModel.SlotWidths(kind);
             var cell = new string[slots.Length];
             for (int i = 0; i < slots.Length; i++)
             {
@@ -549,7 +563,8 @@ namespace TrueforceForAll.Plugin
                     slots[i], i < texts.Length ? texts[i] : null,
                     frame.Gear, frame.SpeedKmh, ctx.UseMph,
                     ctx.LapDelta, ctx.DeltaSupported,
-                    ctx.Position, ctx.CurrentLap, ctx.TotalLaps, ctx.LastLapMs);
+                    ctx.Position, ctx.CurrentLap, ctx.TotalLaps, ctx.LastLapMs,
+                    widths[i]);
                 // A split slot draws its first character on the left and the
                 // rest against the right edge, so a plain "128" would come out
                 // as "1" and "28" at opposite ends. Give the left zone a space
@@ -572,11 +587,20 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Kick a one-shot background open if we haven't yet. Returns
-        /// true once the open attempt has completed successfully.</summary>
+        /// <summary>Kick a background open if we haven't yet. Returns true once
+        /// an open attempt has completed successfully. A failed attempt is
+        /// retried on a cooldown a few times before latching for the session:
+        /// losing the HID++ pipe to another talker at startup is not proof the
+        /// wheel lacks the feature (the "OLED dead until SimHub restart" bug,
+        /// 2026-08-08).</summary>
         private bool EnsureOpening()
         {
             int prev = Interlocked.CompareExchange(ref _openState, 1, 0);
+            if (prev == 3
+                && _openFails < OpenMaxAttempts
+                && NowMs() >= _nextOpenRetryMs
+                && Interlocked.CompareExchange(ref _openState, 1, 3) == 3)
+                prev = 0;   // claimed the retry slot: kick a fresh probe below
             if (prev == 0)
             {
                 Task.Run(() =>
@@ -584,12 +608,25 @@ namespace TrueforceForAll.Plugin
                     bool ok = false;
                     try { ok = _channel.OpenAndResolve(); }
                     catch (Exception ex) { _log($"[OLED] open threw: {ex.Message}"); }
+                    if (ok) _openFails = 0;
+                    else
+                    {
+                        _openFails++;
+                        _nextOpenRetryMs = NowMs() + OpenRetryCooldownMs;
+                        if (_openFails < OpenMaxAttempts)
+                            _log($"[OLED] open attempt {_openFails} failed; retrying in "
+                                 + $"{OpenRetryCooldownMs / 1000} s");
+                        else
+                            _log($"[OLED] open failed {_openFails} times; giving up for this session.");
+                    }
                     Interlocked.Exchange(ref _openState, ok ? 2 : 3);
                 });
                 return false;
             }
             return prev == 2;
         }
+
+        private static long NowMs() => DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
 
         /// <summary>Walk the panel through the screens for the settings "Test"
         /// button, so the user can confirm the wheel answers with nothing

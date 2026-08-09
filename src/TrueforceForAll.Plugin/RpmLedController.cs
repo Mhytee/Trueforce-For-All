@@ -27,6 +27,10 @@ namespace TrueforceForAll.Plugin
         private readonly WheelLedChannel _channel;
 
         private int _openState;        // 0=idle 1=opening 2=open-ok 3=open-failed
+        private int _openFails;        // completed failed open attempts (auto path only)
+        private long _nextOpenRetryMs; // no automatic re-probe before this
+        private const int OpenRetryCooldownMs = 30_000;
+        private const int OpenMaxAttempts = 5;
         private int _lastBucket = -1;  // last LED count pushed (0..10), -1 = none
         private bool _lastRedline;
         private long _lastPushTicks;
@@ -133,11 +137,19 @@ namespace TrueforceForAll.Plugin
             _lastPushTicks = nowMs;
         }
 
-        /// <summary>Kick a one-shot background open if we haven't yet. Returns
-        /// true once the open attempt has completed successfully.</summary>
+        /// <summary>Kick a background open if we haven't yet. Returns true once
+        /// an open attempt has completed successfully. A failed attempt is
+        /// retried on a cooldown a few times before latching for the session,
+        /// mirroring OledDashController: losing the HID++ pipe to another
+        /// talker at startup is not proof the wheel lacks the feature.</summary>
         private bool EnsureOpening()
         {
             int prev = Interlocked.CompareExchange(ref _openState, 1, 0);
+            if (prev == 3
+                && _openFails < OpenMaxAttempts
+                && NowMs() >= _nextOpenRetryMs
+                && Interlocked.CompareExchange(ref _openState, 1, 3) == 3)
+                prev = 0;   // claimed the retry slot: kick a fresh probe below
             if (prev == 0)
             {
                 Task.Run(() =>
@@ -145,12 +157,25 @@ namespace TrueforceForAll.Plugin
                     bool ok = false;
                     try { ok = _channel.OpenAndResolve(); }
                     catch (Exception ex) { _log($"[RPM-LED] open threw: {ex.Message}"); }
+                    if (ok) _openFails = 0;
+                    else
+                    {
+                        _openFails++;
+                        _nextOpenRetryMs = NowMs() + OpenRetryCooldownMs;
+                        if (_openFails < OpenMaxAttempts)
+                            _log($"[RPM-LED] open attempt {_openFails} failed; retrying in "
+                                 + $"{OpenRetryCooldownMs / 1000} s");
+                        else
+                            _log($"[RPM-LED] open failed {_openFails} times; giving up for this session.");
+                    }
                     Interlocked.Exchange(ref _openState, ok ? 2 : 3);
                 });
                 return false;
             }
             return prev == 2;
         }
+
+        private static long NowMs() => DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
 
         /// <summary>Simulated rev + shift sweep for the settings "Test" button.
         /// Forces the channel open regardless of game (so the user can verify

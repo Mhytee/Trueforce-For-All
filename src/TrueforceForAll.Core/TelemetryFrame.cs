@@ -207,6 +207,32 @@ namespace TrueforceForAll.Core
         /// percussive even when the surface-rumble channel is also active.</summary>
         public bool? OnRumbleStrip;
 
+        /// <summary>True while the vehicle or an attached implement is
+        /// actually working: lowered into the ground or powered on (Farming
+        /// Simulator's TF4ALL mod). Null on sources that don't report it.
+        /// Edge-triggers ImplementThudEffect (the linkage clunk).</summary>
+        public bool? ImplementWorking;
+
+        /// <summary>True while implement hydraulics are in motion: a
+        /// lower/raise animating through the attacher joints, or a fold
+        /// deploying (mod 0.2.8+). Null on sources that don't report it.
+        /// Drives the hydraulic hum; its falling edge lands the settle
+        /// thud.</summary>
+        public bool? ImplementMoving;
+
+        /// <summary>How fast the implement hydraulics are travelling, as
+        /// the fraction of full travel covered per second: ~0.5-1.0 for a
+        /// three-point lower, ~0.1 for a big slow fold, 0 while idle (mod
+        /// 0.2.14+). Null on sources that don't report it. Rides the
+        /// hydraulic hum's pitch.</summary>
+        public float? ImplementSpeed;
+
+        /// <summary>Session-monotonic count of discrete mechanism toggles
+        /// with no measurable travel: a combine's straw-swath flap and kin
+        /// (mod 0.2.16+). Null on sources that don't report it. Each
+        /// increment lands a light thud.</summary>
+        public int? ImplementEvent;
+
         // ---- Collision ----
         /// <summary>Normalized collision magnitude this frame. ~0 = no
         /// impact, 1.0 = moderate hit, 2.0+ = hard wreck. Source-defined

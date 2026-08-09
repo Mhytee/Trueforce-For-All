@@ -1311,6 +1311,7 @@ namespace TrueforceForAll.Plugin
             new DashFx { Key = "Collision", Max = 2f,  Kind = SectionKind.Collision,    GetOn = () => ActiveCollision.Enabled,    SetOn = v => ActiveCollision.Enabled = v,    GetGain = () => ActiveCollision.Gain,    SetGain = v => ActiveCollision.Gain = v },
             new DashFx { Key = "RevLimiter", Max = 2f, Kind = SectionKind.RevLimiter,   GetOn = () => ActiveRevLimiter.Enabled,   SetOn = v => ActiveRevLimiter.Enabled = v,   GetGain = () => ActiveRevLimiter.Gain,   SetGain = v => ActiveRevLimiter.Gain = v },
             new DashFx { Key = "Airborne", Max = 0f,   Kind = SectionKind.Airborne,     GetOn = () => ActiveAirborne.Enabled,     SetOn = v => ActiveAirborne.Enabled = v,     GetGain = null,                          SetGain = null },
+            new DashFx { Key = "ImplThud", Max = 3f,   Kind = SectionKind.ImplementThud, GetOn = () => ActiveImplementThud.Enabled, SetOn = v => ActiveImplementThud.Enabled = v, GetGain = () => ActiveImplementThud.Gain, SetGain = v => ActiveImplementThud.Gain = v },
         };
 
         // Multiplicative gain step so one press moves small gains (0.07) and

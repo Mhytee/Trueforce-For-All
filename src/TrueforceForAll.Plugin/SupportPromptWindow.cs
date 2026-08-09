@@ -30,7 +30,40 @@ namespace TrueforceForAll.Plugin
         // Hairline rule under the centred header (same tone as other modal borders).
         private static readonly Brush DividerBg = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
 
+        // Hover / pressed shades for the gold button. The stock WPF button template
+        // swaps in its own themed brush on mouse-over, so Background alone loses to
+        // it and the gold turns gray under the cursor. Owning the template keeps the
+        // colour and lets hover lighten rather than repaint.
+        private static readonly Brush AccentHover   = new SolidColorBrush(Color.FromRgb(0xF2, 0xD1, 0x63));
+        private static readonly Brush AccentPressed = new SolidColorBrush(Color.FromRgb(0xC9, 0xA5, 0x36));
+
         public const string PatreonUrl = "https://www.patreon.com/Mhytee";
+
+        private static ControlTemplate GoldButtonTemplate()
+        {
+            var border = new FrameworkElementFactory(typeof(Border), "bd");
+            border.SetValue(Border.BackgroundProperty, AccentFg);
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+            border.SetValue(Border.PaddingProperty, new Thickness(14, 5, 14, 5));
+
+            var content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            border.AppendChild(content);
+
+            var t = new ControlTemplate(typeof(Button)) { VisualTree = border };
+
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Border.BackgroundProperty, AccentHover, "bd"));
+            t.Triggers.Add(hover);
+
+            var pressed = new Trigger {
+                Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true };
+            pressed.Setters.Add(new Setter(Border.BackgroundProperty, AccentPressed, "bd"));
+            t.Triggers.Add(pressed);
+
+            return t;
+        }
 
         // Deliberately short. The prompt reaches people who already use the plugin,
         // so this is there to total up what they are getting rather than to explain
@@ -182,11 +215,12 @@ namespace TrueforceForAll.Plugin
 
             // Gold, and the only coloured control in the modal, so the ask is the
             // one thing the eye lands on. Dark text: gold needs the contrast.
+            // It carries its own template because the stock button re-themes its
+            // background on hover, which turned the gold gray under the cursor.
             var supportBtn = new Button {
                 Content = "Support on Patreon",
-                Padding = new Thickness(14, 5, 14, 5),
-                Foreground = ButtonDarkFg, Background = AccentFg,
-                BorderBrush = AccentFg, FontWeight = FontWeights.SemiBold,
+                Foreground = ButtonDarkFg, FontWeight = FontWeights.SemiBold,
+                Template = GoldButtonTemplate(),
                 IsDefault = true,
             };
             supportBtn.Click += (s, e) =>

@@ -70,7 +70,11 @@ namespace TrueforceForAll.Plugin
         // Which arrangement the OLED shows. The firmware owns font size and
         // alignment, so picking a screen IS picking how big each value is
         // drawn. See OledScreen; Custom uses the three fields below.
-        public OledScreen OledScreen { get; set; } = OledScreen.GearAndSpeed;
+        // Speed over gear, both labelled, on the centred four rows. The owner
+        // built this one by hand in the editor and it is the best default:
+        // every value is named, nothing is cropped, and it is the arrangement
+        // that copes with a gearbox counting past 9.
+        public OledScreen OledScreen { get; set; } = OledScreen.SpeedOverGear;
 
         // A user-built screen: which firmware layout, and which field goes in
         // each of its slots, with the text for any slot set to Custom.
@@ -706,8 +710,50 @@ namespace TrueforceForAll.Plugin
         // the game's rigid-body physics (FS25 vehicleComponents), high-passed
         // into steering kicks on top of the emulated spring. Default off
         // until validated on hardware.
-        public bool   SpringModeTerrainEnabled { get; set; } = false;
+        // Factory = the owner's tuned FS recipe (2026-08-09): enhancements
+        // ship ON. Changes here require a ModeBDefaultsGeneration bump plus
+        // an entry in PreviousShippedModeBRecipes (the spring fields joined
+        // the per-field defaults merge with generation 6).
+        public bool   SpringModeTerrainEnabled { get; set; } = true;
         public double SpringModeTerrainGain    { get; set; } = 1.0;
+
+        // Further spring-mode enhancements, one toggle each (owner directive:
+        // testable one at a time). Implement drag: engine load weights the
+        // steering (working the field feels different from driving to it).
+        // Cornering weight: yaw-rate-derived lateral load scales the spring
+        // (chassis dynamics from the game mod). Bump haptics has no toggle:
+        // the FS source always pulses OnRumbleStrip on hard suspension
+        // transients, and the Kerb thump effect's own Enabled is the control.
+        // Centering strength for the synthetic spring (multiplier on the
+        // built-in curve). 0 = spring fully off, the empirical answer to
+        // "do we even need one": damper, terrain and effects keep running.
+        public double SpringModeCenterGain           { get; set; } = 1.0;
+        // On-center firmness: how linear the curve is near straight-ahead
+        // (0 = soft quadratic center, 1 = crisp near-linear). Separate from
+        // strength because raising strength alone also heavies the edges.
+        public double SpringModeCenterFirmness       { get; set; } = 0.85;
+        // How much speed strengthens the centering (0 = constant at all
+        // speeds, 1 = fully speed-scaled with a limp standstill).
+        public double SpringModeSpeedEffect          { get; set; } = 0.70;
+        // Overall spring-mode force multiplier (spring + terrain + drag +
+        // cornering weight; damping unaffected), the FS counterpart of the
+        // Forza Strength slider. 1.0 = the tuned baseline.
+        public double SpringModeStrength             { get; set; } = 1.0;
+        // FS's own min-force floor, separate from ModeBMinForce (owner call
+        // 2026-08-09: games' force characters differ, so the floor is per
+        // game). Lifts terrain kicks and the spring beyond slight deflection
+        // above a belt wheel's internal friction; speed-gated so a parked
+        // wheel stays limp, deflection-gated so straight-ahead can't buzz.
+        public double SpringModeMinForce             { get; set; } = 0.0;
+        public bool   SpringModeDragEnabled          { get; set; } = true;
+        public double SpringModeDragGain             { get; set; } = 1.0;
+        // How much of the drag weight plain engine strain applies while no
+        // implement is working (0 = implements only, 1 = strain counts in
+        // full, same as working). Only meaningful with mod >= 0.2.6; older
+        // mods can't tell the two apart and always apply full weight.
+        public double SpringModeDragStrainFraction   { get; set; } = 0.50;
+        public bool   SpringModeChassisWeightEnabled { get; set; } = true;
+        public double SpringModeChassisWeightGain    { get; set; } = 1.0;
 
         // TF4ALL Enhanced Telemetry game-mod install state (Farming Simulator).
         // Machine-local: the mod lives in THIS PC's game folders. Declined
@@ -942,6 +988,11 @@ namespace TrueforceForAll.Plugin
         // the air), same machine-level rationale as Sidechain ducking's living
         // outside the per-car override set. See AirborneEffect / AirborneSettings.
         public AirborneSettings     Airborne     { get; set; } = new AirborneSettings();
+
+        // Implement thud (Farming Simulator). Global-only, same rationale as
+        // Airborne: one game family, one context, preset scoping would be
+        // dead machinery. See ImplementThudEffect / ImplementThudSettings.
+        public ImplementThudSettings ImplementThud { get; set; } = new ImplementThudSettings();
 
         // Per-machine performance tuning. Lives outside GameSettingsSnapshot
         // because ring sizes are a property of the machine (CPU, scheduler
@@ -1747,6 +1798,9 @@ namespace TrueforceForAll.Plugin
         // Airborne ducking travels with the preset (built-in presets seed it);
         // null in presets saved before it existed, handled on apply.
         public AirborneSettings     Airborne     { get; set; }
+        // Implement thud (FS linkage clunk). Null in presets saved before
+        // the effect existed; apply keeps the user's current values.
+        public ImplementThudSettings ImplementThud { get; set; }
 
         public Dictionary<string, CarOverride> CarOverrides { get; set; }
 
@@ -2064,6 +2118,36 @@ namespace TrueforceForAll.Plugin
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform Waveform { get; set; } = Waveform.Square;
+    }
+
+    // Implement thud (Farming Simulator): the linkage clunk when equipment
+    // lowers or raises. Global-only like Airborne (no preset/per-car slots):
+    // it fires in exactly one game family and one context, so preset
+    // scoping would be dead machinery.
+    public sealed class ImplementThudSettings
+    {
+        public bool  Enabled  { get; set; } = true;
+        public float Gain     { get; set; } = 1.0f;
+        public float Freq     { get; set; } = 30.0f;
+        // Raise-edge amplitude relative to lowering (linkage releasing vs
+        // the tool landing).
+        public float RaiseAmp { get; set; } = 0.6f;
+        // Hydraulic hum while a lower/raise/fold is in motion (mod 0.2.8+).
+        public float HumAmp   { get; set; } = 0.30f;
+        public float HumFreq  { get; set; } = 46.0f;
+        // Hum pitch dynamics: how far below the hum pitch the spool-up bend
+        // starts (fraction), how much travel speed raises the pitch
+        // (fraction at a fast lower, mod 0.2.14+), and the level of the
+        // octave layer inside the hum voice.
+        public float BendDepth   { get; set; } = 0.15f;
+        public float SpeedPitch  { get; set; } = 0.12f;
+        public float HarmonicAmp { get; set; } = 0.22f;
+        // How much slow travel quiets the hum: its loudness floor is
+        // 1 - SpeedVolume, so 0 = constant loudness, 1 = fully speed-tracked.
+        public float SpeedVolume { get; set; } = 0.5f;
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public Waveform Waveform { get; set; } = Waveform.Sine;
     }
 
     public sealed class AbsClickSettings
@@ -2389,6 +2473,7 @@ namespace TrueforceForAll.Plugin
         public LockupJudderSettings LockupJudder { get; set; }
         public AudioCaptureSettings AudioCapture { get; set; }
         public AirborneSettings     Airborne     { get; set; }
+        public ImplementThudSettings ImplementThud { get; set; }
 
         /// <summary>Server uuid of the community row this car preset
         /// override was downloaded from. Null = locally authored.
@@ -2431,7 +2516,7 @@ namespace TrueforceForAll.Plugin
             GearShift   == null && AbsClick  == null && AudioCapture == null &&
             PitLimiter  == null && Drs       == null && Collision    == null &&
             RevLimiter  == null && AxleSlip  == null && KerbThump    == null &&
-            LockupJudder == null && Airborne == null;
+            LockupJudder == null && Airborne == null && ImplementThud == null;
 
         /// <summary>True when this override carries community lineage (download/
         /// upload tracking) even with no effect sections. Such an override must

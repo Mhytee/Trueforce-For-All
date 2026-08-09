@@ -235,6 +235,9 @@ namespace TrueforceForAll.Plugin
         // Coordinator voice (no audio of its own): ducks the others when the
         // car is airborne. See AirborneEffect.
         public AirborneEffect     Airborne     { get; private set; }
+        // FS linkage clunk on implement lower/raise; inert outside FS
+        // (only the FS source sets frame.ImplementWorking).
+        public ImplementThudEffect ImplementThud { get; private set; }
         private TelemetryEffect[] _effects;
 
         // Rim rev/shift LEDs over HID++ (iRacing-scoped, separate from the
@@ -378,6 +381,10 @@ namespace TrueforceForAll.Plugin
         private volatile float _lastSpeedKmh;
         private long _lastSteerTicks;
         private static readonly long SteerMaxAgeTicks = Stopwatch.Frequency / 2; // 500 ms
+        // Synthetic-spring telemetry gate (EvaluateClassicSpringForce): looser
+        // than FrameStallTicks so a loading hitch only softens the spring
+        // briefly, but tight enough to close the game-exit pull window.
+        private static readonly long SpringTelemetryMaxAgeTicks = Stopwatch.Frequency * 3 / 2; // 1.5 s
 
         // Telemetry-freshness stamp for the stall watchdog. Set (Stopwatch
         // ticks) every time DispatchFrame receives a real frame; read from the
@@ -1085,6 +1092,10 @@ namespace TrueforceForAll.Plugin
         public void NudgeModeBStrength(float delta)
         {
             if (Settings == null) return;
+            // Spring mode (FS): the same bound buttons drive the FS Strength
+            // slider, the one that actually shapes force there; nudging the
+            // hidden Forza strength would be a silent no-op on the wheel.
+            if (_forceModeB == 2) { NudgeSpringStrength(delta); return; }
             const float lo = 0.05f, hi = 1.5f;
             float cur = Settings.ModeBSatGain;
             float next = cur + delta;
@@ -1103,21 +1114,44 @@ namespace TrueforceForAll.Plugin
             RaiseDashRemoteChanged();
         }
 
+        /// <summary>Step the FS spring-mode Strength from a bound control
+        /// (reached via NudgeModeBStrength while spring mode is armed).
+        /// Applies live on the next pump tick; no re-apply call needed.</summary>
+        public void NudgeSpringStrength(float delta)
+        {
+            if (Settings == null) return;
+            const float lo = 0.05f, hi = 2.0f;
+            float cur = (float)Settings.SpringModeStrength;
+            float next = cur + delta;
+            if (next < lo) next = lo; else if (next > hi) next = hi;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] NudgeSpringStrength delta={delta:+0.00;-0.00;0.00} "
+                + $"cur={cur:F2} -> next={next:F2}"
+                + (Math.Abs(next - cur) < 0.0001f ? " (no-op, already at limit)" : ""));
+            Settings.SpringModeStrength = next;
+            ScheduleSettingsFlush();
+            DashReadout("FFB STRENGTH", next.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+            RaiseDashRemoteChanged();
+        }
+
         /// <summary>Step the wheel screen through the ready-made arrangements
         /// and the custom one, wrapping at the end. Bound to a button this is
         /// the only way to change screens without leaving the car.</summary>
         public void CycleOledScreen(int direction)
         {
             if (Settings == null) return;
-            int count = OledScreenModel.ScreenShortNames.Length;
-            int i = (int)Settings.OledScreen + (direction < 0 ? -1 : 1);
-            if (i < 0) i = count - 1; else if (i >= count) i = 0;
-            var next = (OledScreen)i;
+            // Walk the OFFERED order, not the enum's numbers: the two differ
+            // because enum values are persisted and can never be renumbered.
+            var order = OledScreenModel.ScreenOrder;
+            int cur = Array.IndexOf(order, Settings.OledScreen);
+            int i = (cur < 0 ? 0 : cur) + (direction < 0 ? -1 : 1);
+            if (i < 0) i = order.Length - 1; else if (i >= order.Length) i = 0;
+            var next = order[i];
             Settings.OledScreen = next;
             ScheduleSettingsFlush();
             // Names the arrangement rather than showing it, because the screen
             // itself is about to show it anyway once the readout clears.
-            DashReadout("SCREEN", OledScreenModel.ScreenShortNames[i]);
+            DashReadout("SCREEN", OledScreenModel.ScreenShortNames[(int)next]);
             RaiseDashRemoteChanged();
             SimHub.Logging.Current.Info($"[TF4ALL] OLED screen -> {next}");
         }
@@ -1357,14 +1391,45 @@ namespace TrueforceForAll.Plugin
             var tap = _ffbTap;
             bool toggleOn = Settings != null && Settings.ClassicSpringEmulationEnabled
                             && Settings.PluginEnabled;
+            // While spring mode owns FFB there is no game FFB to capture, so
+            // the tap's no-FFB watchdog must stay quiet: on a G PRO in FS
+            // even the spring-parameter quiet never engages (the game sends
+            // only heartbeats), and the watchdog escalated to whole-bus
+            // capture + a misleading "no FFB, quit G HUB" warning two
+            // minutes into a session (2026-08-08 log). Asserted every pass
+            // so a recreated tap (self-heal restart) re-learns it.
+            if (tap != null) tap.SyntheticFfbActive = _forceModeB == 2;
+            // Farming Simulator arms by GAME, not by bus dynamics: on every
+            // wheel we have traced, FS streams no force values at all (G923:
+            // parametric springs; G PRO: a constant heartbeat that only
+            // misdecodes), so spring rendering owns FS force feedback
+            // outright and a captured "scalar" there is by definition a
+            // misdecode, never a reason to disarm.
+            bool fsGame = _activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
 
             if (_forceModeB == 2)
             {
-                bool scalar = tap != null && tap.TryGetFreshFfbTarget(2000).HasValue;
-                if (!toggleOn || tap == null || !tap.IsRunning || scalar)
+                bool scalar = !fsGame && tap != null && tap.TryGetFreshFfbTarget(2000).HasValue;
+                // FS spring rendering never touches the tap (synthetic model
+                // + steering reader only), so a tap hiccup (EndOfStream
+                // crash, liveness kill, both observed once per session) must
+                // not disarm it: the disarm/re-arm round trip used to open a
+                // 1 s+ mode-0 window mid-drive, wheel limp then pass-through
+                // (2026-08-08 review). Non-FS spring games DO render from the
+                // tap's captured springs, so they keep the liveness gate.
+                bool tapGone = (tap == null || !tap.IsRunning) && !fsGame;
+                if (!toggleOn || tapGone || scalar)
                 {
                     _forceModeB = 0;
                     _springArmCandidateSinceTicks = 0;
+                    // Anything the tap captured while armed was IGNORED (the
+                    // spring path replaces the target), so it must not be
+                    // served by the pass-through that resumes now. On FS this
+                    // was a wheel-slam: the misdecoded heartbeat scalar
+                    // stayed "fresh" for up to 10 s after the game closed
+                    // and pass-through drove the wheel to full lock with it.
+                    tap?.ClearLastFfbTarget();
                     SimHub.Logging.Current.Info("[TF4ALL] Spring mode disarmed"
                         + (scalar ? " (the game is streaming force values; pass-through resumes)." : "."));
                 }
@@ -1372,9 +1437,12 @@ namespace TrueforceForAll.Plugin
             }
 
             if (_forceModeB != 0) { _springArmCandidateSinceTicks = 0; return; }
-            if (!toggleOn || tap == null || !tap.IsRunning
-                || !tap.AnyClassicSpringPlaying
-                || tap.TryGetFreshFfbTarget(2000).HasValue)
+            bool springOnlyBus = tap != null && tap.IsRunning
+                && tap.AnyClassicSpringPlaying
+                && !tap.TryGetFreshFfbTarget(2000).HasValue;
+            // fsGame arms without the tap (same reasoning as the disarm
+            // branch: FS rendering is tap-independent).
+            if (!toggleOn || !(fsGame || springOnlyBus))
             {
                 _springArmCandidateSinceTicks = 0;
                 return;
@@ -1382,14 +1450,17 @@ namespace TrueforceForAll.Plugin
 
             long now = Stopwatch.GetTimestamp();
             if (_springArmCandidateSinceTicks == 0) { _springArmCandidateSinceTicks = now; return; }
-            if (now - _springArmCandidateSinceTicks < Stopwatch.Frequency) return;   // 1 s spring-only
+            if (now - _springArmCandidateSinceTicks < Stopwatch.Frequency) return;   // 1 s dwell
             _springArmCandidateSinceTicks = 0;
             _springRamp = 0f;
             _springRampPrevTicks = 0;
             _forceModeB = 2;
-            SimHub.Logging.Current.Info(
-                "[TF4ALL] Spring mode armed: the game commands spring-based force feedback " +
-                "(no streamed values); rendering the game's spring from the wheel's physical position.");
+            SimHub.Logging.Current.Info(fsGame
+                ? "[TF4ALL] Spring mode armed for Farming Simulator: the plugin's steering model "
+                  + "replaces the game's force feedback on every wheel, rendered at the wheel's "
+                  + "physical position."
+                : "[TF4ALL] Spring mode armed: the game commands spring-based force feedback "
+                  + "(no streamed values); rendering the game's spring from the wheel's physical position.");
         }
 
         // ---- Terrain feel (spring-mode enhancement #1) ----------------------
@@ -1413,7 +1484,7 @@ namespace TrueforceForAll.Plugin
         // spring game is active without the mod. After one accepted install,
         // newer plugin versions refresh the file silently (the consent was
         // to the file, not to one version of it).
-        private const string FsModVersion = "0.2.0";
+        private const string FsModVersion = "0.2.17";
         private bool _fsModPromptShown;   // once per SimHub session
 
         /// <summary>Maps a Farming Simulator game name to its mods folder and
@@ -1464,6 +1535,41 @@ namespace TrueforceForAll.Plugin
                 return true;
             }
             catch { return false; }
+        }
+
+        /// <summary>The Telemetry FFB tab banner's state for the active FS
+        /// game: 0 = enhanced telemetry feeding (nothing to say), 1 = mod not
+        /// installed (offer the install), 2 = mod installed but the game is
+        /// not running it (it needs enabling in the game's mod screen; we can
+        /// tell because SimHub's own mod IS feeding, so the game runs, while
+        /// our pipe is silent), 3 = not an FS session or the game is not
+        /// running (say nothing), 4 = feeding but from an older mod version
+        /// than the plugin refreshed onto disk (restart the game to load
+        /// it).</summary>
+        public int FsEnhancedTelemetryState()
+        {
+            if (_activeGame == null
+                || !_activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
+                return 3;
+            var fs = _fsPipeSource;
+            if (fs != null && fs.MsSinceLastFrame < 3000)
+            {
+                // 4 = feeding, but from an OLDER mod than the plugin has
+                // refreshed onto disk. The refresh runs on game detection,
+                // which is always after the game already scanned its mods
+                // folder, so an update trails by one game restart, and a
+                // user who skips it silently misses new mod features (cost
+                // a slip-test cycle, 2026-08-08). Pre-0.2.11 mods don't
+                // report a version; they read as current (undetectable).
+                string rep = fs.ReportedModVersion;
+                if (!string.IsNullOrEmpty(rep)
+                    && !string.Equals(rep, FsModVersion, StringComparison.Ordinal))
+                    return 4;
+                return 0;
+            }
+            if (!IsFsModInstalledForActiveGame()) return 1;
+            bool gameFeedingSimHub = _simHubSource != null && _simHubSource.MeasuredHz > 0;
+            return gameFeedingSimHub ? 2 : 3;
         }
 
         /// <summary>True when the active game either has our mod installed or
@@ -1558,7 +1664,8 @@ namespace TrueforceForAll.Plugin
                             + "per-wheel suspension, ground contact, and more, at up to 100 Hz "
                             + "where SimHub delivers 10 Hz (60 Hz with a licensed SimHub). This "
                             + "unlocks Telemetry Based FFB enhancements to the game's force "
-                            + "feedback, such as Terrain feel.",
+                            + "feedback, such as Terrain feel. It works alongside SimHub's own "
+                            + "telemetry mod; keep both enabled in the game's mod list.",
                             DialogKind.Confirm, "Install", "Not now",
                             goldOk: true, quietCancel: true);
                         var st = Settings;
@@ -1602,18 +1709,169 @@ namespace TrueforceForAll.Plugin
             catch { }
         }
 
-        // Evaluate the captured springs at the wheel's physical position.
-        // Null when the position is stale or the tap is gone: emulating a
-        // spring against a frozen position would hold a constant torque.
+        // Our own centering for FS wheels the game gives no spring commands
+        // to (the G PRO gets a constant heartbeat, trace-proven 2026-08-07).
+        // Quadratic: light at center, firmer with lock, matching the feel the
+        // game's own static spring produces natively. Full lock = this
+        // fraction of full scale; the shared Damping slider provides the
+        // stability half.
+        private const float SyntheticFsSpringStrength = 0.6f;
+
+        // Evaluate the steering spring at the wheel's physical position:
+        // the game's own captured spring when one is playing, else (in FS)
+        // the synthetic fallback. Null when the position is stale or the tap
+        // is gone: rendering a spring against a frozen position would hold a
+        // constant torque.
         private short? EvaluateClassicSpringForce()
         {
             var s = Settings;
             if (s == null || !s.ClassicSpringEmulationEnabled) return null;
-            var tap = _ffbTap;
-            if (tap == null || !tap.IsRunning) return null;
             var sr = _steeringReader;
             if (sr == null || sr.LastUpdateTicks == 0) return null;
             if (Stopwatch.GetTimestamp() - sr.LastUpdateTicks > SteerMaxAgeTicks) return null;
+            // The tap is only needed BELOW, for rendering a non-FS game's own
+            // captured springs; the FS synthetic model must keep rendering
+            // through tap restarts (EndOfStream crash / liveness kill).
+
+            // Farming Simulator: ALWAYS the plugin's model, on every wheel
+            // (owner call 2026-08-08). Classic-protocol wheels (G923) do
+            // receive readable game springs here, but rendering those on one
+            // wheel family and our tunable model on another split the feel
+            // and made the centering sliders dead on half the hardware. One
+            // model everywhere; the captured decode still feeds arming
+            // diagnostics on non-FS classic-spring games below.
+            if (_activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
+            {
+                // Telemetry-freshness gate. Both close-the-game pulls
+                // (2026-08-08) developed in the window AFTER frames stopped
+                // but BEFORE the game-changed disarm: a spring rendered
+                // through that window pushes the wheel around with no game
+                // attached. No frames for 1.5 s = no synthetic spring; menus
+                // keep it alive (the SimHub fallback still emits frames
+                // there), and the 100 ms spring ramp turns the cut into a
+                // fade.
+                long lastFrame = System.Threading.Interlocked.Read(ref _lastFrameTicks);
+                if (lastFrame == 0
+                    || Stopwatch.GetTimestamp() - lastFrame > SpringTelemetryMaxAgeTicks)
+                    return null;
+
+                // Mod users: the spring ALSO dies with the pipe itself. The
+                // gate above rides _lastFrameTicks, which the SimHub source
+                // keeps stamping with the dead game's frozen data for
+                // seconds after a close (GameRunning lags process death),
+                // and that window is exactly where every game-close pull
+                // lived. If the mod fed this game session and has gone
+                // silent, no spring, regardless of who is stamping frames.
+                // Menus stay alive (the mod keeps sending inVehicle=false
+                // frames there); quit-to-main-menu correctly goes limp.
+                var fsPipe = _fsPipeSource;
+                if (fsPipe != null && _fsPipeFedThisGame
+                    && fsPipe.MsSinceLastFrame > 1500)
+                    return null;
+
+                float steer = sr.SteerNorm;
+                if (steer > 1f) steer = 1f; else if (steer < -1f) steer = -1f;
+                // Speed-scaled centering: real steering lightens toward
+                // standstill (self-aligning torque vanishes) and firms with
+                // road speed. The floor keeps a parked wheel from going
+                // fully limp; full strength from 30 km/h.
+                // Centering strength: user-tunable, and 0 is a REAL off (the
+                // rest of spring mode, damper, terrain, effects, keeps
+                // running on the zero force).
+                float centerGain = (float)(s.SpringModeCenterGain);
+                if (centerGain < 0.01f) return (short)0;
+
+                float spd = _lastSpeedKmh;
+                if (spd < 0f) spd = 0f;
+                float ramp01 = Math.Min(spd / 30f, 1f);
+                // Speed effect slider: 0 = constant centering at all speeds,
+                // 1 = fully speed-scaled (limp standstill). Default 0.65
+                // reproduces the shipped 0.35 floor.
+                float speedFx = (float)s.SpringModeSpeedEffect;
+                if (speedFx < 0f) speedFx = 0f; else if (speedFx > 1f) speedFx = 1f;
+                float speedScale = (1f - speedFx) + speedFx * ramp01;
+                // Center firmness slider: the curve's linear fraction near
+                // straight-ahead (0 = soft quadratic, 1 = crisp). Default
+                // 0.5 reproduces the shipped 35%-at-rest / 80%-at-speed
+                // morph. Separate from strength: this shapes WHERE the
+                // force lives, not how much of it there is.
+                float firm = (float)s.SpringModeCenterFirmness;
+                if (firm < 0f) firm = 0f; else if (firm > 1f) firm = 1f;
+                float mag = Math.Abs(steer);
+                float linBase = 0.7f * firm;
+                float linFrac = linBase + (0.8f - linBase) * ramp01;
+                float shape = mag + (1f - mag) * linFrac;
+                // Same sign space as the spring evaluator and the stationary
+                // spring: steer right of center produces a positive
+                // (leftward, centering) force.
+                float f01 = steer * shape * SyntheticFsSpringStrength * centerGain * speedScale;
+
+                // Min force on the spring, deflection- and speed-gated (owner
+                // ask 2026-08-09): beyond slight deflection, light centering
+                // forces lift above a belt wheel's internal friction so the
+                // center region doesn't read dead on a G923. The gates keep
+                // the chatter case out: straight-ahead (|steer| <= 0.03) the
+                // force dwells near zero and stays unremapped, and the floor
+                // scales with the speed ramp so a parked wheel stays limp
+                // (the Speed effect contract). Drag and cornering weight
+                // multiply AFTER this, inheriting the floored value.
+                float minSpring = s != null ? (float)s.SpringModeMinForce : 0f;
+                if (minSpring > 0f && mag > 0.03f && f01 != 0f)
+                {
+                    if (minSpring > 0.5f) minSpring = 0.5f;
+                    float minEff = minSpring * speedScale;
+                    if (minEff > 0f)
+                        f01 = (float)ModeBComposer.MinForceRemap(f01, minEff);
+                }
+
+                // Feedback-sanity guard (the game-close pull, 2026-08-08,
+                // trace-proven). A centering spring is negative feedback:
+                // push toward center, position responds, force shrinks. When
+                // the game tears down, the wheel's state changes under us and
+                // the loop can turn positive: our own force drives the wheel
+                // INTO lock and holds it at full push for seconds. Detect the
+                // physically impossible state instead of guessing at causes:
+                // a large sustained push with the wheel parked at full lock
+                // means we are fighting something, so let go until the wheel
+                // comes off the lock. Unreachable in real driving: at yard
+                // speeds the speed scale keeps the spring below the force
+                // threshold, and above 30 km/h nobody holds full lock for
+                // 350 ms.
+                long nowLs = Stopwatch.GetTimestamp();
+                if (_springLockStallLatched)
+                {
+                    if (mag < 0.85f) _springLockStallLatched = false;
+                    else return null;
+                }
+                if (mag >= 0.95f && Math.Abs(f01) > 0.35f)
+                {
+                    if (_springLockStallStartTicks == 0)
+                        _springLockStallStartTicks = nowLs;
+                    else if (nowLs - _springLockStallStartTicks > Stopwatch.Frequency * 35 / 100)
+                    {
+                        _springLockStallLatched = true;
+                        _springLockStallStartTicks = 0;
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Spring suppressed: pushing hard against a wheel parked at full lock "
+                            + "(fighting an external force, likely the game releasing the wheel); "
+                            + "re-engages when the wheel comes off the lock.");
+                        return null;
+                    }
+                }
+                else _springLockStallStartTicks = 0;
+
+                int v = (int)(f01 * 32767f);
+                if (v > short.MaxValue) v = short.MaxValue;
+                else if (v < short.MinValue) v = short.MinValue;
+                return (short)v;
+            }
+
+            // Non-FS classic-spring games (e.g. FH5's autocenter when the
+            // bus-driven arming engages): render the game's own captured
+            // spring, its parameters are its real intent there.
+            var tap = _ffbTap;
+            if (tap == null || !tap.IsRunning) return null;
             return tap.TryEvaluateClassicSprings(sr.SteerNorm);
         }
 
@@ -1626,7 +1884,48 @@ namespace TrueforceForAll.Plugin
         // thread only.
         private float _springRamp;
         private long  _springRampPrevTicks;
+        // Lock-stall guard state (pump thread only, no sync needed): see the
+        // feedback-sanity guard in EvaluateClassicSpringForce.
+        private long  _springLockStallStartTicks;
+        private bool  _springLockStallLatched;
+
+        // Hybrid drag weighting (owner call 2026-08-08): full engine-load
+        // weight while something is actually WORKING (implement lowered or
+        // powered on, per the mod's impl flag), a user-tunable fraction
+        // (Engine strain slider) under plain strain so acceleration still
+        // adds a touch of weight without impersonating a plow.
+        // Pre-0.2.6 mods don't report the flag (ImplementActive == null);
+        // they keep the ungated full weight. Both drag consumers (spring
+        // scale + damper thickening) read through this.
+        private float EffectiveDragLoad01()
+        {
+            var fs = _fsPipeSource;
+            float load = fs?.MotorLoad01 ?? -1f;
+            if (load <= 0f) return -1f;
+            if (fs.ImplementActive.HasValue)
+            {
+                // Loadedness blend (owner design 2026-08-08): working
+                // implements count in full, otherwise the best attached
+                // fill fraction raises the strain floor continuously, so a
+                // filling grain trailer grows into full drag weight with no
+                // threshold cliff. The Engine strain slider is the floor.
+                // Magnitude stays engine load's job: a full-but-light load
+                // opens the gate yet barely strains the engine, so it
+                // stays light, which is the accurate outcome.
+                float loadedness = fs.ImplementActive == true ? 1f : fs.AttachedFill01;
+                if (loadedness < 0f) loadedness = 0f; else if (loadedness > 1f) loadedness = 1f;
+                float frac = (float)(Settings?.SpringModeDragStrainFraction ?? 0.35);
+                if (frac < 0f) frac = 0f; else if (frac > 1f) frac = 1f;
+                load *= frac + (1f - frac) * loadedness;
+            }
+            return load;
+        }
         private float _springKickEma;   // pump-thread EMA over the shared road-kick cache
+        private long  _ptKickPrevTicks; // pass-through terrain's own dt tracker (pump thread)
+        // Freshness stamp for the FS kick compute: frames stopping (game
+        // closing) must let the kick DECAY, not hold its last value against
+        // the wheel; the death-spike freeze pulled hard for seconds.
+        private long  _fsKickStampTicks;   // Interlocked; 32-bit host
 
         private short ComputeSpringModeForce()
         {
@@ -1642,6 +1941,32 @@ namespace TrueforceForAll.Plugin
             if (_springRamp < 0f) _springRamp = 0f; else if (_springRamp > 1f) _springRamp = 1f;
             if (_springRamp <= 0f || !f.HasValue) return 0;
 
+            var s = Settings;
+            float spring = f.Value;
+
+            // Enhancement scaling on the SPRING component (terrain and the
+            // ramp stay unscaled). Implement drag: engine load weights the
+            // wheel, so working soil steers heavier than an empty run.
+            // Cornering weight: yaw-derived lateral G loads the wheel through
+            // turns (v * yawRate via the mod's chassis rates). Both are
+            // multiplicative and additive-safe: no data means scale 1.0.
+            if (s != null)
+            {
+                float scale = 1f;
+                if (s.SpringModeDragEnabled)
+                {
+                    float load = EffectiveDragLoad01();
+                    if (load > 0f) scale += load * (float)s.SpringModeDragGain * 0.8f;
+                }
+                if (s.SpringModeChassisWeightEnabled)
+                {
+                    float latG = Math.Abs(_lastSwayAccel) / 9.81f;
+                    if (latG > 2f) latG = 2f;
+                    scale += latG * (float)s.SpringModeChassisWeightGain * 0.5f;
+                }
+                spring *= scale;
+            }
+
             // Terrain kick (spring-mode enhancement #1): the shared road-kick
             // cache, computed in DispatchFrame from the FS source's suspension
             // quad, consumed here through the same short EMA Mode B's force
@@ -1649,16 +1974,40 @@ namespace TrueforceForAll.Plugin
             // Kick full scale at gain 1.0 = half of full force, mirroring the
             // Mode B mapping.
             float terrainLsb = 0f;
-            var s = Settings;
             if (s != null && s.SpringModeTerrainEnabled)
             {
+                // Stale cache (frames stopped: pause, game closing) decays to
+                // zero instead of holding its last value against the wheel.
+                long kStamp = System.Threading.Interlocked.Read(ref _fsKickStampTicks);
+                float kickTarget = (kStamp != 0 && now - kStamp < Stopwatch.Frequency / 4)
+                    ? _mbKickCached : 0f;
                 float kickAlpha = (float)(1.0 - Math.Exp(-dtMs / 8.0));
-                _springKickEma += (_mbKickCached - _springKickEma) * kickAlpha;
+                _springKickEma += (kickTarget - _springKickEma) * kickAlpha;
                 terrainLsb = _springKickEma * (float)s.SpringModeTerrainGain * 0.5f * 32767f;
+
+                // Min force on the kick channel: faint terrain transients
+                // lift above a belt wheel's internal friction. FS's OWN
+                // floor (SpringModeMinForce), per-game by owner call: the
+                // games' force characters differ. The spring gets its own
+                // deflection/speed-gated floor in EvaluateClassicSpring-
+                // Force; damping stays unremapped (chatter).
+                float minF = (float)s.SpringModeMinForce;
+                if (minF > 0f && terrainLsb != 0f)
+                {
+                    if (minF > 0.5f) minF = 0.5f;
+                    terrainLsb = (float)(ModeBComposer.MinForceRemap(
+                        terrainLsb / 32767.0, minF) * 32767.0);
+                }
             }
             else _springKickEma = 0f;
 
-            int v = (int)Math.Round((f.Value + terrainLsb) * _springRamp);
+            // Overall strength (the FS Strength slider): scales the composed
+            // force, never the damper, so turning it down does not also
+            // remove stability.
+            float strength = s != null ? (float)s.SpringModeStrength : 1f;
+            if (strength < 0f) strength = 0f;
+
+            int v = (int)Math.Round((spring + terrainLsb) * strength * _springRamp);
             if (v > short.MaxValue) v = short.MaxValue;
             else if (v < short.MinValue) v = short.MinValue;
             return (short)v;
@@ -2114,6 +2463,12 @@ namespace TrueforceForAll.Plugin
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
+            // The spring/FFB-recreation toggle left the UI (owner call
+            // 2026-08-08: it is HOW Farming Simulator works, not an option;
+            // FS is one of the games that require telemetry-based FFB). A
+            // false persisted by an older build would leave FS silently dead
+            // with nothing visible to re-enable, so normalize to on at load.
+            Settings.ClassicSpringEmulationEnabled = true;
             // Provision the official community backend. The plugin ships no backend baked into its
             // code, so without this a fresh install has empty settings and can't reach sign-in /
             // community / backup ("could not reach the sign-in server"). Seed the public URL +
@@ -2927,7 +3282,7 @@ namespace TrueforceForAll.Plugin
                 _unverifiedWheelNotice =
                     $"{modelLabel} is supported by inference but not hardware-tested. " +
                     "If the plugin's effects work but your game's force feedback is silent, " +
-                    "please report it (Feedback > Report an issue, attach Export logs).";
+                    "please report it (Report an issue, at the bottom of the Settings tab; attach Export logs).";
                 SimHub.Logging.Current.Warn($"[TF4ALL] {_unverifiedWheelNotice}");
             }
             else
@@ -3003,6 +3358,14 @@ namespace TrueforceForAll.Plugin
                 }
                 _device.FfbTargetProvider = () =>
                 {
+                    // Shutdown: the stream thread outlives most of End()'s
+                    // teardown, and the wheel LATCHES whatever cur the final
+                    // packet carried once the stream dies. Null here means
+                    // silent packets, so the last thing on the wire before
+                    // teardown is always a released wheel (the close-SimHub
+                    // pull, 2026-08-08).
+                    if (_shuttingDown) return null;
+
                     // Prefer MAIRA shared-memory FFB when it's live (its toggle
                     // is on and it's publishing). Scoped to the iRacing profile
                     // only , MAIRA is an iRacing app, and we don't want a stale
@@ -3087,9 +3450,22 @@ namespace TrueforceForAll.Plugin
                         chosen = _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "pcap";
                     }
-                    // Classic-spring games (FS25) are handled by spring mode
-                    // (_forceModeB == 2): MaybeReshapeFfb below substitutes
-                    // the evaluated spring force, so no tail branch here.
+                    // Farming Simulator streams NO real force values on any
+                    // wheel (trace-proven): a captured scalar there is by
+                    // definition a misdecode (the G PRO's constant HID++
+                    // heartbeat reads as a large constant force). Spring mode
+                    // replaces the target while armed, but the misdecode used
+                    // to leak through every window where _forceModeB was
+                    // still 0: the cold-start arming dwell, the 1 s+ after
+                    // any disarm, and whole sessions with the spring toggle
+                    // off (2026-08-08 review). Drop it at the source instead
+                    // of trusting the arming state machine's timing.
+                    if (chosen.HasValue && _activeGame != null
+                        && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
+                    {
+                        chosen = null;
+                        ffbSrc = "none";
+                    }
                     if (_driverChannel != null)
                     {
                         long diagTick = System.Threading.Interlocked.Increment(ref _ffbDiagTick);
@@ -3295,13 +3671,14 @@ namespace TrueforceForAll.Plugin
             RevLimiter   = new RevLimiterEffect();
             // Diagnostic-only voice: renders solely during its TestPlay
             // window (SWEEP access code); telemetry never drives it.
-            MotorSweep   = new MotorSweepEffect();
+            MotorSweep    = new MotorSweepEffect();
+            ImplementThud = new ImplementThudEffect();
             Airborne     = new AirborneEffect();
             // Airborne is last: it's a coordinator, not a voice, but it still
             // needs OnTelemetry (to read frame.Airborne) and Reset, both of
             // which the plugin fans out over _effects. Its no-op RenderAdd in
             // the mixer costs nothing.
-            _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, AxleSlip, KerbThump, LockupJudder, GearShift, AbsClick, PitLimiter, Drs, Collision, RevLimiter, MotorSweep, Airborne };
+            _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, AxleSlip, KerbThump, LockupJudder, GearShift, AbsClick, PitLimiter, Drs, Collision, RevLimiter, MotorSweep, ImplementThud, Airborne };
             foreach (var fx in _effects) _mixer.Add(fx);
 
             // Sidechain ducker (Engine assembly): one field per effect, all
@@ -3320,6 +3697,7 @@ namespace TrueforceForAll.Plugin
             _ducking.Drs          = Drs;
             _ducking.Collision    = Collision;
             _ducking.RevLimiter   = RevLimiter;
+            _ducking.ImplementThud = ImplementThud;
             _ducking.Airborne     = Airborne;
 
             // The engine tick: ducking, effect OnTelemetry at a fixed 500 Hz
@@ -4158,6 +4536,13 @@ namespace TrueforceForAll.Plugin
             }
             _forzaUdp        = null;
             _forzaOnSimHubFallback = false;
+            // Same rule for the FS pipe server: disposed via _telemetrySource
+            // when active, explicitly when the SimHub fallback was active.
+            if (_fsPipeSource != null && _fsPipeSource != _telemetrySource)
+            {
+                try { _fsPipeSource.Dispose(); } catch { }
+            }
+            _fsPipeSource    = null;
             _telemetrySource = null;
             _simHubSource    = null;
 
@@ -4368,7 +4753,11 @@ namespace TrueforceForAll.Plugin
             // showed the game streaming full-scale forces the whole time).
             // The FFB tap sees every game write, so sustained fresh captures
             // while Mode B streams = the game is fighting us. Name it loudly.
-            if (_forceModeB != 0 && _ffbTap != null)
+            // Mode 1 (Forza synthesis) only: its contract is that the game
+            // sends nothing. Spring mode (2) is the OPPOSITE contract, the
+            // game's spring traffic is our input, and any scalar there is a
+            // misdecode (FS G PRO heartbeat), so warning on it is noise.
+            if (_forceModeB == 1 && _ffbTap != null)
             {
                 bool gameWriting = _ffbTap.TryGetFreshFfbTarget(250).HasValue;
                 long nowC = Stopwatch.GetTimestamp();
@@ -4443,6 +4832,10 @@ namespace TrueforceForAll.Plugin
             if (gameName != _activeGame && !IsOfflineEditingCar)
             {
                 _activeGame = gameName;
+                // New game (or game gone): the FS pipe's fed-this-game latch
+                // belongs to the session that set it (it lengthens the
+                // SimHub-fallback dwell in EvaluateFsTelemetryFallback).
+                _fsPipeFedThisGame = false;
                 SwapTelemetrySource(gameName);
                 // Re-arm/disarm Mode B for the new game (Mode B capable games
                 // = synthesized force; everything else = the normal pass-
@@ -4463,9 +4856,19 @@ namespace TrueforceForAll.Plugin
                 {
                     _forceModeB = 0;
                     _springArmCandidateSinceTicks = 0;
+                    // Same stale-capture hygiene as the arming machine's
+                    // disarm: pass-through resumes and must find nothing.
+                    _ffbTap?.ClearLastFfbTarget();
                     SimHub.Logging.Current.Info("[TF4ALL] Spring mode disarmed (game changed).");
                 }
                 ApplyModeBFromSettings();
+                // Entering/leaving Farming Simulator flips the effective
+                // experimental-capture state; apply it with the new game.
+                ApplyEffectiveExperimentalCapture();
+                // Traction loss is per-game gated (FS: Axle slip owns slip);
+                // re-apply on every game change so the gate flips even when
+                // the new game has no bound preset to trigger the apply-all.
+                ApplyTractionSettings(GetActiveCarOverride()?.TractionLoss ?? Settings?.TractionLoss);
                 // Auto-apply the bound game default, UNLESS the user is
                 // offline-editing a preset. In that case we don't clobber
                 // their in-progress edits; the SettingsControl banner stays
@@ -4577,6 +4980,21 @@ namespace TrueforceForAll.Plugin
                 var fzForCarId = _telemetrySource as ForzaUdpTelemetrySource;
                 int? ordinal = fzForCarId?.CurrentCarOrdinal;
                 if (ordinal.HasValue) carId = "Car_" + ordinal.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            // Farming Simulator: SimHub has NO car identity for FS and
+            // fabricates a per-session placeholder ("DC__" + its own startup
+            // timestamp), so every session every vehicle was a brand-new
+            // "car": presets, car facts and engine pins never resolved
+            // across sessions, and community facts keyed on garbage. The
+            // TF4ALL mod (>= 0.2.5) reports the vehicle's configFileName;
+            // the pipe source turns it into a stable cross-machine id.
+            // Prefer it whenever the mod has reported one this session; the
+            // placeholder remains only for users without the mod.
+            if (_activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
+            {
+                string fsCarId = _fsPipeSource?.StableCarId;
+                if (!string.IsNullOrEmpty(fsCarId)) carId = fsCarId;
             }
             // Runtime alias: a legacy Forza_<n> id arriving from any source
             // (older SimHub build, third-party plugin, an older Trueforce
@@ -4875,6 +5293,11 @@ namespace TrueforceForAll.Plugin
             // FrameEnricher in phase 0c so the replay harness runs the exact
             // production logic. Rationale comments live there.
             var src = _telemetrySource;
+            // FS: slow vehicles need a lower collision bar (a tractor into a
+            // tree at 25 km/h peaks near 3.5g, under the 5g racing default,
+            // and FS driving never brakes past ~0.7g so 2g is safe).
+            bool fsFrames = _activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
             FrameEnricher.Enrich(ref frame,
                 sourceIsEnhanced: src != null && src.IsEnhanced,
                 new SimHubOverlay
@@ -4885,7 +5308,8 @@ namespace TrueforceForAll.Plugin
                     PitLimiterActive = _lastSimHubPitLimiterActive,
                     DrsActive        = _lastSimHubDrsActive,
                 },
-                suppressRedlineOverlay: IsForzaGameName(_activeGame));
+                suppressRedlineOverlay: IsForzaGameName(_activeGame),
+                collisionThresholdMps2: fsFrames ? 20.0 : 49.0);
 
             // Live RPM for the remote dash's rev strip (Dash.Rpm / Dash.RpmPct
             // in TrueforcePlugin.DashRemote.cs). Stashed post-enrichment so the
@@ -5024,6 +5448,11 @@ namespace TrueforceForAll.Plugin
                 // rate; the FFB provider smooths the cached value to 1 kHz.
                 if (_mbRoadKickOn)
                 {
+                    // Re-assert the Forza tuning every tick: the model is
+                    // shared with the FS terrain site below, which runs its
+                    // own gentler constants (property sets are free).
+                    _roadKick.FullKickRateMps = 1.5;
+                    _roadKick.Deadband = 0.12;
                     long nowK = Stopwatch.GetTimestamp();
                     double dtMsK = _kickPrevTicks == 0
                         ? 16.0
@@ -5082,16 +5511,27 @@ namespace TrueforceForAll.Plugin
                 System.Threading.Interlocked.Exchange(ref _lastSteerTicks, nowTicks);
             }
 
-            // Spring-mode terrain: the same road-kick model and cache Mode B's
-            // road kick uses, at its own compute site because FS frames carry
-            // a suspension quad without the slip quads that gate the Mode B
-            // branch above. Mode-exclusive with that branch (_forceModeB is
-            // one value at a time), so sharing _roadKick / _mbKickCached /
-            // _kickPrevTicks is safe, and the input is the same physical
-            // quantity in the same units on both paths.
-            if (_forceModeB == 2 && (Settings?.SpringModeTerrainEnabled ?? false)
+            // Farming Simulator terrain: the same road-kick model and cache
+            // Mode B's road kick uses, at its own compute site because FS
+            // frames carry a suspension quad without the slip quads that gate
+            // the Mode B branch above. Gated on the GAME, not on spring mode:
+            // HID++ wheels (G PRO) take the pass-through path in FS, and
+            // their terrain rides MaybeReshapeFfb's pass-through branch.
+            // Never concurrent with the Mode B branch (Forza is not an FS
+            // game), so sharing _roadKick / _mbKickCached / _kickPrevTicks
+            // stays safe, same physical quantity in the same units.
+            if ((Settings?.SpringModeTerrainEnabled ?? false)
+                && _activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal)
                 && (frame.SuspTravelM.FL != 0.0 || frame.SuspTravelM.FR != 0.0))
             {
+                // FS tuning: farm texture is small suspension motion that
+                // Forza's kerb-strike constants filter out entirely (owner
+                // report 2026-08-07: only large bumps came through). Half
+                // the deadband, half the full-scale rate, so field grain
+                // reaches the rim while idle jitter still zeroes.
+                _roadKick.FullKickRateMps = 0.75;
+                _roadKick.Deadband = 0.06;
                 long nowK = Stopwatch.GetTimestamp();
                 double dtMsK = _kickPrevTicks == 0
                     ? 16.0
@@ -5099,6 +5539,7 @@ namespace TrueforceForAll.Plugin
                 _kickPrevTicks = nowK;
                 _mbKickCached = (float)_roadKick.Tick(
                     frame.SuspTravelM.FL, frame.SuspTravelM.FR, dtMsK);
+                System.Threading.Interlocked.Exchange(ref _fsKickStampTicks, nowK);
             }
 
             // Cache the front slip angle for the FFB thread (Forza populates
@@ -5378,7 +5819,7 @@ namespace TrueforceForAll.Plugin
                         var ctx = new OledFrameContext
                         {
                             GateOpen = modeBOled,
-                            Screen   = Settings?.OledScreen ?? OledScreen.GearAndSpeed,
+                            Screen   = Settings?.OledScreen ?? OledScreen.SpeedOverGear,
                             UseMph   = Settings?.OledUseMph ?? false,
                             CustomLayout = Settings?.OledCustomLayout ?? OledLayoutKind.FourCenter,
                             CustomSlots  = Settings?.OledCustomSlots?.ToArray(),
@@ -5596,6 +6037,38 @@ namespace TrueforceForAll.Plugin
             // keeps the most recent window if the trace runs longer.
             _ffbTrace = new FfbTrace(32768);
             return "FFB trace started (recording every FFB tick). Reproduce the issue, then type TRACE again to save the CSV.";
+        }
+
+        // TRACE armed during a game-close repro: the interesting window is
+        // the seconds AFTER the captured process dies (the close pull), so
+        // dump the ring automatically 8 s later instead of making the user
+        // race the 30 s window by hand. No-op unless the trace is armed;
+        // a manual TRACE-off (or a second exit) in the meantime wins.
+        private void MaybeAutoDumpFfbTraceOnGameExit()
+        {
+            var trace = _ffbTrace;
+            if (trace == null) return;
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(8000).ConfigureAwait(false);
+                    if (!ReferenceEquals(_ffbTrace, trace)) return;
+                    _ffbTrace = null;
+                    string dir = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                        "TrueforceForAll");
+                    string path = System.IO.Path.Combine(dir,
+                        "ffb_trace_gameclose_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv");
+                    int rows = trace.Dump(path);
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] FFB trace auto-dumped on game close: {rows} samples -> {path}");
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn("[TF4ALL] FFB trace auto-dump failed: " + ex.Message);
+                }
+            });
         }
 
         // ---------- Mode B: full force synthesis from telemetry ----------
@@ -6106,6 +6579,10 @@ namespace TrueforceForAll.Plugin
                     s.ModeBDamper   = 0.09f;   // belt friction already damps; two clicks under the G PRO
                     // Min force is NOT set here any more: the G923 takes the
                     // factory 0.05 like every other wheel.
+                    // FS spring floor (owner call 2026-08-09): the belt
+                    // motor's friction eats FS's light spring and terrain
+                    // cues; every other wheel ships 0.
+                    s.SpringModeMinForce = 0.15;
                     break;
                 // G PRO (and anything unrecognized): the coded defaults stand.
             }
@@ -6129,8 +6606,12 @@ namespace TrueforceForAll.Plugin
         /// monotone by contract and the recipe's SHAPE changed, so an install that
         /// re-evaluates once on the new build costs nothing and keeps the latch
         /// honest. Generation 5 = the 2026-08-07 G923 retune (strength 1.25 to
-        /// 1.00, min force 0.25 back to the shared 0.05).</summary>
-        private const int ModeBDefaultsGeneration = 5;
+        /// 1.00, min force 0.25 back to the shared 0.05). Generation 6 = the
+        /// 2026-08-09 FS spring recipe: the SpringMode* fields joined the merge
+        /// list, factory = the owner's tuned values (enhancements ON, firmness
+        /// 0.85, speed effect 0.70, strain 0.50, min force 0 with the G923 at
+        /// 0.15 per wheel).</summary>
+        private const int ModeBDefaultsGeneration = 6;
 
         /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
         /// current factory values: every previously SHIPPED defaults-set, expressed
@@ -6150,9 +6631,23 @@ namespace TrueforceForAll.Plugin
                 ModeBRiseGamma    = 0.5f,
                 ModeBDropFloor    = 0.20f,
                 ModeBDamper       = 0.15f,
-                ModeBCenter       = 0.10f,
+                ModeBCenter      = 0.10f,
                 ModeBDirSoft      = 0.12f,
                 ModeBRoadKickGain = 1.0f,
+            };
+            // The 2026-08-08 FS spring factory (generations <= 5): the
+            // enhancement toggles shipped OFF and the feel values pre-date
+            // the owner's tuned recipe. Only fields whose defaults differ
+            // from the current factory carry overrides.
+            yield return new TrueforceSettings
+            {
+                SpringModeCenterFirmness       = 0.5,
+                SpringModeSpeedEffect          = 0.65,
+                SpringModeMinForce             = 0.05,
+                SpringModeTerrainEnabled       = false,
+                SpringModeDragEnabled          = false,
+                SpringModeDragStrainFraction   = 0.35,
+                SpringModeChassisWeightEnabled = false,
             };
             // Generation 2 (the 2026-08-01 morning drift recipe; dev/test
             // builds only, never in a published release): the fields that
@@ -6213,6 +6708,13 @@ namespace TrueforceForAll.Plugin
             "ModeBGripAutoCal", "ModeBFrictionCircle",
             "ModeBLongitudinalGripLearn", "ModeBGripTrim", "ModeBLateralDemand",
             "ModeBAutoStrength",
+            // FS spring recipe (joined the merge with generation 6, when the
+            // owner's tuned values became the shipped factory).
+            "SpringModeStrength", "SpringModeMinForce",
+            "SpringModeCenterGain", "SpringModeCenterFirmness", "SpringModeSpeedEffect",
+            "SpringModeTerrainEnabled", "SpringModeTerrainGain",
+            "SpringModeDragEnabled", "SpringModeDragGain", "SpringModeDragStrainFraction",
+            "SpringModeChassisWeightEnabled", "SpringModeChassisWeightGain",
         };
 
         // Per-field defaults merge: every recipe field in <paramref name="s"/> still
@@ -6590,10 +7092,40 @@ namespace TrueforceForAll.Plugin
                 // wheel-side stability, not game-force conditioning.
                 target = ComputeModeBForce();
             }
-            // Mode B only on this branch: the design's FORZAFFB Mode A
+            else
+            {
+                // Pass-through terrain (Farming Simulator on HID++ wheels,
+                // e.g. the G PRO): the game's extracted FFB flows here, not
+                // through spring mode, so the terrain kick is ADDED onto the
+                // game force. Only when a game force is present: a null
+                // target is the native-FFB handoff and must stay null.
+                var st = Settings;
+                if (target.HasValue && st != null && st.SpringModeTerrainEnabled
+                    && _activeGame != null
+                    && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
+                {
+                    long nowT = Stopwatch.GetTimestamp();
+                    double dtMsT = _ptKickPrevTicks == 0
+                        ? 1.0 : (nowT - _ptKickPrevTicks) * 1000.0 / Stopwatch.Frequency;
+                    if (dtMsT < 0.05) dtMsT = 0.05; else if (dtMsT > 50.0) dtMsT = 50.0;
+                    _ptKickPrevTicks = nowT;
+                    long kStampT = System.Threading.Interlocked.Read(ref _fsKickStampTicks);
+                    float kickTargetT = (kStampT != 0 && nowT - kStampT < Stopwatch.Frequency / 4)
+                        ? _mbKickCached : 0f;
+                    float aT = (float)(1.0 - Math.Exp(-dtMsT / 8.0));
+                    _springKickEma += (kickTargetT - _springKickEma) * aT;
+                    int vT = target.Value + (int)Math.Round(
+                        _springKickEma * (float)st.SpringModeTerrainGain * 0.5f * 32767f);
+                    if (vT > short.MaxValue) vT = short.MaxValue;
+                    else if (vT < short.MinValue) vT = short.MinValue;
+                    target = (short)vT;
+                }
+            }
+            // Mode B only past this point: the design's FORZAFFB Mode A
             // reshaper profile (slip-saturation reshape, WEIGHT/noise gate,
             // center-boosted damper) was deliberately not carried over.
-            // With Mode B off, the tapped game force passes through untouched.
+            // With Mode B off, the tapped game force passes through untouched
+            // (plus the FS terrain kick above when enabled).
             if (!modeB || !target.HasValue) return target;
             double v = target.Value;
 
@@ -6630,6 +7162,26 @@ namespace TrueforceForAll.Plugin
             // (the original `-=` was anti-damping and grew the oscillation).
             // Clamped to half scale.
             float damperGain = _pModeBDamperGain * ramp;
+            // Implement drag's other half: load thickens the damper too, so
+            // the heaviness reads as resistance, not just a stiffer spring.
+            if (springMode && (Settings?.SpringModeDragEnabled ?? false))
+            {
+                // ADDITIVE, not multiplicative: the boost used to scale the
+                // user's base Damping, so at a low base (0.07 shipped) full
+                // working load added arithmetic dust and drag was only
+                // feelable through the spring in turns (owner, 2026-08-08).
+                // An additive term gives load its own resistance footing:
+                // full load at gain 1 adds 0.2, the feel of a real Damping
+                // slider move, straight-line included. Capped at the
+                // slider's own max so a high base plus high gain cannot
+                // overdamp into sluggishness.
+                float dragLoad = EffectiveDragLoad01();
+                if (dragLoad > 0f)
+                {
+                    damperGain += dragLoad * (float)Settings.SpringModeDragGain * 0.2f;
+                    if (damperGain > 0.6f) damperGain = 0.6f;
+                }
+            }
 
             // Physical wheel state (position + velocity), shared by the
             // damper and, when Direct centering (MBCPD) is on, the centering
@@ -7791,6 +8343,10 @@ namespace TrueforceForAll.Plugin
         // fallback otherwise (mod not installed / not enabled). Upgrades back
         // within a tick of the mod's first frame, so installing or enabling
         // it mid-session needs no restart.
+        // True once the pipe fed a frame for the CURRENT game session; reset
+        // on game change. Distinguishes "mod not installed" (fast SimHub
+        // fallback) from "pipe died mid-session" (game closing; long dwell).
+        private bool _fsPipeFedThisGame;
         private void EvaluateFsTelemetryFallback()
         {
             var fs = _fsPipeSource;
@@ -7798,6 +8354,12 @@ namespace TrueforceForAll.Plugin
 
             if (fs.MsSinceLastFrame < 2000)
             {
+                // Flag on FRAMES, not on the swap transition: when the
+                // enhanced source is attached optimistically at game start
+                // the upgrade branch below never runs, and a transition-set
+                // flag stayed false, so the long close dwell never engaged
+                // and the 03:22 game-close pull came back (2026-08-08).
+                _fsPipeFedThisGame = true;
                 if (_telemetrySource != fs)
                 {
                     var old = _telemetrySource;
@@ -7809,6 +8371,19 @@ namespace TrueforceForAll.Plugin
                 }
                 return;
             }
+
+            // A pipe that WAS feeding and went silent is a game shutting down
+            // (or a mod crash), not a missing mod. Swapping to the SimHub
+            // fallback after only 2 s re-attached DispatchFrame to SimHub's
+            // zombie stream (it keeps re-emitting the game's frozen GameData
+            // for seconds after process death), which re-stamped telemetry
+            // freshness and ramped the just-cut synthetic spring back in:
+            // trace-proven as the 02:28:06 game-close pull (2026-08-08). Sit
+            // out a long dwell instead; a genuine mid-session mod death still
+            // falls back, just 15 s later, while a game close is fully torn
+            // down (SimHub frames stop too) long before the dwell elapses.
+            long dwellMs = _fsPipeFedThisGame ? 15000 : 2000;
+            if (fs.MsSinceLastFrame < dwellMs) return;
 
             if (_simHubSource != null && _simHubSource.MeasuredHz > 0
                 && _telemetrySource != _simHubSource)
@@ -8129,6 +8704,24 @@ namespace TrueforceForAll.Plugin
             ApplyRevLimiterSettings(ovr?.RevLimiter ?? Settings.RevLimiter);
             ApplyAudioCaptureSettings(ovr?.AudioCapture ?? Settings.AudioCapture);
             ApplyAirborneSettings();   // global, no per-car override
+            ApplyImplementThudSettings();   // global, no per-car override
+        }
+
+        public void ApplyImplementThudSettings()
+        {
+            var s = GetActiveCarOverride()?.ImplementThud ?? Settings?.ImplementThud;
+            if (ImplementThud == null || s == null) return;
+            ImplementThud.Enabled  = s.Enabled;
+            ImplementThud.Gain     = SafeMath.SafeFloat(s.Gain, 0.0f, 10.0f, 1.0f);
+            ImplementThud.Freq     = SafeMath.SafeFloat(s.Freq, 20.0f, 100.0f, 30.0f);
+            ImplementThud.RaiseAmp = SafeMath.SafeFloat(s.RaiseAmp, 0.0f, 1.0f, 0.6f);
+            ImplementThud.HumAmp   = SafeMath.SafeFloat(s.HumAmp, 0.0f, 1.0f, 0.30f);
+            ImplementThud.HumFreq  = SafeMath.SafeFloat(s.HumFreq, 20.0f, 150.0f, 46.0f);
+            ImplementThud.BendDepth   = SafeMath.SafeFloat(s.BendDepth, 0.0f, 0.5f, 0.15f);
+            ImplementThud.SpeedPitch  = SafeMath.SafeFloat(s.SpeedPitch, 0.0f, 0.5f, 0.12f);
+            ImplementThud.HarmonicAmp = SafeMath.SafeFloat(s.HarmonicAmp, 0.0f, 0.8f, 0.22f);
+            ImplementThud.SpeedVolume = SafeMath.SafeFloat(s.SpeedVolume, 0.0f, 1.0f, 0.5f);
+            ImplementThud.Waveform = s.Waveform;
         }
 
         // ===================================================================
@@ -8449,6 +9042,9 @@ namespace TrueforceForAll.Plugin
         public RevLimiterSettings   ActiveRevLimiter => GetActiveCarOverride()?.RevLimiter   ?? Settings.RevLimiter;
         public AudioCaptureSettings ActiveAudio    => GetActiveCarOverride()?.AudioCapture ?? Settings.AudioCapture;
         public AirborneSettings     ActiveAirborne => GetActiveCarOverride()?.Airborne     ?? Settings.Airborne;
+        // Global-only (SectionHasCarScope excludes it), so the override arm
+        // only matters for legacy data; normally this IS Settings.ImplementThud.
+        public ImplementThudSettings ActiveImplementThud => GetActiveCarOverride()?.ImplementThud ?? Settings?.ImplementThud;
 
         // ----- apply settings to live effect -----
         private void ApplyEngineSettings(EnginePulseSettings s)
@@ -8503,7 +9099,17 @@ namespace TrueforceForAll.Plugin
         private void ApplyTractionSettings(TractionLossSettings s)
         {
             if (TractionLoss == null || s == null) return;
-            TractionLoss.Enabled         = s.Enabled;
+            // Farming Simulator has ONE slip voice: Axle slip (owner call
+            // 2026-08-08; both effects would render the same unsigned slip
+            // twice there). Hard-gated here, not just hidden in the UI, so
+            // a hidden section can't keep rendering a rumble nobody can
+            // find the knob for. The apply-all reruns on game change, so
+            // leaving FS restores the user's setting. Possible future
+            // direction: deprecate Traction loss in favor of Axle slip
+            // everywhere.
+            bool fsGame = _activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
+            TractionLoss.Enabled         = s.Enabled && !fsGame;
             TractionLoss.Gain            = SafeMath.SafeFloat(s.Gain, 0.0f, 10.0f, 1.0f);
             TractionLoss.Sensitivity     = SafeMath.SafeFloat(s.Sensitivity, 0.0f, 10.0f, 1.0f);
             TractionLoss.Waveform        = s.Waveform;
@@ -8694,6 +9300,8 @@ namespace TrueforceForAll.Plugin
             => new RevLimiterSettings   { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, PulseFreq = s.PulseFreq, DutyCycle = s.DutyCycle, ActiveAmp = s.ActiveAmp, RedlineOffsetRpm = s.RedlineOffsetRpm, Waveform = s.Waveform };
         private static AirborneSettings     Clone(AirborneSettings s)
             => new AirborneSettings     { Enabled = s.Enabled, Reduction = s.Reduction, DuckEngine = s.DuckEngine, DuckAudio = s.DuckAudio, DuckRoadBumps = s.DuckRoadBumps, DuckTractionLoss = s.DuckTractionLoss, DuckRevLimiter = s.DuckRevLimiter, DuckGearShift = s.DuckGearShift, DuckAbs = s.DuckAbs, DuckPitLimiter = s.DuckPitLimiter, DuckDrs = s.DuckDrs, DuckCollision = s.DuckCollision };
+        private static ImplementThudSettings Clone(ImplementThudSettings s)
+            => new ImplementThudSettings { Enabled = s.Enabled, Gain = s.Gain, Freq = s.Freq, RaiseAmp = s.RaiseAmp, HumAmp = s.HumAmp, HumFreq = s.HumFreq, BendDepth = s.BendDepth, SpeedPitch = s.SpeedPitch, HarmonicAmp = s.HarmonicAmp, SpeedVolume = s.SpeedVolume, Waveform = s.Waveform };
 
         // ---------- preset library ----------
 
@@ -10873,6 +11481,7 @@ namespace TrueforceForAll.Plugin
                 RevLimiter   = o.RevLimiter   == null ? null : Clone(o.RevLimiter),
                 AudioCapture = CloneOrNull(o.AudioCapture),
                 Airborne     = o.Airborne     == null ? null : Clone(o.Airborne),
+                ImplementThud = o.ImplementThud == null ? null : Clone(o.ImplementThud),
                 // Community lineage is identity, not tuning. A single section
                 // edit + Save goes through here (SaveSectionToActiveCarOverride),
                 // so dropping these would wipe the downloaded/uploaded lineage on
@@ -11754,6 +12363,7 @@ namespace TrueforceForAll.Plugin
             if (!Eq(live?.AudioCapture ?? snap?.AudioCapture, saved?.AudioCapture ?? snap?.AudioCapture)) return true;
             if (!Eq(live?.RevLimiter   ?? snap?.RevLimiter ?? new RevLimiterSettings(),
                     saved?.RevLimiter  ?? snap?.RevLimiter ?? new RevLimiterSettings())) return true;
+            if (!Eq(live?.ImplementThud ?? snap?.ImplementThud, saved?.ImplementThud ?? snap?.ImplementThud)) return true;
             return false;
         }
 
@@ -13009,6 +13619,14 @@ namespace TrueforceForAll.Plugin
                 && _activeCarCommunityNameKey == ck
                 && !string.IsNullOrEmpty(_activeCarCommunityNameConsensus.Name))
                 ? _activeCarCommunityNameConsensus.Name : null;
+            // Telemetry-reported OFFICIAL name (FS mod's getFullName). The
+            // game itself is the authority the car_name fact models, so it
+            // outranks community consensus (which exists for games that
+            // don't expose names) but never a local rename.
+            string telemetryName = null;
+            if (_activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
+                telemetryName = _fsPipeSource?.CarDisplayName;
             if (!string.IsNullOrEmpty(localName))
             {
                 _activeCarDisplayName = localName;
@@ -13018,6 +13636,8 @@ namespace TrueforceForAll.Plugin
                     && !string.Equals(communityName, localName, StringComparison.Ordinal))
                     _activeCarCommunityDisplayName = communityName;
             }
+            else if (!string.IsNullOrEmpty(telemetryName))
+                _activeCarDisplayName = telemetryName;
             else if (!string.IsNullOrEmpty(communityName))
                 _activeCarDisplayName = communityName;
 
@@ -13768,7 +14388,7 @@ namespace TrueforceForAll.Plugin
                         && ov.AbsClick == null && ov.PitLimiter == null && ov.Drs == null
                         && ov.Collision == null && ov.RevLimiter == null && ov.AxleSlip == null
                         && ov.KerbThump == null && ov.LockupJudder == null && ov.AudioCapture == null
-                        && ov.Airborne == null;
+                        && ov.Airborne == null && ov.ImplementThud == null;
                     if (!othersNull) continue;
                     if (!Eq(ov.EnginePulse, Settings.EnginePulse)) continue;   // user also tuned feel: keep
                     ov.EnginePulse = null;   // same instance as the CarOverrides cache entry
@@ -16891,6 +17511,7 @@ namespace TrueforceForAll.Plugin
                     case SectionKind.Master:         return !MasterEquals(snap);
                     case SectionKind.Ducking:        return !DuckingEquals(snap);
                     case SectionKind.Airborne:       return !AirborneEquals(snap);
+                    case SectionKind.ImplementThud:  return !ImplementThudEquals(snap);
                     case SectionKind.SpikeReduction: return !SpikeReductionEquals(snap);
                     case SectionKind.StationarySpring: return !StationarySpringEquals(snap);
                     case SectionKind.Audio:    return !EffectEquals(snap, EffectField.Audio);
@@ -16968,7 +17589,8 @@ namespace TrueforceForAll.Plugin
             if (kind == SectionKind.Master
                 || kind == SectionKind.Ducking
                 || kind == SectionKind.SpikeReduction
-                || kind == SectionKind.StationarySpring) return false;
+                || kind == SectionKind.StationarySpring
+                || kind == SectionKind.ImplementThud) return false;
             if (string.IsNullOrEmpty(_activeCarId) || Settings.CarOverrides == null) return false;
             if (!Settings.CarOverrides.TryGetValue(_activeCarId, out var liveCo) || liveCo == null) return false;
             switch (kind)
@@ -17020,6 +17642,7 @@ namespace TrueforceForAll.Plugin
                 case SectionKind.Collision:  return snap.Collision    != null;
                 case SectionKind.RevLimiter: return snap.RevLimiter   != null;
                 case SectionKind.Airborne:   return snap.Airborne     != null;
+                case SectionKind.ImplementThud: return snap.ImplementThud != null;
             }
             return true;
         }
@@ -17087,6 +17710,18 @@ namespace TrueforceForAll.Plugin
                 return Eq(liveCo.Airborne, savedCo?.Airborne ?? snap.Airborne);
             }
             return Eq(Settings.Airborne, snap.Airborne);
+        }
+
+        // Implement thud is global-only with NO car-override arm (unlike
+        // Airborne): SectionHasCarScope excludes it, so the comparison is
+        // always live global vs preset. Null snapshot = the preset predates
+        // the effect = "no opinion" -> not dirty (SectionHasAnchor's
+        // PresetCarriesSection check gives such presets sticky-true edit
+        // tracking instead).
+        private bool ImplementThudEquals(GameSettingsSnapshot snap)
+        {
+            if (snap.ImplementThud == null) return true;
+            return Eq(Settings.ImplementThud, snap.ImplementThud);
         }
 
         // Tolerances match the UI's display precision so that two values
@@ -17353,13 +17988,30 @@ namespace TrueforceForAll.Plugin
                 && a.DuckCollision    == b.DuckCollision;
         }
 
+        private static bool Eq(ImplementThudSettings a, ImplementThudSettings b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            return a.Enabled == b.Enabled
+                && a.Gain == b.Gain
+                && a.Freq == b.Freq
+                && a.RaiseAmp == b.RaiseAmp
+                && a.HumAmp == b.HumAmp
+                && a.HumFreq == b.HumFreq
+                && a.BendDepth == b.BendDepth
+                && a.SpeedPitch == b.SpeedPitch
+                && a.HarmonicAmp == b.HarmonicAmp
+                && a.SpeedVolume == b.SpeedVolume
+                && a.Waveform == b.Waveform;
+        }
+
         // ---------- per-section revert (from active preset) ----------
 
         /// <summary>Section identifier used by <see cref="RevertSection"/>.
         /// Mirrors the per-section "Save…" / "Revert" buttons in the UI:
         /// Master and Ducking are global-only; the rest have a per-car
         /// override component that revert respects.</summary>
-        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs, SpikeReduction, PitLimiter, Drs, Collision, RevLimiter, Airborne, StationarySpring, AxleSlip, KerbThump, LockupJudder }
+        public enum SectionKind { Master, Ducking, Audio, Engine, Bumps, Traction, Shift, Abs, SpikeReduction, PitLimiter, Drs, Collision, RevLimiter, Airborne, StationarySpring, AxleSlip, KerbThump, LockupJudder, ImplementThud }
 
         /// <summary>Revert one section to the active preset's saved snapshot.
         /// Scope-aware: if the snapshot has a per-car override for the
@@ -17429,6 +18081,12 @@ namespace TrueforceForAll.Plugin
                     // the shipped default when the preset predates the effect.
                     Settings.Airborne = Clone(snap.Airborne ?? new AirborneSettings());
                     ApplyAirborneSettings();
+                    return true;
+
+                case SectionKind.ImplementThud:
+                    // Global section, same shape as Airborne.
+                    Settings.ImplementThud = Clone(snap.ImplementThud ?? new ImplementThudSettings());
+                    ApplyImplementThudSettings();
                     return true;
 
                 case SectionKind.Engine:
@@ -17795,6 +18453,9 @@ namespace TrueforceForAll.Plugin
                     break;
                 case SectionKind.Airborne:
                     snap.Airborne = Clone(Settings.Airborne);
+                    break;
+                case SectionKind.ImplementThud:
+                    snap.ImplementThud = Clone(Settings.ImplementThud);
                     break;
                 case SectionKind.Engine:     snap.EnginePulse  = Clone(Settings.EnginePulse);     break;
                 case SectionKind.Bumps:      snap.RoadBumps    = Clone(Settings.RoadBumps);       break;
@@ -18535,6 +19196,8 @@ namespace TrueforceForAll.Plugin
             // case so old presets don't wipe it. ApplyActiveCarOverride below
             // pushes it to the effect via ApplyAirborneSettings.
             if (snap.Airborne     != null) Settings.Airborne     = Clone(snap.Airborne);
+            // Implement thud: same null-migration as Airborne.
+            if (snap.ImplementThud != null) Settings.ImplementThud = Clone(snap.ImplementThud);
             // Per-car overrides are no longer carried by game presets (Model G):
             // they live in <plugin data>/Cars/<carId>.tfcar.json files,
             // independent of the active preset. Switching presets doesn't
@@ -18607,6 +19270,7 @@ namespace TrueforceForAll.Plugin
                 Collision               = Clone(Settings.Collision),
                 RevLimiter              = Clone(Settings.RevLimiter),
                 Airborne                = Clone(Settings.Airborne),
+                ImplementThud           = Clone(Settings.ImplementThud),
                 // Attribution: stamp the persistent author so the Preset
                 // Manager's Source column attributes this row to its
                 // author. Null when SharingAuthor is unset (column reads
@@ -22533,6 +23197,14 @@ namespace TrueforceForAll.Plugin
             // matcher can never find it. Audio capture reported "no supported
             // game" for FM8 until this entry.
             { "FM8",                      new[] { "forza_gaming.desktop.x64_release_final" } },
+            // Farming Simulator: the exe expands the year ("FarmingSimulator
+            // 2025Game") while SimHub's GameName abbreviates it
+            // ("FarmingSimulator25"), so the fuzzy substring match can never
+            // bridge them (owner hit, 2026-08-08; FS25 exe confirmed live,
+            // FS22/FS19 follow GIANTS' consistent naming pattern).
+            { "FarmingSimulator25",       new[] { "FarmingSimulator2025Game" } },
+            { "FarmingSimulator22",       new[] { "FarmingSimulator2022Game" } },
+            { "FarmingSimulator19",       new[] { "FarmingSimulator2019Game" } },
         });
 
         private static Dictionary<string, string> BuildExeLabels(Dictionary<string, string[]> games)
@@ -22766,6 +23438,7 @@ namespace TrueforceForAll.Plugin
                     _audio.Stop();
                     _helperHost?.SetTargetPid(0);
                     ExitStreamingGcMode();
+                    MaybeAutoDumpFfbTraceOnGameExit();
                 }
 
                 // Scan path: walk the process table once. Match priority:
@@ -22833,6 +23506,19 @@ namespace TrueforceForAll.Plugin
 
                 if (keep == null)
                 {
+                    _captureStatus = "Idle (no supported game running)";
+                    return;
+                }
+
+                // The snapshot above can be older than the process it matched:
+                // on game exit the poll re-captured the freshly dead PID 23 ms
+                // after releasing it (FS close log, 2026-08-08), re-entering
+                // streaming GC mode and re-arming game state for a corpse.
+                bool keepExited = false;
+                try { keepExited = keep.HasExited; } catch { keepExited = true; }
+                if (keepExited)
+                {
+                    try { keep.Dispose(); } catch { }
                     _captureStatus = "Idle (no supported game running)";
                     return;
                 }
@@ -23147,8 +23833,15 @@ namespace TrueforceForAll.Plugin
 
         private void CleanupDevice()
         {
-            try { _fsPipeSource?.Dispose(); } catch { }
-            _fsPipeSource = null;
+            // _fsPipeSource is deliberately NOT disposed here: this method
+            // runs on every wheel recovery cycle, and the FS source's
+            // lifecycle is the GAME session, not the device (it is only
+            // recreated on a game switch, unlike _mairaIpc which device init
+            // recreates). Disposing it here killed the pipe server on the
+            // first wheel hiccup and, with _fsPipeSource null, also disabled
+            // the SimHub fallback evaluator (hit live, 2026-08-07). It is
+            // torn down on leaving FS (SwapTelemetrySourceLocked) and at
+            // plugin End.
             try { _mairaIpc?.Dispose(); } catch { }
             _mairaIpc = null;
             try { _ffbTap?.Dispose(); } catch { }
@@ -23235,12 +23928,37 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings != null) Settings.ExperimentalFfbCapture = on;
             PersistSettings();
-            if (_ffbTap != null)
-            {
-                _ffbTap.ExperimentalCapture = on;
-                _ffbTap.ResetFeatureIndexResolution();
-            }
+            // The tap gets the EFFECTIVE value: inside Farming Simulator the
+            // widened rules stay on regardless of the global toggle.
+            ApplyEffectiveExperimentalCapture();
             SimHub.Logging.Current.Info($"[TF4ALL] Experimental FFB capture {(on ? "ON" : "OFF")}.");
+        }
+
+        // Effective experimental capture: currently just the user's global
+        // opt-in. An FS-forces-it-on clause lived here for one build and was
+        // reverted the same evening: the owner's G PRO trace (2026-08-07)
+        // proved FS sends only a CONSTANT heartbeat on the 0x12 path
+        // (12 ff 0e 2d 01 86 00, byte-identical for 3676 packets), so
+        // extraction there can only ever decode garbage (it read the
+        // constant as a hard-left force). FS force feedback is owned by
+        // spring mode instead, which replaces the target wholesale.
+        private bool EffectiveExperimentalCapture()
+        {
+            return Settings?.ExperimentalFfbCapture ?? false;
+        }
+
+        private void ApplyEffectiveExperimentalCapture()
+        {
+            var tap = _ffbTap;
+            if (tap == null) return;
+            bool want = EffectiveExperimentalCapture();
+            if (tap.ExperimentalCapture == want) return;
+            tap.ExperimentalCapture = want;
+            tap.ResetFeatureIndexResolution();
+            if (want && !(Settings?.ExperimentalFfbCapture ?? false))
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Experimental FFB detection enabled automatically for Farming Simulator " +
+                    "(its wheel FFB rides the report-0x12 path); the global setting is unchanged.");
         }
 
         public bool DebugToggleExperimentalCapture()
@@ -23273,6 +23991,15 @@ namespace TrueforceForAll.Plugin
         // (the FfbTargetProvider lambda) stays in charge.
         private void UpdateStopStreamOnPauseGate()
         {
+            // A late SimHub tick landing inside End()'s teardown window must
+            // not command the device: the stop direction would send Stop+Pause
+            // as the last wire traffic (exiting Trueforce mode off-center =
+            // firmware autocenter snap, and silencing the End() centre-drain),
+            // and the resume direction would spuriously re-enter Trueforce
+            // mode on a dying stream (2026-08-08 review). End() owns the
+            // device from here on.
+            if (_shuttingDown) return;
+
             // We may only actively hold the stream stopped while the toggle is
             // on AND we have a live game/source to judge pause state against.
             // In every other case (toggle off, plugin disabled, no device, no
@@ -23292,10 +24019,21 @@ namespace TrueforceForAll.Plugin
             // pause-release in the FFB provider already returns zero force on
             // raceOn=0, and while we stream the wheel ignores every other
             // force source, so menus are free AND silent.
+            //
+            // Farming Simulator is exempt BY GAME NAME, not by armed mode:
+            // spring mode arms with a game-name dwell several seconds after
+            // the source attaches, and on a SimHub start with FS already
+            // running this gate fired inside that window (02:08:43 in the
+            // 2026-08-08 start-pull log) — the wheel got enter/leave/enter
+            // Trueforce churn in seven seconds, and each hand-back lets the
+            // firmware autocenter snap an off-center wheel. FS has no native
+            // FFB worth reverting to (our model replaces it outright), so
+            // the gate must never fire there.
             bool canGate = Settings != null && Settings.StopStreamOnPause
                            && Settings.PluginEnabled && _device != null
                            && src != null && !string.IsNullOrEmpty(_activeGame)
-                           && _forceModeB == 0;
+                           && _forceModeB == 0
+                           && !_activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
             if (!canGate)
             {
                 if (_stopStreamPauseActive)
@@ -23416,8 +24154,9 @@ namespace TrueforceForAll.Plugin
             // Re-apply the dev/test no-FFB simulation across tap restarts.
             tap.SimulateNoFfbCapture = _simulateNoFfb;
 
-            // Re-apply the experimental capture opt-in across tap restarts.
-            tap.ExperimentalCapture = Settings?.ExperimentalFfbCapture ?? false;
+            // Re-apply the experimental capture opt-in across tap restarts,
+            // using the effective value (forced on inside Farming Simulator).
+            tap.ExperimentalCapture = EffectiveExperimentalCapture();
 
             // Per-wheel identity (mescon, 2026-07): seed the HID++ 0x8123
             // feature-index resolver (RS50 = 0x10, else the G PRO's 0x0e) and

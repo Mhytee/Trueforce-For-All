@@ -45,9 +45,15 @@ namespace TrueforceForAll.Core
         /// gates the overlay (SimHub-fallback frames are already complete).
         /// <paramref name="suppressRedlineOverlay"/> keeps the unreliable SimHub
         /// Forza redline out of the rev limiter (see the caller's comment
-        /// history: a bogus-but-in-range redline silently disables engagement).</summary>
+        /// history: a bogus-but-in-range redline silently disables engagement).
+        /// <paramref name="collisionThresholdMps2"/> lets slow-vehicle games
+        /// lower the collision bar: the 5g default is tuned for racing
+        /// speeds, but a farm tractor into a tree at 25 km/h peaks near
+        /// 3.5g and deserves its thud (FS passes ~2g; its normal driving
+        /// never brakes past ~0.7g, so the margin holds).</summary>
         public static void Enrich(ref TelemetryFrame frame, bool sourceIsEnhanced,
-                                  in SimHubOverlay overlay, bool suppressRedlineOverlay)
+                                  in SimHubOverlay overlay, bool suppressRedlineOverlay,
+                                  double collisionThresholdMps2 = CollisionThresholdMps2)
         {
             if (sourceIsEnhanced)
             {
@@ -90,8 +96,8 @@ namespace TrueforceForAll.Core
                 double surge = frame.AccelerationSurge ?? 0;
                 double peak  = Math.Max(Math.Abs(surge),
                                Math.Max(Math.Abs(sway), Math.Abs(heave)));
-                if (peak > CollisionThresholdMps2)
-                    frame.CollisionMagnitude = (peak - CollisionThresholdMps2) * NormalizePerMps2;
+                if (peak > collisionThresholdMps2)
+                    frame.CollisionMagnitude = (peak - collisionThresholdMps2) * NormalizePerMps2;
             }
         }
     }
