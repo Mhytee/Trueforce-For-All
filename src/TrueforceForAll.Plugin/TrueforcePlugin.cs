@@ -1834,17 +1834,33 @@ namespace TrueforceForAll.Plugin
                 // physically impossible state instead of guessing at causes:
                 // a large sustained push with the wheel parked at full lock
                 // means we are fighting something, so let go until the wheel
-                // comes off the lock. Unreachable in real driving: at yard
-                // speeds the speed scale keeps the spring below the force
-                // threshold, and above 30 km/h nobody holds full lock for
-                // 350 ms.
+                // comes off the lock.
+                //
+                // Gated on mod-pipe liveness (stuck-at-lock report,
+                // 2026-08-09): by force and position alone a hand holding
+                // full lock through a slow turn is identical to the teardown
+                // pull, and with default sliders the force threshold is
+                // crossed from ~12 km/h, so the latch fired mid-drive and
+                // the wheel stayed parked at the stop, no centering, until
+                // pulled off by hand. A pipe frame within the last 500 ms
+                // proves the game is running (the mod goes silent within a
+                // frame of process death), so the external force is the
+                // driver's hand: never latch, and release any latch already
+                // held (a pipe hiccup can latch legitimately; recovery must
+                // not wait for the hand). Fallback sessions keep the ungated
+                // guard: SimHub re-emits the dead game's frozen frames for
+                // seconds after a close, so frame freshness proves nothing
+                // there and this guard is that population's only defense
+                // against the pull.
+                bool pipeLive = fsPipe != null && _fsPipeFedThisGame
+                    && fsPipe.MsSinceLastFrame < 500;
                 long nowLs = Stopwatch.GetTimestamp();
                 if (_springLockStallLatched)
                 {
-                    if (mag < 0.85f) _springLockStallLatched = false;
+                    if (pipeLive || mag < 0.85f) _springLockStallLatched = false;
                     else return null;
                 }
-                if (mag >= 0.95f && Math.Abs(f01) > 0.35f)
+                if (!pipeLive && mag >= 0.95f && Math.Abs(f01) > 0.35f)
                 {
                     if (_springLockStallStartTicks == 0)
                         _springLockStallStartTicks = nowLs;
