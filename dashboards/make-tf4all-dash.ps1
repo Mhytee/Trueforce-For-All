@@ -3227,10 +3227,19 @@ $revCen  = '$prop("' + $P + '.RevCentered")'
 # grow into the top row rather than across it) and just recentres.
 # Our own frame first, SimHub second: a Forza player usually leaves
 # forwarding off, which leaves SimHub's copies empty all session.
+# Not every game counts 1 to 6. Farming Simulator runs -6 to 18 and names
+# some gears outright, so this can arrive two, three or more characters
+# wide. At the full 130px a second character fills the 200px box and a
+# third runs out of it, so the size steps down with the length rather than
+# clipping. One character still gets the full size, which is the case
+# every racing title hits.
+$gearJs = 'var g=""+($prop("' + $P + '.Gear")||"");' +
+          'if(g=="")g=""+($prop("' + $SIM + 'Gear")||"");if(g=="")g="N";'
 $gear = New-Text 'dr-gear' 300 55 200 210 130 '' $WHITE 1 @{
     TextColor = ThemeBind 'TextColor' 'Text'
-    Text = BindJS 'Text' ('var g=""+($prop("' + $P + '.Gear")||"");' +
-                          'if(g=="")g=""+($prop("' + $SIM + 'Gear")||"");return g==""?"N":g')
+    Text = BindJS 'Text' ($gearJs + 'return g')
+    FontSize = BindJS 'FontSize' ($gearJs +
+                          'return g.length>=4?58:(g.length==3?78:(g.length==2?112:130))')
     Top  = BindJS 'Top'  ('return ' + $twoRows + '?55:130')
 } 'Bold'
 $s7.Add($gear)

@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "c07dc095-c135-4007-bced-009d11020d5a",
+    "Id":  "67252f54-cebd-4f41-aae3-bf588e41478a",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "78b605b4-ac97-4332-a19b-c922c07f9523",
+                        "ScreenId":  "4d0c541d-b0db-45f5-b2dd-4b1cbd043567",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14700,7 +14700,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "b558ea93-36dc-4011-b3c3-07ac213f3035",
+                        "ScreenId":  "f838c25a-5701-4e33-b8f5-2eb450961b51",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -41075,7 +41075,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c02745d0-d87b-4781-aad2-375a104ae71d",
+                        "ScreenId":  "5600ca91-1006-4c94-b308-8f9071c31f12",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -61654,7 +61654,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "dedc50b7-b719-4e61-a573-a7e62d9eaf77",
+                        "ScreenId":  "4affb0a5-3652-4192-a83a-c86dab59b48c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -75289,7 +75289,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "24d39597-0c41-4e75-9aba-1e8e11e477c9",
+                        "ScreenId":  "0267f698-d939-4fc5-914f-8680a22ae8d5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -95261,7 +95261,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "9f824724-d2f3-4a1b-8fc5-0b886637e69e",
+                        "ScreenId":  "7a51982b-ad14-4437-93f0-123fe7c250b9",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -112722,7 +112722,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "56d2fd3f-dd1c-41e3-8b27-9faef45ced3c",
+                        "ScreenId":  "e3247b08-f16f-4447-9944-6bef6e629bb2",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -112813,6 +112813,14 @@
                                                                        "Mode":  2,
                                                                        "TargetPropertyName":  "Top"
                                                                    },
+                                                           "FontSize":  {
+                                                                            "Formula":  {
+                                                                                            "Interpreter":  1,
+                                                                                            "Expression":  "var g=\"\"+($prop(\"TrueforcePlugin.Dash.Gear\")||\"\");if(g==\"\")g=\"\"+($prop(\"DataCorePlugin.GameData.NewData.Gear\")||\"\");if(g==\"\")g=\"N\";return g.length\u003e=4?58:(g.length==3?78:(g.length==2?112:130))"
+                                                                                        },
+                                                                            "Mode":  2,
+                                                                            "TargetPropertyName":  "FontSize"
+                                                                        },
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
@@ -112824,7 +112832,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var g=\"\"+($prop(\"TrueforcePlugin.Dash.Gear\")||\"\");if(g==\"\")g=\"\"+($prop(\"DataCorePlugin.GameData.NewData.Gear\")||\"\");return g==\"\"?\"N\":g"
+                                                                                        "Expression":  "var g=\"\"+($prop(\"TrueforcePlugin.Dash.Gear\")||\"\");if(g==\"\")g=\"\"+($prop(\"DataCorePlugin.GameData.NewData.Gear\")||\"\");if(g==\"\")g=\"N\";return g"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
