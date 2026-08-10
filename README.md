@@ -28,7 +28,7 @@ assets are used or redistributed.
 | Logitech G923 (Xbox/PC and PS/PC) | Yes | Yes | No screen |
 
 Rev lights and the OLED screen are _Beta_ features, and both need
-[Telemetry Based FFB](#telemetry-based-ffb) switched on. They share a control
+[Telemetry Based FFB](#telemetry-based-ffb-beta) switched on. They share a control
 channel with the wheel's force, so they can only run when the plugin is
 generating that force itself.
 
@@ -129,7 +129,7 @@ Farming Simulator 22 and 25. Support is planned for more titles over time.
 In Forza you get a real sense of the grip limit: the wheel goes light as
 the front washes wide, loads up through a corner, and pulls into a
 countersteer as the rear steps out. Farming Simulator gets a model built
-for heavy machinery instead: see [Farming Simulator](#farming-simulator).
+for heavy machinery instead: see [Farming Simulator](#farming-simulator-beta).
 
 It tunes itself as you drive, and the optional **Auto strength** levels
 cars out so you stop retuning at every swap. (Forza only.)
@@ -170,7 +170,7 @@ plugin takes it over, and you choose what goes on it.
 
 Bind a button to step through your screens without letting go of the
 wheel. Like the rev lights, the screen needs
-[Telemetry Based FFB](#telemetry-based-ffb).
+[Telemetry Based FFB](#telemetry-based-ffb-beta).
 
 ## Farming Simulator (_Beta_)
 
@@ -246,7 +246,7 @@ Installs with the plugin and appears in SimHub's dashboard list.
 
 ## Community features (_Beta_)
 
-The Discord server below is open to everyone._
+The Discord server below is open to everyone.
 
 Once one driver figures out a car's redline, fixes its name, or picks
 its engine layout, everyone driving that same car gets it automatically.
@@ -344,7 +344,7 @@ responsive than SimHub's 60 Hz feed can deliver.
 **Forza Horizon 4, 5, and 6, plus Forza Motorsport** _(Motorsport is Beta)_
 also have a direct UDP Data Out reader that picks up per-tire fields for the
 surface-texture, curb-strike and collision effects, and feeds
-[Telemetry Based FFB](#telemetry-based-ffb). The Horizon games send this
+[Telemetry Based FFB](#telemetry-based-ffb-beta). The Horizon games send this
 telemetry once per rendered frame, so it tracks your frame rate (often
 well above 60 Hz), giving more depth in surface detail effects than some
 other titles offer. All four are auto-detected from SimHub's game
@@ -353,7 +353,7 @@ profile.
 **Farming Simulator 22 and 25** _(Beta)_ are read through the TF4ALL
 Enhanced Telemetry mod the plugin installs for you, at up to 100 Hz. The game
 publishes almost nothing on its own, so the mod is what makes
-[Farming Simulator](#farming-simulator) force feedback possible at all.
+[Farming Simulator](#farming-simulator-beta) force feedback possible at all.
 
 Additional direct-read titles will be added over time.
 
@@ -409,7 +409,7 @@ releases the wheel.
 | iRacing | Set `loadTrueForceAPI=0` in `app.ini` | Yes |
 | Dirt Rally 2.0 | In-game Trueforce on/off switch | Yes |
 | GRID (2019) | In-game Trueforce on/off switch | Yes |
-| Forza Motorsport (2023) | Not tested | Yes, through [Telemetry Based FFB](#telemetry-based-ffb). Enable the plugin for the game first |
+| Forza Motorsport (2023) | Not tested | Yes, through [Telemetry Based FFB](#telemetry-based-ffb-beta). Enable the plugin for the game first |
 | Automobilista 2 | Steam launch option `disableTF` (try `-disableTF` if that fails) | Likely, untested |
 | Assetto Corsa Competizione | Slider only, no off switch found | No, stays live |
 | Assetto Corsa EVO | Slider only, no off switch found | No, stays live |
@@ -493,7 +493,7 @@ touching the running game.
 Not unless you ask it to. By default the plugin preserves your existing
 force feedback and layers haptic effects on top of it; your wheelbase's own
 FFB still comes through, with all your usual settings intact. The exception
-is [Telemetry Based FFB](#telemetry-based-ffb), which deliberately builds
+is [Telemetry Based FFB](#telemetry-based-ffb-beta), which deliberately builds
 the steering force from telemetry instead. In the Forza titles that is
 opt-in and stays off until you turn it on. In Farming Simulator it runs
 automatically, because the centering spring it replaces is all the game
