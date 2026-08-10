@@ -36,7 +36,7 @@ namespace TrueforceForAll.Plugin
     // <Version> in TrueforceForAll.Plugin.csproj) is already surfaced at
     // runtime by UpdateChecker, the settings panel header, and the changelog
     // dialog. Adding it here too just creates a stale-copy hazard on bumps.
-    [PluginDescription("Logitech Trueforce-compatible haptics for any SimHub-supported game on G PRO, RS50 and G923 wheels.")]
+    [PluginDescription("Everything your Logitech wheel can do, in games that never supported it. Trueforce, rev lights, the screen. For G PRO, RS50 and G923.")]
     [PluginAuthor("Mhytee")]
     [PluginName("Trueforce For All")]
     // partial: the dash remote bridge (properties + dash-triggerable actions)
