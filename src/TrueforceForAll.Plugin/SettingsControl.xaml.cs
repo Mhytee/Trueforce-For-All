@@ -1170,8 +1170,6 @@ namespace TrueforceForAll.Plugin
                     SelectWaveform(BumpsSurfaceWaveformCombo, bs.SurfaceWaveform);
                     BumpsSurfaceRumbleScaleSlider.Value     = bs.SurfaceRumbleScale;
                     BumpsSurfaceRumbleScaleText.Text        = bs.SurfaceRumbleScale.ToString("F2");
-                    BumpsRumbleStripPulseSlider.Value       = bs.RumbleStripPulseAmp;
-                    BumpsRumbleStripPulseText.Text          = bs.RumbleStripPulseAmp.ToString("F2");
                 }
                 // Traction
                 var ts = _plugin.ActiveTraction;
@@ -10460,16 +10458,6 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveBumps.SurfaceRumbleScale = v;
             Apply(EffectKind.Bumps);
         }
-        private void BumpsRumbleStripPulseSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            float v = (float)e.NewValue;
-            BumpsRumbleStripPulseText.Text = v.ToString("F2");
-            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.Bumps);
-            _plugin.ActiveBumps.RumbleStripPulseAmp = v;
-            Apply(EffectKind.Bumps);
-        }
-
         // ---------- Traction loss ----------
 
         private void TractionEnabled_Changed(object sender, RoutedEventArgs e)
@@ -11066,6 +11054,8 @@ namespace TrueforceForAll.Plugin
                 if (CarFactsExpander != null) CarFactsExpander.IsExpanded = true;
                 CarFactsRedlineBox?.BringIntoView();
                 CarFactsRedlineBox?.Focus();
+                if (CarFactsRedlineBox != null)
+                    CarFactsRedlineBox.CaretIndex = CarFactsRedlineBox.Text?.Length ?? 0;
             }
             catch { }
         }

@@ -9164,8 +9164,6 @@ namespace TrueforceForAll.Plugin
             RoadBumps.SurfaceLowpassHz   = SafeMath.SafeDouble(s.SurfaceLowpassHz, 20.0, 20000.0, 5000.0);
             RoadBumps.SurfaceHighpassHz  = SafeMath.SafeDouble(s.SurfaceHighpassHz, 0.0, 1000.0, 30.0);
             RoadBumps.SurfaceRumbleScale = SafeMath.SafeFloat(s.SurfaceRumbleScale, 0.0f, 10.0f, 1.0f);
-            RoadBumps.RumbleStripPulseAmp = SafeMath.SafeFloat(s.RumbleStripPulseAmp, 0.0f, 10.0f, 1.0f);
-            RoadBumps.RumbleStripPulseMs  = SafeMath.SafeInt(s.RumbleStripPulseMs, 1, 1000, 10);
         }
         private void ApplyTractionSettings(TractionLossSettings s)
         {
@@ -9345,7 +9343,6 @@ namespace TrueforceForAll.Plugin
                 SurfaceEnabled = s.SurfaceEnabled, SurfaceGain = s.SurfaceGain, SurfaceFreq = s.SurfaceFreq,
                 SurfaceWaveform = s.SurfaceWaveform, SurfaceLowpassHz = s.SurfaceLowpassHz,
                 SurfaceHighpassHz = s.SurfaceHighpassHz, SurfaceRumbleScale = s.SurfaceRumbleScale,
-                RumbleStripPulseAmp = s.RumbleStripPulseAmp, RumbleStripPulseMs = s.RumbleStripPulseMs,
             };
         private static TractionLossSettings Clone(TractionLossSettings s)
             => new TractionLossSettings { Enabled = s.Enabled, Gain = s.Gain, Sensitivity = s.Sensitivity, Waveform = s.Waveform, Freq = s.Freq, NoiseLowpassHz = s.NoiseLowpassHz, NoiseHighpassHz = s.NoiseHighpassHz };
@@ -17923,9 +17920,7 @@ namespace TrueforceForAll.Plugin
                 && a.SurfaceWaveform == b.SurfaceWaveform
                 && EqI (a.SurfaceLowpassHz,  b.SurfaceLowpassHz)
                 && EqI (a.SurfaceHighpassHz, b.SurfaceHighpassHz)
-                && EqF2(a.SurfaceRumbleScale, b.SurfaceRumbleScale)
-                && EqF2(a.RumbleStripPulseAmp, b.RumbleStripPulseAmp)
-                && a.RumbleStripPulseMs == b.RumbleStripPulseMs;
+                && EqF2(a.SurfaceRumbleScale, b.SurfaceRumbleScale);
         }
         private static bool Eq(TractionLossSettings a, TractionLossSettings b)
         {

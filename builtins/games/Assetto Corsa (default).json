@@ -41,9 +41,7 @@
     "SurfaceRumbleScale": 1.0,
     "SurfaceLowpassHz": 800.0,
     "SurfaceHighpassHz": 60.0,
-    "SurfaceWaveform": "Noise",
-    "RumbleStripPulseAmp": 0.0172855314,
-    "RumbleStripPulseMs": 120
+    "SurfaceWaveform": "Noise"
   },
   "TractionLoss": {
     "Enabled": true,

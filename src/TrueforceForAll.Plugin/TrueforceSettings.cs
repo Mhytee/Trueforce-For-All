@@ -2087,13 +2087,6 @@ namespace TrueforceForAll.Plugin
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform SurfaceWaveform    { get; set; } = Waveform.Noise;
-
-        // Rumble-strip leading-edge pulse: opt-in (0 = off by default).
-        // SurfaceRumble already spikes on kerbs so the pulse is largely
-        // redundant; expose it for users who want extra leading-edge
-        // "snap" if their feel of the pure-envelope path comes up soft.
-        public float RumbleStripPulseAmp { get; set; } = 0f;
-        public int   RumbleStripPulseMs  { get; set; } = 120;
     }
 
     public sealed class TractionLossSettings

@@ -14,8 +14,8 @@
 //     Motorsport. Has its own oscillator so the user can pick a higher
 //     frequency / brighter waveform / different LP cutoff for surface
 //     texture without affecting the heave path's low-freq thump tuning.
-//     Folds in a leading-edge pulse on OnRumbleStrip rising edges so kerb
-//     hits feel percussive on top of the sustained texture.
+//     Kerb-entry percussion is KerbThumpEffect's job (RumbleStripStart
+//     edge); this channel only rides the sustained rumble.
 //
 // Both paths render into the SAME mixed output buffer (additively) so the
 // total output stays in scale with Gain. SurfaceRumble channel is silent
@@ -23,7 +23,6 @@
 // channel is what every game gets out of the box.
 
 using System;
-using System.Diagnostics;
 using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
@@ -107,17 +106,6 @@ namespace TrueforceForAll.Plugin.Effects
             get => _surface.NoiseHighpassHz;
             set => _surface.NoiseHighpassHz = value;
         }
-
-        /// <summary>Amplitude added on the rising edge of OnRumbleStrip
-        /// (any-wheel-on-kerb). 0 = disabled (default). Largely redundant
-        /// with the SurfaceRumble channel, kerbs spike SurfaceRumble on
-        /// their own, so this is opt-in for users who want extra leading-
-        /// edge "snap" if Forza's SurfaceRumble ramps too softly on first
-        /// contact for their taste. Decays linearly over RumbleStripPulseMs.</summary>
-        public float RumbleStripPulseAmp { get; set; } = 0f;
-
-        /// <summary>Decay time of the rumble-strip leading-edge pulse, ms.</summary>
-        public int RumbleStripPulseMs { get; set; } = 120;
 
         // ---- Oscillators ----
 
@@ -215,12 +203,6 @@ namespace TrueforceForAll.Plugin.Effects
             _surface.Amp = surfaceEnv * 0.30 * Gain * SurfaceGain;
         }
 
-        // Rumble-strip leading-edge pulse state. Edge resets the start time;
-        // OnTelemetry derives the current envelope from age.
-        private bool _prevOnRumbleStrip;
-        private long _rsPulseStartTicks;     // Stopwatch.GetTimestamp() units
-        private static readonly long StopwatchTicksPerMs = Stopwatch.Frequency / 1000;
-
         public override void OnTelemetry(TelemetryFrame f)
         {
             if (IsTesting) return;
@@ -256,34 +238,7 @@ namespace TrueforceForAll.Plugin.Effects
                     && !double.IsNaN(sr) && !double.IsInfinity(sr))
                     surfaceNorm = Math.Min(1.0, Math.Abs(sr) * SurfaceRumbleScale);
 
-                // Phase 2: the deriver's RumbleStripStart edge is authoritative
-                // when the CTM stage ran (Caps carries DerivedEvents); the
-                // local edge detector remains for paths that bypass it.
-                bool onStrip = f.OnRumbleStrip ?? false;
-                long nowSw = Stopwatch.GetTimestamp();
-                bool kerbEdge = (f.Caps & SignalGroups.DerivedEvents) != 0
-                    ? (f.Events & FrameEvents.RumbleStripStart) != 0
-                    : onStrip && !_prevOnRumbleStrip;
-                if (kerbEdge) _rsPulseStartTicks = nowSw;
-                _prevOnRumbleStrip = onStrip;
-
-                double pulseNorm = 0;
-                if (RumbleStripPulseAmp > 0 && _rsPulseStartTicks != 0 && RumbleStripPulseMs > 0)
-                {
-                    long ageMs = (nowSw - _rsPulseStartTicks) / StopwatchTicksPerMs;
-                    if (ageMs >= 0 && ageMs < RumbleStripPulseMs)
-                    {
-                        double envelope = 1.0 - (double)ageMs / RumbleStripPulseMs;
-                        pulseNorm = envelope * RumbleStripPulseAmp;
-                    }
-                    else
-                    {
-                        _rsPulseStartTicks = 0;
-                    }
-                }
-
-                double surfaceTotal = Math.Min(1.0, Math.Max(surfaceNorm, pulseNorm));
-                _surface.Amp = surfaceTotal * 0.30 * Gain * SurfaceGain;
+                _surface.Amp = surfaceNorm * 0.30 * Gain * SurfaceGain;
             }
         }
 
@@ -306,8 +261,6 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void Reset()
         {
-            _prevOnRumbleStrip = false;
-            _rsPulseStartTicks = 0;
             _heave.Amp = 0;
             _surface.Amp = 0;
         }
