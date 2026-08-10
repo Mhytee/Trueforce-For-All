@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "8d9dfbbe-185e-4157-8ab7-88d00a615b98",
+    "Id":  "653d14f6-8275-4b95-9e22-2e9394354dfc",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "eb156275-cba6-4f24-b649-821471b619e8",
+                        "ScreenId":  "56799dc3-5e6e-4917-8fb9-e57f60a71a2d",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14700,7 +14700,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "160b753b-ab5d-4987-9c80-9c9643459eb7",
+                        "ScreenId":  "b8bf5f5a-2146-4d92-b099-8a5f84fb9ade",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -41075,7 +41075,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "dd4c7c3b-1b9a-4ea7-82d9-6ee622e71c08",
+                        "ScreenId":  "b99eb16d-6f9b-4ce6-a9f1-19af27f60284",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -65702,7 +65702,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "708dcd41-8bf2-49fd-905e-2e7416947e7c",
+                        "ScreenId":  "f2f873c5-abb0-4e39-b238-bd71ee5eb5f5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -79337,7 +79337,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "35be7e60-06eb-4f07-815f-1013d0140d07",
+                        "ScreenId":  "f9872328-c66c-4cb3-beab-8cbf33d7f1d9",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -99309,7 +99309,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "03f015f9-2929-445f-abce-6f9801aa2911",
+                        "ScreenId":  "f6557d39-2063-4283-998f-9e3e49d83b94",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -120457,7 +120457,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "25bab750-c393-49f1-8bde-54e9d2df6eb4",
+                        "ScreenId":  "bc8c8163-64f6-4c0d-814c-d501107b5a1b",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -126090,7 +126090,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"--\":Math.round(p)+\"%\""
+                                                                                        "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"--\":Math.round(p)+\"%\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -126098,7 +126098,7 @@
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
-                                                                                             "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"#FFA0A0A0\":(p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FFF4F4F4\"))"
+                                                                                             "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"#FFA0A0A0\":(p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FFF4F4F4\"))"
                                                                                          },
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
@@ -126106,7 +126106,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -126158,7 +126158,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -126202,7 +126202,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FF37D67A\")"
+                                                                                                   "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FF37D67A\")"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -126210,7 +126210,7 @@
                                                            "Width":  {
                                                                          "Formula":  {
                                                                                          "Interpreter":  1,
-                                                                                         "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;if(p\u003c0)p=0;return Math.max(2,254*p/100)"
+                                                                                         "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;if(p\u003c0)p=0;return Math.max(2,254*p/100)"
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
@@ -126218,7 +126218,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -126250,7 +126250,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026!($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -126298,7 +126298,95 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026!($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  14,
+                                          "Text":  "Time left",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  24,
+                                          "Opacity":  100,
+                                          "Top":  136,
+                                          "Visible":  true,
+                                          "Width":  116.84,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-fu-time-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  140.84,
+                                          "Opacity":  100,
+                                          "Top":  136,
+                                          "Visible":  true,
+                                          "Width":  137.16,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-fu-time-v",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var m=(1*$prop(\"TrueforcePlugin.Dash.Fs.FuelMinLeft\"));if(!(m\u003e=0))return \"--\";m=Math.round(m);var h=Math.floor(m/60);return h\u003e0?h+\"h \"+(m-h*60)+\"m\":m+\" min\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -126338,7 +126426,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -126378,7 +126466,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
+                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -126386,7 +126474,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -126426,7 +126514,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -140606,7 +140694,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"--\":Math.round(p)+\"%\""
+                                                                                        "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"--\":Math.round(p)+\"%\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -140614,7 +140702,7 @@
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
-                                                                                             "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"#FFA0A0A0\":(p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FFF4F4F4\"))"
+                                                                                             "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"#FFA0A0A0\":(p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FFF4F4F4\"))"
                                                                                          },
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
@@ -140622,7 +140710,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -140674,7 +140762,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -140718,7 +140806,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FF37D67A\")"
+                                                                                                   "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FF37D67A\")"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -140726,7 +140814,7 @@
                                                            "Width":  {
                                                                          "Formula":  {
                                                                                          "Interpreter":  1,
-                                                                                         "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;if(p\u003c0)p=0;return Math.max(2,254*p/100)"
+                                                                                         "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;if(p\u003c0)p=0;return Math.max(2,254*p/100)"
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
@@ -140734,7 +140822,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -140766,7 +140854,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026!($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -140814,7 +140902,95 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026!($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  14,
+                                          "Text":  "Time left",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  522,
+                                          "Opacity":  100,
+                                          "Top":  136,
+                                          "Visible":  true,
+                                          "Width":  116.84,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-fu-time-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  638.84,
+                                          "Opacity":  100,
+                                          "Top":  136,
+                                          "Visible":  true,
+                                          "Width":  137.16,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-fu-time-v",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var m=(1*$prop(\"TrueforcePlugin.Dash.Fs.FuelMinLeft\"));if(!(m\u003e=0))return \"--\";m=Math.round(m);var h=Math.floor(m/60);return h\u003e0?h+\"h \"+(m-h*60)+\"m\":m+\" min\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -140854,7 +141030,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -140894,7 +141070,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
+                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -140902,7 +141078,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -140942,7 +141118,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -156082,7 +156258,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"--\":Math.round(p)+\"%\""
+                                                                                        "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"--\":Math.round(p)+\"%\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -156090,7 +156266,7 @@
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
-                                                                                             "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"#FFA0A0A0\":(p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FFF4F4F4\"))"
+                                                                                             "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"#FFA0A0A0\":(p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FFF4F4F4\"))"
                                                                                          },
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
@@ -156098,7 +156274,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -156158,7 +156334,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -156210,7 +156386,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FF37D67A\")"
+                                                                                                   "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FF37D67A\")"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -156218,7 +156394,7 @@
                                                            "Width":  {
                                                                          "Formula":  {
                                                                                          "Interpreter":  1,
-                                                                                         "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;if(p\u003c0)p=0;return Math.max(2,254*p/100)"
+                                                                                         "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;if(p\u003c0)p=0;return Math.max(2,254*p/100)"
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
@@ -156226,7 +156402,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -156266,7 +156442,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026!($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -156322,7 +156498,111 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026!($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:258.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  14,
+                                          "Text":  "Time left",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  24,
+                                          "Opacity":  100,
+                                          "Top":  348,
+                                          "Visible":  true,
+                                          "Width":  116.84,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-fu-time-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:258.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  140.84,
+                                          "Opacity":  100,
+                                          "Top":  348,
+                                          "Visible":  true,
+                                          "Width":  137.16,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-fu-time-v",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var m=(1*$prop(\"TrueforcePlugin.Dash.Fs.FuelMinLeft\"));if(!(m\u003e=0))return \"--\";m=Math.round(m);var h=Math.floor(m/60);return h\u003e0?h+\"h \"+(m-h*60)+\"m\":m+\" min\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -156370,7 +156650,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -156418,7 +156698,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
+                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -156426,7 +156706,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -156474,7 +156754,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -173104,7 +173384,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"--\":Math.round(p)+\"%\""
+                                                                                        "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"--\":Math.round(p)+\"%\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -173112,7 +173392,7 @@
                                                            "TextColor":  {
                                                                              "Formula":  {
                                                                                              "Interpreter":  1,
-                                                                                             "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"#FFA0A0A0\":(p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FFF4F4F4\"))"
+                                                                                             "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c0?\"#FFA0A0A0\":(p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FFF4F4F4\"))"
                                                                                          },
                                                                              "Mode":  2,
                                                                              "TargetPropertyName":  "TextColor"
@@ -173120,7 +173400,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -173180,7 +173460,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -173232,7 +173512,7 @@
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
                                                                                                    "Interpreter":  1,
-                                                                                                   "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FF37D67A\")"
+                                                                                                   "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;return p\u003c10?\"#FFE5484D\":(p\u003c25?\"#FFE8A33D\":\"#FF37D67A\")"
                                                                                                },
                                                                                    "Mode":  2,
                                                                                    "TargetPropertyName":  "BackgroundColor"
@@ -173240,7 +173520,7 @@
                                                            "Width":  {
                                                                          "Formula":  {
                                                                                          "Interpreter":  1,
-                                                                                         "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");if(isNaN(p))p=-1;if(p\u003e100)p=100;if(p\u003c0)p=0;return Math.max(2,254*p/100)"
+                                                                                         "Expression":  "var p=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\");if(!(p\u003e=0)){p=1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\");if(!(p\u003e0))p=1*$prop(\"DataCorePlugin.GameData.NewData.FuelPercent\");}if(isNaN(p))p=-1;if(p\u003e100)p=100;if(p\u003c0)p=0;return Math.max(2,254*p/100)"
                                                                                      },
                                                                          "Mode":  2,
                                                                          "TargetPropertyName":  "Width"
@@ -173248,7 +173528,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -173288,7 +173568,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026!($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -173344,7 +173624,111 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026!($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:258.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  14,
+                                          "Text":  "Time left",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  522,
+                                          "Opacity":  100,
+                                          "Top":  348,
+                                          "Visible":  true,
+                                          "Width":  116.84,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-fu-time-l",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?348:258.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  17,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  638.84,
+                                          "Opacity":  100,
+                                          "Top":  348,
+                                          "Visible":  true,
+                                          "Width":  137.16,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-fu-time-v",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var m=(1*$prop(\"TrueforcePlugin.Dash.Fs.FuelMinLeft\"));if(!(m\u003e=0))return \"--\";m=Math.round(m);var h=Math.floor(m/60);return h\u003e0?h+\"h \"+(m-h*60)+\"m\":m+\" min\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0))\u0026\u0026($prop(\"TrueforcePlugin.Dash.Fs.Game\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -173392,7 +173776,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -173440,7 +173824,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
+                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -173448,7 +173832,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -173496,7 +173880,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Fuel\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Fuel,\")\u003c0)\u0026\u0026(((1*$prop(\"TrueforcePlugin.Dash.Fs.FuelPct\"))\u003e=0)||((1*$prop(\"TrueforcePlugin.Dash.Forza.FuelPct\"))\u003e0)||((1*$prop(\"DataCorePlugin.GameData.NewData.MaxFuel\"))\u003e0)))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"

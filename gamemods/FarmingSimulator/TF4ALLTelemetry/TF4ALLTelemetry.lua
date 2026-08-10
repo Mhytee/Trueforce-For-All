@@ -18,7 +18,7 @@ TF4ALLTelemetry = {}
 -- Keep in sync with modDesc.xml <version> (build-mod.py verifies). The
 -- plugin compares this against its shipped version to tell the user when
 -- the game is still running an older copy (mods load only at game start).
-local MOD_VERSION = "0.2.20"
+local MOD_VERSION = "0.2.21"
 local ctx = {
 	pipeName = "\\\\.\\pipe\\TF4ALLTelemetry",
 	file = nil,
@@ -401,6 +401,47 @@ local function gatherAttachState(vehicle)
 	return impl, fill, massKg, moving, rate, moving and not cycle
 end
 
+-- The driven vehicle's own propellant tank (mod 0.2.21): level and
+-- capacity in the tank's native unit (diesel litres, electric kWh,
+-- methane kg) plus the game's own smoothed burn rate (units per hour),
+-- so the plugin can derive percent and time remaining for the dash.
+-- Checked in the order GIANTS' own HUD uses, first tank that exists
+-- wins. Everything through pcall: an electric or methane machine has
+-- no DIESEL consumer and getConsumerFillUnitIndex(nil) must skip,
+-- never crash the frame.
+local FUEL_TYPES = { "DIESEL", "ELECTRICCHARGE", "METHANE" }
+local function fuelState(vehicle)
+	if vehicle.getConsumerFillUnitIndex == nil
+		or vehicle.getFillUnitFillLevel == nil then
+		return nil
+	end
+	for _, tn in ipairs(FUEL_TYPES) do
+		local ft = FillType ~= nil and FillType[tn] or nil
+		if ft ~= nil then
+			local okI, idx = pcall(vehicle.getConsumerFillUnitIndex, vehicle, ft)
+			if okI and idx ~= nil then
+				local okL, lvl = pcall(vehicle.getFillUnitFillLevel, vehicle, idx)
+				if okL and finite(lvl) and lvl >= 0 then
+					local cap = nil
+					if vehicle.getFillUnitCapacity ~= nil then
+						local okC, c = pcall(vehicle.getFillUnitCapacity, vehicle, idx)
+						if okC and finite(c) and c > 0 then
+							cap = c
+						end
+					end
+					local use = nil
+					local sm = vehicle.spec_motorized
+					if sm ~= nil and finite(sm.lastFuelUsage) and sm.lastFuelUsage >= 0 then
+						use = sm.lastFuelUsage
+					end
+					return lvl, cap, use, string.lower(tn)
+				end
+			end
+		end
+	end
+	return nil
+end
+
 local function motorLoad01(vehicle)
 	if vehicle.getMotor == nil then
 		return nil
@@ -516,6 +557,21 @@ function TF4ALLTelemetry:buildLine()
 	local load = motorLoad01(vehicle)
 	if load ~= nil then
 		table.insert(parts, string.format('"motorLoad":%.4f', load))
+	end
+	-- Fuel: emitted only while a tank is readable, so absence tells the
+	-- plugin "not reported" (older mod, or a vehicle with no consumer).
+	local okF, fuelL, fuelCap, fuelUse, fuelT = pcall(fuelState, vehicle)
+	if okF and fuelL ~= nil then
+		table.insert(parts, string.format('"fuelL":%.2f', fuelL))
+		if fuelCap ~= nil then
+			table.insert(parts, string.format('"fuelCap":%.1f', fuelCap))
+		end
+		if fuelUse ~= nil then
+			table.insert(parts, string.format('"fuelUse":%.3f', fuelUse))
+		end
+		if fuelT ~= nil then
+			table.insert(parts, '"fuelT":"' .. fuelT .. '"')
+		end
 	end
 	local okI, impl, fill, towKg, implMove, implSpd, implMan = pcall(gatherAttachState, vehicle)
 	if okI then

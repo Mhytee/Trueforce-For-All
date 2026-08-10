@@ -1831,6 +1831,14 @@ namespace TrueforceForAll.Plugin
             // what makes a time-left readout possible at all. -1 means "not
             // reported" (no mod, older mod, on foot, not an FS session);
             // the fuel box falls back to SimHub's properties on it.
+            // The running game is a Farming Simulator title. The fuel box
+            // keys its third row on THIS, not on whether a burn rate is
+            // reporting this instant: FS is "Time left" even while the
+            // engine is off (a rate-keyed row flipped to a meaningless
+            // "Laps left --" at every shutdown), racing is "Laps left".
+            this.AttachDelegate("Dash.Fs.Game", () =>
+                _activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal));
             this.AttachDelegate("Dash.Fs.FuelPct",     () => _fsPipeSource?.FuelPercent ?? -1f);
             this.AttachDelegate("Dash.Fs.FuelL",       () => _fsPipeSource?.FuelLevel ?? -1f);
             this.AttachDelegate("Dash.Fs.FuelUnit",    () => _fsPipeSource?.FuelUnit ?? "L");

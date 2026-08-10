@@ -1378,9 +1378,21 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     } 5
     $r.Bindings['Width'] = BindJS 'Width' ($fuPct + 'if(p<0)p=0;return Math.max(2,' + $iw + '*p/100)')
     $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
-    BoxLine "d$slot-fu-laps" $ix ($iy + 110) $iw 'Laps left' ('var v=1*$prop("DataCorePlugin.Computed.Fuel_RemainingLaps");return isNaN(v)||v<=0?"--":v.toFixed(1)') $vis 17 | ForEach-Object { $items.Add($_) }
-    # Litres where the game reports them; Forza only ever gives a fraction.
-    BoxLine "d$slot-fu-lit" $ix ($iy + 142) $iw 'In tank' ('var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)||v<=0?"--":v.toFixed(1)+" L"') $vis 17 | ForEach-Object { $items.Add($_) }
+    # Third row is game-shaped: racing thinks in laps, farming thinks in
+    # hours. Keyed on the GAME, not on whether a burn rate is reporting
+    # this instant: an FS engine shutdown reads rate-unknown, and a
+    # rate-keyed row flipped to a meaningless "Laps left --" every time.
+    # Same slot, complementary visibility, the usual emit-both-and-gate.
+    $fsMin = '(1*$prop("' + $P + '.Fs.FuelMinLeft"))'
+    $fsGame = '$prop("' + $P + '.Fs.Game")'
+    $visLaps = KeyVis 'Fuel' ($dFuel + '&&!(' + $fsGame + ')')
+    $visTime = KeyVis 'Fuel' ($dFuel + '&&(' + $fsGame + ')')
+    BoxLine "d$slot-fu-laps" $ix ($iy + 110) $iw 'Laps left' ('var v=1*$prop("DataCorePlugin.Computed.Fuel_RemainingLaps");return isNaN(v)||v<=0?"--":v.toFixed(1)') $visLaps 17 | ForEach-Object { $items.Add($_) }
+    BoxLine "d$slot-fu-time" $ix ($iy + 110) $iw 'Time left' ('var m=' + $fsMin + ';if(!(m>=0))return "--";m=Math.round(m);var h=Math.floor(m/60);return h>0?h+"h "+(m-h*60)+"m":m+" min"') $visTime 17 | ForEach-Object { $items.Add($_) }
+    # Level where a game reports one: the FS mod's tank (native unit:
+    # litres, kWh for electrics, kg for methane), else SimHub's litres;
+    # Forza only ever gives a fraction.
+    BoxLine "d$slot-fu-lit" $ix ($iy + 142) $iw 'In tank' ('var f=1*$prop("' + $P + '.Fs.FuelL");if(f>=0){var u=""+($prop("' + $P + '.Fs.FuelUnit")||"L");return (f>=100?Math.round(f):f.toFixed(1))+" "+u;}var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)||v<=0?"--":v.toFixed(1)+" L"') $vis 17 | ForEach-Object { $items.Add($_) }
     $items.Add((AddNote 'fu' 'This game does not report fuel.' 'Fuel' $dFuel))
 
     # ---------------- LAP TIMES ---------------------------------------

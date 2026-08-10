@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
 using System.Security.AccessControl;
@@ -133,6 +134,76 @@ namespace TrueforceForAll.Plugin
 
         private volatile float _attachedFill01;
         private volatile float _towedMassKg;
+
+        // Vehicle propellant tank (mod >= 0.2.21). Level/capacity in the
+        // tank's native unit (diesel litres, electric kWh, methane kg);
+        // -1 = not reported this frame (older mod, on foot, no consumer).
+        private volatile float _fuelLevel = -1f;
+        private volatile float _fuelCapacity = -1f;
+        // Burn rate for the time-left readout, units/hour, derived from the
+        // TANK's own drain: one level sample every ~5 s, rate = level lost
+        // between the oldest and newest sample over their real-time span
+        // (~150 s sliding window, valid from ~30 s of data). The game's
+        // spec_motorized.lastFuelUsage is deliberately NOT the source: its
+        // FS25 unit convention is unverified and it tracks throttle closely
+        // enough that even smoothed it seesawed an hours-scale readout by
+        // hours (owner on-wheel report 2026-08-10). What the tank actually
+        // loses per hour is unit-correct by construction, and a 5 s update
+        // cadence is what makes the readout sit still. The game's value is
+        // kept only for the periodic diag line. Ring is parse-thread only
+        // (under _parseLock); consumers read the volatile rate.
+        private volatile float _fuelDrainPerHour = -1f;
+        private volatile float _fuelUseGameRaw = -1f;
+        private readonly List<KeyValuePair<long, float>> _fuelRing
+            = new List<KeyValuePair<long, float>>();
+        private long _lastFuelDiagTicks;   // parse thread only
+        private long _fuelIdleSinceTicks;  // parse thread only
+        private volatile string _fuelType;
+
+        /// <summary>Tank level in its native unit, or -1 when the mod does
+        /// not report fuel (pre-0.2.21, on foot, or no consumer).</summary>
+        public float FuelLevel => _fuelLevel;
+
+        /// <summary>Tank capacity in the same unit, or -1.</summary>
+        public float FuelCapacity => _fuelCapacity;
+
+        /// <summary>Tank fraction as 0..100, or -1 when unknown.</summary>
+        public float FuelPercent
+        {
+            get
+            {
+                float l = _fuelLevel, c = _fuelCapacity;
+                if (l < 0f || c <= 0f) return -1f;
+                return Math.Min(l / c * 100f, 100f);
+            }
+        }
+
+        /// <summary>Display unit for the tank ("L", "kWh" or "kg").</summary>
+        public string FuelUnit
+        {
+            get
+            {
+                string t = _fuelType;
+                if (t != null && t.IndexOf("electric", StringComparison.OrdinalIgnoreCase) >= 0) return "kWh";
+                if (t != null && t.IndexOf("methane", StringComparison.OrdinalIgnoreCase) >= 0) return "kg";
+                return "L";
+            }
+        }
+
+        /// <summary>Minutes of fuel left at the tank's observed drain rate,
+        /// capped at 5999 (the dash renders 99h 59m as the ceiling), or -1
+        /// while unknown: under ~30 s of level samples yet, or a near-zero
+        /// drain (engine off), where any number would be a bogus multi-week
+        /// figure.</summary>
+        public float FuelMinutesLeft
+        {
+            get
+            {
+                float l = _fuelLevel, u = _fuelDrainPerHour;
+                if (l < 0f || u < 0.05f) return -1f;
+                return Math.Min(l / u * 60f, 5999f);
+            }
+        }
 
         /// <summary>Highest fill fraction (0..1) across attached units
         /// (mod >= 0.2.7): a loaded trailer reads high, empty gear reads 0.
@@ -310,6 +381,77 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Drain-rate sampling (parse thread, under _parseLock): one
+        // (ticks, level) sample every ~5 s, rate = level lost between the
+        // oldest and newest sample over their real-time span, valid from
+        // ~30 s of data, sliding over ~150 s. A level RISE restarts the
+        // window (a refuel must not read as negative burn) but KEEPS the
+        // learned rate: refueling changes the tank, not the burn.
+        // Recomputing only when a sample lands is also what keeps the dash
+        // readout still between updates.
+        private void UpdateFuelDrain(double speedKmh)
+        {
+            float lvl = _fuelLevel;
+            long freq = System.Diagnostics.Stopwatch.Frequency;
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            var ring = _fuelRing;
+            if (lvl < 0f)
+            {
+                if (ring.Count > 0) ring.Clear();
+                _fuelDrainPerHour = -1f;
+                _fuelIdleSinceTicks = 0;
+                return;
+            }
+            if (ring.Count > 0 && lvl > ring[ring.Count - 1].Value + 0.15f)
+                ring.Clear();
+
+            // Only WORK teaches the rate: sitting still with the engine
+            // idling must FREEZE the readout, not slowly re-learn the idle
+            // burn (owner on-wheel 2026-08-10: time left climbed whenever
+            // the machine stopped, because at idle sips the tank "lasts"
+            // days). Working = rolling, or under real load, so a stationary
+            // PTO machine still counts as work.
+            bool working = speedKmh >= 1.0 || _motorLoad01 >= 0.35f;
+            if (!working)
+            {
+                if (_fuelIdleSinceTicks == 0) _fuelIdleSinceTicks = now;
+                return;   // rate stays frozen at the last working figure
+            }
+            if (_fuelIdleSinceTicks != 0)
+            {
+                // A long stop restarts the window: its idle burn would
+                // otherwise land on the next 150 s of work as a rate spike.
+                // A short pause stays in-window; mere dilution.
+                if (now - _fuelIdleSinceTicks > freq * 20) ring.Clear();
+                _fuelIdleSinceTicks = 0;
+            }
+            if (ring.Count == 0 || now - ring[ring.Count - 1].Key >= freq * 5)
+            {
+                ring.Add(new KeyValuePair<long, float>(now, lvl));
+                while (ring.Count > 1 && now - ring[0].Key > freq * 150)
+                    ring.RemoveAt(0);
+                double spanS = (now - ring[0].Key) / (double)freq;
+                if (spanS >= 30.0)
+                {
+                    double perHour = (ring[0].Value - lvl) / spanS * 3600.0;
+                    // A flat window keeps the previous figure: that is what
+                    // a paused game reads, not a real zero burn.
+                    if (perHour > 0.0) _fuelDrainPerHour = (float)perHour;
+                }
+            }
+            // Periodic diag (every 30 s while feeding): raw game usage next
+            // to the derived drain, so FS25's lastFuelUsage unit convention
+            // is provable from a log file if it is ever wanted again.
+            if (now - _lastFuelDiagTicks > freq * 30)
+            {
+                _lastFuelDiagTicks = now;
+                SimHub.Logging.Current.Info(string.Format(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    "[TF4ALL] FS fuel diag: lvl={0:F2} cap={1:F0} gameUse={2:F2} derived={3:F2}/h leftMin={4:F0}",
+                    lvl, _fuelCapacity, _fuelUseGameRaw, _fuelDrainPerHour, FuelMinutesLeft));
+            }
+        }
+
         private void ParseLine(string line)
         {
             if (string.IsNullOrEmpty(line) || line[0] != '{') return;
@@ -322,6 +464,10 @@ namespace TrueforceForAll.Plugin
                 // Emit the empty frame anyway: MeasuredHz keeps tracking (the
                 // mod is alive) while IsSessionActive correctly reads false.
                 _motorLoad01 = -1f;
+                _fuelLevel = -1f; _fuelCapacity = -1f;
+                _fuelUseGameRaw = -1f;
+                _fuelRing.Clear(); _fuelDrainPerHour = -1f;
+                _fuelIdleSinceTicks = 0;
                 EmitFrame(new TelemetryFrame());
                 return;
             }
@@ -335,6 +481,9 @@ namespace TrueforceForAll.Plugin
             {
                 _lastCarCfg = carCfg;
                 _stableCarId = NormalizeCarId(carCfg);
+                // New vehicle, new tank: the old vehicle's level samples
+                // would read the level jump as an absurd drain rate.
+                _fuelRing.Clear(); _fuelDrainPerHour = -1f;
             }
             var carName = o.Value<string>("carName");
             if (!string.IsNullOrWhiteSpace(carName)) _carDisplayName = carName.Trim();
@@ -383,6 +532,23 @@ namespace TrueforceForAll.Plugin
             var towKg = o.Value<double?>("towKg");
             if (towKg.HasValue && !double.IsNaN(towKg.Value) && towKg.Value >= 0)
                 _towedMassKg = (float)towKg.Value;
+
+            // Fuel (mod >= 0.2.21). Emitted every in-vehicle frame while a
+            // tank is readable, so plain per-frame assignment is the honest
+            // shape: absence means "not reported" and reads -1 at once (no
+            // tri-state latch; an older mod simply never sets these).
+            var fuelL = o.Value<double?>("fuelL");
+            _fuelLevel = fuelL.HasValue && !double.IsNaN(fuelL.Value) && fuelL.Value >= 0
+                ? (float)fuelL.Value : -1f;
+            var fuelCap = o.Value<double?>("fuelCap");
+            _fuelCapacity = fuelCap.HasValue && !double.IsNaN(fuelCap.Value) && fuelCap.Value > 0
+                ? (float)fuelCap.Value : -1f;
+            var fuelT = o.Value<string>("fuelT");
+            _fuelType = string.IsNullOrWhiteSpace(fuelT) ? null : fuelT.Trim();
+            var fuelUse = o.Value<double?>("fuelUse");
+            _fuelUseGameRaw = fuelUse.HasValue && !double.IsNaN(fuelUse.Value) && fuelUse.Value >= 0
+                ? (float)fuelUse.Value : -1f;
+            UpdateFuelDrain(speed);
 
             // Rev bar: FS reports no redline, so the band tops out at MaxRpm,
             // same fallback shape as the SimHub source uses without one.
