@@ -652,7 +652,7 @@
                     <TextBlock x:Name="UpdateAvailableButtonText" Text="Update available"/>
                 </Button>
             </StackPanel>
-            <TextBlock Text="Brings Trueforce-style haptics to any SimHub-enabled game. Unofficial reverse-engineered implementation of Logitech's Trueforce protocol, not affiliated with Logitech. Supports G PRO / RS50 / G923 wheels."
+            <TextBlock Text="Everything your Logitech wheel can do, in games that never supported it: Trueforce haptics, Telemetry Based FFB, rev lights and a customizable wheelbase OLED screen. Unofficial reverse-engineered implementation of Logitech's Trueforce and OLED protocols, not affiliated with Logitech. Supports G PRO, RS50 and G923; the screen is G PRO and RS50 only."
                        FontSize="13" Opacity="0.7" Margin="0,0,0,12" TextWrapping="Wrap"/>
 
             <!-- "What's new" banner. Shown when the running build's version
