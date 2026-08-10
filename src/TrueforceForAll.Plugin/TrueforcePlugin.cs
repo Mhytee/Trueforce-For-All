@@ -8166,6 +8166,7 @@ namespace TrueforceForAll.Plugin
                 || game == "EAWRC23"
                 || game == "PCars3"
                 || game == "CodemastersGrid2019"
+                || game == "CodemastersDirtRally2"
                 || game == "WRC10"
                 || game == "WRCGenerations"
                 || game == "TDUSC"
