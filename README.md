@@ -246,8 +246,6 @@ Installs with the plugin and appears in SimHub's dashboard list.
 
 ## Community features (_Beta_)
 
-The Discord server below is open to everyone.
-
 Once one driver figures out a car's redline, fixes its name, or picks
 its engine layout, everyone driving that same car gets it automatically.
 Community features are on by default and anonymous: car facts need no
