@@ -141,11 +141,33 @@ $TEMP_STOPS += , @(100, 232, 163,  61)   # orange
 $TEMP_STOPS += , @(115, 229,  72,  77)   # red
 $TEMP_STOPS += , @(140, 138,  14,  18)   # deep red, cooked
 
+# Tread left, 100 = fresh, 0 = gone. Same ramp and the same interpolation
+# as temperature, minus the two blues: a tyre can be too cold, but there
+# is no such thing as too much tread, so this scale starts at its good
+# end and runs down to the same cooked red. Ordered by VALUE ascending
+# like the temperature table, which puts the bad end first here because
+# the reading counts down. Stops hold the old stepped breakpoints (green
+# above 60, amber through the 30s, red below), so a tyre that read amber
+# still does.
+$WEAR_STOPS = @()
+$WEAR_STOPS += , @(0,   138,  14,  18)   # deep red, gone
+$WEAR_STOPS += , @(15,  229,  72,  77)   # red
+$WEAR_STOPS += , @(30,  232, 163,  61)   # orange
+$WEAR_STOPS += , @(45,  232, 212,  77)   # yellow
+$WEAR_STOPS += , @(60,   55, 214, 122)   # green, plenty left
+$WEAR_STOPS += , @(100,  55, 214, 122)   # green, fresh
+
 # Emits the ramp up to "c holds the color", so the block fill and the
 # label on top are computed from one piece of arithmetic.
-function TempRampJs([string]$emptyReturn) {
-    $js = 'if(isNaN(v)||v<=0){' + $emptyReturn + '}var s=['
-    $js += (($TEMP_STOPS | ForEach-Object { '[' + ($_ -join ',') + ']' }) -join ',')
+#
+# zeroIsEmpty says what v=0 MEANS on this scale. A temperature of zero is
+# a game that is not reporting one; a tread reading of zero is a tyre
+# with nothing left, which has to paint red rather than fall through to
+# the empty tile. The wear box is already hidden outright in games that
+# report no wear, so nothing rides on treating its zero as real.
+function RampJs($stops, [string]$emptyReturn, [bool]$zeroIsEmpty) {
+    $js = 'if(isNaN(v)' + $(if ($zeroIsEmpty) { '||v<=0' }) + '){' + $emptyReturn + '}var s=['
+    $js += (($stops | ForEach-Object { '[' + ($_ -join ',') + ']' }) -join ',')
     # Driven by s.length, so adding or moving a stop needs no edit here.
     $js += '];var L=s.length-1;var c=s[0];if(v>=s[L][0])c=s[L];' +
            'else if(v>s[0][0]){for(var i=0;i<L;i++){if(v<=s[i+1][0]){' +
@@ -155,20 +177,39 @@ function TempRampJs([string]$emptyReturn) {
     $js
 }
 
-function TempColorJs([string]$tileColor) {
-    (TempRampJs ('return "' + $tileColor + '";')) +
+function TempRampJs([string]$emptyReturn) { RampJs $TEMP_STOPS $emptyReturn $true }
+function WearRampJs([string]$emptyReturn) { RampJs $WEAR_STOPS $emptyReturn $false }
+
+function RampColorJs([string]$ramp) {
+    $ramp +
     'var o="#FF";for(var k=1;k<4;k++){var n=Math.round(c[k]);' +
     'if(n<0)n=0;if(n>255)n=255;var x=n.toString(16);' +
     'if(x.length<2)x="0"+x;o+=x;}return o'
 }
 
+function TempColorJs([string]$tileColor) {
+    RampColorJs (TempRampJs ('return "' + $tileColor + '";'))
+}
+
+function WearColorJs([string]$tileColor) {
+    RampColorJs (WearRampJs ('return "' + $tileColor + '";'))
+}
+
 # The ends of the ramp are dark enough to swallow dark text, so the label
 # picks its own contrast from the fill it is sitting on rather than being
 # a fixed color that only works across the middle of the range.
-function TempTextColorJs([string]$emptyColor) {
-    (TempRampJs ('return "' + $emptyColor + '";')) +
+function RampTextColorJs([string]$ramp) {
+    $ramp +
     'var lum=(c[1]*299+c[2]*587+c[3]*114)/1000;' +
     ('return lum>140?"#FF101216":"' + $script:WHITE + '"')
+}
+
+function TempTextColorJs([string]$emptyColor) {
+    RampTextColorJs (TempRampJs ('return "' + $emptyColor + '";'))
+}
+
+function WearTextColorJs([string]$emptyColor) {
+    RampTextColorJs (WearRampJs ('return "' + $emptyColor + '";'))
 }
 
 # Same ramp in PowerShell, for the preview renderer (it draws static
@@ -1274,7 +1315,11 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddNote 'tt' 'This game does not report tire temperatures.' 'TyreTemps' $dTemp))
 
     # ---------------- TYRE WEAR (visual) -----------------------------
-    # Same blocks; here the color is how much tread is left.
+    # Same blocks, and now the same interpolated ramp: here the color is
+    # how much tread is left, so it slides green to red as the tyre goes
+    # instead of jumping at 60 and 30.
+    $wearScale = WearColorJs $script:TILE
+    $wearText  = WearTextColorJs $script:MUTED
     $vis = KeyVis 'TyreWear' $dWear
     $hd = AddHead 'tw' 'TIRE WEAR' 'TyreWear'
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
@@ -1287,15 +1332,15 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         # match how SimHub reports it and how the colors below read.
         $vJs = 'var v=NaN;if($prop("' + $P + '.Forza.HasWear")){var fw=1*$prop("' + $P + '.Forza.' + $fzWear[$q] + '");if(fw>=0)v=100-fw*100;}' +
                'if(isNaN(v))v=1*$prop("' + $SIM + $wearProps[$q] + '");'
-        $colJs = $vJs + 'if(isNaN(v))return "' + $script:TILE + '";' +
-                 'return v>60?"' + $script:GREEN + '":(v>30?"#FFE8A33D":"' + $script:RED + '")'
+        $colJs = $vJs + $wearScale
         $r = New-Rect "d$slot-tw$q" $cx $cy $tyW $tyH $script:TILE @{
             BackgroundColor = BindJS 'BackgroundColor' $colJs
         } 6
         $r.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($r)
         $tv = New-Text "d$slot-tw$q-v" $cx ($cy + $tyH / 2 - 15) $tyW 30 17 '' '#FF101216' 1 @{
-            Text = BindJS 'Text' ($vJs + 'return isNaN(v)?"--":Math.round(v)+"%"')
+            Text      = BindJS 'Text'      ($vJs + 'return isNaN(v)?"--":Math.round(v)+"%"')
+            TextColor = BindJS 'TextColor' ($vJs + $wearText)
         } 'Bold'
         $tv.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($tv)
@@ -2052,7 +2097,7 @@ function IdleCard([string]$P) {
     # pattern close exactly at the wrap.
     #
     #   ambient     Contours, Caustics, Aurora, Fractal   1 to 3    20 to 60 s
-    #   travelling  Ribbon, Pipes, Pulse                  2 to 6    10 to 30 s
+    #   traveling  Ribbon, Pipes, Pulse                  2 to 6    10 to 30 s
     #   events      Rain, Bubbles, Streaks, Wave         12 to 40   1.5 to 5 s
     $EPOOL = 42
     $RPOOL = 40
