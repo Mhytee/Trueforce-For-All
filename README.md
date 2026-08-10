@@ -1,12 +1,11 @@
 # Trueforce For All
 
 **Everything your Logitech wheel can do, in games that never supported it.**
-Trueforce, rev lights, the screen.
+Trueforce, rev lights, the OLED screen.
 
 > **Two channels.** Stable builds are the ones marked "Latest" on the
 > [releases page][releases]. The beta channel runs ahead of them and is open
-> to anyone: install the newest build marked "Pre-release" and the in-app
-> updater keeps you on that channel from then on. Anything marked _Beta_
+> to anyone: install the newest build marked "Pre-release". Anything marked _Beta_
 > below is in the beta channel and has not reached stable yet.
 > Something not working? Please [open an issue][issues] or say so in the
 > [Discord][discord].
