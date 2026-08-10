@@ -6709,6 +6709,12 @@ namespace TrueforceForAll.Plugin
                     // motor's friction eats FS's light spring and terrain
                     // cues; every other wheel ships 0.
                     s.SpringModeMinForce = 0.15;
+                    // FS spring strength stays where it was when the factory
+                    // value dropped to 0.80 for the direct-drive wheels
+                    // (owner call 2026-08-10). Same reasoning as the floor
+                    // above: the belt eats what the G PRO delivers, so it
+                    // keeps the headroom rather than following the retune.
+                    s.SpringModeStrength = 1.0;
                     break;
                 // G PRO (and anything unrecognized): the coded defaults stand.
             }
@@ -6736,8 +6742,11 @@ namespace TrueforceForAll.Plugin
         /// 2026-08-09 FS spring recipe: the SpringMode* fields joined the merge
         /// list, factory = the owner's tuned values (enhancements ON, firmness
         /// 0.85, speed effect 0.70, strain 0.50, min force 0 with the G923 at
-        /// 0.15 per wheel).</summary>
-        private const int ModeBDefaultsGeneration = 6;
+        /// 0.15 per wheel). Generation 7 = the 2026-08-10 FS strength
+        /// re-snapshot: SpringModeStrength 1.0 to 0.80, the owner's own G PRO
+        /// value, with the G923 pinned at the outgoing 1.0 in the per-wheel
+        /// table so the belt wheel keeps its headroom.</summary>
+        private const int ModeBDefaultsGeneration = 7;
 
         /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
         /// current factory values: every previously SHIPPED defaults-set, expressed
@@ -6761,6 +6770,14 @@ namespace TrueforceForAll.Plugin
                 ModeBDirSoft      = 0.12f,
                 ModeBRoadKickGain = 1.0f,
             };
+            // FS spring strength as shipped through generation 6. One field, so
+            // it gets its own entry: the merge compares PER FIELD against any
+            // entry, and every other generation-6 value is still current.
+            // Without this, a G PRO sitting on the shipped 1.0 would read as
+            // user-tuned and never receive the 0.80 retune. The G923 is
+            // unaffected either way, since its per-wheel target is still 1.0
+            // and the merge finds it already there.
+            yield return new TrueforceSettings { SpringModeStrength = 1.0 };
             // The 2026-08-08 FS spring factory (generations <= 5): the
             // enhancement toggles shipped OFF and the feel values pre-date
             // the owner's tuned recipe. Only fields whose defaults differ

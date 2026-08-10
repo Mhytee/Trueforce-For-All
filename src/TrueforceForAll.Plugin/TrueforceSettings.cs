@@ -73,11 +73,11 @@ namespace TrueforceForAll.Plugin
         // Which arrangement the OLED shows. The firmware owns font size and
         // alignment, so picking a screen IS picking how big each value is
         // drawn. See OledScreen; Custom uses the three fields below.
-        // Speed over gear, both labelled, on the centered four rows. The owner
-        // built this one by hand in the editor and it is the best default:
-        // every value is named, nothing is cropped, and it is the arrangement
-        // that copes with a gearbox counting past 9.
-        public OledScreen OledScreen { get; set; } = OledScreen.SpeedOverGear;
+        // Gear over speed, both labelled, on the centered four rows. The owner
+        // built the pair by hand in the editor and settled on this order after
+        // running them (2026-08-10): every value is named, nothing is cropped,
+        // and it copes with a gearbox counting past 9.
+        public OledScreen OledScreen { get; set; } = OledScreen.GearOverSpeed;
 
         // A user-built screen: which firmware layout, and which field goes in
         // each of its slots, with the text for any slot set to Custom.
@@ -93,7 +93,7 @@ namespace TrueforceForAll.Plugin
 
         // Show the OLED speed in mph instead of km/h. Local to the display
         // only; nothing else in the plugin changes units.
-        public bool OledUseMph { get; set; } = false;
+        public bool OledUseMph { get; set; } = true;
 
         // Flash the gear on the OLED for a moment when you shift. On by
         // default and self-suppressing: it never fires on a screen that already
@@ -106,12 +106,14 @@ namespace TrueforceForAll.Plugin
         // side, and a flash you read at a glance is better centered than large.
         public OledFlashStyle OledShiftFlashStyle { get; set; } = OledFlashStyle.CenteredGear;
 
-        // Minimum gap between writes to the OLED, in milliseconds. 100 = 10 Hz.
+        // Minimum gap between writes to the OLED, in milliseconds. 20 = 50 Hz.
         // Lower is smoother and costs more of the shared HID++ pipe; the pipe
         // is force-free whenever this feature is allowed to run, so the old
-        // 200 ms was caution rather than a measured limit. Tunable live with
-        // the OLEDMS access code so the real ceiling can be found on hardware.
-        public int OledWriteIntervalMs { get; set; } = 100;
+        // 200 ms, and the 100 ms after it, were caution rather than a measured
+        // limit. 20 is the owner's own setting, run on a G PRO (2026-08-10);
+        // it is unverified on an RS50. Tunable live with the OLEDMS access
+        // code so the real ceiling can be found on other hardware.
+        public int OledWriteIntervalMs { get; set; } = 20;
 
         // A greeting the first time the screen comes up in a SimHub run: the
         // plugin name on the small row and this scrolling under it. Once per
@@ -740,8 +742,10 @@ namespace TrueforceForAll.Plugin
         public double SpringModeSpeedEffect          { get; set; } = 0.70;
         // Overall spring-mode force multiplier (spring + terrain + drag +
         // cornering weight; damping unaffected), the FS counterpart of the
-        // Forza Strength slider. 1.0 = the tuned baseline.
-        public double SpringModeStrength             { get; set; } = 1.0;
+        // Forza Strength slider. 0.80 is the owner's own G PRO setting
+        // (2026-08-10); the G923 holds the older 1.0 in ApplyWheelDefaults,
+        // because the belt motor needs the headroom the direct drive does not.
+        public double SpringModeStrength             { get; set; } = 0.80;
         // FS's own min-force floor, separate from ModeBMinForce (owner call
         // 2026-08-09: games' force characters differ, so the floor is per
         // game). Lifts terrain kicks and the spring beyond slight deflection
