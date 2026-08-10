@@ -111,16 +111,15 @@ continuous and transient effects, and a savable preset library. The tabbed
 layout, typed values on every slider, and community sharing in the preset
 library are _Beta_.
 
-_Beta._ Four pairs of controls can be bound to anything SimHub can see, a
+(_Beta_) Four pairs of controls can be bound to anything SimHub can see, a
 wheel button, a button box, a keyboard key, so the things worth changing
 mid-stint do not cost you a hand: Trueforce gain up and down, Telemetry
 Based FFB strength up and down, the wheel's screen forward and back, and
 dash tabs forward and back. The two gain controls report their new value
 on the dash and on the wheel's screen at the same time.
 
-## Telemetry Based FFB
+## Telemetry Based FFB (_Beta_)
 
-_Beta._
 
 In supported games the plugin builds the entire steering force itself,
 instead of passing the game's own force feedback through. Today that means
@@ -149,9 +148,8 @@ feedback, so they can only run while the plugin is generating that force
 itself. (A custom driver that lifts this restriction in every game is in
 progress; Microsoft has to sign it before it can ship.)
 
-## The wheel's OLED screen
+## The wheel's OLED screen (_Beta_)
 
-_Beta._
 
 The G PRO and RS50 have a small display in the middle of the wheel. The
 plugin takes it over, and you choose what goes on it.
@@ -174,9 +172,7 @@ Bind a button to step through your screens without letting go of the
 wheel. Like the rev lights, the screen needs
 [Telemetry Based FFB](#telemetry-based-ffb).
 
-## Farming Simulator
-
-_Beta._
+## Farming Simulator (_Beta_)
 
 Farming Simulator 22 and 25 normally drive the wheel with one basic
 centering spring. Every machine feels the same, and none of the ground
@@ -208,9 +204,8 @@ instead of yanks while sustained cornering load and weight transfer
 pass through untouched. Useful on its own, even with all our other
 effects turned off.
 
-## TF4ALL Dash
+## TF4ALL Dash (_Beta_)
 
-_Beta._
 
 The plugin ships its own SimHub dashboard, made for a phone or tablet
 kept next to you or mounted on the rig: something to read while you
@@ -249,9 +244,9 @@ the game.
 
 Installs with the plugin and appears in SimHub's dashboard list.
 
-## Community features
+## Community features (_Beta_)
 
-_Beta. The Discord server below is open to everyone._
+The Discord server below is open to everyone._
 
 Once one driver figures out a car's redline, fixes its name, or picks
 its engine layout, everyone driving that same car gets it automatically.
