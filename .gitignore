@@ -59,12 +59,3 @@ __*
 /SimHub.Plugins.*.resources
 /*.leonardo.hex
 /UsersmhyteAppDataLocalTemp*
-
-# Farming Simulator mod build output. build-mod.py generates all of this from
-# modDesc.xml and the Lua beside it: it writes the DDS icon itself (no external
-# tooling) and zips one archive per game generation. Tracking the output meant
-# carrying a stale TF4ALLTelemetry.zip once the script moved to per-generation
-# names, and a committed zip can drift out of step with the Lua it came from.
-# The sources stay tracked; run build-mod.py to produce the rest.
-/gamemods/FarmingSimulator/*.zip
-/gamemods/FarmingSimulator/TF4ALLTelemetry/tf4all.dds
