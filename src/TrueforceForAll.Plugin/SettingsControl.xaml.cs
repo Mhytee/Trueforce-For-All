@@ -758,10 +758,10 @@ namespace TrueforceForAll.Plugin
                     // whose telemetry a game never provides is a dead knob
                     // there, and dead knobs read as broken, so the whole
                     // section hides. No active game = show everything.
-                    // FS: no slip/tire data (the traction family), no
-                    // ABS/pits/DRS, and collision + airborne are not derived
-                    // from its frames yet (unhide when they are). Forza: its
-                    // telemetry carries no ABS flag.
+                    // FS: no ABS/pits/DRS; axle slip, collision and airborne
+                    // ARE driven there, and the per-call notes below cover
+                    // the rest of the traction family plus the kerb fold.
+                    // Forza: its telemetry carries no ABS flag.
                     {
                         bool fzGame = mbGame == "FM8"
                             || (mbGame != null && mbGame.StartsWith("FH", StringComparison.Ordinal));

@@ -1958,7 +1958,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="Feel which axle is slipping: a high scrub texture as the front washes wide, a deep pulse as the rear steps out. The louder axle is the one losing grip. Needs per-tire telemetry (Forza and Assetto Corsa today)."/>
+                                   Text="Feel which axle is slipping: a high scrub texture as the front washes wide, a deep pulse as the rear steps out. The louder axle is the one losing grip. Needs per-tire telemetry (Forza, Assetto Corsa, and Farming Simulator with the TF4ALL Enhanced Telemetry mod)."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2664,8 +2664,9 @@
                      the car is off the ground so jumps / crest pops don't fire
                      phantom slide, engine, or road feedback. Detection comes
                      from the enhanced sources (AC wheel load, Forza suspension
-                     droop); the universal SimHub path can't tell, so it's a
-                     no-op there. Global (no per-car override / Save button):
+                     droop, FS per-wheel contact flags from the mod); the
+                     universal SimHub path can't tell, so it's a no-op there.
+                     Global (no per-car override / Save button):
                      edits persist immediately. -->
                 <Expander x:Name="AirborneExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
@@ -2682,7 +2683,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="Cuts vibrations while the car is in the air, so a jump feels weightless instead of buzzing as if the tires were still on the track. Everything comes back the moment you land. Choose how far to turn things down and which effects to cut below (the engine keeps pulsing by default, since it's still revving). Works in Assetto Corsa and Forza, the games that report enough to know the car has left the ground; it does nothing elsewhere."/>
+                                   Text="Cuts vibrations while the car is in the air, so a jump feels weightless instead of buzzing as if the tires were still on the track. Everything comes back the moment you land. Choose how far to turn things down and which effects to cut below (the engine keeps pulsing by default, since it's still revving). Works in Assetto Corsa, Forza, and Farming Simulator (with the TF4ALL Enhanced Telemetry mod), the games that report enough to know the car has left the ground; it does nothing elsewhere."/>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Reduction:" Style="{StaticResource LabelText}"

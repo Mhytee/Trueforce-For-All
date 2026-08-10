@@ -2225,7 +2225,8 @@ namespace TrueforceForAll.Plugin
     /// go, a high scrub as the front washes wide, a deep pulse as the rear
     /// steps out. The louder axle is the one losing grip. On by default
     /// (owner's call, 2026-07-14, with the tuned baseline): inert without
-    /// per-tire telemetry (Forza games today), so other games are unaffected.
+    /// per-tire telemetry (Forza, Assetto Corsa, and Farming Simulator with
+    /// the telemetry mod today), so other games are unaffected.
     /// PredictiveSlip starts the texture a fixed validated 150 ms before the
     /// slip fully develops; RevLockedRearPulse locks the rear pulse rate to
     /// the actual rear wheel rev rate when per-tire data allows.</summary>
@@ -2255,7 +2256,9 @@ namespace TrueforceForAll.Plugin
     /// <summary>Settings for the kerb thump: a single firm whack the instant
     /// a wheel first touches a kerb, distinct from the rumble that follows.
     /// Scales with speed. On by default (owner's call, 2026-07-14): inert
-    /// without kerb telemetry (Forza games today). Gain defaults to the
+    /// without kerb telemetry (Forza's kerb flag; in Farming Simulator the
+    /// source synthesizes hits from hard suspension transients and the voice
+    /// renders as the Terrain texture leading edge). Gain defaults to the
     /// owner-tuned G PRO baseline (2026-07-14); the original 1.6 was dialed
     /// in on a G923, whose weaker motor needed it much hotter. Freq sits
     /// below the 40 Hz gear thud so the two stay distinct.</summary>
@@ -2269,7 +2272,9 @@ namespace TrueforceForAll.Plugin
     /// <summary>Settings for the lockup judder: a flat-spot pulse while a
     /// braking tire is locked, slowing with the car the way a real flat spot
     /// would. On by default (owner's call, 2026-07-14): inert without
-    /// per-tire telemetry (Forza games today).</summary>
+    /// per-tire telemetry (Forza and Assetto Corsa today; the section hides
+    /// for Farming Simulator, whose brake model is presumed never to lock a
+    /// wheel).</summary>
     public sealed class LockupJudderSettings
     {
         public bool  Enabled { get; set; } = true;
