@@ -12,13 +12,16 @@
 
 While official support for Trueforce has been steadily growing, there are still many major titles which are yet to receive support or will never get support. This
 plugin fills those gaps: in games without native Trueforce, it builds
-haptics from telemetry or from game audio.
+haptics from telemetry or from game audio. It can also build the steering
+force itself, synthesized from the game's telemetry, which is what gives
+Forza a real sense of the grip limit and Farming Simulator any force
+feedback at all.
 
 > **Status:** Actively in development. The plugin is functional today.
 > Feedback is welcome, on [GitHub issues][issues] or in the
 > [Discord server][discord].
 
-For the record on what this project is: Original Windows code built on top of a wire protocol reverse-engineered by the [mescon Linux driver project][mescon] from USB traffic. No Logitech source, firmware, or proprietary assets are used or redistributed. GPL-2.0, same as mescon's work. Logitech trademarks are acknowledged in the section below; this project is unaffiliated.
+For the record on what this project is: Original Windows code built on top of a wire protocol reverse-engineered by the [mescon Linux driver project][mescon] from USB traffic, and, for the wheel's OLED screen, on protocol work by [PeposCJ][logidynamicdash]. No Logitech source, firmware, or proprietary assets are used or redistributed. GPL-2.0, same as mescon's work. Logitech trademarks are acknowledged in the section below; this project is unaffiliated.
 
 ## Supported wheels
 
@@ -87,6 +90,10 @@ preserves via FFB pass-through. It mixes:
     curb, distinct from the rumble that follows it, scaling with speed
     so a fast strike hits harder. (Per-tire telemetry, currently the
     Forza titles.)
+  - **Implement thud**: lower or raise an implement and you feel the
+    hydraulic hum while it moves and the thump as it lands, following how
+    fast the implement is moving so each one feels like its own
+    machinery. (Farming Simulator.)
   - **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
     lockup, drift). Read directly from per-wheel slip in games that
     expose it (AC and the Forza titles), weighing each tire by load so
@@ -134,23 +141,50 @@ force feedback through. It reads slip angle, tire load, and speed and
 synthesizes the wheel force from the ground up. The result has a real
 sense of the grip limit: the wheel goes light as the front washes wide,
 loads up through a corner, and pulls into a countersteer as the rear
-steps out. A per-car auto-calibration learns where each car's grip tops
-out as you drive.
+steps out.
+
+Two things learn as you drive. A per-car auto-calibration finds where
+each car's grip tops out. **Auto strength**, optional, learns how hard
+each car pushes the wheel and scales it so every car lands at the
+heaviness your Strength slider asks for, instead of being retuned at
+every swap.
 
 Because it replaces the game's force feedback wholesale, it is **off by
 default** and lives on its own tab in the plugin; everything else in
 this README works without it. It is also still being dialed in, so
-feedback on how it feels on your wheel is very welcome.
+feedback on how it feels on your wheel is very welcome. It is also what
+drives Farming Simulator, where the story is different: see
+[Farming Simulator](#farming-simulator).
 
-**It also unlocks rev lights.** With Telemetry Based FFB enabled, the
-wheel's rev lights fill and flash with the engine in Forza, honoring the
-car's real redline where the community has confirmed one. Rev lights are
-otherwise hard to deliver on these wheels: the lights and a game's force
-feedback share one control channel, so lighting them while the game
-drives the wheel cuts the force feedback out. When the plugin is
-generating the force itself, the lights are free to run. (A custom
-driver that removes this restriction for every game is in progress; it
-has to be signed by Microsoft before it can ship.)
+**It also unlocks the wheel's lights and its screen.** With Telemetry
+Based FFB enabled, the rev lights fill and flash with the engine,
+honoring the car's real redline where the community has confirmed one,
+and on a G PRO or RS50 the OLED screen in the middle of the wheel can
+show your speed, gear and lap delta. Both are otherwise hard to deliver
+on these wheels: the lights, the screen and a game's force feedback
+share one control channel, so writing to either while the game drives
+the wheel cuts the force feedback out. When the plugin is generating the
+force itself, they are free to run. (A custom driver that removes this
+restriction for every game is in progress; it has to be signed by
+Microsoft before it can ship.)
+
+## Farming Simulator
+
+Farming Simulator 22 and 25 normally drive the wheel with one basic
+centering spring. Every machine feels the same, and none of the ground
+you are driving over comes through the wheel. Telemetry Based FFB builds
+the force from the game's own telemetry instead: the ground under the
+tires, the weight of the machine as it turns, and an implement dragging
+harder as it fills.
+
+**The TF4ALL Enhanced Telemetry mod comes with it.** The game does not
+publish enough telemetry on its own, so the plugin installs a mod that
+reports implement state, fill and mass, hydraulic motion and wheel
+speed. It finds your mods folder even if you have moved it. Leave
+SimHub's own Telemetry Interface mod in place alongside it; this one
+adds a channel rather than replacing it.
+
+**Baked-in engine and car name data for all 153 base-game vehicles.**
 
 ## FFB spike reduction
 
@@ -167,10 +201,15 @@ effects turned off.
 ## TF4ALL Dash
 
 The plugin ships its own SimHub dashboard, made for a phone or tablet
-kept next to you or mounted on the rig, so changing something
-mid-session doesn't mean alt-tabbing out of the game.
+kept next to you or mounted on the rig: something to read while you
+drive, and a way to change things mid-session without alt-tabbing out of
+the game.
 
-- Set the redline start or engine type for a car.
+- Drive tab: a race-ready view. Gear, speed and revs in the middle with
+  pedals and steering around them, and the rest of the screen is boxes
+  you arrange yourself. Keep one layout for everything, or a different
+  one per game.
+- Set a car's name, redline start or engine type.
 - Turn individual effects on and off and set their gain.
 - Adjust master and audio capture gain.
 - Switch presets.
@@ -182,6 +221,13 @@ mid-session doesn't mean alt-tabbing out of the game.
 - Telemetry Based FFB: turn it on or off for the game you are in, and
   tune its main knobs from the rig. Tap any value to type an exact
   number instead of stepping to it.
+- Idle mode: park up or close the game and the dash becomes an ambient
+  card, your name and number over moving artwork, with the plugin
+  version and any waiting update along the foot. Ten backgrounds, and
+  you set how long it waits before dropping into idle.
+- Themes: eight palettes, applied to the running dash without a reload.
+  Colors that carry meaning, like a red warning or a green best lap, are
+  left alone.
 - Make it yours: hide the tabs you don't use and reorder the rest, in
   Settings > TF4ALL Dash.
 
@@ -265,7 +311,7 @@ plugins that share those keep working.
 
 ## Per-game enhancements
 
-A few titles are read directly from the game's own telemetry, at a much
+A few titles are read directly rather than through SimHub, at a much
 higher rate than SimHub's 60 Hz cap. That makes their effects sharper and
 more responsive, and it needs no SimHub license:
 
@@ -283,6 +329,11 @@ telemetry once per rendered frame, so it tracks your frame rate (often
 well above 60 Hz), giving more depth in surface detail effects than some
 other titles offer. All four are auto-detected from SimHub's game
 profile.
+
+**Farming Simulator 22 and 25** are read through the TF4ALL Enhanced
+Telemetry mod the plugin installs for you, at up to 100 Hz. The game
+publishes almost nothing on its own, so the mod is what makes
+[Farming Simulator](#farming-simulator) force feedback possible at all.
 
 Additional direct-read titles will be added over time.
 
@@ -388,17 +439,17 @@ gracefully.
 The audio-derived effects work in any game at all, since the plugin captures
 the game's audio directly with no SimHub support needed. Games that SimHub
 supports additionally get the telemetry-derived effects (engine pulse, gear
-shifts, ABS, and so on). Assetto Corsa, Forza Motorsport, and the Forza
-Horizon games go further with a higher-fidelity direct path (see Per-game
-enhancements).
+shifts, ABS, and so on). Assetto Corsa, Forza Motorsport, the Forza
+Horizon games and Farming Simulator go further with a higher-fidelity
+direct path (see Per-game enhancements).
 
 **Do I need to pay for SimHub?**
 SimHub itself is free, and the plugin works without a SimHub license. The
 difference is the telemetry rate: unlicensed, games the plugin doesn't read
 directly run at only 10 Hz, which makes the effects feel coarse. A licensed
 copy lifts that to 60 Hz, which is a big step up in feel. SimHub is cheap and
-well worth it. (Assetto Corsa and the Forza titles are read directly from
-the game, so they run at their full rate regardless of license.)
+well worth it. (Assetto Corsa, the Forza titles and Farming Simulator are
+read directly, so they run at their full rate regardless of license.)
 
 **Is this anti-cheat safe?**
 Yes. The plugin operates entirely outside the game. It never injects code,
@@ -414,8 +465,9 @@ Not unless you ask it to. By default the plugin preserves your existing
 force feedback and layers haptic effects on top of it; your wheelbase's own
 FFB still comes through, with all your usual settings intact. The one
 exception is opt-in: [Telemetry Based FFB](#telemetry-based-ffb)
-deliberately replaces the game's force feedback in the Forza titles with a
-force built from telemetry, and it stays off until you turn it on.
+deliberately replaces the game's force feedback in the Forza titles and
+Farming Simulator with a force built from telemetry, and it stays off
+until you turn it on.
 
 **Why does it need USBPcap, and is that safe?**
 USBPcap is an open-source USB capture driver. The plugin uses it to read the
@@ -520,6 +572,7 @@ Logitech, Trueforce, G PRO, RS50, and G923 are trademarks of Logitech.
 This project is not affiliated with, endorsed by, or sponsored by Logitech.
 
 [mescon]: https://github.com/mescon/logitech-rs50-linux-driver
+[logidynamicdash]: https://github.com/PeposCJ/LogiDynamicDash
 [usbpcap]: https://github.com/desowin/usbpcap
 [acshmem]: https://github.com/mdjarv/assettocorsasharedmemory
 [hidsharp]: https://github.com/treehopper-electronics/HIDSharp
