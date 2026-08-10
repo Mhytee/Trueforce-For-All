@@ -1,4 +1,4 @@
-// Forza UDP "Data Out" telemetry source. Listens on a configurable port for
+﻿// Forza UDP "Data Out" telemetry source. Listens on a configurable port for
 // the binary packets Forza Horizon 5 / Forza Motorsport (2023) emit when the
 // user enables UDP RACE TELEMETRY in Settings → HUD and Gameplay.
 //
@@ -119,14 +119,39 @@ namespace TrueforceForAll.Core
         private const int DASH_SPEED  = 12;
         private const int DASH_ACCEL  = 71;
         private const int DASH_BRAKE  = 72;
+        private const int DASH_CLUTCH = 73;
+        private const int DASH_HANDBRAKE = 74;
         private const int DASH_GEAR   = 75;
+        // Neutral on the FH6 scale, which a shift passes through: the byte
+        // sits here for the 128 to 239 ms a change takes. Held briefly so an
+        // upshift does not flash N and GearShift sees one change, not two.
+        // Past the hold it is a real neutral and shows as one.
+        private const byte GEAR_NEUTRAL_ALT = 11;
+        private const int  GearNeutralHoldMs = 400;
         // Steer: signed int8, offset-from-center, -127 (full left) .. +127
         // (full right). Feeds the stationary-spring FFB floor so it works in
         // Forza, not just AC. Low resolution (254 steps lock-to-lock) so the
         // consumer smooths it.
         private const int DASH_STEER  = 76;
+        // Display-only dash fields. The FFB engine has never needed these, but
+        // the TF4ALL Dash's Drive tab does, and a Forza player who has NOT
+        // turned on "Also forward to SimHub" (the shipped default) leaves
+        // SimHub with no Forza telemetry at all, so the dash cannot get them
+        // from SimHub's own properties. Offsets are the documented Forza dash
+        // layout, corroborated by the five fields above already landing where
+        // that layout says they do.
+        private const int DASH_TIRE_TEMP_FL = 24;   // then FR/RL/RR at +28/+32/+36
+        private const int DASH_BOOST        = 40;
+        private const int DASH_FUEL         = 44;
+        private const int DASH_BEST_LAP     = 52;   // seconds, float
+        private const int DASH_LAST_LAP     = 56;
+        private const int DASH_CURRENT_LAP  = 60;
+        private const int DASH_LAP_NUMBER   = 68;   // uint16
+        private const int DASH_RACE_POS     = 70;   // uint8
         // Bytes of dash a parser must be able to address (through Steer).
         private const int DashSpanNeeded = DASH_STEER + 1;
+        // FM2023 appends TireWear[4] after the dash block (absolute offset).
+        private const int OFF_TIRE_WEAR_FL = 311;
 
         private const int DashBaseMotorsport = 232;   // FM7 (311) and FM2023 (331)
         private const int DashBaseHorizon    = 244;   // FH4/FH5/FH6 (324)
@@ -155,6 +180,25 @@ namespace TrueforceForAll.Core
         private int _running;
 
         public Action<string> Logger { get; set; }
+
+        // Last gear byte we believed, so the shift sentinel can hold it,
+        // and when the sentinel started, so a hold cannot run away.
+        private int _lastGoodGear = 1;
+        private int _sentinelSinceTick;
+
+        // Set once this title is shown to number forward gears from 1 (see
+        // the detection in ParsePacket). One way: a title does not change
+        // its gear scale mid-session.
+        private bool _gearOneIsFirst;
+        private int  _gearOneFirstFrames;
+        private int  _gearNeutralLowFrames;
+
+        /// <summary>Latest display-only dash fields (tyre temps, fuel, lap
+        /// times, position), or null before the first packet carrying a dash
+        /// block. Reference-atomic snapshot: the receive thread replaces it
+        /// wholesale, readers take it once and read from their copy, so no
+        /// half-updated set can be observed.</summary>
+        public volatile ForzaDashExtras DashExtras;
 
         /// <summary>Most recent IsRaceOn flag FROM A REAL FRAME (all-zero
         /// keepalives don't stamp it: their flag byte is zeroed payload, not
@@ -274,6 +318,12 @@ namespace TrueforceForAll.Core
         public override void Start()
         {
             if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
+
+            // Gear scale is a property of the title, so a restart re-learns
+            // it rather than carrying a previous game's answer into this one.
+            _gearOneIsFirst = false;
+            _gearOneFirstFrames = 0;
+            _gearNeutralLowFrames = 0;
 
             try
             {
@@ -567,6 +617,8 @@ namespace TrueforceForAll.Core
             float speedMs   = 0;
             byte  accelByte = 0;
             byte  brakeByte = 0;
+            byte  clutchByte = 0;
+            byte  handbrakeByte = 0;
             byte  gearByte  = 1;   // 1 = N
             double? steerNorm = null;
             int dashBase = ResolveDashBase(buf, len);
@@ -575,12 +627,125 @@ namespace TrueforceForAll.Core
                 speedMs   = ReadFloat(buf, dashBase + DASH_SPEED);
                 accelByte = buf[dashBase + DASH_ACCEL];
                 brakeByte = buf[dashBase + DASH_BRAKE];
+                clutchByte = buf[dashBase + DASH_CLUTCH];
+                handbrakeByte = buf[dashBase + DASH_HANDBRAKE];
                 gearByte  = buf[dashBase + DASH_GEAR];
+                byte rawGear = gearByte;
+                // Which gear scale this title uses, decided by physics rather
+                // than by packet length. The documented scale is 0=R, 1=N,
+                // 2=1st, but FH6 numbers forward gears from 1 and uses 11 for
+                // neutral, which puts every forward gear one low and shows 1st
+                // as N. Neutral cannot pull a car, so byte 1 seen at speed,
+                // under throttle, with the engine well off idle proves 1 is a
+                // driving gear. Several frames in a row, because a single
+                // frame of a coast-down in true neutral could look similar.
+                // The fast proof is byte 11 at low speed. On the documented
+                // scale that byte is 10th gear, which no car is in at walking
+                // pace, so it can only be neutral, and neutral at 11 means the
+                // forward gears start at 1. This lands on the first gear
+                // change, a second or two into driving.
+                if (!_gearOneIsFirst && gearByte == GEAR_NEUTRAL_ALT && speedMs < 8.3f
+                    && ++_gearNeutralLowFrames >= 3)
+                {
+                    _gearOneIsFirst = true;
+                    Log("[Forza-gear] forward gears start at 1 and neutral is 11 for this title "
+                        + "(byte 11 seen below 30 km/h, which cannot be 10th); readout rescaled.");
+                }
+                else if (gearByte != GEAR_NEUTRAL_ALT)
+                {
+                    _gearNeutralLowFrames = 0;
+                }
+                // The slow proof, for a session that never sees a low-speed
+                // shift: neutral cannot pull a car, so byte 1 held under
+                // throttle, at speed, well off idle is a driving gear.
+                if (!_gearOneIsFirst && gearByte == 1 && accelByte > 200
+                    && speedMs > 7f && maxRpm > 0f && curRpm > maxRpm * 0.2f)
+                {
+                    if (++_gearOneFirstFrames >= 5)
+                    {
+                        _gearOneIsFirst = true;
+                        Log("[Forza-gear] forward gears start at 1 and neutral is 11 for this "
+                            + "title (byte 1 seen driving under load); gear readout rescaled.");
+                    }
+                }
+                else if (gearByte != 1)
+                {
+                    _gearOneFirstFrames = 0;
+                }
+                // A shift passes through neutral, so the byte sits at 11 for
+                // the 128 to 239 ms it takes. Held briefly rather than shown,
+                // so an upshift does not flash N and GearShift sees one change
+                // instead of two. Past the hold it is a driver sitting in
+                // neutral, which shows as neutral. On the documented scale the
+                // guard also stops a phantom "10" between gears; a real
+                // 10-speed reaches 11 only from 9th or 10th, which it allows.
+                int nowTick = Environment.TickCount;
+                if (gearByte == GEAR_NEUTRAL_ALT && _lastGoodGear < GEAR_NEUTRAL_ALT - 1)
+                {
+                    if (_sentinelSinceTick == 0) _sentinelSinceTick = nowTick;
+                    if (unchecked(nowTick - _sentinelSinceTick) < GearNeutralHoldMs)
+                        gearByte = (byte)_lastGoodGear;
+                    else
+                        _lastGoodGear = gearByte;
+                }
+                else
+                {
+                    _sentinelSinceTick = 0;
+                    _lastGoodGear = gearByte;
+                }
                 // Steer is a signed byte (read the byte, reinterpret as sbyte)
                 // normalized to ~[-1, 1]. Sign matches Forza's convention
                 // (+ = right); the spring's downstream invert was tuned on
                 // AC, so the Forza direction is a hardware-verify item.
                 steerNorm = (double)unchecked((sbyte)buf[dashBase + DASH_STEER]) / 127.0;
+
+                // Display-only extras for the dash. Kept out of TelemetryFrame
+                // deliberately: nothing in the force path reads them, and the
+                // frame is the FFB contract. Published as a snapshot the
+                // plugin polls instead.
+                var ex = new ForzaDashExtras
+                {
+                    // Forza sends these in FAHRENHEIT, which the Data Out docs
+                    // never state. Byte tracing on the owner's rig settled it:
+                    // a tyre sat at 51 at rest and reached 158 after twenty
+                    // seconds of wheelspin. Read as Celsius that is a tyre
+                    // starting warm and ending as a smoking ruin; read as
+                    // Fahrenheit it is 10 C warming to 70 C, which is what
+                    // actually happened. Converted here so everything
+                    // downstream gets Celsius, like every other source.
+                    TireTempFL = FToC(ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL)),
+                    TireTempFR = FToC(ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 4)),
+                    TireTempRL = FToC(ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 8)),
+                    TireTempRR = FToC(ReadFloat(buf, dashBase + DASH_TIRE_TEMP_FL + 12)),
+                    Brake01       = brakeByte / 255.0f,
+                    Clutch01      = buf[dashBase + DASH_CLUTCH]    / 255.0f,
+                    Handbrake01   = buf[dashBase + DASH_HANDBRAKE] / 255.0f,
+                    Boost         = ReadFloat(buf, dashBase + DASH_BOOST),
+                    FuelFraction  = ReadFloat(buf, dashBase + DASH_FUEL),
+                    BestLapSec    = ReadFloat(buf, dashBase + DASH_BEST_LAP),
+                    LastLapSec    = ReadFloat(buf, dashBase + DASH_LAST_LAP),
+                    CurrentLapSec = ReadFloat(buf, dashBase + DASH_CURRENT_LAP),
+                    LapNumber     = BitConverter.ToUInt16(buf, dashBase + DASH_LAP_NUMBER),
+                    RacePosition  = buf[dashBase + DASH_RACE_POS],
+                };
+                // Tyre wear only exists on the FM2023-length packet.
+                if (len >= OFF_TIRE_WEAR_FL + 16)
+                {
+                    ex.HasWear = true;
+                    ex.TireWearFL = ReadFloat(buf, OFF_TIRE_WEAR_FL);
+                    ex.TireWearFR = ReadFloat(buf, OFF_TIRE_WEAR_FL + 4);
+                    ex.TireWearRL = ReadFloat(buf, OFF_TIRE_WEAR_FL + 8);
+                    ex.TireWearRR = ReadFloat(buf, OFF_TIRE_WEAR_FL + 12);
+                }
+                // Only replace the snapshot while a car is actually loaded.
+                // Pausing or dropping to a menu zeroes the dash block, and
+                // publishing that made the dash announce "this game does not
+                // report tyre temperatures" the moment the driver hit pause,
+                // which is a claim about the title, not about the moment.
+                // Keeping the last live snapshot freezes those boxes instead,
+                // which is what a real dash does.
+                if (maxRpm > 0f)
+                    DashExtras = ex;
             }
 
             // Forza's accel fields are already m/s² (no g→m/s² conversion
@@ -716,6 +881,11 @@ namespace TrueforceForAll.Core
                 Rpms       = curRpm,
                 MaxRpm     = maxRpm,
                 Throttle01 = accelByte / 255.0,
+                // Straight off the dash packet, so these survive a setup that
+                // points Data Out at the plugin and never forwards to SimHub.
+                Brake01     = dashBase > 0 ? brakeByte     / 255.0 : (double?)null,
+                Clutch01    = dashBase > 0 ? clutchByte    / 255.0 : (double?)null,
+                Handbrake01 = dashBase > 0 ? handbrakeByte / 255.0 : (double?)null,
                 SpeedKmh   = speedMs * 3.6,
 
                 AccelerationHeave = settling ? 0.0 : accelY, // m/s², up
@@ -837,11 +1007,21 @@ namespace TrueforceForAll.Core
             return gear <= 11;
         }
 
-        // Forza convention: 0=R, 1=N, 2=1st, 3=2nd, ... Matches AC's gear
-        // string convention so GearShiftEffect compares unchanged.
-        private static string GearString(int gear)
+        /// <summary>Fahrenheit to Celsius, leaving a zero alone: zero is how
+        /// this packet says "not reported", and 0 F would read as a plausible
+        /// -18 C instead.</summary>
+        private static float FToC(float f) => f == 0f ? 0f : (f - 32f) * 5f / 9f;
+
+        // Two scales in the wild, both starting reverse at 0. The documented
+        // one is 0=R, 1=N, 2=1st; FH6 numbers forward gears from 1 and puts
+        // neutral at 11, which is why 11 sits between every pair of gears
+        // (a shift passes through neutral). Either way the output matches
+        // AC's string convention so GearShiftEffect compares unchanged.
+        private string GearString(int gear)
         {
             if (gear == 0) return "R";
+            if (_gearOneIsFirst)
+                return gear >= GEAR_NEUTRAL_ALT ? "N" : gear.ToString();
             if (gear == 1) return "N";
             return (gear - 1).ToString();
         }

@@ -398,5 +398,34 @@ namespace TrueforceForAll.Core.Tests
             Assert.True(raw > 0.25, $"premise: an unscaled floor lifts crawl garbage ({raw})");
             Assert.True(scaled < 0.025, $"scaled floor must stay imperceptible: {scaled}");
         }
+
+        // ---- AutoStrengthScale (per-car auto strength) ----
+
+        [Fact]
+        public void AutoStrength_UnlearnedCar_IsIdentity()
+        {
+            // A fresh car's EffectivePeak equals the learner's NominalPeak, which
+            // is configured to the target: scale must be exactly 1 (no change).
+            Assert.Equal(1.0, ModeBComposer.AutoStrengthScale(0.90, 0.90, 0.6, 1.6), 10);
+        }
+
+        [Fact]
+        public void AutoStrength_WeakCarBoosts_MonsterTrims()
+        {
+            // A car peaking at 0.6 gets boosted toward the target; one peaking
+            // past the target gets trimmed below 1.
+            Assert.Equal(1.5, ModeBComposer.AutoStrengthScale(0.60, 0.90, 0.6, 1.6), 6);
+            double trim = ModeBComposer.AutoStrengthScale(1.0, 0.90, 0.6, 1.6);
+            Assert.True(trim < 1.0 && trim > 0.85, $"expected mild trim, got {trim}");
+        }
+
+        [Fact]
+        public void AutoStrength_ClampsAndDegeneratesSafely()
+        {
+            Assert.Equal(1.6, ModeBComposer.AutoStrengthScale(0.10, 0.90, 0.6, 1.6), 6);  // cap
+            Assert.Equal(0.6, ModeBComposer.AutoStrengthScale(5.00, 0.90, 0.6, 1.6), 6);  // floor
+            Assert.Equal(1.0, ModeBComposer.AutoStrengthScale(0.0, 0.90, 0.6, 1.6), 6);   // no data
+            Assert.Equal(1.0, ModeBComposer.AutoStrengthScale(double.NaN, 0.90, 0.6, 1.6), 6);
+        }
     }
 }

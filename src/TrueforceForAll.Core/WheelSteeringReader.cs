@@ -1,4 +1,4 @@
-// Reads the wheel's PHYSICAL steering position straight off its HID
+﻿// Reads the wheel's PHYSICAL steering position straight off its HID
 // controller interface, independent of any game.
 //
 // Why this exists: the stationary spring needs to know where the wheel is to
@@ -14,7 +14,7 @@
 // axis from the report descriptor (Simulation Steering, or Generic Desktop X /
 // Wheel), open that interface read-only, and parse incoming input reports with
 // HidSharp's descriptor-driven parser, so we don't hardcode byte offsets per
-// wheel. The value is normalized to [-1, 1] (0 = centred) from the axis's own
+// wheel. The value is normalized to [-1, 1] (0 = centered) from the axis's own
 // logical range. Read failures are non-fatal: the spring just falls back to
 // game-reported steering.
 //
@@ -74,7 +74,7 @@ namespace TrueforceForAll.Core
         public Action<string> Logger { get; set; }
 
         /// <summary>Latest physical steering, normalized to roughly [-1, 1]
-        /// (0 = centred). Sign convention is the wheel's; the spring consumer
+        /// (0 = centered). Sign convention is the wheel's; the spring consumer
         /// flips it if needed, same as it does for game-reported steering.</summary>
         public float SteerNorm { get; private set; }
 

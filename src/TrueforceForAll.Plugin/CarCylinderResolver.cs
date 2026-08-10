@@ -580,6 +580,108 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        // ----- AC local display name (ui_car.json) -----
+
+        // The name AC's own car picker shows lives in ui_car.json, right next
+        // to the fields the cylinder heuristic already reads. Kunos folder ids
+        // read as semi-descriptive ("ks_toyota_ae86"); mod ids don't read as
+        // anything at all ("bdc_streetspec_ae86_v4"), so the car-name cascade
+        // has nothing to show for either and the Car facts name box comes up
+        // blank on every AC car.
+        //
+        // DISPLAY ONLY: this never writes a CarFacts fact and never feeds a
+        // community submit. The field is mod-author-authored text ("- BDC -
+        // Street v4 - AE86"), so treating it as an assertion about the car
+        // would seed the shared consensus with pack prefixes and version
+        // strings. Typing a name into the box is still the only thing that
+        // makes a name yours and shareable.
+        //
+        // Cached per carId, misses included: the car-name cascade runs on
+        // every Car facts refresh, and a car with no ui_car.json shouldn't
+        // re-stat the disk each time. Locked because refreshes come off the
+        // UI thread while car loads come off the telemetry thread.
+        private static readonly object _acNameLock = new object();
+        private static readonly Dictionary<string, string> _acNameCache =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        public static bool TryGetAcLocalDisplayName(string carId, out string displayName)
+        {
+            displayName = null;
+            if (string.IsNullOrEmpty(carId)) return false;
+            lock (_acNameLock)
+            {
+                if (_acNameCache.TryGetValue(carId, out var cached))
+                {
+                    displayName = cached;
+                    return cached != null;
+                }
+            }
+            string resolved = ReadAcLocalDisplayName(carId);
+            lock (_acNameLock) { _acNameCache[carId] = resolved; }
+            displayName = resolved;
+            return resolved != null;
+        }
+
+        private static string ReadAcLocalDisplayName(string carId)
+        {
+            string root = GetAcInstallRoot();
+            if (string.IsNullOrEmpty(root)) return null;
+            // carId comes from telemetry; keep it a single folder segment so a
+            // crafted id ("..\..\...") can't read files outside the cars folder.
+            if (!SafePath.IsSafeSegment(carId)) return null;
+            string uiPath = Path.Combine(root, "content", "cars", carId, "ui", "ui_car.json");
+            if (!File.Exists(uiPath)) return null;
+            string raw;
+            try
+            {
+                raw = File.ReadAllText(uiPath);
+                if (raw.Length > 0 && raw[0] == '﻿') raw = raw.Substring(1);
+            }
+            catch { return null; }
+
+            string name = UnescapeJsonString(ExtractStringField(raw, "name"));
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            // Mod files put line breaks and runs of spaces in this field;
+            // flatten so a one-line name box stays one line.
+            name = Regex.Replace(name, @"\s+", " ").Trim();
+            // A "name" that just restates the folder id is no better than the
+            // carId fallback the cascade already has.
+            if (string.Equals(name, carId, StringComparison.OrdinalIgnoreCase)) return null;
+            // Same ceiling the share window enforces, so a prefilled name is
+            // always something the user could have typed themselves.
+            if (name.Length > 96) name = name.Substring(0, 96).Trim();
+            return name.Length >= 2 ? name : null;
+        }
+
+        // ExtractStringField hands back the raw JSON body with escapes intact.
+        // That's fine for the keyword haystack (the detectors only look for
+        // words) but not for a string we show to the user.
+        private static string UnescapeJsonString(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf('\\') < 0) return s;
+            return Regex.Replace(s, @"\\(u[0-9a-fA-F]{4}|.)", m =>
+            {
+                string tok = m.Groups[1].Value;
+                if (tok.Length == 5 && (tok[0] == 'u' || tok[0] == 'U'))
+                {
+                    return int.TryParse(tok.Substring(1),
+                            System.Globalization.NumberStyles.HexNumber,
+                            System.Globalization.CultureInfo.InvariantCulture, out int cp)
+                        ? ((char)cp).ToString()
+                        : m.Value;
+                }
+                switch (tok[0])
+                {
+                    case 'n': return " ";
+                    case 'r': return " ";
+                    case 't': return " ";
+                    case 'b': return "";
+                    case 'f': return "";
+                    default:  return tok;    // \" \\ \/ and anything unrecognized
+                }
+            });
+        }
+
         // Detect an engine-swap override for a bake hit. Requires an explicit
         // swap word in the haystack AND a recognized engine codename, both
         // gates are necessary because either alone is too noisy. A codename

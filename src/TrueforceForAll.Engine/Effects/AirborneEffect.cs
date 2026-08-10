@@ -1,7 +1,8 @@
 // Airborne ducking coordinator. Unlike every other entry in the effects list
 // this voice produces NO audio of its own: RenderAdd is a no-op. Its job is to
 // detect when the car is off the ground (via TelemetryFrame.Airborne, set by
-// the enhanced sources that can tell, AC and Forza) and tell the plugin's
+// the enhanced sources that can tell: AC, Forza, and the Farming Simulator
+// telemetry mod) and tell the plugin's
 // ducker to pull down the OTHER effects, so a jump or a crest pop doesn't fire
 // a phantom slide, engine roar, or road rumble while the wheels free-spin in
 // the air.
@@ -13,8 +14,9 @@
 // compose multiplicatively, so airborne ducking and sidechain ducking stack
 // cleanly.
 //
-// Detection requires a source that surfaces wheel load / suspension travel, so
-// this only engages in AC and Forza today. On the universal SimHub fallback
+// Detection requires a source that surfaces wheel load / suspension travel (or
+// FS's per-wheel contact flags), so this only engages in AC, Forza and Farming
+// Simulator today. On the universal SimHub fallback
 // TelemetryFrame.Airborne is null and AirborneActive stays false (a no-op),
 // the same way the stationary spring no-ops where steering isn't reported.
 

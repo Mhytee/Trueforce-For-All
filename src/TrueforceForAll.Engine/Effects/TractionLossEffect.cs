@@ -223,7 +223,7 @@ namespace TrueforceForAll.Plugin.Effects
             // load-weighting already zeroes an airborne reading; this also covers
             // the heuristic path, which has no per-wheel load to lean on. Airborne
             // is null on the generic SimHub source until #32 populates it (== true
-            // stays false then, i.e. no-op); AC and Forza set it today.
+            // stays false then, i.e. no-op); AC, Forza and the FS mod set it today.
             if (f.Airborne == true)
             {
                 DecayAndEmit();

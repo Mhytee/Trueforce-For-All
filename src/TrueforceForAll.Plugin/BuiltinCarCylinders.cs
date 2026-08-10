@@ -2629,6 +2629,173 @@ namespace TrueforceForAll.Plugin
             ["Car_4341"] = "2017 Ferrari J50 PO",
             ["Car_4342"] = "1965 Toyota Sports 800 Fanta",
         };
+        // ----- Farming Simulator 25 base-game roster (153 motorized) -----
+        // Keyed by the stable configFileName-derived car id the TF4ALL game
+        // mod supplies (NormalizeCarId over "data/vehicles/<brand>/<model>/
+        // <file>.xml"). Every base-game machine is a licensed real vehicle;
+        // cylinder counts researched from manufacturer specs 2026-08-08
+        // (117 exact-spec, 27 engine-family, 9 class-typical). Farm diesels
+        // are inline; Auto covers the V-twins/V8/V12 outliers. Mod vehicles
+        // fall through to per-user + community car facts, which always
+        // outrank this bake.
+        private static readonly IReadOnlyDictionary<string, BuiltinCarSpec> FarmingSimulator
+            = new Dictionary<string, BuiltinCarSpec>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["agi_bcx3_bcx3"] = new BuiltinCarSpec(2),   // AGI Batco BCX3 1549 field loader: Top-mount 32 hp Kohler gas engine (Command Pro V-twin)
+            ["agi_stormfx_stormfx"] = new BuiltinCarSpec(1, electric: true),   // AGI STORM FX seed treater: Externally powered electric unit, no onboard engine (only the larger STORM PRO has a 37 hp
+            ["agi_stx2_stx2"] = new BuiltinCarSpec(2),   // AGI Westfield STX2 truck auger: Engine-drive option takes a 22-30 hp gas engine (typically Kohler/Vanguard V-twin); electr
+            ["agi_utx44_utx44"] = new BuiltinCarSpec(2),   // AGI Westfield UTX 44 U-trough auger: Briggs & Stratton Vanguard 40 hp EFI V-twin
+            ["agrifac_condorendurance2_condorendurance2"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Agrifac Condor Endurance II sprayer: Volvo Penta D8 7.7L inline-6, 320 hp (Condor line is Volvo Penta D8 powered)
+            ["agrifac_lightoptitraxx_lightoptitraxx"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Agrifac LightTraxx/OptiTraxx beet harvester: Volvo Penta TAD1363VE 12.8L inline-6, 469 hp
+            ["agrio_dinoii_dinoii"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Agrio Dino II sprayer: Deutz 180 kW (245 hp) Stage 3B diesel; TCD 6.1/7.8 class inline-6
+            ["andersongroup_hybridx_hybridx"] = new BuiltinCarSpec(1, EngineConfig.Single),   // Anderson Group Hybrid X bale wrapper: Honda 13 hp gas (GX390 single-cylinder); 20 hp twin optional
+            ["antoniocarraro_mach4r_mach4r"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Antonio Carraro Mach 4 R tracked tractor: Kubota V3800 3.8L 4-cyl turbo common rail, 98 hp
+            ["antoniocarraro_tigrecar3200_tigrecar3200"] = new BuiltinCarSpec(3, EngineConfig.Inline),   // Antonio Carraro Tigrecar 3200 transporter: Yanmar 1.1L 3-cyl diesel, 26 hp
+            ["antoniocarraro_tony10900ttr_tony10900ttr"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Antonio Carraro Tony 10900 TTR: Kubota V3800 3.77L 4-cyl turbo common rail, 98 hp
+            ["aprilia_rx125_rx125"] = new BuiltinCarSpec(1, EngineConfig.Single),   // Aprilia RX 125 motorbike: 124.2cc single-cylinder
+            ["brielmaier_motormower29efi_motormower29efi"] = new BuiltinCarSpec(1, EngineConfig.Single),   // Brielmaier 29 EFI motor mower: Single-cylinder gas motor mower
+            ["caseih_a8800mr_a8800mr"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Case IH Austoft 8800 Multi-Row sugarcane harvester: FPT Cursor 9 8.7L inline-6, 353 hp (Tier 3)
+            ["caseih_axialflow150_axialflow150"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Case IH Axial-Flow 150 series combine (5150/6150/7150): FPT inline-6: NEF 6.7L (5150/6150), Cursor 9 8.7L (7150)
+            ["caseih_farmall120c_farmall120c"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Case IH Farmall 120C: Case IH FPT 3.4L 4-cyl turbo, 117 hp
+            ["caseih_magnumt4b_magnumt4b"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Case IH Magnum series (Tier 4B, 250-380): FPT Cursor 9 8.7L inline-6
+            ["caseih_moduleexpress635_moduleexpress635"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Case IH Module Express 635 cotton picker: FPT Cursor 9 8.7L inline-6, 400 hp
+            ["caseih_patriot50_patriot50"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Case IH Patriot 50 series sprayer (e.g. Patriot 4450): FPT inline-6 (NEF 6.7L to Cursor 9 8.7L by model)
+            ["caseih_puma_puma"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Case IH Puma series: FPT NEF 6.7L inline-6
+            ["caseih_quadtrac715_quadtrac715"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Case IH Steiger 715 Quadtrac: FPT C16 TST (Cursor 16) 15.9L inline-6, 715 hp
+            ["caseih_vestrum130_vestrum130"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Case IH Vestrum 130: FPT NEF 4.5L 4-cyl, 130 hp
+            ["challenger_mt655_mt655"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Challenger MT655 (MT600 series): AGCO Power 84 8.4L inline-6 (MT655E; earlier MT655B used Cat C9 inline-6)
+            ["claas_arion400_arion400"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Claas Arion 400 series (410-470): FPT NEF 4.5L inline-4
+            ["claas_arion550_arion550"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Claas Arion 550 (Arion 500 series): John Deere DPS PowerTech PSS 4.5L inline-4, 165 kW
+            ["claas_evion450_evion450"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Claas Evion 450 combine: Cummins B6.7 Stage V inline-6, 258 hp
+            ["claas_jaguar990tt_jaguar990tt"] = new BuiltinCarSpec(12),   // Claas Jaguar 990 Terra Trac forage harvester: MAN D2862 24.2L V12, 925 hp
+            ["claas_lexion8900_lexion8900"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Claas Lexion 8900 combine: MAN D2676 12.4L inline-6, ~790 hp
+            ["claas_xerion12_xerion12"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Claas Xerion 12.650/12.590: Mercedes-Benz OM473 LA 15.6L inline-6, 653 hp
+            ["deutzfahr_agrostar831_agrostar831"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Deutz-Fahr AgroStar 8.31 (1993): Deutz air-cooled inline-6 turbo diesel (BF6L 513), 230 hp
+            ["deutzfahr_series6c_series6c"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Deutz-Fahr 6C series (6115C-6135C): Deutz TCD 3.6 L04 inline-4
+            ["deutzfahr_series7_series7"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Deutz-Fahr 7 Series (7250 TTV): Deutz TCD 6.1 L06 inline-6
+            ["deutzfahr_series8_series8"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Deutz-Fahr 8 Series (8280 TTV): Deutz TCD 6.1 inline-6, 287 hp
+            ["dewulf_zkivse_zkivse"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Dewulf ZKIV SE self-propelled top-lifting carrot harves: Scania inline-6, 450 hp (DC13 class, per Profi)
+            ["ero_grapeliner7000_grapeliner7000"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // ERO Grapeliner Series 7000 grape harvester: Deutz water-cooled inline-6 (6.06L, TCD 6.1), 175-204 hp
+            ["faresin_pf226_pf226"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Faresin Leader PF 2.26 Plus Ecomode self-propelled mixe: FPT NEF inline-6 (N67), top spec 191 kW/260 hp; smaller PF models use 4-cyl FPT
+            ["fendt_katana_katana"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Fendt Katana 650 forage harvester: MTU (Rolls-Royce) 6R 1500 15.6L inline-6, 650 hp
+            ["fendt_mt1100_mt1100"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Fendt 1100 Vario MT (1151-1167): MAN D4276 16.2L inline-6
+            ["fendt_vario1000_vario1000"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Fendt 1000 Vario (1038-1050): MAN D2676 12.4L inline-6
+            ["fendt_vario200_vario200"] = new BuiltinCarSpec(3, EngineConfig.Inline),   // Fendt 200 Vario (207-211): AGCO Power 33 AWI 3.3L inline-3
+            ["fendt_vario300_vario300"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Fendt 300 Vario (311-314): AGCO Power 44 AWI 4.4L inline-4
+            ["fendt_vario500_vario500"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Fendt 500 Vario (512-516): Deutz TCD 4.1 L4 inline-4
+            ["fendt_vario700_vario700"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Fendt 700 Vario Gen7 (720-728): AGCO Power CORE75 7.5L inline-6, 303 hp in 728
+            ["fendt_vario900_vario900"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Fendt 900 Vario (930-942): MAN D1556 9.0L inline-6
+            ["fiat_series90_series90"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Fiat 160-90 / 180-90 DT Turbo (Series 90): Fiat 8365.25 turbo diesel, 8.1L inline-6 (in-game 160-90 and 180-90 DT)
+            ["gregoire_gl86_gl86"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Gregoire GL8.6 grape harvester: Deutz 6-cyl 190 hp (TCD 6.1 class), per Gregoire spec
+            ["grimme_sl8022_sl8022"] = new BuiltinCarSpec(1, electric: true),   // Grimme SL 80-22 store loader: Mains-electric store loader conveyor; no combustion engine
+            ["grimme_tc816_tc816"] = new BuiltinCarSpec(1, electric: true),   // Grimme TC 816 truck-loading conveyor: Electrically driven loading conveyor; no combustion engine
+            ["grimme_ventor4150_ventor4150"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Grimme Ventor 4150 potato harvester: Mercedes-Benz OM 473 LA 15.6L inline-6, ~626 hp
+            ["holmer_terradost540_terradost540"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // HOLMER Terra Dos 5-40 beet harvester: Mercedes-Benz OM 473 LA 15.6L inline-6, 652 hp Stage V
+            ["impex_hannibalt50_hannibalt50"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // IMPEX Hannibal T50 tracked harvester: Cummins QSB6.7 inline-6, 340 hp
+            ["international_cvseries_cvseries"] = new BuiltinCarSpec(8),   // International CV Series (CV515): International 6.6L turbo-diesel V8 (Duramax L5D), 350 hp
+            ["international_series200_series200"] = new BuiltinCarSpec(8),   // International Harvester 200 pickup (1974-75): IH V-345/V-392 gasoline V8 (typical light-line engine)
+            ["international_transtarii_transtariieagle"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // International Transtar II Eagle (CO-4070B): Cummins NTC 855 14L inline-6 typical (Cat 3406 i6 / Detroit 8V92 V8 options existed)
+            ["iseki_hj6130_hj6130"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Iseki HJ6130 rice combine: Iseki water-cooled 4-cyl common-rail turbo diesel, 130 ps
+            ["iseki_prj8d_prj8d"] = new BuiltinCarSpec(3, EngineConfig.Inline),   // Iseki PRJ8D rice transplanter: 24.5 hp Iseki diesel; cylinder count unpublished, 3-cyl typical for this class
+            ["iseki_seriestjw_seriestjw"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Iseki TJW1233 tractor: Iseki 4.1L 4-cyl common-rail intercooled turbo diesel, 123 hp
+            ["jcb_series547_series547"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // JCB Loadall 541-70 AGRI PRO telehandler: JCB EcoMAX/DieselMAX 4-cyl diesel, 145 hp
+            ["jcb_wheelloader435s_wheelloader435s"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // JCB 435S Agri wheel loader: Cummins B6.7 6.7L inline-6, ~230 hp
+            ["jenz_cobrahybrid_cobrahybrid"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // JENZ Chippertruck Cobra hybrid: Twin-engine: MAN D26 inline-6 chassis (520 hp) + CAT C18 inline-6 chipper (812 hp); one en
+            ["johndeere_cp690_cp690"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere CP690 cotton picker: John Deere PowerTech PSS 13.5L inline-6
+            ["johndeere_fellerbuncher843l_fellerbuncher843l"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 843L-II feller buncher: John Deere PowerTech 6068 6.8L inline-6, ~249 hp
+            ["johndeere_harvester1270g_harvester1270g"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 1270G wheeled harvester: John Deere PowerTech 6090 9.0L inline-6
+            ["johndeere_series3650_series3650"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 3650 tractor: John Deere 6059 5.9L inline-6, ~114 hp
+            ["johndeere_series6m_series6m"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // John Deere 6M series (6M 95-125): John Deere PowerTech 4.5L 4-cyl (small/mid-frame 6M; in-game 6M 95-125)
+            ["johndeere_series6r_series6rextralarge"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 6R 230 / 6R 250: John Deere PowerTech PSS 6.8L inline-6
+            ["johndeere_series6r_series6rlarge"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 6R 145-185: John Deere PowerTech 6.8L inline-6 (in-game 6R 145-185)
+            ["johndeere_series7r_series7r"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 7R series: John Deere PowerTech PSS 9.0L inline-6
+            ["johndeere_series848l_series848l"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 848L-II grapple skidder: John Deere PowerTech 6068 6.8L inline-6
+            ["johndeere_series8r_series8r"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 8R series: John Deere PowerTech PSS 9.0L inline-6
+            ["johndeere_series8rt_series8rt"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 8RT series (tracked): John Deere PowerTech PSS 9.0L inline-6
+            ["johndeere_series8rx_series8rx"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 8RX series (four-track): John Deere PowerTech PSS 9.0L inline-6
+            ["johndeere_series9000_series9000"] = new BuiltinCarSpec(12),   // John Deere 9000 series forage harvester (9700-9900): Liebherr D9512/D9612 24L V12 (in-game 770-970 hp = 9700/9800/9900)
+            ["johndeere_series9r_series9r"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 9R series (9R 440-640): John Deere PowerTech 13.6L inline-6
+            ["johndeere_series9rx830_series9rx830"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere 9RX 830: John Deere JD18 18.0L inline-6, 830 hp
+            ["johndeere_seriess7_seriess7"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere S7 combine series: John Deere PowerTech 9.0L/13.6L inline-6 (S7 600-700 = 9.0L, S7 800-900 = 13.6L)
+            ["johndeere_seriesx9_seriesx9"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // John Deere X9 combine (X9 1000/1100): John Deere PowerTech 13.6L inline-6
+            ["jungheinrich_efgs50s_efgs50s"] = new BuiltinCarSpec(1, electric: true),   // Jungheinrich EFG S50s electric forklift: Battery-electric counterbalance forklift, no combustion engine
+            ["kaercher_hds9184m_hds9184m"] = new BuiltinCarSpec(1, electric: true),   // Karcher HDS 9/18-4 M hot-water pressure washer: Mains 3-phase 4-pole electric motor with 3-piston axial pump; diesel burner only heats wat
+            ["komatsu_harvester951_harvester951"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Komatsu 951 wheeled harvester: AGCO Power 7.4L 6-cyl turbo diesel (74 AWF), 214 kW
+            ["kramer_kt557_kt557"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Kramer KT557 telehandler: Deutz TCD 4.1 L4, 115 kW / 156 hp
+            ["krone_bigm450_bigm450"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Krone BiG M 450 self-propelled mower conditioner: Liebherr inline 6-cyl (D946), 449 hp, Stage V
+            ["krone_bigx1180_bigx1180"] = new BuiltinCarSpec(12),   // Krone BiG X 1180 forage harvester: Liebherr D9512 V12, 24.2L, 1156 hp
+            ["kubota_r640_r640"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Kubota R640 wheel loader: Kubota V2607-CR-TE5-WL 4-cyl turbo diesel, 61.2 hp
+            ["kubota_rtvx1140_rtvx1140"] = new BuiltinCarSpec(3, EngineConfig.Inline),   // Kubota RTV-X1140 utility vehicle: Kubota D1105 3-cyl diesel, 1.12L, 24.8 hp
+            ["kubota_rtvxg850_rtvxg850"] = new BuiltinCarSpec(2),   // Kubota RTV-XG850 Sidekick utility vehicle: Kubota WG852 851cc inline-2 DOHC gasoline, 48.3 hp
+            ["kubota_seriesm8_seriesm8"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Kubota M8 series tractor (M8-181/M8-201/M8-211): Cummins B6.7 6-cyl turbo diesel, 190-210 hp
+            ["kubota_svl972_svl972"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Kubota SVL97-2 compact track loader: Kubota V3800-TIEF4 4-cyl turbo diesel, 96.4 hp
+            ["kuhn_spwintense_spwintense"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Kuhn SPW Intense self-propelled mixer wagon: Volvo Penta 7.7L 6-cyl turbo diesel, 250 hp, Stage V
+            ["landini_seriesrex4_seriesrex4"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Landini REX4 series orchard/vineyard tractor: Deutz TCD 2.9 L4 Stage V, 75-112 hp across the series
+            ["lindner_lintrac130_lintrac130"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Lindner Lintrac 130 tractor: Perkins Syncro 904J-E36TA 3.6L 4-cyl, 136 hp
+            ["lizard_multipurposetruck_multipurposetruck"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Lizard multi-purpose truck (fictional generic truck): Fictional Giants brand; class-typical inline-6 truck diesel
+            ["lizard_pickup2017_pickup2017"] = new BuiltinCarSpec(8),   // Lizard Pickup 2017 (fictional generic US pickup): Fictional Giants brand; class-typical US pickup V8
+            ["lizard_s710_s710"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Lizard S710 (fictional generic truck): Fictional Giants brand; class-typical inline-6 truck diesel
+            ["mack_anthem_anthem"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Mack Anthem highway tractor: Mack MP8 12.8L inline-6 turbo diesel
+            ["mack_superliner1979_superliner1979"] = new BuiltinCarSpec(8),   // Mack Super-Liner (1979): Mack E9 V8 16.4L, the iconic Super-Liner engine (I6 options also existed)
+            ["manitou_m504_m504"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Manitou M 50-4 rough terrain forklift: Deutz TCD 2.9 L4 (M 50-4 D ST5, 55 kW)
+            ["manitou_mlt841_mlt841"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Manitou MLT 841-145 PS+ telehandler: Yanmar 4TN101 4-cyl, 141 hp (current NewAg line)
+            ["masseyferguson_beta7360al4_beta7360al4"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Massey Ferguson Beta 7360 AL-4 combine: AGCO Power 6-cyl (225 kW / 306 hp)
+            ["masseyferguson_mf8570_mf8570"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Massey Ferguson 8570 rotary combine (1990-1997): Cummins 6CTA 8.3L inline-6, 220 hp
+            ["masseyferguson_series5700s_series5700s"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Massey Ferguson 5700 S series (5709 S - 5713 S): AGCO Power 44 AWF 4.4L 4-cyl
+            ["masseyferguson_series7s_series7s"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Massey Ferguson 7S series (7S.155 - 7S.210): AGCO Power 66 AWF 6.6L 6-cyl
+            ["masseyferguson_series9s_series9s"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Massey Ferguson 9S series (9S.285 - 9S.425): AGCO Power 84 AWF 8.4L 6-cyl
+            ["mccormick_x8vtdrive_x8vtdrive"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // McCormick X8 VT-Drive (X8.611 - X8.631): Betapower Fuel Efficiency (FPT NEF 67) 6.7L 6-cyl, 264-310 hp
+            ["meridian_conveyall1690_conveyall1690"] = new BuiltinCarSpec(2),   // Meridian Convey-All 1690 truck load conveyor (16 in x 9: Kohler ECH980 EFI gas V-twin, 38 hp (Meridian's 90-ft conveyor drive option)
+            ["meridian_tl1239_tl1239"] = new BuiltinCarSpec(3, EngineConfig.Inline),   // Meridian TL12-39 truck load grain auger: Hatz 3H50TIC 3-cyl diesel, 40 hp (dealer-listed 40 HP Hatz option)
+            ["merlo_multifarmer449_multifarmer449"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Merlo MultiFarmer 44.9 (MF 44.9 CS 170 CVTronic): FPT NEF 4.5L 4-cyl, 170 hp
+            ["newholland_braud9070l_braud9070l"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // New Holland Braud 9070L grape harvester: FPT Industrial NEF 4-cyl, 164 hp
+            ["newholland_braud9090x_braud9090x"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // New Holland Braud 9090X olive/grape harvester: FPT Industrial NEF 6-cyl, 175 hp
+            ["newholland_chseries_chseries"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // New Holland CH7.70 crossover harvester: FPT Cursor 9 8.7L 6-cyl, 374 hp
+            ["newholland_cr11_cr11"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // New Holland CR11 combine: FPT Cursor 16 TST 15.9L 6-cyl, 775 hp
+            ["newholland_fr780_fr780"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // New Holland FR780 Forage Cruiser forage harvester: FPT Cursor 16 15.9L 6-cyl, ~775 hp
+            ["newholland_l318_l318"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // New Holland L318 skid steer: New Holland (Shibaura-family) 4-cyl Tier 4F diesel, 60 hp
+            ["newholland_t8_t8"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // New Holland T8 series (T8.320 - T8.435 Genesis): FPT Cursor 9 8.7L 6-cyl
+            ["newholland_tk4_tk4"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // New Holland TK4 crawler tractor (TK4.80 - TK4.110): FPT F5C 3.4L common rail 4-cyl, 74-99 hp
+            ["oxbo_at5105_at5105"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Oxbo (Ploeger) AT5105 self-propelled slurry applicator: Scania DC13 inline-6, 550 hp (matches in-game 550 hp; early 400 hp units used the 5-cyl DC
+            ["oxbo_bp2140e_bp2140e"] = new BuiltinCarSpec(5, EngineConfig.Inline),   // Oxbo (Ploeger) BP2140e green bean harvester: Scania DC09 inline-5, 9.3L, 232 kW (315 hp)
+            ["oxbo_epd540e_epd540e"] = new BuiltinCarSpec(5, EngineConfig.Inline),   // Oxbo (Ploeger) EPD540e pea harvester: Scania DC09 inline-5, 9.3L, 291 kW (396 hp), per official Oxbo spec sheet
+            ["oxbo_mkb4tr_mkb4tr"] = new BuiltinCarSpec(5, EngineConfig.Inline),   // Oxbo (Ploeger) MKB-4TR spinach harvester: 400 hp Scania, almost certainly DC09 inline-5 like its BP/EPD siblings (400 hp is the DC09
+            ["pfanzelt_felix_felix"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Pfanzelt Felix 208.5 specialist forestry tractor: Deutz TCD 6.1 Stage V inline-6, 133 kW
+            ["pfanzelt_pmtraclll_pmtraclll"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Pfanzelt Pm Trac III 2380 system tractor: Deutz TCD 6.1 L6, 6.06L inline-6, 133 kW
+            ["piaggio_ape50_ape50"] = new BuiltinCarSpec(1, EngineConfig.Single),   // Piaggio Ape 50: 49.8cc single-cylinder
+            ["ponsse_bison_bison"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Ponsse Bison Active Frame forwarder: Mercedes-Benz OM936LA inline-6, 210 kW (286 hp)
+            ["prinoth_leitwolf_leitwolf"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Prinoth Leitwolf snow groomer: 13-liter straight-six (Cat C13 lineage), 530 hp, 2600 Nm
+            ["riedler_timberframefh16_timberframefh16"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Volvo FH16 timber truck with Riedler frame: Volvo D16 16.1L inline-6
+            ["rigitrac_skh60_skh60"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Rigitrac SKH 60 tractor: Deutz 4-cyl Stage V, 75 hp (likely TCD 2.9 family)
+            ["ropa_maus5_maus5"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // ROPA Maus 5 beet cleaner-loader: Mercedes-Benz OM936 7.7L inline-6, 260 kW (354 hp)
+            ["ropa_maus5_nawaromaus"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // ROPA NawaRo-Maus (Maus 5 based loader): Same Maus 5 platform: Mercedes-Benz OM936 inline-6
+            ["ropa_tiger6s_tiger6s"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // ROPA Tiger 6S beet harvester: Volvo Penta D16 TWD1683VE 16.12L inline-6, 796 hp, twin turbo
+            ["rottne_f20d_f20d"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Rottne F20D forwarder: John Deere 6090 PowerTech PSS 9.0L inline-6, 207 kW (278 hp)
+            ["schaeffer_loader23e_loader23e"] = new BuiltinCarSpec(1, electric: true),   // Schaeffer 23e battery-electric compact loader: Pure battery-electric, no combustion engine (cylinders value is a schema placeholder)
+            ["schaeffer_loader9660t_loader9660t"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Schaeffer 9660 T telescopic wheel loader: Deutz TCD 5.2 4-cyl, 130-150 kW, per Schaeffer official specs
+            ["sennebogen_g340_g340"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Sennebogen 340 G telehandler: Cummins F3.8 4-cyl, 100 kW Stage V
+            ["sennebogen_series835g_series835g"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Sennebogen 835 G material handler: Cummins B6.7 inline-6, ~188-194 kW Stage V
+            ["skoda_enyaq_enyaq"] = new BuiltinCarSpec(1, electric: true),   // Skoda Enyaq: Battery electric SUV, no combustion engine
+            ["skoda_kodiaq_kodiaq"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Skoda Kodiaq: 2.0 TSI/TDI inline-4
+            ["train_locomotiveas_locomotiveas"] = new BuiltinCarSpec(12),   // Generic diesel locomotive (Hutan Pantai / Asia map): Class-typical V12 diesel-electric locomotive
+            ["train_locomotiveeu_locomotiveeu"] = new BuiltinCarSpec(1, electric: true),   // Generic EU electric locomotive: Electric locomotive, no combustion engine
+            ["train_locomotiveus_forestrylocomotive"] = new BuiltinCarSpec(12),   // Generic US/forestry diesel-electric locomotive: Class-typical V12 diesel-electric locomotive
+            ["valtra_sseries_sseries"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Valtra S6 Series (S286-S416): AGCO Power CORE84 8.4L 6-cyl (AP84 LXTN-E3)
+            ["valtra_tseries_tseries"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Valtra T Series (T145-T255): AGCO Power 66/74 6.6-7.4L 6-cyl
+            ["vermeer_zr5_zr5"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Vermeer ZR5-1200 self-propelled baler: Cummins B4.5 Stage V 4.5L inline-4, 200 hp
+            ["volvo_ec250dl_ec250dl"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Volvo EC250D L excavator: Volvo D7 7.1L inline-6
+            ["volvo_ec380dl_ec380dl"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Volvo EC380D L excavator: Volvo D13 12.8L inline-6
+            ["volvo_fh16_fh16"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Volvo FH16 truck: Volvo D16 16.1L inline-6 (newer gen D17, also I6)
+            ["volvo_l120h_l120h"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Volvo L120H wheel loader: Volvo D8J 7.8L straight-6
+            ["volvo_l180h_l180h"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Volvo L180H wheel loader: Volvo D13J 12.8L inline-6
+            ["volvo_l200h_l200h"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Volvo L200H High Lift wheel loader: Volvo D13J 12.8L inline-6
+            ["volvo_vnx300_vnx300"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Volvo VNX 300 heavy-haul truck: Volvo D13 12.8L inline-6, 500 hp
+            ["zetor_crystal_crystal"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Zetor Crystal HD (150/170): Deutz TCD 6.1 L6 6.1L 6-cyl
+            ["zetor_crystal16045_crystal16045"] = new BuiltinCarSpec(6, EngineConfig.Inline),   // Zetor Crystal 16045: Zetor 6.8L 6-cyl turbodiesel
+            ["zetor_forterrahsx140_forterrahsx140"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Zetor Forterra HSX 140: Zetor Z1617 4.156L 4-cyl 16v turbo
+            ["zetor_proximahs120_proximahs120"] = new BuiltinCarSpec(4, EngineConfig.Inline),   // Zetor Proxima HS 120: Zetor 4.156L 4-cyl 16v turbo
+        };
+
         /// <summary>Lookup keyed first by SimHub GameName, then by carId
         /// (case-insensitive on the inner key — AC carIds are filesystem
         /// folders so case can vary slightly across Steam vs CM installs).</summary>
@@ -2637,6 +2804,12 @@ namespace TrueforceForAll.Plugin
         {
             ["AssettoCorsa"] = AssettoCorsa,
             ["FH5"]          = ForzaHorizon5,
+            // FS22 shares the same data/vehicles layout for carried-over
+            // machines, so the FS25 table gives it free partial coverage:
+            // an id only matches when the config path is identical, i.e.
+            // the same real machine, so wrong hits are impossible.
+            ["FarmingSimulator25"] = FarmingSimulator,
+            ["FarmingSimulator22"] = FarmingSimulator,
         };
 
         /// <summary>Display-name-only catalogs, consulted by TryGetDisplayName

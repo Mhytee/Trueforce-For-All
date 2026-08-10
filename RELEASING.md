@@ -75,7 +75,18 @@ For each release:
    & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\TrueforceForAll.iss
    ```
 
-   The artifact lands at `installer\output\TrueforceForAll-Setup.exe`.
+   The artifact lands at `installer\output\TrueforceForAll-Setup.exe`. The
+   name has no version in it, so a failed or skipped build leaves the PREVIOUS
+   release's installer sitting there under the right name and step 7 uploads it
+   without complaint. Check the stamp before uploading, and keep a versioned
+   copy beside it:
+
+   ```powershell
+   (Get-Item installer\output\TrueforceForAll-Setup.exe).VersionInfo.ProductVersion
+   # must equal the release version; if it does not, the build did not run
+   Copy-Item installer\output\TrueforceForAll-Setup.exe `
+             installer\output\TrueforceForAll-Setup-X.Y.Z.exe
+   ```
 7. Create a **draft** GitHub release targeting the version-bump commit on
    `main`, and upload the installer:
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 
@@ -59,5 +59,6 @@ namespace TrueforceForAll.Plugin
             }
             plugin.SubmitCarNameToCommunity(game, carId, newName);
         }
+
     }
 }

@@ -1,4 +1,4 @@
-// Section picker shown when the user clicks Download on a community
+﻿// Section picker shown when the user clicks Download on a community
 // preset. Lists every non-null section in the incoming CarOverride with a
 // checkbox so the user can take just the parts they want. Checked
 // sections come back via ChosenSections on Apply; an empty result means
@@ -29,7 +29,7 @@ namespace TrueforceForAll.Plugin
             ("roadbumps",    "Road bumps"),
             ("tractionloss", "Traction loss"),
             ("axleslip",     "Axle slip"),
-            ("kerbthump",    "Kerb thump"),
+            ("kerbthump",    "Curb thump"),
             ("lockupjudder", "Lockup judder"),
             ("gearshift",    "Gear shift"),
             ("abs",          "ABS click"),

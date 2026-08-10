@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace TrueforceForAll.Plugin
@@ -18,7 +18,7 @@ namespace TrueforceForAll.Plugin
             { "roadbumps",    "Road bumps" },
             { "tractionloss", "Traction loss" },
             { "axleslip",     "Axle slip" },
-            { "kerbthump",    "Kerb thump" },
+            { "kerbthump",    "Curb thump" },
             { "lockupjudder", "Lockup judder" },
             { "gearshift",    "Gear shift" },
             { "abs",          "ABS click" },

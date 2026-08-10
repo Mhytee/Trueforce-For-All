@@ -47,21 +47,50 @@ namespace TrueforceForAll.Plugin
             // Feature toggles the user opted into.
             "PluginEnabled", "MairaFfbPassthrough", "ModeBRevLightsEnabled", "ShowFeedbackBox",
             "ShowAchievementCelebrations",
+            // Has ever backed the project: a fact about the person, not the machine,
+            // so it travels and a supporter is never re-asked on a second PC.
+            "HasEverSupported",
+            // Wheel-base OLED. Travels with the rev-light toggle for the same
+            // reason: it is a preference about how the wheel presents, and the
+            // wheel goes to the second PC with the driver.
+            "ModeBOledEnabled", "OledScreen", "OledUseMph",
+            "OledCustomLayout", "OledCustomSlots", "OledCustomTexts",
+            "OledShiftFlash", "OledShiftFlashStyle", "OledLapResult",
+            "OledGreetingEnabled", "OledGreetingText", "OledWriteIntervalMs",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
             "MotdLevel", "ShowEffectsTabShareButtons",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
             "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
+            "DashDriveSlots", "DashDriveTwoRows", "DashFlagsEnabled",
+            // Per-game Drive layouts travel with the shared one: same kind of
+            // choice, and the games they are keyed to are the same games on
+            // the second PC.
+            "DashDriveSlotsPerGame", "DashDriveSlotsByGame",
+            // Learned per-game telemetry capability. Travels for the same
+            // reason CarGripCalibration does: it is knowledge that costs seat
+            // time to rebuild, and it is about the games, not this PC.
+            "DashDriveSeen", "DashDriveDrivenSec",
+            "DashRevStripCentered", "DashDrivePedals",
+            "DashSpotterEnabled",
+            "DashIdleEnabled", "DashIdleDelaySeconds", "DashIdleStyle",
+            "DashIdleDriverName", "DashIdleNumber", "DashIdleColor", "DashIdleNameAbove", "DashIdleFont", "DashTheme",
             "DashTabOrder", "DashTabsDisabled",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
-            "DevModeUnlocked", "ImportPreviewBypass",
+            "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb",
             "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
+            "ClassicSpringEmulationEnabled",
+            "SpringModeTerrainEnabled", "SpringModeTerrainGain",
+            "SpringModeCenterGain", "SpringModeCenterFirmness", "SpringModeSpeedEffect",
+            "SpringModeStrength", "SpringModeMinForce",
+            "SpringModeDragEnabled", "SpringModeDragGain", "SpringModeDragStrainFraction",
+            "SpringModeChassisWeightEnabled", "SpringModeChassisWeightGain",
             "DuckingEnabled", "DuckDepth", "DuckAttackMs", "DuckReleaseMs",
             "DuckFrequencyAware",
             // Telemetry based FFB (Mode B): all global feel choices, same
@@ -77,13 +106,13 @@ namespace TrueforceForAll.Plugin
             "ModeBPhaseLead", "ModeBPhaseLeadMs",
             "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
             "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
-            "ModeBLateralDemand",
+            "ModeBLateralDemand", "ModeBAutoStrength",
             "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
             "CarGripCalibration",
             // Per-effect settings blocks (all taste).
             "AudioCapture", "EnginePulse", "RoadBumps", "TractionLoss", "GearShift",
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
-            "AxleSlip", "KerbThump", "LockupJudder",
+            "AxleSlip", "KerbThump", "LockupJudder", "ImplementThud",
             // Per-game/car data + the custom-engine library (lives in settings, not files).
             "GameEnabled", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
             "CustomEngines", "SharingAuthor",
@@ -109,6 +138,9 @@ namespace TrueforceForAll.Plugin
             "RememberSignInEmail", "LastSignInEmail",
             // Last wheel detected on this PC (Account session list display); per-PC hardware.
             "LastUsedWheel",
+            // TF4ALL Enhanced Telemetry game-mod install state: the mod lives in THIS
+            // PC's Farming Simulator folders, and consent was given here.
+            "FsModInstallDeclined", "FsModInstalledVersions",
             // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
             // per-PC hardware state like LastUsedWheel.
             "WheelDefaultsApplied",
@@ -152,6 +184,10 @@ namespace TrueforceForAll.Plugin
             // MOTD audience / nag pacing: contribution-recency timestamps + nag cooldown.
             // Nag/learned state; re-learns harmlessly on a second PC.
             "LastSharedPresetOn", "LastVotedOn", "LastSubmittedFactOn", "MotdLastNagOn",
+            "MotdLastSupportNagOn",
+            // Support-prompt pacing. HasEverSupported is deliberately NOT here: it
+            // travels, so a supporter restoring onto a second PC is not asked again.
+            "SupportPromptCount", "SupportPromptDeclineCount", "SupportPromptLastUtc",
             "ExperimentalSuccessReportDismissed", "LogUsbBytesEnabled", "StopStreamOnPause",
             // Per-account achievement-celebration baseline + notify-dot (re-seed on PC2).
             "AchievementBaseline", "AchievementUnseen",
@@ -205,8 +241,18 @@ namespace TrueforceForAll.Plugin
             "ModeBPhaseLead", "ModeBPhaseLeadMs",
             "ModeBGripAutoCal", "ModeBFrictionCircle", "ModeBLockupRecoverMs",
             "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
-            "ModeBLateralDemand",
+            "ModeBLateralDemand", "ModeBAutoStrength",
             "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
+            // Spring mode is Mode B's Farming Simulator half and is tuned per
+            // wheel the same way: ApplyWheelDefaults gives the G923 its own
+            // SpringModeMinForce (0.15, for the belt friction that eats FS's
+            // light spring) where every other wheel ships 0. Without these
+            // names the gate let a G923 backup write that floor onto a G PRO.
+            "SpringModeCenterGain", "SpringModeCenterFirmness", "SpringModeSpeedEffect",
+            "SpringModeStrength", "SpringModeMinForce",
+            "SpringModeTerrainEnabled", "SpringModeTerrainGain",
+            "SpringModeDragEnabled", "SpringModeDragGain", "SpringModeDragStrainFraction",
+            "SpringModeChassisWeightEnabled", "SpringModeChassisWeightGain",
             "CarGripCalibration",
         };
 

@@ -60,6 +60,15 @@ namespace TrueforceForAll.Core
         /// <summary>Throttle pedal, normalized 0..1.</summary>
         public double Throttle01;
 
+        /// <summary>Brake, clutch and handbrake, 0..1, null when the source
+        /// does not report them. Nullable rather than defaulting to 0 so a
+        /// consumer can tell "not pressed" from "this game never says", which
+        /// matters for a display: a brake meter pinned at empty all session is
+        /// worse than one that is honestly absent. Populated by the sources
+        /// that have them (SimHub, Forza's dash packet); AC's shared memory
+        /// reader does not currently read them.</summary>
+        public double? Brake01, Clutch01, Handbrake01;
+
         // ---- Motion ----
         public double SpeedKmh;
         /// <summary>Vertical acceleration in m/s². Null when source doesn't surface it.</summary>
@@ -206,6 +215,52 @@ namespace TrueforceForAll.Core
         /// pulse in RoadBumpsEffect on rising edge so kerb hits feel
         /// percussive even when the surface-rumble channel is also active.</summary>
         public bool? OnRumbleStrip;
+
+        /// <summary>True while the vehicle or an attached implement is
+        /// actually working: lowered into the ground or powered on (Farming
+        /// Simulator's TF4ALL mod). Null on sources that don't report it.
+        /// Edge-triggers ImplementThudEffect (the linkage clunk).</summary>
+        public bool? ImplementWorking;
+
+        /// <summary>True while implement hydraulics are in motion: a
+        /// lower/raise animating through the attacher joints, or a fold
+        /// deploying (mod 0.2.8+). Null on sources that don't report it.
+        /// Drives the hydraulic hum; its falling edge lands the settle
+        /// thud.</summary>
+        public bool? ImplementMoving;
+
+        /// <summary>How fast the implement hydraulics are traveling, as
+        /// the fraction of full travel covered per second: ~0.5-1.0 for a
+        /// three-point lower, ~0.1 for a big slow fold, 0 while idle (mod
+        /// 0.2.14+). Null on sources that don't report it. Rides the
+        /// hydraulic hum's pitch.</summary>
+        public float? ImplementSpeed;
+
+        /// <summary>Session-monotonic count of discrete mechanism toggles
+        /// with no measurable travel: a combine's straw-swath flap and kin
+        /// (mod 0.2.16+). Null on sources that don't report it. Each
+        /// increment lands a light thud.</summary>
+        public int? ImplementEvent;
+
+        /// <summary>Session-monotonic count of STAGE ends within a running
+        /// implement cycle: one part of a multi-part sequence finished while
+        /// the cycle carries on, e.g. a wide cultivator's lift completing
+        /// before its wings fold (mod 0.2.22+). Null on sources that don't
+        /// report it. Each increment lands a momentum-weighted thud.</summary>
+        public int? ImplementPhase;
+
+        /// <summary>How fast the part that just finished its stage was
+        /// travelling when it stopped, in the same fraction-of-full-travel
+        /// per second unit as <see cref="ImplementSpeed"/> (mod 0.2.22+).
+        /// Scales the stage thud.</summary>
+        public float? ImplementPhaseSpeed;
+
+        /// <summary>True while the current implement motion is MANUAL-ONLY:
+        /// a stick-driven arm (loader, crane, telehandler) with no joint,
+        /// fold or pipe cycle running (mod 0.2.19+). Null on sources that
+        /// don't report it. Manual settles land quieter, scaled by the
+        /// speed at the stop.</summary>
+        public bool? ImplementManual;
 
         // ---- Collision ----
         /// <summary>Normalized collision magnitude this frame. ~0 = no

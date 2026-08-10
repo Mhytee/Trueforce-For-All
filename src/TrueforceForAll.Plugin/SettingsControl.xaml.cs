@@ -106,8 +106,8 @@ namespace TrueforceForAll.Plugin
         // Values mirror TrueforcePlugin.SectionKind so we can pass through.
         // Numeric values mirror TrueforcePlugin.SectionKind so we can pass
         // through with a cast.
-        private enum EffectKind { Master = 0, Ducking = 1, Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, SpikeReduction = 8, PitLimiter = 9, Drs = 10, Collision = 11, RevLimiter = 12, Airborne = 13, StationarySpring = 14, AxleSlip = 15, KerbThump = 16, LockupJudder = 17 }
-        private readonly bool[] _effectDirty = new bool[18];
+        private enum EffectKind { Master = 0, Ducking = 1, Audio = 2, Engine = 3, Bumps = 4, Traction = 5, Shift = 6, Abs = 7, SpikeReduction = 8, PitLimiter = 9, Drs = 10, Collision = 11, RevLimiter = 12, Airborne = 13, StationarySpring = 14, AxleSlip = 15, KerbThump = 16, LockupJudder = 17, ImplementThud = 18 }
+        private readonly bool[] _effectDirty = new bool[19];
         private System.Windows.Controls.Button GetEffectSaveBtn(EffectKind which)
         {
             switch (which)
@@ -130,6 +130,7 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.AxleSlip:       return AxleSlipSaveBtn;
                 case EffectKind.KerbThump:      return KerbThumpSaveBtn;
                 case EffectKind.LockupJudder:   return LockupJudderSaveBtn;
+                case EffectKind.ImplementThud:  return ImplementThudSaveBtn;
             }
             return null;
         }
@@ -155,6 +156,7 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.AxleSlip:       return AxleSlipRevertBtn;
                 case EffectKind.KerbThump:      return KerbThumpRevertBtn;
                 case EffectKind.LockupJudder:   return LockupJudderRevertBtn;
+                case EffectKind.ImplementThud:  return ImplementThudRevertBtn;
             }
             return null;
         }
@@ -178,8 +180,9 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.RevLimiter:     return "Redline buzz";
                 case EffectKind.Airborne:       return "Airborne ducking";
                 case EffectKind.AxleSlip:       return "Axle slip";
-                case EffectKind.KerbThump:      return "Kerb thump";
+                case EffectKind.KerbThump:      return "Curb thump";
                 case EffectKind.LockupJudder:   return "Lockup judder";
+                case EffectKind.ImplementThud:  return "Implement thud";
             }
             return "section";
         }
@@ -187,7 +190,8 @@ namespace TrueforceForAll.Plugin
         // hides the per-car option for these (no override concept).
         private static bool SectionHasCarScope(EffectKind w)
             => w != EffectKind.Master && w != EffectKind.Ducking && w != EffectKind.SpikeReduction
-               && w != EffectKind.Airborne && w != EffectKind.StationarySpring;
+               && w != EffectKind.Airborne && w != EffectKind.StationarySpring
+               && w != EffectKind.ImplementThud;
 
         // Sections whose EDIT handlers route through the per-car DRAFT model
         // (edits land in the car's in-memory override; explicit Save with
@@ -206,11 +210,19 @@ namespace TrueforceForAll.Plugin
         {
             InitializeComponent();
             WireEditableReadouts();
+            // The banner's Install is the same action as the install modal's
+            // gold button; style them identically so it reads as one action.
+            if (FsModInstallButton != null)
+                ModalButtonTheme.Primary(FsModInstallButton);
         }
 
         public SettingsControl(TrueforcePlugin plugin) : this()
         {
             _plugin = plugin;
+
+            // Support prompt fires on entering the plugin page, so it is scoped to
+            // our own surface and never intrudes elsewhere in SimHub.
+            IsVisibleChanged += OnSupportPromptVisibilityChanged;
 
             // Host the preset library inline as the Presets tab. LibraryChanged
             // keeps the always-visible header combos + the live engine in sync
@@ -500,6 +512,7 @@ namespace TrueforceForAll.Plugin
                 // Populates the default-tab combo too (enabled tabs only, in
                 // the user's order) and re-selects the stored default.
                 RebuildRemoteDashTabsEditor();
+                RefreshRemoteDashDriveEditor();
                 if (AutoSubmitCarFactsCheck != null)
                     AutoSubmitCarFactsCheck.IsChecked = _plugin.Settings?.AutoSubmitCarFacts == true;
                 if (AutoSyncBackupCheck != null)
@@ -548,6 +561,134 @@ namespace TrueforceForAll.Plugin
                 SpikeTamingEnabledCheck.IsChecked  = _plugin.Settings?.FfbSpikeTamingEnabled  ?? false;
                 if (StopStreamOnPauseCheck != null)
                     StopStreamOnPauseCheck.IsChecked = _plugin.Settings?.StopStreamOnPause ?? false;
+                if (SpringTerrainCheck != null)
+                    SpringTerrainCheck.IsChecked = _plugin.Settings?.SpringModeTerrainEnabled ?? false;
+                if (SpringTerrainStrengthSlider != null)
+                {
+                    SpringTerrainStrengthSlider.Value = _plugin.Settings?.SpringModeTerrainGain ?? 1.0;
+                    if (SpringTerrainStrengthText != null)
+                        SpringTerrainStrengthText.Text = SpringTerrainStrengthSlider.Value.ToString("F2");
+                }
+                if (SpringCenterGainSlider != null)
+                {
+                    SpringCenterGainSlider.Value = _plugin.Settings?.SpringModeCenterGain ?? 1.0;
+                    if (SpringCenterGainText != null)
+                        SpringCenterGainText.Text = SpringCenterGainSlider.Value.ToString("F2");
+                }
+                if (SpringCenterFirmSlider != null)
+                {
+                    SpringCenterFirmSlider.Value = _plugin.Settings?.SpringModeCenterFirmness ?? 0.5;
+                    if (SpringCenterFirmText != null)
+                        SpringCenterFirmText.Text = SpringCenterFirmSlider.Value.ToString("F2");
+                }
+                if (SpringSpeedFxSlider != null)
+                {
+                    SpringSpeedFxSlider.Value = _plugin.Settings?.SpringModeSpeedEffect ?? 0.65;
+                    if (SpringSpeedFxText != null)
+                        SpringSpeedFxText.Text = SpringSpeedFxSlider.Value.ToString("F2");
+                }
+                if (SpringDragCheck != null)
+                    SpringDragCheck.IsChecked = _plugin.Settings?.SpringModeDragEnabled ?? false;
+                if (SpringDragGainSlider != null)
+                {
+                    SpringDragGainSlider.Value = _plugin.Settings?.SpringModeDragGain ?? 1.0;
+                    if (SpringDragGainText != null)
+                        SpringDragGainText.Text = SpringDragGainSlider.Value.ToString("F2");
+                }
+                if (SpringDragStrainSlider != null)
+                {
+                    SpringDragStrainSlider.Value = _plugin.Settings?.SpringModeDragStrainFraction ?? 0.35;
+                    if (SpringDragStrainText != null)
+                        SpringDragStrainText.Text = SpringDragStrainSlider.Value.ToString("F2");
+                }
+                if (SpringStrengthSlider != null)
+                {
+                    SpringStrengthSlider.Value = _plugin.Settings?.SpringModeStrength ?? 1.0;
+                    if (SpringStrengthText != null)
+                        SpringStrengthText.Text = SpringStrengthSlider.Value.ToString("F2");
+                }
+                if (SpringMinForceSlider != null)
+                {
+                    SpringMinForceSlider.Value = _plugin.Settings?.SpringModeMinForce ?? 0.05;
+                    if (SpringMinForceText != null)
+                        SpringMinForceText.Text = SpringMinForceSlider.Value.ToString("F2");
+                }
+                // ActiveImplementThud, not Settings.ImplementThud: the section
+                // is global-only, but legacy data could carry a car override
+                // and the apply path reads override-first; the UI must show
+                // what plays.
+                var implThud = _plugin.ActiveImplementThud;
+                if (ImplementThudCheck != null)
+                    ImplementThudCheck.IsChecked = implThud?.Enabled ?? true;
+                if (ImplementThudGainSlider != null)
+                {
+                    ImplementThudGainSlider.Value = implThud?.Gain ?? 1.0f;
+                    if (ImplementThudGainText != null)
+                        ImplementThudGainText.Text = ImplementThudGainSlider.Value.ToString("F2");
+                }
+                if (ImplementThudFreqSlider != null)
+                {
+                    ImplementThudFreqSlider.Value = implThud?.Freq ?? 30.0f;
+                    if (ImplementThudFreqText != null)
+                        ImplementThudFreqText.Text = ((int)ImplementThudFreqSlider.Value).ToString();
+                }
+                if (ImplementThudRaiseSlider != null)
+                {
+                    ImplementThudRaiseSlider.Value = implThud?.RaiseAmp ?? 0.6f;
+                    if (ImplementThudRaiseText != null)
+                        ImplementThudRaiseText.Text = ImplementThudRaiseSlider.Value.ToString("F2");
+                }
+                if (ImplementThudHumSlider != null)
+                {
+                    ImplementThudHumSlider.Value = implThud?.HumAmp ?? 0.30f;
+                    if (ImplementThudHumText != null)
+                        ImplementThudHumText.Text = ImplementThudHumSlider.Value.ToString("F2");
+                }
+                if (ImplementThudHumFreqSlider != null)
+                {
+                    ImplementThudHumFreqSlider.Value = implThud?.HumFreq ?? 46.0f;
+                    if (ImplementThudHumFreqText != null)
+                        ImplementThudHumFreqText.Text = ((int)ImplementThudHumFreqSlider.Value).ToString();
+                }
+                if (ImplementThudBendSlider != null)
+                {
+                    ImplementThudBendSlider.Value = implThud?.BendDepth ?? 0.15f;
+                    if (ImplementThudBendText != null)
+                        ImplementThudBendText.Text = ImplementThudBendSlider.Value.ToString("F2");
+                }
+                if (ImplementThudSpeedPitchSlider != null)
+                {
+                    ImplementThudSpeedPitchSlider.Value = implThud?.SpeedPitch ?? 0.12f;
+                    if (ImplementThudSpeedPitchText != null)
+                        ImplementThudSpeedPitchText.Text = ImplementThudSpeedPitchSlider.Value.ToString("F2");
+                }
+                if (ImplementThudSpeedVolSlider != null)
+                {
+                    ImplementThudSpeedVolSlider.Value = implThud?.SpeedVolume ?? 0.5f;
+                    if (ImplementThudSpeedVolText != null)
+                        ImplementThudSpeedVolText.Text = ImplementThudSpeedVolSlider.Value.ToString("F2");
+                }
+                if (ImplementThudHarmonicSlider != null)
+                {
+                    ImplementThudHarmonicSlider.Value = implThud?.HarmonicAmp ?? 0.22f;
+                    if (ImplementThudHarmonicText != null)
+                        ImplementThudHarmonicText.Text = ImplementThudHarmonicSlider.Value.ToString("F2");
+                }
+                if (ImplementThudWaveformCombo != null)
+                {
+                    string wname = (implThud?.Waveform
+                                    ?? TrueforceForAll.Core.Waveform.Sine).ToString();
+                    foreach (System.Windows.Controls.ComboBoxItem it in ImplementThudWaveformCombo.Items)
+                        if ((it.Content as string) == wname) { ImplementThudWaveformCombo.SelectedItem = it; break; }
+                }
+                if (SpringWeightCheck != null)
+                    SpringWeightCheck.IsChecked = _plugin.Settings?.SpringModeChassisWeightEnabled ?? false;
+                if (SpringWeightGainSlider != null)
+                {
+                    SpringWeightGainSlider.Value = _plugin.Settings?.SpringModeChassisWeightGain ?? 1.0;
+                    if (SpringWeightGainText != null)
+                        SpringWeightGainText.Text = SpringWeightGainSlider.Value.ToString("F2");
+                }
                 bool spikeSlewMode = _plugin.Settings?.FfbSpikeUseSlewLimiter ?? true;
                 SpikeModeSlewRadio.IsChecked      = spikeSlewMode;
                 SpikeModeTransientRadio.IsChecked = !spikeSlewMode;
@@ -571,6 +712,199 @@ namespace TrueforceForAll.Plugin
                     // Mode B support (or none is running).
                     string mbGame = _plugin.ActiveGame;
                     bool mbSupported = _plugin.ActiveGameSupportsModeB;
+                    // Spring-mode game (Farming Simulator): the force is the
+                    // game's own spring, so the Forza tuning recipe and the
+                    // per-game Enable are irrelevant and hide as a block. The
+                    // spring toggle, rev lights, and the wheel screen stay:
+                    // they work in spring mode. The "not available here" badge
+                    // also stays hidden; it would tell the user to go start a
+                    // Forza while the tab IS relevant to this game.
+                    bool springGame = !string.IsNullOrEmpty(mbGame)
+                        && mbGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
+                    if (ModeBForzaTuningPanel != null)
+                        ModeBForzaTuningPanel.Visibility = springGame
+                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    if (ModeBForzaTuningPanel2 != null)
+                        ModeBForzaTuningPanel2.Visibility = springGame
+                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    // Spring-mode enhancements show ONLY in spring games; in
+                    // Forza the composer has its own kick layer and these
+                    // controls would be dead weight there.
+                    if (SpringTerrainPanel != null)
+                        SpringTerrainPanel.Visibility = springGame
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // The FS essentials block (Strength above Damping) shows
+                    // and hides together with the enhancements panel.
+                    if (SpringEssentialsPanel != null)
+                        SpringEssentialsPanel.Visibility = springGame
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Implement thud on the Effects tab: FS-only for the same
+                    // dead-knob reason as Surface texture being Forza-only.
+                    if (ImplementThudExpander != null)
+                        ImplementThudExpander.Visibility = springGame
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // The Road bumps "Surface texture (Forza)" section only
+                    // shows while a Forza title is active: no other source
+                    // supplies SurfaceRumble, and dead knobs read as broken.
+                    if (BumpsSurfacePanel != null)
+                    {
+                        bool forzaGame = mbGame == "FM8"
+                            || (mbGame != null && mbGame.StartsWith("FH", StringComparison.Ordinal));
+                        BumpsSurfacePanel.Visibility = forzaGame
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    }
+                    // Per-game effect availability (owner rule 2026-08-08,
+                    // extending the Surface-texture precedent): an effect
+                    // whose telemetry a game never provides is a dead knob
+                    // there, and dead knobs read as broken, so the whole
+                    // section hides. No active game = show everything.
+                    // FS: no ABS/pits/DRS; axle slip, collision and airborne
+                    // ARE driven there, and the per-call notes below cover
+                    // the rest of the traction family plus the kerb fold.
+                    // Forza: its telemetry carries no ABS flag.
+                    {
+                        bool fzGame = mbGame == "FM8"
+                            || (mbGame != null && mbGame.StartsWith("FH", StringComparison.Ordinal));
+                        void ShowEffect(System.Windows.Controls.Expander exp, bool supported)
+                        {
+                            if (exp != null)
+                                exp.Visibility = supported
+                                    ? System.Windows.Visibility.Visible
+                                    : System.Windows.Visibility.Collapsed;
+                        }
+                        ShowEffect(AbsExpander,          !springGame && !fzGame);
+                        // Horizon has no pits and no DRS either (owner call).
+                        ShowEffect(PitLimiterExpander,   !springGame && !fzGame);
+                        ShowEffect(DrsExpander,          !springGame && !fzGame);
+                        // Collision (100 Hz speed-delta surge) and Axle slip
+                        // (per-axle rollups) are driven in FS and stay
+                        // visible. Traction loss hides there: Axle slip is
+                        // FS's one slip voice (owner call); the effect
+                        // itself is hard-gated off for FS in
+                        // ApplyTractionSettings. Lockup judder hides too
+                        // (owner call 2026-08-08): the signed quads flow and
+                        // the effect renders (Test-button verified), but
+                        // FS's brake model likely never lets a wheel rotate
+                        // slower than the road, so the trigger is presumed
+                        // unreachable; the quads stay for Axle slip's
+                        // braking gate and the rev-locked pulse.
+                        ShowEffect(TractionExpander,     !springGame);
+                        ShowEffect(LockupJudderExpander, !springGame);
+                        // Airborne IS driven in FS (all-wheels-off from the
+                        // mod's per-wheel contact flags), so it stays
+                        // visible everywhere.
+                        // FS naming fold (owner call 2026-08-08): no kerbs
+                        // exist in FS, so the standalone Kerb thump section
+                        // hides there and its voice becomes the "Leading
+                        // edge" slider inside this section, which renames to
+                        // "Terrain texture" (the haptic sibling of the FFB
+                        // tab's Terrain feel). Forza keeps the shipped
+                        // names; the KerbThump settings identity is shared,
+                        // so presets carry one block either way.
+                        ShowEffect(KerbThumpExpander,    !springGame);
+                        if (SlipEnabledCheck != null)
+                            SlipEnabledCheck.Content = springGame ? "Terrain texture" : "Road bumps & curbs";
+                        if (BumpsLeadingEdgePanel != null)
+                            BumpsLeadingEdgePanel.Visibility = springGame
+                                ? System.Windows.Visibility.Visible
+                                : System.Windows.Visibility.Collapsed;
+                    }
+                    // Standing enhanced-telemetry banner, three states (the FS
+                    // analogue of Forza's using-SimHub-fallback notice): mod
+                    // missing = the install offer with its button; mod
+                    // installed but the game not running it = enable-in-game
+                    // instruction, no button; enhanced feeding = hidden.
+                    // _fsModBannerHold keeps the post-install success text up
+                    // instead of blinking away on the next refresh tick; it
+                    // yields the moment the enhanced feed arrives, and it is
+                    // FS-scoped: leaving the game clears it and resets the
+                    // banner, so switching to Forza can never strand an FS
+                    // banner on that layout.
+                    if (FsModBanner != null)
+                    {
+                        if (!springGame)
+                        {
+                            _fsModBannerHold = false;
+                            FsModBanner.Visibility = System.Windows.Visibility.Collapsed;
+                            if (FsModInstallButton != null)
+                                FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
+                            if (FsModBannerText != null)
+                                FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                        }
+                        else
+                        {
+                            int fsState = _plugin.FsEnhancedTelemetryState();
+                            if (fsState == 0)
+                            {
+                                _fsModBannerHold = false;
+                                FsModBanner.Visibility = System.Windows.Visibility.Collapsed;
+                                if (FsModInstallButton != null)
+                                    FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
+                                if (FsModBannerText != null)
+                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                            }
+                            else if (_fsModBannerHold)
+                            {
+                                // Post-install success text stays until the
+                                // feed arrives or the game changes.
+                            }
+                            else if (fsState == 1)
+                            {
+                                FsModBanner.Visibility = System.Windows.Visibility.Visible;
+                                if (FsModInstallButton != null)
+                                    FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
+                                if (FsModBannerText != null)
+                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                            }
+                            else if (fsState == 2)
+                            {
+                                FsModBanner.Visibility = System.Windows.Visibility.Visible;
+                                if (FsModInstallButton != null)
+                                    FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
+                                if (FsModBannerText != null)
+                                    FsModBannerText.Text = "The TF4ALL Enhanced Telemetry mod is installed but not reaching the plugin. Enable it in the game's mod screen when loading your save, or restart Farming Simulator if SimHub restarted while the game was running.";
+                            }
+                            else if (fsState == 4)
+                            {
+                                // Feeding, but from an older mod than the
+                                // plugin just refreshed onto disk: the game
+                                // only reads its mods folder at launch, so a
+                                // refresh always trails by one restart.
+                                FsModBanner.Visibility = System.Windows.Visibility.Visible;
+                                if (FsModInstallButton != null)
+                                    FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
+                                if (FsModBannerText != null)
+                                    FsModBannerText.Text = "The TF4ALL Enhanced Telemetry mod was updated. Restart Farming Simulator to load the new version; until then some newer features stay off.";
+                            }
+                            else
+                            {
+                                FsModBanner.Visibility = System.Windows.Visibility.Collapsed;
+                            }
+                        }
+                    }
+                    // Contextual intro: each game's player reads only the
+                    // sentence that applies to them. FS: the plugin REPLACES
+                    // the game's FFB with the synthetic model (2026-08-08
+                    // owner call, every wheel), so the game's FFB setting is
+                    // feel-neutral while the plugin streams; "leave it on"
+                    // survives only as fallback advice for when SimHub isn't
+                    // running (owner confirmed the no-difference observation
+                    // 2026-08-09).
+                    if (ModeBIntroText != null)
+                        ModeBIntroText.Text = springGame
+                            ? "In Farming Simulator the plugin replaces the game's basic force " +
+                              "feedback with its own steering model built from the game's physics, " +
+                              "and engages by itself. The game's force feedback setting doesn't " +
+                              "change the feel while SimHub runs; leaving it on just keeps native " +
+                              "FFB as a fallback when SimHub is closed. Also works in Forza " +
+                              "Motorsport (2023) and Forza Horizon 4, 5, and 6."
+                            : "The wheel's steering force is built from telemetry instead of the game's " +
+                              "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
+                              "Set the game's force feedback and vibration to 0 so this is the only " +
+                              "force on the wheel. Farming Simulator 22 and 25 are supported too, " +
+                              "through the spring option below.";
+                    ModeBEnabledCheck.Visibility = springGame
+                        ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     // The controls stay visible in every game so the section can be
                     // seen and pre-tuned without a supported title running. When the
                     // active game can't feed Mode B, a badge at the top of the tab
@@ -578,15 +912,19 @@ namespace TrueforceForAll.Plugin
                     ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                     ModeBEnabledCheck.IsEnabled = mbSupported;
                     if (ModeBUnsupportedBadge != null)
-                        ModeBUnsupportedBadge.Visibility = mbSupported
+                        ModeBUnsupportedBadge.Visibility = mbSupported || springGame
                             ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     if (!mbSupported && ModeBUnsupportedBadgeText != null)
                         ModeBUnsupportedBadgeText.Text = string.IsNullOrEmpty(mbGame)
-                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Start one of those to turn it on. You can still see and pre-tune the controls below."
-                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. It also enables your wheel's rev lights. Start one of those to turn it on.";
+                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25. Start one of those to turn it on. You can still see and pre-tune the controls below."
+                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25. It also enables your wheel's rev lights. Start one of those to turn it on.";
                     if (ModeBGameNote != null)
                     {
-                        if (mbSupported)
+                        if (springGame)
+                        {
+                            ModeBGameNote.Visibility = System.Windows.Visibility.Collapsed;
+                        }
+                        else if (mbSupported)
                         {
                             string note = $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
                             if (mbGame == "FM8")
@@ -604,6 +942,7 @@ namespace TrueforceForAll.Plugin
                     ModeBSignCheck.IsChecked    = mbs.ModeBSign < 0f;
                     ModeBStrengthSlider.Value   = mbs.ModeBSatGain;
                     ModeBStrengthText.Text      = mbs.ModeBSatGain.ToString("F2");
+                    ModeBAutoStrengthCheck.IsChecked = mbs.ModeBAutoStrength;
                     // Center feel (ModeBDirSoft) is code-only now (BDIRK): Direct
                     // centering + damping own center calm, so the slider left the UI.
                     ModeBDamperSlider.Value     = mbs.ModeBDamper;
@@ -697,6 +1036,38 @@ namespace TrueforceForAll.Plugin
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
                 if (ModeBRevLightsCheck != null)
                     ModeBRevLightsCheck.IsChecked = _plugin.Settings?.ModeBRevLightsEnabled != false;
+
+                // Wheel-base Dynamic OLED (experimental, default off). The whole
+                // section is hidden on a wheel with no screen: a G923 owner has
+                // no use for any of it, and an option you cannot use reads as a
+                // feature you are missing.
+                if (OledSection != null)
+                    OledSection.Visibility = _plugin.WheelHasOledScreen
+                        ? Visibility.Visible : Visibility.Collapsed;
+                if (WheelLightsHeaderText != null)
+                    WheelLightsHeaderText.Text = _plugin.WheelHasOledScreen
+                        ? "Wheel lights and screen" : "Wheel lights";
+                if (ModeBOledCheck != null)
+                    ModeBOledCheck.IsChecked = _plugin.Settings?.ModeBOledEnabled == true;
+                // The screen picker is filled and selected by Tag in
+                // RefreshOledEditor: its offered order is not the enum's order,
+                // so a SelectedIndex cast would pick the wrong entry.
+                if (OledMphCheck != null)
+                    OledMphCheck.IsChecked = _plugin.Settings?.OledUseMph == true;
+                if (OledShiftFlashCheck != null)
+                    OledShiftFlashCheck.IsChecked = _plugin.Settings?.OledShiftFlash != false;
+                if (OledFlashStyleCombo != null)
+                    OledFlashStyleCombo.SelectedIndex =
+                        (int)(_plugin.Settings?.OledShiftFlashStyle ?? OledFlashStyle.CenteredGear);
+                if (OledLapResultCheck != null)
+                    OledLapResultCheck.IsChecked = _plugin.Settings?.OledLapResult != false;
+                if (OledGreetingCheck != null)
+                    OledGreetingCheck.IsChecked = _plugin.Settings?.OledGreetingEnabled != false;
+                if (OledGreetingBox != null)
+                    OledGreetingBox.Text = _plugin.Settings?.OledGreetingText ?? "HELLO WORLD";
+                if (OledStatusText != null)
+                    OledStatusText.Text = _plugin.OledStatus;
+                RefreshOledEditor();
 
                 // Forza section
                 var fz = _plugin.Settings?.Forza;
@@ -802,8 +1173,6 @@ namespace TrueforceForAll.Plugin
                     SelectWaveform(BumpsSurfaceWaveformCombo, bs.SurfaceWaveform);
                     BumpsSurfaceRumbleScaleSlider.Value     = bs.SurfaceRumbleScale;
                     BumpsSurfaceRumbleScaleText.Text        = bs.SurfaceRumbleScale.ToString("F2");
-                    BumpsRumbleStripPulseSlider.Value       = bs.RumbleStripPulseAmp;
-                    BumpsRumbleStripPulseText.Text          = bs.RumbleStripPulseAmp.ToString("F2");
                 }
                 // Traction
                 var ts = _plugin.ActiveTraction;
@@ -934,6 +1303,14 @@ namespace TrueforceForAll.Plugin
                     KerbThumpGainText.Text            = kerb.Gain.ToString("F2");
                     KerbThumpFreqSlider.Value         = kerb.Freq;
                     KerbThumpFreqText.Text            = ((int)kerb.Freq).ToString();
+                }
+                // The FS "Leading edge" fold of the same block: disabled
+                // reads as 0 (that slider has no separate enable).
+                if (kerb != null && BumpsLeadingEdgeSlider != null)
+                {
+                    BumpsLeadingEdgeSlider.Value = kerb.Enabled ? kerb.Gain : 0f;
+                    if (BumpsLeadingEdgeText != null)
+                        BumpsLeadingEdgeText.Text = BumpsLeadingEdgeSlider.Value.ToString("F2");
                 }
                 // Lockup judder (per-car overridable like the other effects)
                 var lockup = _plugin.ActiveLockupJudder;
@@ -2084,6 +2461,7 @@ namespace TrueforceForAll.Plugin
                 case "AxleSlip":     return AxleSlipNewBadge;
                 case "KerbThump":    return KerbThumpNewBadge;
                 case "LockupJudder": return LockupJudderNewBadge;
+                case "ImplementThud": return ImplementThudNewBadge;
                 default:           return null;
             }
         }
@@ -2156,6 +2534,52 @@ namespace TrueforceForAll.Plugin
         // link rather than make a post.
         private const string ShareNexusUrl =
             "https://www.nexusmods.com/forzahorizon6/mods/34";
+
+        // ---------------- support prompt ----------------
+        //
+        // Shown when the user navigates INTO the plugin page, never anywhere else
+        // in SimHub, and never mid-session (the plugin's own gate refuses while a
+        // game is running). Pacing, the ever-supported latch and every other guard
+        // live in TrueforcePlugin.ShouldShowSupportPrompt; this is only the trigger.
+        private bool _supportPromptShownThisRun;
+
+        // Stand-in hour count for the SUPPORT dev preview when nothing is banked.
+        private const int SupportPromptPreviewHours = 40;
+        // Ceiling for the displayed hours, well past any real odometer.
+        private const double MaxDisplayHours = 1000000.0;
+
+        private void OnSupportPromptVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (!IsVisible || _supportPromptShownThisRun) return;
+            if (_plugin == null || !_plugin.ShouldShowSupportPrompt) return;
+            _supportPromptShownThisRun = true;
+            // Let the page finish rendering first: a modal thrown up during the
+            // visibility change itself lands on a half-drawn tab.
+            Dispatcher.BeginInvoke(new Action(() => ShowSupportPrompt()),
+                System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        /// <summary>Shows the support modal and records how it was answered.
+        /// recordPacing:false is the dev preview, which leaves the ladder alone.</summary>
+        private void ShowSupportPrompt(bool recordPacing = true)
+        {
+            if (_plugin == null) return;
+            // Clamp before the cast. The SHARE dev code parks the odometer at
+            // double.MaxValue, and casting that to int overflows to a negative,
+            // which would silently drop the hours line instead of showing it.
+            double banked = (_plugin.Settings?.ActiveStreamingSeconds ?? 0.0) / 3600.0;
+            if (!(banked > 0.0)) banked = 0.0;                 // also catches NaN
+            if (banked > MaxDisplayHours) banked = MaxDisplayHours;
+            int hours = (int)banked;
+            // The preview always shows the earned-hours line, even on a machine with
+            // no banked seat time, since checking that line renders is most of the
+            // point of previewing. Real hours win whenever there are any.
+            if (!recordPacing && hours < 1) hours = SupportPromptPreviewHours;
+            var win = new SupportPromptWindow(hours);
+            try { win.Owner = Window.GetWindow(this); } catch { }
+            try { win.ShowDialog(); } catch { return; }
+            if (recordPacing) _plugin.NoteSupportPromptShown(declined: !win.WentToPatreon);
+        }
 
         /// <summary>Shows the one-and-done word-of-mouth banner once the user
         /// has banked enough working seat time. Idempotent; safe to call
@@ -2342,7 +2766,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 16),
             });
 
-            // Brand-coloured cards with the platform's own logo. Built as
+            // Brand-colored cards with the platform's own logo. Built as
             // Borders (not Buttons) so SimHub's stock theme can't override the
             // brand fills; the label is handed to the click action so the
             // copy-link rows can flash "Link copied" feedback in place.
@@ -4400,6 +4824,7 @@ namespace TrueforceForAll.Plugin
             s.ModeBLongitudinalGripLearn = adaptive;
             UpdateModeBGripLimitVisibility();   // grip-limit slider only shows in manual mode (adaptive off)
             s.ModeBLateralDemand         = ModeBLateralDemandCheck.IsChecked == true;
+            s.ModeBAutoStrength          = ModeBAutoStrengthCheck.IsChecked == true;
             // ModeBCenterPd stays untouched here: Direct centering is always on
             // (default true) with only the hidden MBCPD dev code as a failsafe.
             _plugin.ApplyModeBFeel();
@@ -4446,7 +4871,7 @@ namespace TrueforceForAll.Plugin
             SchedulePersistDebounced();
         }
 
-        // "Reset tuning to defaults": restore the whole Mode B recipe (every
+        // "Reset FFB tuning to defaults": restore the whole Mode B recipe (every
         // slider + feel toggle) to the shipped baseline. Confirms first because
         // it discards custom tuning with no undo; leaves the per-game enable and
         // each car's learned grip calibration alone. RefreshFromPlugin re-syncs
@@ -4456,7 +4881,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
                 "Reset Telemetry Based FFB",
-                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your per-game on/off choices and each car's learned grip calibration are kept.",
+                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings are kept.",
                 DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
             if (ok != true) return;
             _plugin.ResetModeBTuningToDefaults();
@@ -4504,7 +4929,7 @@ namespace TrueforceForAll.Plugin
             if (SpikeModeDescription != null)
                 SpikeModeDescription.Text = slew
                     ? "Slew-rate limiter (iRacing-style): caps how fast the force is allowed to change. No amplitude reduction, sustained forces always reach full strength; a sharp spike just gets spread across a few extra milliseconds."
-                    : "Transient detector: soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big kerb hits get rounded off.";
+                    : "Transient detector: soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big curb hits get rounded off.";
             if (FfbSpikeLimitLabel != null)
                 FfbSpikeLimitLabel.Text = slew ? "Slew rate:" : "Spike threshold:";
             if (FfbSpikeLimitHelp != null)
@@ -4987,32 +5412,68 @@ namespace TrueforceForAll.Plugin
                 + "easier to diagnose. Logs export to a zip on your Desktop; drag it into the GitHub "
                 + "issue after the form opens.\n\n"
                 + "Close this window to cancel the report.",
-                DialogKind.Confirm, okLabel: "Attach logs", cancelLabel: "Skip logs");
+                DialogKind.Confirm, okLabel: "Attach logs", cancelLabel: "Skip logs",
+                goldOk: true);
             if (choice == null) return;          // closed/Esc = cancel the whole report
+            string zipPath = null;
             if (choice == true)
             {
                 // Re-use the export-logs path. If it fails, surface the error
                 // but still open the issue form so the user can file something.
-                TryExportLogs(silentOnSuccess: false);
+                zipPath = TryExportLogs(silentOnSuccess: false);
             }
 
-            // Generic "report a bug / feature request" path. Pre-fills version +
-            // active game so common context is captured without typing.
+            // Generic "report a bug / feature request" path. Everything the
+            // plugin can know is auto-filled so triage never waits on a
+            // "which wheel? which SimHub?" round-trip, and the status block
+            // travels in the body itself: a report filed WITHOUT the log zip
+            // still shows wheel/stream/capture state (that context otherwise
+            // exists only inside the zip's manifest).
             string game = _plugin?.ActiveGame ?? "(none)";
             string carId = _plugin?.ActiveCarId ?? "(none)";
-            string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
+            string versions = TrueforcePlugin.GetAssemblyVersionLine(out bool versionMismatch);
+
+            // Live wheel first; fall back to the persisted last-used model so
+            // an "it broke, I unplugged it" report still names the hardware.
+            string wheel = _plugin?.WheelStatus;
+            if (string.IsNullOrEmpty(wheel) || wheel.StartsWith("Not detected", StringComparison.Ordinal))
+            {
+                string lastUsed = _plugin?.Settings?.LastUsedWheel;
+                wheel = string.IsNullOrEmpty(lastUsed)
+                    ? null
+                    : $"{lastUsed} (last used; not detected right now)";
+            }
+
+            // SimHub can decline to tell us its version; ask rather than print
+            // something wrong, since a filled-looking field stops people asking.
+            string simHub = TrueforcePlugin.GetSimHubVersion();
+
+            string logsLine = zipPath != null
+                ? $"**Logs:** drag `{System.IO.Path.GetFileName(zipPath)}` from your Desktop into this issue\n"
+                : "**Logs:** none attached (the Export logs button in the Settings tab makes a zip worth adding)\n";
+            // Placeholders are italic, never <angle brackets>: GitHub parses
+            // "<describe the issue>" as an HTML tag and renders nothing at all,
+            // so an unedited report would post with blank sections. Values go in
+            // code spans because they are raw device strings; the USBPcap
+            // interface in the tap status ("\\.\USBPcap2") would otherwise lose
+            // a backslash to Markdown escaping.
             string body =
-                  "**What happened?**\n<describe the issue>\n\n"
+                  "**What happened?**\n_describe the issue_\n\n"
                 + "**Steps to reproduce**\n1. \n2. \n\n"
-                + "**Expected behavior**\n<what should have happened>\n\n"
+                + "**Expected behavior**\n_what should have happened_\n\n"
                 + "---\n"
-                + "**Environment**\n"
-                + $"- Plugin version: {version}\n"
-                + $"- Active game: {game}\n"
-                + $"- Active car: {carId}\n"
-                + "- SimHub version: <fill in>\n"
-                + "- Wheel: <e.g. G PRO, RS50, G923>\n"
-                + "\n**Logs:** attach the .zip from your Desktop (if exported)\n";
+                + "**Environment** (auto-filled)\n"
+                + $"- Plugin: {versions}{(versionMismatch ? "  **[VERSION MISMATCH - stale DLL?]**" : "")}\n"
+                + $"- SimHub: {(simHub == null ? "_fill in: shown on SimHub's About screen_" : "`" + simHub + "`")}\n"
+                + $"- Windows: {TrueforcePlugin.GetWindowsVersionLine()}\n"
+                + $"- Wheel: {(wheel == null ? "_fill in: e.g. G PRO, RS50, G923; none detected_" : "`" + wheel + "`")}\n"
+                + $"- Active game: `{game}`\n"
+                + $"- Active car: `{carId}`\n"
+                + $"- Stream: `{_plugin?.StreamStatus ?? "(n/a)"}`\n"
+                + $"- FFB tap: `{_plugin?.FfbTapStatus ?? "(n/a)"}`\n"
+                + $"- Capture: `{_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}`\n"
+                + $"- Telemetry source: `{_plugin?.TelemetrySource?.Name ?? "(none)"}`\n"
+                + "\n" + logsLine;
             string url = ReportIssuesBase
                        + "?title=" + Uri.EscapeDataString("[bug] ")
                        + "&body="  + Uri.EscapeDataString(body);
@@ -5071,6 +5532,15 @@ namespace TrueforceForAll.Plugin
                     // REDACT secrets/PII first: users attach this zip to public
                     // GitHub issues, so the auth session (tokens + email), the
                     // remembered email, and the per-user slot data must never travel.
+                    // Also stripped: the anonymous car-fact submitter GUID and the
+                    // community author name (both link the reporter to their
+                    // community activity), the backup-sync envelope (a second,
+                    // unredacted copy of the portable settings), the achievement
+                    // baseline (embeds the auth user id verbatim), and the free
+                    // text users type for their own screens (the dash idle-card
+                    // driver name, the wheel OLED greeting and its custom slots)
+                    // since a real first name is the most natural thing to put
+                    // there and none of it helps diagnose anything.
                     // Keep this list in sync when adding any secret/PII setting.
                     try
                     {
@@ -5079,8 +5549,38 @@ namespace TrueforceForAll.Plugin
                         {
                             var jo = Newtonsoft.Json.Linq.JObject.FromObject(snapshot);
                             foreach (var secret in new[] { "AuthSession", "LastSignInEmail",
-                                "LegacyDataOwnerEmail", "UserSlots", "ActiveSlotKey" })
+                                "LegacyDataOwnerEmail", "UserSlots", "ActiveSlotKey",
+                                "CarFactsAnonId", "SharingAuthor",
+                                "BackupLastSyncedEnvelopeJson", "BackupLastSyncedRevision",
+                                "AchievementBaseline", "DashIdleDriverName",
+                                "OledGreetingText", "OledCustomTexts" })
                                 jo.Remove(secret);
+                            // Community lineage stamps live INSIDE CustomEngines[],
+                            // Presets[*], CarOverrides[*] and DownloadedCommunityPresets[*]
+                            // entries, where a top-level Remove can never reach: the
+                            // account uuid stamped on the user's own uploads (the same
+                            // value as the redacted AuthSession.UserId), the row id of
+                            // their public listing, the cached uploader uuid on
+                            // downloads, and author display names. All are identity
+                            // joins with zero diagnostic value, so strip them wherever
+                            // they appear in the tree.
+                            var lineage = new HashSet<string> {
+                                "CommunityUploadedByUserId", "CommunityUploadedById",
+                                "OwnerUserId", "Author", "SharingAuthor" };
+                            foreach (var prop in jo.Descendants()
+                                .OfType<Newtonsoft.Json.Linq.JProperty>()
+                                .Where(p => lineage.Contains(p.Name)).ToList())
+                                prop.Remove();
+                            // Everything above makes this snapshot deliberately
+                            // lossy, and some of what it drops is portable data
+                            // that Import would NOT restore from the live object
+                            // (the anon car-fact id, the sharing author, the
+                            // upload stamps). Without a marker the file still
+                            // satisfies LooksLikeSettingsBackup, so a user who
+                            // reaches for it as a backup would be told it is one
+                            // and then silently lose those fields. Flag it so
+                            // Import refuses it outright.
+                            jo[DiagnosticSnapshotMarker] = true;
                             TryAddNoteToZip(zip, "Trueforce-settings.json",
                                 jo.ToString(Newtonsoft.Json.Formatting.Indented));
                         }
@@ -5100,8 +5600,11 @@ namespace TrueforceForAll.Plugin
                         catch (Exception ex) { TryAddNoteToZip(zip, "usb-trace.pcap.error.txt", ex.Message); }
                     }
                     // Mini context manifest so support knows what version
-                    // generated the zip without unpacking everything.
-                    string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
+                    // generated the zip without unpacking everything. The
+                    // three-way assembly line carries the same MISMATCH marker
+                    // as the startup log cross-check: a stale Core/Engine DLL
+                    // (the top dead-wheel cause) is page-1 visible.
+                    string versions = TrueforcePlugin.GetAssemblyVersionLine(out bool versionMismatch);
                     // At-a-glance UDP config so a wrong port / non-local bind
                     // address (the common "no telemetry" cause) is visible in the
                     // manifest without opening the full settings JSON below.
@@ -5111,9 +5614,12 @@ namespace TrueforceForAll.Plugin
                           $"forward={(fz.ForwardEnabled ? $"{fz.ForwardHost}:{fz.ForwardPort}" : "off")}";
                     string manifest =
                         $"Generated: {DateTime.Now:o}\n" +
-                        $"Plugin version: {version}\n" +
+                        $"Assembly versions: {versions}{(versionMismatch ? "  [VERSION MISMATCH - stale DLL; Plugin, Core and Engine must ship as a set]" : "")}\n" +
+                        $"SimHub version: {TrueforcePlugin.GetSimHubVersion() ?? "(unavailable)"}\n" +
+                        $"Windows: {TrueforcePlugin.GetWindowsVersionLine()}\n" +
                         $"Active game: {_plugin?.ActiveGame ?? "(none)"}\n" +
                         $"Active car: {_plugin?.ActiveCarId ?? "(none)"}\n" +
+                        $"Telemetry source: {_plugin?.TelemetrySource?.Name ?? "(none)"}\n" +
                         $"Wheel status: {_plugin?.WheelStatus}\n" +
                         $"Stream status: {_plugin?.StreamStatus}\n" +
                         $"FFB tap status: {_plugin?.FfbTapStatus}\n" +
@@ -5188,6 +5694,275 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null || ExperimentalFfbCheck == null) return;
             _plugin.SetExperimentalFfbCapture(ExperimentalFfbCheck.IsChecked == true);
+        }
+
+        // Standing mod-install banner on the Telemetry FFB tab. The hold flag
+        // keeps the success text visible after an install; the banner state
+        // machine otherwise belongs to RefreshFromPlugin.
+        private bool _fsModBannerHold;
+        private void FsModInstall_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null || FsModBannerText == null) return;
+            string err = _plugin.InstallFsModForActiveGame();
+            _fsModBannerHold = err == null;
+            FsModBannerText.Text = err == null
+                ? "Installed. It loads the next time Farming Simulator starts, so restart the game if it is running now."
+                : "Install failed: " + err + ".";
+            if (err == null && FsModInstallButton != null)
+                FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
+        }
+
+        // Terrain feel (spring-mode enhancement). Settings-only: the sampler
+        // reads both every telemetry tick, so changes apply live.
+        private void SpringTerrain_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringTerrainCheck == null) return;
+            _plugin.Settings.SpringModeTerrainEnabled = SpringTerrainCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void SpringTerrainStrength_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringTerrainStrengthSlider == null) return;
+            _plugin.Settings.SpringModeTerrainGain = SpringTerrainStrengthSlider.Value;
+            if (SpringTerrainStrengthText != null)
+                SpringTerrainStrengthText.Text = SpringTerrainStrengthSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        // The other spring-mode enhancements: same settings-only live-apply
+        // pattern as terrain (the force path reads these every tick).
+        private void SpringCenterGain_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringCenterGainSlider == null) return;
+            _plugin.Settings.SpringModeCenterGain = SpringCenterGainSlider.Value;
+            if (SpringCenterGainText != null)
+                SpringCenterGainText.Text = SpringCenterGainSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        private void SpringCenterFirm_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringCenterFirmSlider == null) return;
+            _plugin.Settings.SpringModeCenterFirmness = SpringCenterFirmSlider.Value;
+            if (SpringCenterFirmText != null)
+                SpringCenterFirmText.Text = SpringCenterFirmSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        private void SpringSpeedFx_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringSpeedFxSlider == null) return;
+            _plugin.Settings.SpringModeSpeedEffect = SpringSpeedFxSlider.Value;
+            if (SpringSpeedFxText != null)
+                SpringSpeedFxText.Text = SpringSpeedFxSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        private void SpringDrag_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringDragCheck == null) return;
+            _plugin.Settings.SpringModeDragEnabled = SpringDragCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void SpringDragGain_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringDragGainSlider == null) return;
+            _plugin.Settings.SpringModeDragGain = SpringDragGainSlider.Value;
+            if (SpringDragGainText != null)
+                SpringDragGainText.Text = SpringDragGainSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        private void SpringStrength_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringStrengthSlider == null) return;
+            _plugin.Settings.SpringModeStrength = SpringStrengthSlider.Value;
+            if (SpringStrengthText != null)
+                SpringStrengthText.Text = SpringStrengthSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        // FS's OWN min-force floor (SpringModeMinForce), separate from the
+        // Forza one: force characters differ per game (owner call
+        // 2026-08-09). Read live by the spring/kick paths; no apply needed.
+        private void SpringMinForce_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringMinForceSlider == null) return;
+            _plugin.Settings.SpringModeMinForce = SpringMinForceSlider.Value;
+            if (SpringMinForceText != null)
+                SpringMinForceText.Text = SpringMinForceSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        // Implement thud: global-only settings (no per-car draft), applied
+        // live via the plugin's public apply.
+        // Implement thud is a GLOBAL-ONLY section (no car scope on either
+        // side), so the handlers edit ActiveImplementThud (= the global
+        // block; no EnsureSectionDraft, there is no car draft to make) and
+        // report into the dirty system instead of persisting immediately:
+        // changes surface the section's Save/Revert buttons + the star pill.
+        private void ImplementThud_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudCheck == null) return;
+            _plugin.ActiveImplementThud.Enabled = ImplementThudCheck.IsChecked == true;
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudGain_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudGainSlider == null) return;
+            _plugin.ActiveImplementThud.Gain = (float)ImplementThudGainSlider.Value;
+            if (ImplementThudGainText != null)
+                ImplementThudGainText.Text = ImplementThudGainSlider.Value.ToString("F2");
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudTest_Click(object sender, RoutedEventArgs e)
+            => _plugin?.TestEffect(_plugin.ImplementThud);
+
+        private void ImplementThudWaveform_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudWaveformCombo == null) return;
+            var item = ImplementThudWaveformCombo.SelectedItem as System.Windows.Controls.ComboBoxItem;
+            if (item?.Content is string name
+                && Enum.TryParse<TrueforceForAll.Core.Waveform>(name, out var w))
+            {
+                _plugin.ActiveImplementThud.Waveform = w;
+                _plugin.ApplyImplementThudSettings();
+                MarkEffectDirty(EffectKind.ImplementThud);
+            }
+        }
+
+        private void ImplementThudFreq_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudFreqSlider == null) return;
+            _plugin.ActiveImplementThud.Freq = (float)ImplementThudFreqSlider.Value;
+            if (ImplementThudFreqText != null)
+                ImplementThudFreqText.Text = ((int)ImplementThudFreqSlider.Value).ToString();
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudRaise_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudRaiseSlider == null) return;
+            _plugin.ActiveImplementThud.RaiseAmp = (float)ImplementThudRaiseSlider.Value;
+            if (ImplementThudRaiseText != null)
+                ImplementThudRaiseText.Text = ImplementThudRaiseSlider.Value.ToString("F2");
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudHum_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudHumSlider == null) return;
+            _plugin.ActiveImplementThud.HumAmp = (float)ImplementThudHumSlider.Value;
+            if (ImplementThudHumText != null)
+                ImplementThudHumText.Text = ImplementThudHumSlider.Value.ToString("F2");
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudHumFreq_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudHumFreqSlider == null) return;
+            _plugin.ActiveImplementThud.HumFreq = (float)ImplementThudHumFreqSlider.Value;
+            if (ImplementThudHumFreqText != null)
+                ImplementThudHumFreqText.Text = ((int)ImplementThudHumFreqSlider.Value).ToString();
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudBend_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudBendSlider == null) return;
+            _plugin.ActiveImplementThud.BendDepth = (float)ImplementThudBendSlider.Value;
+            if (ImplementThudBendText != null)
+                ImplementThudBendText.Text = ImplementThudBendSlider.Value.ToString("F2");
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudSpeedPitch_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudSpeedPitchSlider == null) return;
+            _plugin.ActiveImplementThud.SpeedPitch = (float)ImplementThudSpeedPitchSlider.Value;
+            if (ImplementThudSpeedPitchText != null)
+                ImplementThudSpeedPitchText.Text = ImplementThudSpeedPitchSlider.Value.ToString("F2");
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudSpeedVol_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudSpeedVolSlider == null) return;
+            _plugin.ActiveImplementThud.SpeedVolume = (float)ImplementThudSpeedVolSlider.Value;
+            if (ImplementThudSpeedVolText != null)
+                ImplementThudSpeedVolText.Text = ImplementThudSpeedVolSlider.Value.ToString("F2");
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void ImplementThudHarmonic_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.ImplementThud == null
+                || ImplementThudHarmonicSlider == null) return;
+            _plugin.ActiveImplementThud.HarmonicAmp = (float)ImplementThudHarmonicSlider.Value;
+            if (ImplementThudHarmonicText != null)
+                ImplementThudHarmonicText.Text = ImplementThudHarmonicSlider.Value.ToString("F2");
+            _plugin.ApplyImplementThudSettings();
+            MarkEffectDirty(EffectKind.ImplementThud);
+        }
+
+        private void SpringDragStrain_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringDragStrainSlider == null) return;
+            _plugin.Settings.SpringModeDragStrainFraction = SpringDragStrainSlider.Value;
+            if (SpringDragStrainText != null)
+                SpringDragStrainText.Text = SpringDragStrainSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        private void SpringWeight_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringWeightCheck == null) return;
+            _plugin.Settings.SpringModeChassisWeightEnabled = SpringWeightCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void SpringWeightGain_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || SpringWeightGainSlider == null) return;
+            _plugin.Settings.SpringModeChassisWeightGain = SpringWeightGainSlider.Value;
+            if (SpringWeightGainText != null)
+                SpringWeightGainText.Text = SpringWeightGainSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
         }
 
         // Driver testing mode checkbox (hidden until the DRIVER access code
@@ -6319,10 +7094,13 @@ namespace TrueforceForAll.Plugin
         // plugin's GetDashTabFullOrder is the single sanitizer for the
         // stored layout, and RefreshDashTabSlots pushes the result to the
         // dash live, so changes apply with no dashboard reload. Display
-        // names are indexed by SCREEN index (0=Drive .. 5=Tele-FFB) and
-        // shared with the default-tab dropdown.
+        // names are indexed by SCREEN index (0=Gains .. 6=Drive), matching
+        // DashTabNames on the plugin side, and shared with the default-tab
+        // dropdown. Keep it the same LENGTH as that table: a screen missing
+        // here shows as "Tab 6" in the editor, and worse, reads as an invalid
+        // default and gets quietly reset the next time the editor rebuilds.
         private static readonly string[] RemoteDashTabNames =
-            { "Home", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB" };
+            { "Gains", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB", "Drive" };
 
         private static string RemoteDashTabName(int tab) =>
             tab >= 0 && tab < RemoteDashTabNames.Length ? RemoteDashTabNames[tab] : "Tab " + tab;
@@ -6330,6 +7108,324 @@ namespace TrueforceForAll.Plugin
         // Layout signature of the last-built editor; unchanged signature =
         // skip the rebuild (see below).
         private string _remoteDashTabsSignature;
+
+        private ComboBox[] RemoteDashDriveCombos() => new[]
+        {
+            RemoteDashDriveSlot0Combo, RemoteDashDriveSlot1Combo,
+            RemoteDashDriveSlot2Combo, RemoteDashDriveSlot3Combo,
+        };
+
+        /// <summary>Fill the Drive-tab box pickers from the plugin's content
+        /// list and select what each slot currently holds. Items are built
+        /// once (the list is static); only the selection is re-applied on
+        /// later refreshes, so an open dropdown is never rebuilt underneath
+        /// the user.</summary>
+        private void RefreshRemoteDashDriveEditor()
+        {
+            var combos = RemoteDashDriveCombos();
+            if (combos[0] == null || _plugin == null) return;
+            bool prevSuppress = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                var keys   = TrueforcePlugin.DashDriveContentKeys;
+                var labels = TrueforcePlugin.DashDriveContentLabels;
+                var slots  = _plugin.GetDashDriveSlots();
+                for (int i = 0; i < combos.Length; i++)
+                {
+                    var cb = combos[i];
+                    if (cb == null) continue;
+                    if (cb.Items.Count != keys.Length)
+                    {
+                        cb.Items.Clear();
+                        for (int k = 0; k < keys.Length; k++)
+                            cb.Items.Add(new ComboBoxItem { Content = labels[k], Tag = keys[k] });
+                    }
+                    string want = i < slots.Length ? slots[i] : "None";
+                    foreach (ComboBoxItem it in cb.Items)
+                        if ((it.Tag as string) == want) { cb.SelectedItem = it; break; }
+                }
+                if (RemoteDashDrivePerGameCheck != null)
+                    RemoteDashDrivePerGameCheck.IsChecked = _plugin.Settings?.DashDriveSlotsPerGame == true;
+                if (RemoteDashFlagsCheck != null)
+                    RemoteDashFlagsCheck.IsChecked = _plugin.Settings?.DashFlagsEnabled == true;
+                if (RemoteDashPedalsCheck != null)
+                    RemoteDashPedalsCheck.IsChecked = _plugin.Settings?.DashDrivePedals != false;
+                if (RemoteDashRevCenteredCheck != null)
+                    RemoteDashRevCenteredCheck.IsChecked = _plugin.Settings?.DashRevStripCentered == true;
+                if (RemoteDashThemeCombo != null)
+                {
+                    var names = TrueforcePlugin.DashThemeNames();
+                    if (RemoteDashThemeCombo.Items.Count != names.Length)
+                    {
+                        RemoteDashThemeCombo.Items.Clear();
+                        foreach (string n in names) RemoteDashThemeCombo.Items.Add(n);
+                    }
+                    int ti = Array.FindIndex(names, n =>
+                        string.Equals(n, _plugin.Settings?.DashTheme, StringComparison.OrdinalIgnoreCase));
+                    RemoteDashThemeCombo.SelectedIndex = ti < 0 ? 0 : ti;
+                }
+                if (RemoteDashSpotterCheck != null)
+                    RemoteDashSpotterCheck.IsChecked = _plugin.Settings?.DashSpotterEnabled != false;
+                if (RemoteDashIdleCheck != null)
+                    RemoteDashIdleCheck.IsChecked = _plugin.Settings?.DashIdleEnabled != false;
+                if (RemoteDashIdleDelayBox != null)
+                    RemoteDashIdleDelayBox.Text = (_plugin.Settings?.DashIdleDelaySeconds ?? 30).ToString();
+                if (RemoteDashIdleNameBox != null)
+                    RemoteDashIdleNameBox.Text = _plugin.Settings?.DashIdleDriverName ?? "";
+                if (RemoteDashIdleNumberBox != null)
+                    RemoteDashIdleNumberBox.Text = _plugin.Settings?.DashIdleNumber ?? "";
+                if (RemoteDashIdleNameAboveCheck != null)
+                    RemoteDashIdleNameAboveCheck.IsChecked = _plugin.Settings?.DashIdleNameAbove == true;
+                if (RemoteDashIdleStyleCombo != null)
+                {
+                    if (RemoteDashIdleStyleCombo.Items.Count == 0)
+                        foreach (string lbl in IdleStyleLabels) RemoteDashIdleStyleCombo.Items.Add(lbl);
+                    int si = Array.IndexOf(IdleStyleKeys, _plugin.Settings?.DashIdleStyle ?? "Topo");
+                    if (si < 0 && _plugin?.Settings != null)
+                    {
+                        // A retired style left the box showing the first entry
+                        // while the setting still said something else, so the
+                        // box and the card disagreed until it was touched.
+                        _plugin.Settings.DashIdleStyle = IdleStyleKeys[0];
+                        si = 0;
+                        PersistIdle();
+                    }
+                    RemoteDashIdleStyleCombo.SelectedIndex = si < 0 ? 0 : si;
+                }
+                if (RemoteDashIdleFontCombo != null)
+                {
+                    if (RemoteDashIdleFontCombo.Items.Count == 0)
+                        foreach (string lbl in IdleFontLabels) RemoteDashIdleFontCombo.Items.Add(lbl);
+                    int fi = Array.IndexOf(IdleFontValues, _plugin.Settings?.DashIdleFont ?? "");
+                    RemoteDashIdleFontCombo.SelectedIndex = fi < 0 ? 0 : fi;
+                }
+                if (RemoteDashIdleColorCombo != null)
+                {
+                    if (RemoteDashIdleColorCombo.Items.Count == 0)
+                        foreach (string lbl in IdleColorNames) RemoteDashIdleColorCombo.Items.Add(lbl);
+                    int ci = Array.IndexOf(IdleColorHex, _plugin.Settings?.DashIdleColor ?? "#FFF2F4F8");
+                    RemoteDashIdleColorCombo.SelectedIndex = ci < 0 ? 0 : ci;
+                }
+                bool twoRows = _plugin.Settings?.DashDriveTwoRows != false;
+                if (RemoteDashDriveTwoRowsRadio != null) RemoteDashDriveTwoRowsRadio.IsChecked = twoRows;
+                if (RemoteDashDriveOneRowRadio != null) RemoteDashDriveOneRowRadio.IsChecked = !twoRows;
+                // The top pair is not drawn in the one-row layout, so its
+                // pickers would be lying about what the dash shows.
+                if (RemoteDashDriveSlot0Combo != null) RemoteDashDriveSlot0Combo.IsEnabled = twoRows;
+                if (RemoteDashDriveSlot1Combo != null) RemoteDashDriveSlot1Combo.IsEnabled = twoRows;
+                if (RemoteDashDriveSlot0Label != null) RemoteDashDriveSlot0Label.Opacity = twoRows ? 1.0 : 0.5;
+                if (RemoteDashDriveSlot1Label != null) RemoteDashDriveSlot1Label.Opacity = twoRows ? 1.0 : 0.5;
+            }
+            finally { _suppressEvents = prevSuppress; }
+        }
+
+        private void RemoteDashPedals_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashDrivePedals = RemoteDashPedalsCheck?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Persist DashDrivePedals failed: " + ex.Message);
+            }
+        }
+
+        private void RemoteDashRevCentered_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashRevStripCentered = RemoteDashRevCenteredCheck?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Persist DashRevStripCentered failed: " + ex.Message);
+            }
+        }
+
+        private void RemoteDashSpotter_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashSpotterEnabled = RemoteDashSpotterCheck?.IsChecked == true;
+            PersistIdle();
+        }
+
+        private void RemoteDashTheme_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var names = TrueforcePlugin.DashThemeNames();
+            int i = RemoteDashThemeCombo?.SelectedIndex ?? -1;
+            if (i < 0 || i >= names.Length) return;
+            _plugin.Settings.DashTheme = names[i];
+            // No notify needed: the dash polls Dash.Theme.* every update, so
+            // it repaints itself on the next frame with no reload.
+            PersistIdle();
+        }
+
+        // ---------------- idle card ----------------
+        // Style and color are fixed lists rather than free text: both feed a
+        // dash formula, and a typo there fails silently as a blank card.
+        private static readonly string[] IdleStyleKeys   = { "Pipes", "Fractal", "Topo", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleLabels = { "Pipes", "Fractal zoom", "Contours", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
+        // Families that ship broadly enough to be there on a phone, a tablet
+        // and a PC alike. Empty is the dashboard's own font.
+        private static readonly string[] IdleFontValues =
+            { "", "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet MS" };
+        private static readonly string[] IdleFontLabels =
+            { "Default", "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet" };
+
+        private static readonly string[] IdleColorHex =
+            { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };
+        private static readonly string[] IdleColorNames =
+            { "White", "Gold", "Green", "Blue", "Red", "Violet" };
+
+        private void RemoteDashIdle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleEnabled = RemoteDashIdleCheck?.IsChecked == true;
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleStyle_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = RemoteDashIdleStyleCombo?.SelectedIndex ?? -1;
+            if (i < 0 || i >= IdleStyleKeys.Length) return;
+            _plugin.Settings.DashIdleStyle = IdleStyleKeys[i];
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleFont_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = RemoteDashIdleFontCombo?.SelectedIndex ?? -1;
+            if (i < 0 || i >= IdleFontValues.Length) return;
+            _plugin.Settings.DashIdleFont = IdleFontValues[i];
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleColor_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = RemoteDashIdleColorCombo?.SelectedIndex ?? -1;
+            if (i < 0 || i >= IdleColorHex.Length) return;
+            _plugin.Settings.DashIdleColor = IdleColorHex[i];
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleNameAbove_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleNameAbove = RemoteDashIdleNameAboveCheck?.IsChecked == true;
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleName_Commit(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleDriverName = (RemoteDashIdleNameBox?.Text ?? "").Trim();
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleNumber_Commit(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIdleNumber = (RemoteDashIdleNumberBox?.Text ?? "").Trim();
+            PersistIdle();
+        }
+
+        private void RemoteDashIdleDelay_Commit(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int v;
+            if (!int.TryParse((RemoteDashIdleDelayBox?.Text ?? "").Trim(), out v)) v = 30;
+            if (v < 0) v = 0;
+            if (v > 3600) v = 3600;   // an hour is already "never" in practice
+            _plugin.Settings.DashIdleDelaySeconds = v;
+            _suppressEvents = true;
+            try { if (RemoteDashIdleDelayBox != null) RemoteDashIdleDelayBox.Text = v.ToString(); }
+            finally { _suppressEvents = false; }
+            PersistIdle();
+        }
+
+        // Enter commits without waiting for focus to move, which on a settings
+        // page is otherwise the difference between typing a name and keeping it.
+        private void RemoteDashIdleName_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) RemoteDashIdleName_Commit(sender, null);
+        }
+
+        private void RemoteDashIdleNumber_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) RemoteDashIdleNumber_Commit(sender, null);
+        }
+
+        private void RemoteDashIdleDelay_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) RemoteDashIdleDelay_Commit(sender, null);
+        }
+
+        private void PersistIdle()
+        {
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Persist idle settings failed: " + ex.Message);
+            }
+        }
+
+        private void RemoteDashFlags_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashFlagsEnabled = RemoteDashFlagsCheck?.IsChecked == true;
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist DashFlagsEnabled failed: " + ex.Message);
+            }
+        }
+
+        private void RemoteDashDriveRows_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashDriveTwoRows = RemoteDashDriveTwoRowsRadio?.IsChecked == true;
+            SaveRemoteDashDriveLayout();
+        }
+
+        private void RemoteDashDriveSlot_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var combos = RemoteDashDriveCombos();
+            var list = new List<string>(combos.Length);
+            foreach (var cb in combos)
+                list.Add((cb?.SelectedItem as ComboBoxItem)?.Tag as string ?? "None");
+            _plugin.SetDashDriveSlots(list);
+            SaveRemoteDashDriveLayout();
+        }
+
+        /// <summary>Per-game layouts on or off. Nothing is copied either way:
+        /// the save below republishes the slot map and re-reads the pickers
+        /// from whichever list is in force now, which is the same list as a
+        /// moment ago until the user actually re-picks a box.</summary>
+        private void RemoteDashDrivePerGame_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashDriveSlotsPerGame = RemoteDashDrivePerGameCheck?.IsChecked == true;
+            SaveRemoteDashDriveLayout();
+        }
+
+        private void SaveRemoteDashDriveLayout()
+        {
+            try { _plugin.PersistSettings(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Persist Drive tab layout failed: " + ex.Message);
+            }
+            // Republish the cached slot map so the dash follows immediately.
+            _plugin.RefreshDashTabSlots();
+            RefreshRemoteDashDriveEditor();
+        }
 
         private void RebuildRemoteDashTabsEditor()
         {
@@ -6341,7 +7437,10 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var order = _plugin.GetDashTabFullOrder();
-                var disabled = new HashSet<int>(_plugin.Settings.DashTabsDisabled ?? new List<int>());
+                // Effective, not stored: on a fresh install the factory-off
+                // tabs must show unticked here or the editor disagrees with
+                // the dash it is editing.
+                var disabled = new HashSet<int>(_plugin.DashEffectiveDisabledTabs());
                 int enabledCount = 0;
                 int firstEnabled = 0;
                 bool anyEnabled = false;
@@ -6378,8 +7477,11 @@ namespace TrueforceForAll.Plugin
                 // click (the pressed control leaves the visual tree) and
                 // resets an open default-tab dropdown. Only a real layout
                 // or default change rebuilds.
+                // Sorted: a set's enumeration order is not part of its
+                // contract, and an unstable signature rebuilds on every tap.
+                var disabledSig = new List<int>(disabled); disabledSig.Sort();
                 string sig = string.Join(",", order) + "|"
-                    + string.Join(",", _plugin.Settings.DashTabsDisabled ?? new List<int>()) + "|"
+                    + string.Join(",", disabledSig) + "|"
                     + _plugin.Settings.DashDefaultTab;
                 if (sig == _remoteDashTabsSignature && RemoteDashTabsPanel.Children.Count > 0)
                     return;
@@ -6473,7 +7575,7 @@ namespace TrueforceForAll.Plugin
         private void RemoteDashTabToggle(int tab, bool on)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            var disabled = new List<int>(_plugin.Settings.DashTabsDisabled ?? new List<int>());
+            var disabled = _plugin.DashEffectiveDisabledTabs();
             if (on)
             {
                 disabled.RemoveAll(t => t == tab);
@@ -6499,6 +7601,18 @@ namespace TrueforceForAll.Plugin
         private void SaveRemoteDashTabLayout(List<int> order, List<int> disabled)
         {
             if (_plugin?.Settings == null) return;
+            // The first edit of any kind freezes what the user is currently
+            // looking at before applying their change. Without it, reordering
+            // tabs on a fresh install would write an order, which flips the
+            // layout from "factory" to "configured", which reads the empty
+            // disabled list literally and silently switches a factory-off tab
+            // back on. After this both lists are taken at face value.
+            if (order == null &&
+                (_plugin.Settings.DashTabOrder == null || _plugin.Settings.DashTabOrder.Count == 0))
+                order = _plugin.GetDashTabFullOrder();
+            if (disabled == null &&
+                (_plugin.Settings.DashTabsDisabled == null || _plugin.Settings.DashTabsDisabled.Count == 0))
+                disabled = _plugin.DashEffectiveDisabledTabs();
             if (order != null) _plugin.Settings.DashTabOrder = order;
             if (disabled != null) _plugin.Settings.DashTabsDisabled = disabled;
             try { _plugin.PersistSettings(); }
@@ -9427,16 +10541,6 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveBumps.SurfaceRumbleScale = v;
             Apply(EffectKind.Bumps);
         }
-        private void BumpsRumbleStripPulseSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_suppressEvents || _plugin == null) return;
-            float v = (float)e.NewValue;
-            BumpsRumbleStripPulseText.Text = v.ToString("F2");
-            _plugin.EnsureSectionDraft(TrueforcePlugin.SectionKind.Bumps);
-            _plugin.ActiveBumps.RumbleStripPulseAmp = v;
-            Apply(EffectKind.Bumps);
-        }
-
         // ---------- Traction loss ----------
 
         private void TractionEnabled_Changed(object sender, RoutedEventArgs e)
@@ -10033,6 +11137,8 @@ namespace TrueforceForAll.Plugin
                 if (CarFactsExpander != null) CarFactsExpander.IsExpanded = true;
                 CarFactsRedlineBox?.BringIntoView();
                 CarFactsRedlineBox?.Focus();
+                if (CarFactsRedlineBox != null)
+                    CarFactsRedlineBox.CaretIndex = CarFactsRedlineBox.Text?.Length ?? 0;
             }
             catch { }
         }
@@ -10389,6 +11495,28 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveKerbThump.Gain = v;
             Apply(EffectKind.KerbThump);
         }
+
+        // FS "Leading edge": the Kerb thump block folded into the Terrain
+        // texture section. One slider = gain with 0-as-off (the folded
+        // shape has no separate enable checkbox). Writes the ACTIVE
+        // SETTINGS directly, not a per-car draft: the standalone section
+        // owning the draft's Save/Revert chips is hidden in FS, so a draft
+        // would be invisible and silently discarded on car change. Direct
+        // writes persist like every other FS slider and land in the game
+        // preset on save. (FS car ids are FS-only, so no legacy per-car
+        // KerbThump override can mask this write.)
+        private void BumpsLeadingEdge_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.KerbThump == null
+                || BumpsLeadingEdgeSlider == null) return;
+            float v = (float)BumpsLeadingEdgeSlider.Value;
+            if (BumpsLeadingEdgeText != null)
+                BumpsLeadingEdgeText.Text = v.ToString("F2");
+            _plugin.Settings.KerbThump.Gain = v;
+            _plugin.Settings.KerbThump.Enabled = v > 0.005f;
+            Apply(EffectKind.KerbThump);
+            _plugin.PersistSettings();
+        }
         private void KerbThumpFreqSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -10553,6 +11681,8 @@ namespace TrueforceForAll.Plugin
             "Trueforce For All test codes (type one in the access box):\n\n" +
             "HELP / CODES   Show this list.\n" +
             "SHARE          Force the 'spread the word' banner on now.\n" +
+            "SUPPORT        Preview the periodic Patreon support modal now (pacing untouched).\n" +
+            "SUPPORTRESET   Reset the support-prompt ladder back to its first rung.\n" +
             "RATCHET        Play the auto-tuned ring-buffer banner sequence.\n" +
             "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
             "CAPTURE        Toggle the aligned telemetry+FFB capture CSV (v2 golden fixture format) under Documents\\TrueforceForAll.\n" +
@@ -10591,7 +11721,11 @@ namespace TrueforceForAll.Plugin
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BAUTOS 1/0 auto strength per car, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "OLEDTEST       Show sample wheel-screen frames on the OLED so you can check it works (no game running).\n" +
+            "OLEDDIAG       Ask the wheel for its own OLED layout table, log it, then show a lettered ruler that maps each layout's field boundaries. How this wheel's layouts were decoded.\n" +
+            "OLEDMS <ms>    How often the wheel's OLED may be redrawn, in milliseconds (20-1000; default 100 = 10 per second). Lower is smoother and uses more of the wheel's shared command channel. Type OLEDMS with no number to read the current value. Persists.\n" +
+            "OLEDANY        Run the wheel's OLED screen regardless of Telemetry Based FFB, to find out whether writing the screen really does cut a game's own force feedback the way the rev lights do (never tested for the screen; the restriction is inherited). EXPECT THE FORCE TO DROP OUT. Persists. Toggle.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
@@ -10661,6 +11795,7 @@ namespace TrueforceForAll.Plugin
                         || pn == "BLAT" || pn == "BDIRK"
                         || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
                         || pn == "BLEARN" || pn == "BGTRIM" || pn == "BLDEM"
+                        || pn == "BAUTOS"
                         || pn == "MBREV" || pn == "BREVG"
                        
                         || pn == "MBLEAD" || pn == "BLEAD"
@@ -10847,6 +11982,30 @@ namespace TrueforceForAll.Plugin
                             ex);
                     }
                 }
+                return;
+            }
+            // Dev-only: show the periodic support modal right now, ignoring the
+            // seat-time ladder, the idle gate and the ever-supported latch. Pacing
+            // is NOT advanced, so this is a pure preview and repeatable.
+            if (code.Equals("SUPPORT", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Support prompt shown (preview; pacing untouched).";
+                ShowSupportPrompt(recordPacing: false);
+                return;
+            }
+            // Dev-only: put the support-prompt ladder back to the start (next ask
+            // due at the first rung again) and clear the decline back-off.
+            if (code.Equals("SUPPORTRESET", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.SupportPromptCount = 0;
+                _plugin.Settings.SupportPromptDeclineCount = 0;
+                _plugin.Settings.SupportPromptLastUtc = null;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Support-prompt pacing reset.";
                 return;
             }
             // Dev-only: force the one-and-done word-of-mouth banner to show
@@ -11460,6 +12619,71 @@ namespace TrueforceForAll.Plugin
 
             // Issue #13 test: stop the Trueforce stream while paused so the wheel
             // hands back to the game's native FFB / auto-center. Persists. Toggle.
+            if (code.Equals("OLEDTEST", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_plugin == null) return;
+                _plugin.TestOled();
+                PollOledStatus();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Showing sample screens on the wheel. Watch the Screen status "
+                        + "line beside the wheel-screen settings for each step. Run it with no game driving "
+                        + "the wheel: writing the screen while a game sends its own force feedback cuts that "
+                        + "force feedback out.";
+                return;
+            }
+
+            if (code.Equals("OLEDDIAG", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_plugin == null) return;
+                _plugin.ReportOledLayouts();
+                PollOledStatus();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Reading the wheel's own layout table into the log, then showing "
+                        + "a lettered ruler so each layout's field boundaries can be read off the screen. "
+                        + "Look for [OLED] lines in SimHub.txt.";
+                return;
+            }
+
+            if (code.StartsWith("OLEDMS", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_plugin?.Settings == null) return;
+                string arg = code.Substring(6).Trim();
+                if (int.TryParse(arg, System.Globalization.NumberStyles.Integer,
+                                 System.Globalization.CultureInfo.InvariantCulture, out int ms))
+                {
+                    if (ms < 20) ms = 20; else if (ms > 1000) ms = 1000;
+                    _plugin.Settings.OledWriteIntervalMs = ms;
+                    _plugin.PersistSettings();
+                }
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                {
+                    int cur = _plugin.Settings.OledWriteIntervalMs;
+                    AccessCodeStatus.Text = $"OLED write interval: {cur} ms (about {1000 / Math.Max(1, cur)} "
+                        + "updates a second). Lower is smoother and uses more of the wheel's command channel. "
+                        + "Drive with it and watch the force feedback: if it starts to feel soft or cuts, "
+                        + "you have found the limit. OLEDMS with no number just reports the current value.";
+                }
+                return;
+            }
+
+            if (code.Equals("OLEDANY", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_plugin?.Settings == null) return;
+                bool on = !_plugin.Settings.OledIgnoreModeBGate;
+                _plugin.Settings.OledIgnoreModeBGate = on;
+                _plugin.PersistSettings();
+                if (!on) _plugin.TurnOffOled();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "OLED gate OFF: the wheel screen now runs in any game, including ones sending their own force feedback. This is the experiment, so EXPECT the force to cut out; if it does, that confirms the screen shares the rev lights' limitation. Type OLEDANY again to put the gate back."
+                        : "OLED gate back on: the wheel screen runs only under Telemetry Based FFB again.";
+                return;
+            }
+
             if (code.Equals("NOLOCK", StringComparison.OrdinalIgnoreCase))
             {
                 bool on = _plugin.DebugToggleStopStreamOnPause();
@@ -11621,6 +12845,309 @@ namespace TrueforceForAll.Plugin
             if (!_plugin.Settings.ModeBRevLightsEnabled) _plugin.TurnOffRpmLeds();
         }
 
+        // ---- Wheel-base Dynamic OLED (experimental) ----------------------
+        // Mirrors the rev-light handlers: the screen shares that HID++ pipe and
+        // its Mode B gate, so turning it off must hand the panel back at once
+        // rather than leaving the last frame frozen on the wheel.
+
+        private void ModeBOled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.ModeBOledEnabled = ModeBOledCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            if (!_plugin.Settings.ModeBOledEnabled) _plugin.TurnOffOled();
+        }
+
+        private void OledScreen_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var picked = OledScreenCombo.SelectedItem as ComboBoxItem;
+            if (!(picked?.Tag is OledScreen chosen)) return;
+            var s = _plugin.Settings;
+            var was = s.OledScreen;
+            s.OledScreen = chosen;
+            // First time into the editor, start from the screen they were just
+            // on instead of four empty slots. Nobody wants to build a screen
+            // from nothing, and a blank panel on the wheel looks like a bug.
+            if (s.OledScreen == OledScreen.Custom && was != OledScreen.Custom
+                && (s.OledCustomSlots == null || s.OledCustomSlots.Count == 0))
+            {
+                OledScreenModel.Preset(was, s.OledUseMph, deltaOk: true,
+                                       out var kind, out var slots, out var texts);
+                s.OledCustomLayout = kind;
+                s.OledCustomSlots = new List<string>(slots);
+                s.OledCustomTexts = new List<string>(
+                    OledScreenModel.SanitizeTexts(texts, OledScreenModel.MaxSlots));
+            }
+            _plugin.PersistSettings();
+            RefreshOledEditor();
+            PreviewOledNow();
+        }
+
+        private ComboBox[] OledSlotCombos() => new[]
+            { OledSlot0Combo, OledSlot1Combo, OledSlot2Combo, OledSlot3Combo };
+        private TextBox[] OledSlotTexts() => new[]
+            { OledSlot0Text, OledSlot1Text, OledSlot2Text, OledSlot3Text };
+        private TextBlock[] OledSlotLabels() => new[]
+            { OledSlot0Label, OledSlot1Label, OledSlot2Label, OledSlot3Label };
+        private UIElement[] OledSlotRows() => new UIElement[]
+            { OledSlot0Row, OledSlot1Row, OledSlot2Row, OledSlot3Row };
+
+        /// <summary>Show the custom editor only for "Build my own", size it to
+        /// the chosen layout's slot count, and put each slot's fixed size and
+        /// capacity in its label. The firmware owns all of that, so stating it
+        /// is the only way someone can plan a screen instead of guessing and
+        /// watching text get cut off on the wheel.</summary>
+        private void RefreshOledEditor()
+        {
+            if (OledCustomPanel == null || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            bool custom = s.OledScreen == OledScreen.Custom;
+            OledCustomPanel.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+
+            bool prevSuppress = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (OledScreenCombo != null && OledScreenCombo.Items.Count == 0)
+                    for (int k = 0; k < OledScreenModel.ScreenOrder.Length; k++)
+                        OledScreenCombo.Items.Add(new ComboBoxItem
+                        {
+                            Content = OledScreenModel.ScreenOrderLabels[k],
+                            Tag = OledScreenModel.ScreenOrder[k],
+                        });
+                if (OledScreenCombo != null)
+                {
+                    OledScreenCombo.SelectedItem = null;
+                    foreach (ComboBoxItem it in OledScreenCombo.Items)
+                        if (it.Tag is OledScreen sc && sc == s.OledScreen)
+                        { OledScreenCombo.SelectedItem = it; break; }
+                    // A screen that was retired is still a valid stored value
+                    // but is no longer in the list, which would leave the box
+                    // blank and the user unable to see what they are on. Move
+                    // them to the first offered screen instead of pretending.
+                    if (OledScreenCombo.SelectedItem == null && OledScreenCombo.Items.Count > 0)
+                    {
+                        OledScreenCombo.SelectedIndex = 0;
+                        s.OledScreen = OledScreenModel.ScreenOrder[0];
+                        _plugin.PersistSettings();
+                    }
+                }
+
+                if (OledLayoutCombo != null && OledLayoutCombo.Items.Count == 0)
+                    foreach (string lbl in OledScreenModel.LayoutLabels)
+                        OledLayoutCombo.Items.Add(lbl);
+                int li = Array.IndexOf(OledScreenModel.LayoutKinds, s.OledCustomLayout);
+                if (OledLayoutCombo != null) OledLayoutCombo.SelectedIndex = li < 0 ? 0 : li;
+
+                var kind = s.OledCustomLayout;
+                int n = OledScreenModel.SlotCount(kind);
+                var slots = OledScreenModel.SanitizeSlots(s.OledCustomSlots, kind);
+                var texts = OledScreenModel.SanitizeTexts(s.OledCustomTexts, OledScreenModel.MaxSlots);
+
+                var combos = OledSlotCombos();
+                var boxes = OledSlotTexts();
+                var labels = OledSlotLabels();
+                var rows = OledSlotRows();
+                for (int i = 0; i < OledScreenModel.MaxSlots; i++)
+                {
+                    if (rows[i] != null)
+                        rows[i].Visibility = i < n ? Visibility.Visible : Visibility.Collapsed;
+                    if (i >= n) continue;
+
+                    if (labels[i] != null)
+                        labels[i].Text = $"Slot {i + 1} ({OledScreenModel.SlotHint(kind, i)}):";
+
+                    // A meter slot offers meters, a text slot offers text
+                    // fields. Rebuilt whenever the slot changes kind, which a
+                    // layout change can do underneath a given slot number.
+                    bool isGauge = OledScreenModel.SlotIsGauge(kind, i);
+                    string[] fieldKeys   = isGauge ? OledScreenModel.GaugeFieldKeys   : OledScreenModel.FieldKeys;
+                    string[] fieldLabels = isGauge ? OledScreenModel.GaugeFieldLabels : OledScreenModel.FieldLabels;
+
+                    var cb = combos[i];
+                    if (cb != null)
+                    {
+                        bool rebuild = cb.Items.Count != fieldKeys.Length
+                            || !(cb.Items.Count > 0
+                                 && ((cb.Items[0] as ComboBoxItem)?.Tag as string) == fieldKeys[0]);
+                        if (rebuild)
+                        {
+                            cb.Items.Clear();
+                            for (int k = 0; k < fieldKeys.Length; k++)
+                                cb.Items.Add(new ComboBoxItem { Content = fieldLabels[k], Tag = fieldKeys[k] });
+                        }
+                        cb.SelectedItem = null;
+                        foreach (ComboBoxItem it in cb.Items)
+                            if ((it.Tag as string) == slots[i]) { cb.SelectedItem = it; break; }
+                    }
+
+                    if (boxes[i] != null)
+                    {
+                        // Custom text only, and never on a meter.
+                        boxes[i].Visibility = (!isGauge && slots[i] == OledScreenModel.FieldCustom)
+                            ? Visibility.Visible : Visibility.Collapsed;
+                        boxes[i].Text = texts[i] ?? "";
+                        int wid = OledScreenModel.SlotWidths(kind)[i];
+                        boxes[i].MaxLength = wid > 0 ? wid : 1;
+                    }
+                }
+            }
+            finally { _suppressEvents = prevSuppress; }
+
+            RefreshOledDeltaNotice();
+        }
+
+        /// <summary>Draw whatever the editor currently describes on the wheel,
+        /// so a layout can be judged where it will be read rather than guessed
+        /// at from a dropdown. Silent when the channel is not up yet; explains
+        /// itself when a game is holding the pipe, since a preview that just
+        /// does nothing looks broken.</summary>
+        private void PreviewOledNow()
+        {
+            if (_plugin?.Settings == null) return;
+            if (_plugin.Settings.ModeBOledEnabled != true) return;
+            int ms = _plugin.PreviewOledScreen();
+            if (ms >= 0 || OledStatusText == null) return;
+            OledStatusText.Text = "preview held back: telemetry is arriving, so a game may be sending "
+                + "its own force feedback and writing the screen now could cut it. Close the game, or "
+                + "turn on Telemetry Based FFB, and the preview works.";
+        }
+
+        /// <summary>Say so when the running game never reports a lap delta,
+        /// rather than letting a delta screen sit blank with no explanation.
+        /// Same evidence the dash's box picker greys "Lap times" out with.</summary>
+        private void RefreshOledDeltaNotice()
+        {
+            if (OledDeltaUnavailableText == null || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            bool wantsDelta =
+                s.OledScreen == OledScreen.SpeedAndDelta ||
+                s.OledScreen == OledScreen.SpeedGearAndDelta ||
+                (s.OledScreen == OledScreen.Custom && s.OledCustomSlots != null
+                 && s.OledCustomSlots.Contains(OledScreenModel.FieldDelta));
+
+            bool show = wantsDelta && !_plugin.GameReportsLapDelta;
+            OledDeltaUnavailableText.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (show)
+                OledDeltaUnavailableText.Text =
+                    (_plugin.ActiveGame ?? "This game") + " does not report a lap delta, so that "
+                    + "part of the screen stays empty. The rest still works.";
+        }
+
+        private void OledLayout_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = OledLayoutCombo.SelectedIndex;
+            if (i < 0 || i >= OledScreenModel.LayoutKinds.Length) return;
+            _plugin.Settings.OledCustomLayout = OledScreenModel.LayoutKinds[i];
+            _plugin.PersistSettings();
+            RefreshOledEditor();
+            PreviewOledNow();
+        }
+
+        private void OledSlot_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            var combos = OledSlotCombos();
+            int n = OledScreenModel.SlotCount(s.OledCustomLayout);
+            var slots = OledScreenModel.SanitizeSlots(s.OledCustomSlots, s.OledCustomLayout);
+            for (int i = 0; i < n; i++)
+            {
+                var it = combos[i]?.SelectedItem as ComboBoxItem;
+                if (it?.Tag is string key) slots[i] = key;
+            }
+            s.OledCustomSlots = new List<string>(slots);
+            _plugin.PersistSettings();
+            RefreshOledEditor();
+            PreviewOledNow();
+        }
+
+        private void OledSlotText_Changed(object sender, TextChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            var boxes = OledSlotTexts();
+            var texts = OledScreenModel.SanitizeTexts(s.OledCustomTexts, OledScreenModel.MaxSlots);
+            for (int i = 0; i < OledScreenModel.MaxSlots; i++)
+                if (boxes[i] != null) texts[i] = boxes[i].Text ?? "";
+            s.OledCustomTexts = new List<string>(texts);
+            _plugin.PersistSettings();
+            PreviewOledNow();
+            // Deliberately no RefreshOledEditor here: rebuilding the boxes while
+            // someone is typing in one of them would move the caret.
+        }
+
+        private void OledShiftFlash_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledShiftFlash = OledShiftFlashCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void OledFlashStyle_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            int i = OledFlashStyleCombo.SelectedIndex;
+            if (i < 0) return;
+            _plugin.Settings.OledShiftFlashStyle = (OledFlashStyle)i;
+            _plugin.PersistSettings();
+        }
+
+        private void OledGreeting_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledGreetingEnabled = OledGreetingCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void OledGreetingText_Changed(object sender, TextChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledGreetingText = OledGreetingBox.Text ?? "";
+            _plugin.PersistSettings();
+        }
+
+        private void OledLapResult_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledLapResult = OledLapResultCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void OledMph_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.OledUseMph = OledMphCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            PreviewOledNow();
+        }
+
+        // The OLED sample sequence and the layout report used to be buttons in
+        // the settings section. They are diagnostics, not settings, and the
+        // section had grown too long to spend two controls on them, so they
+        // moved to access codes (OLEDTEST / OLEDDIAG). The code behind them is
+        // unchanged and still worth having: the report is how this wheel's
+        // layout table was read in the first place.
+
+        /// <summary>Live-poll the controller's status while a sequence runs, so
+        /// a wheel that never answers says so in the panel and not only in the
+        /// log, and so each step names itself while it is on screen.</summary>
+        private void PollOledStatus()
+        {
+            var t = new System.Windows.Threading.DispatcherTimer
+            { Interval = TimeSpan.FromMilliseconds(250) };
+            int idleTicks = 0;
+            t.Tick += (s2, e2) =>
+            {
+                if (OledStatusText != null) OledStatusText.Text = _plugin.OledStatus;
+                if (_plugin.OledIsTesting) idleTicks = 0;
+                else if (++idleTicks > 4) t.Stop();   // ~1s after it ends
+            };
+            t.Start();
+        }
+
         private void MairaPassthrough_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -11780,7 +13307,10 @@ namespace TrueforceForAll.Plugin
             // During car-edit the loaded game preset is only a temporary baseline,
             // so the car override is the one valid save target. Save this section
             // straight to the car instead of offering the game-scope popover.
-            if (_plugin.IsOfflineEditingCar) { ApplyEffectSaveForCar(which); return; }
+            // Global-only sections have no car slot: routing them here dead-ends
+            // in the override machinery's default cases ("Couldn't save"), so
+            // they keep their normal game-preset save even mid car-edit.
+            if (_plugin.IsOfflineEditingCar && SectionHasCarScope(which)) { ApplyEffectSaveForCar(which); return; }
             // (The engine-layout-only fast path was removed with the 2026-07
             // centralization: the engine type lives in Car facts and can no
             // longer dirty the Engine section.)
@@ -13263,11 +14793,25 @@ namespace TrueforceForAll.Plugin
         // couple of distinctive top-level fields so an unrecognized or
         // malformed file is never mistaken for a backup and offered the
         // destructive replace-all path.
+        // Stamped into the redacted settings snapshot that ships inside an
+        // exported log zip. That file is diagnostic only: identity and community
+        // lineage are stripped out of it, and some of what's stripped is data
+        // Import would not put back, so it must never be offered as a restorable
+        // backup however much it otherwise resembles one.
+        internal const string DiagnosticSnapshotMarker = "_Tf4allDiagnosticSnapshot";
+
+        private static bool IsDiagnosticSnapshot(string json)
+        {
+            try { return Newtonsoft.Json.Linq.JObject.Parse(json)[DiagnosticSnapshotMarker] != null; }
+            catch { return false; }
+        }
+
         private static bool LooksLikeSettingsBackup(string json)
         {
             try
             {
                 var jo = Newtonsoft.Json.Linq.JObject.Parse(json);
+                if (jo[DiagnosticSnapshotMarker] != null) return false;
                 return jo["MasterGain"] != null && (jo["Performance"] != null || jo["Forza"] != null);
             }
             catch { return false; }
@@ -13433,6 +14977,15 @@ namespace TrueforceForAll.Plugin
                 if (LooksLikeSettingsBackup(json))
                 {
                     c.Kind = ImportCandidateKind.SettingsBackup;
+                    return c;
+                }
+                // Tell the truth about the one file that looks like a backup but
+                // deliberately isn't, so the user isn't left guessing why the
+                // settings JSON from their log zip won't import.
+                if (IsDiagnosticSnapshot(json))
+                {
+                    c.FailureMessage = "This is the redacted diagnostic copy from a log export, "
+                        + "not a backup. Use Settings > Backup for a file you can restore.";
                     return c;
                 }
                 c.FailureMessage = "Unrecognized file (not a TF4ALL preset, car preset, pack, or settings backup).";

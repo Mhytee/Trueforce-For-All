@@ -1,4 +1,4 @@
-// Kerb-entry thump (test layer 2): a single percussive hit fired on the
+﻿// Kerb-entry thump (test layer 2): a single percussive hit fired on the
 // EventDeriver's RumbleStripStart edge — the moment a wheel FIRST touches
 // the strip — distinct from RoadBumpsEffect's sustained kerb texture that
 // rides the surface-rumble channel while you stay on it. Together they read
@@ -16,7 +16,7 @@ namespace TrueforceForAll.Plugin.Effects
 {
     public sealed class KerbThumpEffect : TelemetryEffect
     {
-        public override string Name => "Kerb thump";
+        public override string Name => "Curb thump";
 
         /// <summary>Thump frequency (Hz). 30 = deeper than the 40 Hz gear
         /// thud so the cues stay distinguishable.</summary>

@@ -36,6 +36,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
 using SimHub.Plugins;
 using TrueforceForAll.Plugin.Effects;
@@ -55,6 +56,23 @@ namespace TrueforceForAll.Plugin
         // read on the property-poll thread; strings are reference-atomic so
         // torn reads are impossible and eventual consistency is fine here.
         private volatile string _dashOverlay = "";        // "" | "layout" | "keypad" | "presets"
+        // On-screen keyboard (Dash.Overlay == "kbd"). The numeric keypad next
+        // to this one covers gains and the redline; a car name is the one fact
+        // on the dash that needs letters, and without this it could only be
+        // changed at the PC.
+        private volatile string _dashKbdEntry = "";
+        private volatile string _dashKbdTitle = "";
+        private volatile string _dashKbdTarget = "";
+        // Sticky rather than one-shot, because model names run in blocks of
+        // capitals and a shift that dropped after every letter would mean
+        // three presses to type GT3. Starts OFF.
+        private volatile bool _dashKbdCaps = false;
+        private const int DashKbdMaxLen = 40;
+        // Where the next character lands. Without it the only edit possible
+        // was deleting back to the mistake and retyping the rest, which on a
+        // forty character name means retyping most of it to fix a letter.
+        private volatile int _dashKbdCaret;
+
         private volatile string _dashKeypadEntry = "";    // digits being typed
         // What the keypad edits when SET is pressed: "master" | "audio" |
         // "redline" | "fx:<Key>" (a _dashFx table key) | "modeb:<Key>" (a
@@ -78,7 +96,7 @@ namespace TrueforceForAll.Plugin
         // exactly one screen enabled, SimHub's swipe/NextScreen is inert.
         // Seeded at Init from Settings (DashLastTab or DashDefaultTab per
         // the remember-last-tab pref); tab taps write back DashLastTab.
-        private const int DashTabCount = 6;
+        private const int DashTabCount = 7;
         private volatile int _dashTab;
 
         // Tab-bar SLOT indirection so users can hide and reorder tabs from
@@ -88,12 +106,364 @@ namespace TrueforceForAll.Plugin
         // here. _dashTabSlots = enabled screen indices in display order
         // (never empty; sanitizer falls back to Drive). Volatile reference
         // swap: rebuilt on the UI/action thread, read per property poll.
+        // Index-matched with RemoteDashTabNames in SettingsControl; add a
+        // screen to one and it goes in the other.
         private static readonly string[] DashTabNames =
-            { "HOME", "CAR FACTS", "EFFECTS", "PRESETS", "VISUALIZER", "TELE-FFB" };
-        // Factory display order: Tele-FFB sits between Effects and Presets.
-        // An empty stored DashTabOrder resolves to exactly this.
-        private static readonly int[] DashTabFactoryOrder = { 0, 1, 2, 5, 3, 4 };
+            { "GAINS", "CAR FACTS", "EFFECTS", "PRESETS", "VISUALIZER", "TELE-FFB", "DRIVE" };
+        // Factory display order: Drive leads (it is the while-driving screen),
+        // then Home, and Tele-FFB sits between Effects and Presets. An empty
+        // stored DashTabOrder resolves to exactly this. NOTE an existing
+        // install keeps its saved order and picks Drive up at the END, since
+        // the sanitizer appends unknown-to-the-stored-list tabs rather than
+        // reordering what the user chose.
+        private static readonly int[] DashTabFactoryOrder = { 6, 0, 1, 4, 2, 5, 3 };
+        // Tabs a fresh install starts with switched OFF. Gains is here
+        // because the Drive tab's own gains box covers it, so the tab is a
+        // duplicate for most people; it is one checkbox away in Settings.
+        // Applied ONLY when the user has never touched the tab editor (an
+        // empty DashTabOrder), so nobody's existing layout is rearranged by
+        // an update, and an empty disabled list still means "all on" for
+        // anyone who has configured tabs. It cannot be a default on the
+        // settings field itself: see project-settings-json-append-landmine.
+        private static readonly int[] DashTabFactoryDisabled = { 0 };
         private volatile int[] _dashTabSlots = new int[0];
+
+        // ------------------------------------------------------------------
+        // Drive screen: four corner boxes around the gear readout. The dash
+        // emits EVERY content widget into EVERY slot and shows one, gated on
+        // Dash.Drive.Slot<i>; the plugin just publishes which key each slot
+        // holds. That keeps swapping instant (no dash regeneration) at the
+        // cost of item count, which is why the scope option renders a reduced
+        // column count in a box rather than the full Visualizer trace.
+        // Everything except CarFacts and Scope binds to SimHub's own game
+        // properties, so no telemetry is plumbed through this plugin for it.
+        // ------------------------------------------------------------------
+        // Damage is deliberately absent: no shipped SimHub dashboard binds a
+        // damage property, so the names are unverified, and Forza's damage
+        // model is thin anyway. A relative (drivers ahead / behind) box is the
+        // obvious next option: PersistantTrackerPlugin.DriverAhead_NN_* and
+        // DriverBehind_NN_* carry it without the obsolete leaderboard item.
+        // Sorted by LABEL, with Empty pinned last: it is the absence of a
+        // choice rather than one of them, so it does not belong in the E's.
+        // Keys and labels are index-matched, and the on-dash picker indexes
+        // a tile straight into these, so all three lists move together.
+        internal static readonly string[] DashDriveContentKeys =
+            { "CarFacts", "Damage", "Friction", "Fuel", "GCircle", "Home",
+              "Inputs", "Delta", "Presets", "Radar", "Relative",
+              "TyreTemps", "TyreWear", "Scope", "None" };
+        // Friendly labels for the Settings-tab pickers, index-matched above.
+        internal static readonly string[] DashDriveContentLabels =
+            { "Car facts", "Damage", "Friction circle", "Fuel", "G circle",
+              "Gains", "Inputs", "Lap times", "Presets", "Radar",
+              "Relative", "Tire temps", "Tire wear", "Visualizer", "Empty" };
+        // Slot order: top-left, top-right, bottom-left, bottom-right. The
+        // bottom pair is what a phone sees when two-row layout is off, so the
+        // two most useful boxes live there.
+        private static readonly string[] DashDriveFactorySlots =
+            { "CarFacts", "TyreTemps", "Scope", "GCircle" };
+        internal const int DashDriveSlotCount = 4;
+        // Which box the on-dash picker is editing. Set when it opens, read
+        // by the picker's title and by every tile it offers.
+        private volatile int _dashDriveEditSlot;
+        // Cached sanitized slots, refreshed alongside the tab slot map so the
+        // property getters never re-walk settings per poll.
+        private volatile string[] _dashDriveSlots = (string[])DashDriveFactorySlots.Clone();
+
+        // Content keys a game NEVER reports, comma-wrapped so the dash can
+        // test one with a plain indexOf(",Key,"). The wrapping is what stops
+        // a substring match; without it "Radar" would also be found inside a
+        // hypothetical "RadarRange".
+        //
+        // The bar for an entry here is high, and deliberately so: this is the
+        // list that takes a box AWAY from someone, and a wrong entry is worse
+        // than no entry. "The game does not report it", not "there is nothing
+        // to show right now". A gap we have not confirmed simply stays off
+        // the list, and the box keeps its own "this game does not report it"
+        // notice for the cases we cannot know in advance.
+        //
+        // Horizon: no opponents in the packet, no damage, no tyre wear (those
+        // fields exist but stay zero), and a fuel level pinned at 100%, which
+        // is worse than missing because it reads like a real number.
+        //
+        // Lap timing is DELIBERATELY NOT HERE any more. Horizon was listed as
+        // having none, and it does report lap times in races (confirmed on a
+        // wheel, 2026-08-06); it is free roam that has nothing to time. That
+        // fails this list's own bar, which is "the game does not report it"
+        // rather than "there is nothing to show right now". So it goes to the
+        // learner instead, which is the half of this system built for exactly
+        // that shape: a player who only ever free-roams stops being offered it
+        // after enough driving, and one race is enough to earn it back.
+        // Motorsport (FM7/FM8) is deliberately absent: its fuel and lap
+        // reporting are unconfirmed, so nothing of its is greyed out.
+        private const string HorizonGaps = ",Damage,Fuel,Radar,Relative,TyreWear,";
+        private static readonly Dictionary<string, string> DashUnsupportedByGame =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "FH4", HorizonGaps },
+                { "FH5", HorizonGaps },
+                { "FH6", HorizonGaps },
+            };
+
+        // The boxes we can learn about by watching. A game that reports one of
+        // these reports it early and in every session, so never having seen it
+        // after a decent amount of driving is real evidence. The rest of the
+        // gated boxes are not learnable and rely on the table above.
+        private static readonly string[] DashLearnableKeys =
+            { "Delta", "Friction", "Fuel", "TyreTemps", "TyreWear" };
+        // How long a game has to be DRIVEN before absence counts as evidence.
+        // Ten minutes is far past the point where a game that reports tyre
+        // temperatures has reported them, and short enough that a Horizon
+        // player is not waiting a week for the picker to tell them the truth.
+        private const int DashCapLearnSeconds = 600;
+        // Flush cadence. The learner runs per frame and settings writes hit
+        // the disk, so evidence is banked in memory and written in batches.
+        private const double DashCapFlushSeconds = 60;
+
+        // SimHub's fuel-unit setting, mirrored off NewData.FuelUnit. False
+        // (litres) until a frame says otherwise, which is also the right
+        // answer for a user who never touched the setting.
+        private volatile bool _simHubFuelGallons;
+        // SimHub's own litres-to-gallons ratio, copied deliberately rather
+        // than rounded: matching its arithmetic is the whole point, so our
+        // tank and its Fuel property can never read differently. US gallons.
+        private const float LitresToGallons = 0.264172f;
+
+        /// <summary>The Farming Simulator tank in whatever unit SimHub is
+        /// set to, or -1 when not reported. Only a LIQUID tank converts: an
+        /// electric machine's kWh and a methane machine's kg are not volumes
+        /// and have no gallon reading, so they pass through untouched.</summary>
+        private float DashFsFuelLevel()
+        {
+            var fs = _fsPipeSource;
+            float lvl = fs?.FuelLevel ?? -1f;
+            if (lvl < 0f) return -1f;
+            return _simHubFuelGallons && fs.FuelUnit == "L" ? lvl * LitresToGallons : lvl;
+        }
+
+        /// <summary>The label for that number, moving with it.</summary>
+        private string DashFsFuelUnit()
+        {
+            string unit = _fsPipeSource?.FuelUnit ?? "L";
+            return _simHubFuelGallons && unit == "L" ? "gal" : unit;
+        }
+
+        private string _capGame;
+        private readonly HashSet<string> _capSeenRun = new HashSet<string>(StringComparer.Ordinal);
+        private double _capSec;
+        private double _capUnflushedSec;
+        private int _capLastTick;
+        // What the dash reads. Rebuilt on a game change and after each flush
+        // rather than per poll, since it only changes when one of those does.
+        private volatile string _dashUnsupported = "";
+
+        /// <summary>The comma-wrapped content keys the running game never
+        /// reports: the hand-written table, plus anything learnable this game
+        /// has never produced in enough driving to judge. Empty for a game
+        /// with no known gaps, and for no game at all, so an unknown title
+        /// greys out nothing.</summary>
+        private string DashUnsupportedFor(string game)
+        {
+            if (string.IsNullOrEmpty(game)) return "";
+            string curated = DashUnsupportedByGame.TryGetValue(game, out var gaps) ? gaps : "";
+            var s = Settings;
+            if (s == null) return curated;
+            int driven = 0;
+            if (s.DashDriveDrivenSec != null) s.DashDriveDrivenSec.TryGetValue(game, out driven);
+            driven += (int)_capUnflushedSec;
+            if (driven < DashCapLearnSeconds) return curated;
+
+            string seen = "";
+            if (s.DashDriveSeen != null && s.DashDriveSeen.TryGetValue(game, out var sv) && sv != null) seen = sv;
+            var sb = new System.Text.StringBuilder(curated.Length == 0 ? "," : curated);
+            foreach (var k in DashLearnableKeys)
+            {
+                if (seen.IndexOf("," + k + ",", StringComparison.Ordinal) >= 0) continue;
+                if (_capSeenRun.Contains(k)) continue;                     // seen this run, not banked yet
+                // Slip is our own frame data and its latch can flip between
+                // learner passes; honor it directly so a game already driven
+                // 10+ minutes pre-update is never greyed while slip flows.
+                if (k == "Friction" && _dashSlipSeen) continue;
+                if (sb.ToString().IndexOf("," + k + ",", StringComparison.Ordinal) >= 0) continue;
+                sb.Append(k).Append(",");
+            }
+            return sb.Length <= 1 ? "" : sb.ToString();
+        }
+
+        /// <summary>Republish what the running game cannot do. Cheap, but not
+        /// per-poll cheap, so it runs when the answer can actually change: a
+        /// game change, and each time learned evidence is banked.</summary>
+        internal void RecomputeDashUnsupported()
+        {
+            _dashUnsupported = DashUnsupportedFor(_activeGame);
+        }
+
+        /// <summary>Watch what the game actually reports, so the picker can
+        /// tell a box this title cannot fill from one that simply has nothing
+        /// to show right now. Per frame, allocation-free on the common path
+        /// (everything already seen, nothing to bank).</summary>
+        internal void DashLearnCapabilities(GameReaderCommon.GameData data)
+        {
+            var s = Settings;
+            var nd = data?.NewData;
+            // SimHub's own fuel-unit preference rides every frame as the
+            // enum name ("Liters" / "Gallons"). Latched here, AHEAD of the
+            // learner's early returns, because the fuel box needs it even in
+            // states the learner skips (no settings yet, game just gone).
+            if (nd != null && !string.IsNullOrEmpty(nd.FuelUnit))
+                _simHubFuelGallons =
+                    nd.FuelUnit.IndexOf("Gallon", StringComparison.OrdinalIgnoreCase) >= 0;
+            string game = _activeGame;
+            if (s == null || nd == null || string.IsNullOrEmpty(game)) { _capLastTick = 0; return; }
+            if (!string.Equals(game, _capGame, StringComparison.Ordinal))
+            {
+                DashFlushCapabilities();
+                _capGame = game;
+                _capSeenRun.Clear();
+                _capSec = 0; _capUnflushedSec = 0; _capLastTick = 0;
+                _dashSlipSeen = false;   // the new game earns its own latch
+            }
+
+            // Driving time only. A car sitting in the pits reports no lap
+            // time and no wear however long you leave it there, and counting
+            // that would teach us the game reports neither.
+            int now = Environment.TickCount;
+            if (nd.SpeedKmh > 20)
+            {
+                if (_capLastTick != 0)
+                {
+                    int dt = unchecked(now - _capLastTick);
+                    // A negative or huge step is a wrapped tick count or a
+                    // stalled feed, not elapsed driving.
+                    if (dt > 0 && dt < 2000) { _capSec += dt / 1000.0; _capUnflushedSec += dt / 1000.0; }
+                }
+                _capLastTick = now;
+            }
+            else _capLastTick = 0;
+
+            var fz = ForzaUdpSource?.DashExtras;
+            if (!_capSeenRun.Contains("TyreTemps")
+                && (nd.TyreTemperatureFrontLeft > 0 || (fz?.TireTempFL ?? 0f) > 0))
+                _capSeenRun.Add("TyreTemps");
+            if (!_capSeenRun.Contains("TyreWear")
+                && (nd.TyreWearFrontLeft > 0 || (fz?.HasWear == true && (fz?.TireWearFL ?? 0f) > 0)))
+                _capSeenRun.Add("TyreWear");
+            if (!_capSeenRun.Contains("Fuel")
+                && (nd.MaxFuel > 0 || (fz?.FuelFraction ?? 0f) > 0
+                    || (_fsPipeSource?.FuelPercent ?? -1f) >= 0f))
+                _capSeenRun.Add("Fuel");
+            // Lap timing, not a lap DELTA: a running lap clock is the proof
+            // that the game times laps at all, and it is there from the moment
+            // you leave the pits rather than after a reference lap exists.
+            if (!_capSeenRun.Contains("Delta") && nd.CurrentLapTime.TotalSeconds > 0)
+                _capSeenRun.Add("Delta");
+            // Slip rollups are our own frame data, not SimHub's: the stash
+            // latch in DispatchFrame is the sighting.
+            if (!_capSeenRun.Contains("Friction") && _dashSlipSeen)
+                _capSeenRun.Add("Friction");
+
+            if (_capUnflushedSec >= DashCapFlushSeconds) DashFlushCapabilities();
+        }
+
+        /// <summary>Bank this run's evidence into settings. Merges rather than
+        /// replaces: what a game was seen to report is never unlearned.</summary>
+        internal void DashFlushCapabilities()
+        {
+            var s = Settings;
+            if (s == null || string.IsNullOrEmpty(_capGame)) return;
+            if (_capSeenRun.Count == 0 && _capSec < 1) return;
+            try
+            {
+                if (s.DashDriveSeen == null) s.DashDriveSeen = new Dictionary<string, string>();
+                if (s.DashDriveDrivenSec == null) s.DashDriveDrivenSec = new Dictionary<string, int>();
+
+                s.DashDriveSeen.TryGetValue(_capGame, out var seen);
+                if (string.IsNullOrEmpty(seen)) seen = ",";
+                bool changed = false;
+                foreach (var k in _capSeenRun)
+                {
+                    if (seen.IndexOf("," + k + ",", StringComparison.Ordinal) >= 0) continue;
+                    seen += k + ",";
+                    changed = true;
+                }
+                if (changed) s.DashDriveSeen[_capGame] = seen;
+
+                if (_capSec >= 1)
+                {
+                    s.DashDriveDrivenSec.TryGetValue(_capGame, out var had);
+                    s.DashDriveDrivenSec[_capGame] = had + (int)_capSec;
+                    changed = true;
+                }
+                _capSec = 0; _capUnflushedSec = 0;
+                if (changed)
+                {
+                    PersistSettings();
+                    RecomputeDashUnsupported();
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Banking game capabilities failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>The stored slot list in force right now: the running
+        /// game's own when per-game layouts are on and that game has one,
+        /// otherwise the shared list. A game with no entry deliberately reads
+        /// the shared one rather than the factory defaults, so switching to a
+        /// title you have never set up lands on the layout you were already
+        /// using instead of resetting the dash under you.</summary>
+        private List<string> ActiveDashDriveSlotList()
+        {
+            var s = Settings;
+            if (s == null) return null;
+            if (s.DashDriveSlotsPerGame && s.DashDriveSlotsByGame != null
+                && !string.IsNullOrEmpty(_activeGame)
+                && s.DashDriveSlotsByGame.TryGetValue(_activeGame, out var per)
+                && per != null && per.Count > 0)
+                return per;
+            return s.DashDriveSlots;
+        }
+
+        /// <summary>Store a new set of four slots where the current mode says
+        /// they belong: the running game's entry with per-game layouts on, the
+        /// shared list otherwise. With no game running there is nothing to key
+        /// against, so those changes go to the shared list even when per-game
+        /// is on. Callers persist; this only decides the destination.</summary>
+        internal void SetDashDriveSlots(IList<string> slots)
+        {
+            var s = Settings;
+            if (s == null || slots == null) return;
+            var list = new List<string>(slots);
+            if (s.DashDriveSlotsPerGame && !string.IsNullOrEmpty(_activeGame))
+            {
+                if (s.DashDriveSlotsByGame == null)
+                    s.DashDriveSlotsByGame = new Dictionary<string, List<string>>();
+                s.DashDriveSlotsByGame[_activeGame] = list;
+            }
+            else s.DashDriveSlots = list;
+        }
+
+        /// <summary>The four Drive-screen slot contents, sanitized: an unknown
+        /// or missing entry falls back to that slot's factory default, so an
+        /// empty stored list is exactly the shipped layout.</summary>
+        internal string[] GetDashDriveSlots()
+        {
+            var outp = new string[DashDriveSlotCount];
+            var stored = ActiveDashDriveSlotList();
+            for (int i = 0; i < DashDriveSlotCount; i++)
+            {
+                string v = stored != null && i < stored.Count ? stored[i] : null;
+                // Lap times merged into Lap delta, so anyone already using it
+                // lands on the box that absorbed it rather than being reset to
+                // a factory default with nothing to do with their choice.
+                if (v == "LapTimes") v = "Delta";
+                outp[i] = !string.IsNullOrEmpty(v)
+                          && Array.IndexOf(DashDriveContentKeys, v) >= 0
+                    ? v
+                    : DashDriveFactorySlots[i];
+            }
+            return outp;
+        }
 
         /// <summary>Full tab order (screen indices, disabled tabs included),
         /// sanitized. Shared by the dash slot map and the Settings-tab
@@ -121,6 +491,19 @@ namespace TrueforceForAll.Plugin
             return order;
         }
 
+        /// <summary>Which tabs are switched off right now. A stored order is
+        /// the signal that the user has been through the tab editor, so from
+        /// then on their disabled list is taken literally, empty included.
+        /// Before that they are on factory settings and get the factory set.
+        /// Shared with the Settings editor so both agree on what is off.</summary>
+        internal List<int> DashEffectiveDisabledTabs()
+        {
+            var stored = Settings?.DashTabsDisabled;
+            if (stored != null && stored.Count > 0) return new List<int>(stored);
+            bool configured = Settings?.DashTabOrder != null && Settings.DashTabOrder.Count > 0;
+            return configured ? new List<int>() : new List<int>(DashTabFactoryDisabled);
+        }
+
         /// <summary>Rebuild the slot map from settings. Called at Init, by
         /// the Settings-tab editor after any layout change, and by the
         /// restore/import/account-switch paths that rewrite the layout; if
@@ -128,9 +511,13 @@ namespace TrueforceForAll.Plugin
         /// one.</summary>
         internal void RefreshDashTabSlots()
         {
+            // Drive-screen box assignments ride the same refresh, so every
+            // caller that reacts to a settings change (editor, restore,
+            // import, account switch) picks both up.
+            _dashDriveSlots = GetDashDriveSlots();
             var order = GetDashTabFullOrder();
-            var disabled = Settings?.DashTabsDisabled;
-            if (disabled != null && disabled.Count > 0)
+            var disabled = DashEffectiveDisabledTabs();
+            if (disabled.Count > 0)
                 order.RemoveAll(t => disabled.Contains(t));
             if (order.Count == 0) order.Add(0);   // hand-edited file disabled everything
             _dashTabSlots = order.ToArray();
@@ -153,6 +540,335 @@ namespace TrueforceForAll.Plugin
         // Forza a generic SimHub rev bar keys off the limiter, not the
         // redline start.
         private volatile float _dashLiveRpm;
+        // Gear + speed for the Drive tab, stashed from the same frame.
+        private volatile string _dashLiveGear = "";
+        private volatile float _dashLiveSpeedKmh;
+
+        // Axle slip rollups off the live frame, for the friction circle.
+        // Written on the telemetry thread in DispatchFrame; the stamp gates
+        // staleness so the dot parks at center when frames stop. There is
+        // deliberately NO measured-g fallback: without slip a "friction
+        // circle" is just the g circle normalized to a guess, and the dash
+        // already has the real g circle one box over. Games without slip
+        // data have the box declared unsupported instead (the SlipOn latch
+        // below for the box's own notice, the capability learner for the
+        // picker).
+        private volatile float _dashSlipFront;
+        private volatile float _dashSlipRear;
+        private volatile int   _dashSlipStampMs;
+        // Latched per game run: rollups seen once = this game reports slip.
+        // The live half of the friction box's data test. A latch rather
+        // than freshness so a pause or a pit stop cannot flap the box into
+        // its "not reported" notice mid-session.
+        private volatile bool _dashSlipSeen;
+        // Display lag state: -1 = re-seed on next sample.
+        private const int   DashSlipFreshMs = 700;
+        private const float DashSlipUiTauS  = 0.12f;
+        private float _dashSlipEma = -1f;
+        private int   _dashSlipEmaTick;
+
+        // ---------- themes ----------
+        // A theme is a PALETTE, not a layout: the dashboard binds its
+        // structural colors to these, so switching one repaints every
+        // screen live with no reload. Semantic colors (green for good, red
+        // for trouble) are deliberately NOT themed, because a theme that
+        // can turn a warning green is a theme that can lie.
+        //
+        // Adding one is a row here plus a row in DashThemeNames. Nothing in
+        // the dashboard generator needs to know it exists.
+        internal sealed class DashTheme
+        {
+            public string Name, Bg, Card, CardEdge, Sub, Btn, BtnEdge, Tile, TileOn;
+            // Three accents for the idle card's ambient art. Not used for
+            // anything that carries meaning, so a theme is free to be loud
+            // here without a loud theme being able to misreport anything.
+            public string Accent1, Accent2, Accent3;
+
+            // The three text tones are the SAME in every theme, and are
+            // read-only so that a palette cannot set them. A warm grey under
+            // Ember and a green one under Forest read as the dashboard being
+            // tinted rather than themed, and nearly every value on screen is
+            // text, so that tint lands on everything at once. Color belongs
+            // in the outlines, the tiles and the idle art, all of which a
+            // theme still owns.
+            public string Text => "#FFF4F4F4";
+            public string Muted => "#FFA0A0A0";
+            // The faintest readable tone. The visualizer lanes are not here
+            // either: amber is the game's force and purple is Trueforce, the
+            // legend says so, and theming the swatch alone made the key
+            // disagree with the line it was keying.
+            public string Dim => "#FF6E6E6E";
+            // Hairlines: ring outlines, tick marks, rev sockets. Far darker
+            // than the faint-text tone because they are not read, only
+            // sensed. They shared a key with faint text until text went
+            // neutral, which would have brightened every one of them.
+            public string Line => "#FF3C3F44";
+        }
+
+        // Idle patterns that were tried and dropped. Every pattern on the card
+        // is gated on its own name, so a setting still pointing at a retired
+        // one shows an empty card rather than falling back to anything: the
+        // dash has no way to know the name is stale. Resolving it here fixes
+        // it for someone who never opens the settings tab.
+        private static readonly string[] RetiredIdleStyles =
+            { "Rain", "Orbit", "Spiral", "Warp", "Bloom" };
+
+        private string LiveIdleStyle()
+        {
+            string s = Settings?.DashIdleStyle;
+            if (string.IsNullOrEmpty(s)) return "Topo";
+            foreach (string gone in RetiredIdleStyles)
+                if (string.Equals(s, gone, StringComparison.OrdinalIgnoreCase)) return "Topo";
+            return s;
+        }
+
+        internal static readonly DashTheme[] DashThemes =
+        {
+            // Color lives in the OUTLINES, the tiles and the idle art. It
+            // is deliberately absent from the ground and from the text: a
+            // theme that tints those looks washed rather than styled, and
+            // less clean than the plain ones it was meant to beat. The text
+            // tones are not even fields here, so this cannot drift back.
+            new DashTheme {
+                Name = "Midnight", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FF5C6478",
+                Sub = "#FF0E0E10", Btn = "#FF1C1C20", BtnEdge = "#FF3A4150",
+                Tile = "#FF141414", TileOn = "#FF23503A",
+                Accent1 = "#FF3D7FC4", Accent2 = "#FF35A98A", Accent3 = "#FF7A55C0" },
+            new DashTheme {
+                Name = "Slate", Bg = "#FF101216", Card = "#FF1B1F27", CardEdge = "#00FFFFFF",
+                Sub = "#FF232936", Btn = "#FF232936", BtnEdge = "#00FFFFFF",
+                Tile = "#FF232936", TileOn = "#FF23503A",
+                Accent1 = "#FF3D6FB5", Accent2 = "#FF37D67A", Accent3 = "#FF5A6478" },
+            new DashTheme {
+                Name = "Carbon", Bg = "#FF0A0B0D", Card = "#FF141619", CardEdge = "#FF6E7684",
+                Sub = "#FF101216", Btn = "#FF1E222A", BtnEdge = "#FF4A5262",
+                Tile = "#FF1E222A", TileOn = "#FF3A4450",
+                Accent1 = "#FF7E8899", Accent2 = "#FF5C6674", Accent3 = "#FF98A2B3" },
+            new DashTheme {
+                Name = "Blueprint", Bg = "#FF04070C", Card = "#00FFFFFF", CardEdge = "#FF35A7E8",
+                Sub = "#FF0A1119", Btn = "#FF0E1620", BtnEdge = "#FF2C7DA8",
+                Tile = "#FF0E1620", TileOn = "#FF124E6B",
+                Accent1 = "#FF35A7E8", Accent2 = "#FF57D0F0", Accent3 = "#FF1F6E9E" },
+            new DashTheme {
+                Name = "Ember", Bg = "#FF090706", Card = "#00FFFFFF", CardEdge = "#FFE8642A",
+                Sub = "#FF150F0C", Btn = "#FF1C1512", BtnEdge = "#FFA8501F",
+                Tile = "#FF1C1512", TileOn = "#FF6B3110",
+                Accent1 = "#FFE8642A", Accent2 = "#FFFFA23D", Accent3 = "#FFC42020" },
+            new DashTheme {
+                Name = "Neon", Bg = "#FF06060A", Card = "#00FFFFFF", CardEdge = "#FFC63BFF",
+                Sub = "#FF0E0E16", Btn = "#FF15151F", BtnEdge = "#FF8A2FB4",
+                Tile = "#FF15151F", TileOn = "#FF4A1F66",
+                Accent1 = "#FFC63BFF", Accent2 = "#FF2BE0FF", Accent3 = "#FFFF3DA6" },
+            new DashTheme {
+                Name = "Forest", Bg = "#FF050806", Card = "#00FFFFFF", CardEdge = "#FF3FBF6A",
+                Sub = "#FF0C120E", Btn = "#FF111A14", BtnEdge = "#FF2A8049",
+                Tile = "#FF111A14", TileOn = "#FF1F5C38",
+                Accent1 = "#FF3FBF6A", Accent2 = "#FF8FE04A", Accent3 = "#FF1F7A5A" },
+            new DashTheme {
+                Name = "Mono", Bg = "#FF000000", Card = "#00FFFFFF", CardEdge = "#FFFFFFFF",
+                Sub = "#FF121212", Btn = "#FF1C1C1C", BtnEdge = "#FFCFCFCF",
+                Tile = "#FF1C1C1C", TileOn = "#FF4A4A4A",
+                Accent1 = "#FFFFFFFF", Accent2 = "#FFB4B4B4", Accent3 = "#FF6E6E6E" },
+        };
+
+        internal static string[] DashThemeNames()
+        {
+            var n = new string[DashThemes.Length];
+            for (int i = 0; i < DashThemes.Length; i++) n[i] = DashThemes[i].Name;
+            return n;
+        }
+
+        /// <summary>The selected theme, or the first one when the stored name
+        /// is unknown: a dashboard with no palette is an unreadable dashboard,
+        /// so this never returns null.</summary>
+        internal DashTheme ActiveDashTheme()
+        {
+            string want = Settings?.DashTheme;
+            if (!string.IsNullOrEmpty(want))
+                foreach (var t in DashThemes)
+                    if (string.Equals(t.Name, want, StringComparison.OrdinalIgnoreCase)) return t;
+            return DashThemes[0];
+        }
+
+        // ---------- radar ----------
+        // Opponents carry RelativeCoordinatesToPlayer, a PointF already in
+        // the player's own frame, plus a length in metres. SimHub's own
+        // SpotterCarLeft/Right is a bare yes or no with no distance in it,
+        // and its radar item colors every opponent alike, so both the dot
+        // colors and the proximity warning are worked out here.
+        internal const int   RadarDots   = 8;
+        internal const float RadarRangeM = 40f;   // the rim
+        internal const float RadarMidM   = 20f;   // white becomes yellow
+        internal const float RadarNearM  = 8f;    // yellow becomes red
+
+        // Normalised to the circle, -1..1, y negative ahead. Level is 0 for
+        // an empty slot, then 1 far, 2 middle, 3 close, which is what picks
+        // the dot color. Quadrants are the diagonals, front/right/rear/left,
+        // 0 clear, 1 something in there, 2 something close.
+        private volatile float[] _radarX = new float[RadarDots];
+        private volatile float[] _radarY = new float[RadarDots];
+        private volatile int[]   _radarLvl = new int[RadarDots];
+        private volatile int[]   _radarQuad = new int[4];
+
+        /// <summary>Rebuild the radar from this frame's opponents. Called from
+        /// DataUpdate; one walk of a list SimHub has already built, and it
+        /// stops at once when there is nobody out there. Nearest first, so in
+        /// heavy traffic the closest cars are the ones that get drawn.</summary>
+        private void DashUpdateRadar(GameReaderCommon.GameData data)
+        {
+            var xs = new float[RadarDots];
+            var ys = new float[RadarDots];
+            var lv = new int[RadarDots];
+            var qd = new int[4];
+
+            var opps = data?.NewData?.Opponents;
+            if (opps != null && opps.Count > 0)
+            {
+                var near = new List<KeyValuePair<double, PointF>>(RadarDots + 8);
+                foreach (var o in opps)
+                {
+                    if (o == null || o.IsPlayer || !o.IsConnected) continue;
+                    if (o.IsCarInPit || o.IsCarInPitLane) continue;
+                    var rc = o.RelativeCoordinatesToPlayer;
+                    if (!rc.HasValue) continue;
+                    float rx = rc.Value.X, ry = rc.Value.Y;
+                    if (float.IsNaN(rx) || float.IsNaN(ry)) continue;
+                    double d = o.RelativeVectorLengthToPlayer;
+                    if (d <= 0 || double.IsNaN(d)) d = Math.Sqrt(rx * rx + ry * ry);
+                    if (d > RadarRangeM) continue;
+                    near.Add(new KeyValuePair<double, PointF>(d, new PointF(rx, ry)));
+
+                    // Diagonals as the sector boundaries, so a car dead ahead
+                    // lands wholly in front rather than half in two corners.
+                    // Axis convention CONFIRMED on track 2026-08-03: positive
+                    // X is the player's right, positive Y is behind. SimHub
+                    // documents neither, so do not "tidy" these signs.
+                    double bearing = Math.Atan2(rx, -ry) * (180.0 / Math.PI);
+                    if (bearing < 0) bearing += 360.0;
+                    int q = (int)Math.Floor(((bearing + 45.0) % 360.0) / 90.0);
+                    if (q < 0 || q > 3) continue;
+                    int ql = d <= RadarNearM ? 2 : (d <= RadarMidM ? 1 : 0);
+                    if (ql > qd[q]) qd[q] = ql;
+                }
+                near.Sort((a, b) => a.Key.CompareTo(b.Key));
+                for (int i = 0; i < near.Count && i < RadarDots; i++)
+                {
+                    xs[i] = near[i].Value.X / RadarRangeM;
+                    ys[i] = near[i].Value.Y / RadarRangeM;
+                    double d = near[i].Key;
+                    lv[i] = d <= RadarNearM ? 3 : (d <= RadarMidM ? 2 : 1);
+                }
+            }
+            _radarX = xs; _radarY = ys; _radarLvl = lv; _radarQuad = qd;
+        }
+
+        // Idle mode: how long the car has been stopped, and whether the user
+        // waved this stop away. Both are per-stop, not persisted.
+        private const int IdlePhaseMs = 60000;
+        private int  _dashIdleSinceTick;
+        private volatile bool _dashIdleDismissed;
+        private bool _dashIdleGameWasOn;
+
+        /// <summary>Should the idle card be showing.
+        ///
+        /// Two different situations, and only one of them is a timer. With no
+        /// game running there is no dashboard to show, so the card is the
+        /// screen: it appears at once. With a game running but the car sitting
+        /// still, the real dashboard is the useful thing and the card is an
+        /// interruption, so that case waits out the delay the user chose and
+        /// is meant to be set long.
+        ///
+        /// Driving always clears it, and so does a game appearing, which is
+        /// the clearest "I am back" there is.</summary>
+        private bool DashIdleActive()
+        {
+            if (Settings?.DashIdleEnabled != true) return false;
+            // Never over an open keypad or picker. Those are the one set of
+            // buttons the hide pass leaves live, being an overlay's own, and
+            // a user part way through typing a redline is plainly still here.
+            if (!string.IsNullOrEmpty(_dashOverlay)) return false;
+
+            bool gameOn = !string.IsNullOrEmpty(_currentGameName);
+            if (gameOn != _dashIdleGameWasOn)
+            {
+                _dashIdleGameWasOn = gameOn;
+                _dashIdleSinceTick = 0;
+                if (gameOn) _dashIdleDismissed = false;
+            }
+            if (!gameOn) return !_dashIdleDismissed;
+
+            bool driving = !_telemetryStalled
+                && (_telemetrySource?.IsSessionActive ?? true)
+                && _dashLiveSpeedKmh > 3f;
+            int now = Environment.TickCount;
+            if (driving)
+            {
+                _dashIdleSinceTick = 0;
+                _dashIdleDismissed = false;
+                return false;
+            }
+            if (_dashIdleSinceTick == 0) _dashIdleSinceTick = now == 0 ? 1 : now;
+            if (_dashIdleDismissed) return false;
+            int delayMs = Math.Max(0, Settings.DashIdleDelaySeconds) * 1000;
+            return unchecked(now - _dashIdleSinceTick) >= delayMs;
+        }
+
+        /// <summary>Plugin version as the idle card shows it. Trailing zero
+        /// revision dropped: 0.2.6.0 is noise, 0.2.6 is the release.</summary>
+        private static string DashPluginVersion()
+        {
+            var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            if (v == null) return "";
+            return v.Revision == 0
+                ? $"{v.Major}.{v.Minor}.{v.Build}"
+                : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
+        }
+
+        /// <summary>The friction circle's distance from center. Slip is the
+        /// only quantity that can actually EXCEED the limit: measured
+        /// acceleration physically cannot (a sliding tyre transmits LESS, so
+        /// the reading drops as grip lets go), which is why slip is the only
+        /// thing that can push the dot outside the ring and MEAN "grip is
+        /// gone in that direction". Worst of both axles, not the front-only
+        /// number Mode B steers by: the fronts still grip and steer in a
+        /// rear slide, so that number read moderate while the car was fully
+        /// sideways. Divided by the grip auto-cal's learned per-car peak
+        /// (1.0 when auto-cal is off), the same truth divisor the force
+        /// model uses, so the ring sits at the car's real peak and not at
+        /// the game's nominal 1.0. No slip, no circle: the box is
+        /// unsupported on such games (see the SlipOn latch), and stale slip
+        /// (frames stopped) parks the dot at center.</summary>
+        private float DashGripUse()
+        {
+            if (_telemetryStalled) return 0f;
+            int now = Environment.TickCount;
+            if (unchecked(now - _dashSlipStampMs) > DashSlipFreshMs)
+            {
+                _dashSlipEma = -1f;   // re-seed the lag when slip comes back
+                return 0f;
+            }
+            float raw = Math.Max(_dashSlipFront, _dashSlipRear)
+                / Math.Max(0.2f, _mbCalPeak);
+            if (float.IsNaN(raw)) return 0f;
+            // Cap well above the dash's 1.3-radius clamp: a burnout can push
+            // normalized slip to 5+, and an uncapped lag would then spend
+            // noticeable time sliding back down through the visible range.
+            if (raw > 3f) raw = 3f;
+            // Light time-based display lag so a one-frame kerb spike reads
+            // as a flick rather than the dot teleporting.
+            float dt = unchecked(now - _dashSlipEmaTick) / 1000f;
+            _dashSlipEmaTick = now;
+            if (dt < 0f) dt = 0f; else if (dt > 0.25f) dt = 0.25f;
+            if (_dashSlipEma < 0f) _dashSlipEma = raw;
+            else _dashSlipEma += (raw - _dashSlipEma)
+                * (1f - (float)Math.Exp(-dt / DashSlipUiTauS));
+            return _dashSlipEma;
+        }
+
+        // Driver inputs for the Drive tab's inputs box. Steer is -2 when the
+        // active source reports no steering at all.
+        private volatile float _dashLiveThrottle;
+        private volatile float _dashLiveSteer = -2f;
         // Redline hysteresis latch for Dash.RevFlash, mirroring the wheel
         // LED latch's 1% dead band. Only touched by the property getter.
         private bool _dashRevFlashLatch;
@@ -161,9 +877,61 @@ namespace TrueforceForAll.Plugin
         // now (no game / no car / desktop edit open). The dash shows a bar on
         // every screen while Dash.Toast is non-empty; expiry is served by the
         // getter so no timer is needed.
+        // Separate from the toast, which is a red bar across the middle of the
+        // card for things that could not be done. Confirming a value is not a
+        // problem report, and putting every press of a stepper into that bar
+        // would be shouting. This one is small, quiet, out of the way, and
+        // gone in well under two seconds.
+        private volatile string _dashReadout = "";
+        private int _dashReadoutAtTick;
+        private const int DashReadoutMs = 1600;
+
         private volatile string _dashToast = "";
         private int _dashToastAtTick;
         private const int DashToastMs = 2000;
+
+        // For the BOUND controls only: Trueforce gain up and down, mapped to
+        // a wheel button in SimHub's Controls tab.
+        //
+        // That is the one place where a control has no readout anywhere near
+        // it, because there is no screen involved at all. Everything on the
+        // dash itself sits next to a tile showing its value, so announcing
+        // those as well is noise, and every press of a stepper putting a card
+        // over the middle of the screen is worse than saying nothing.
+        private void DashReadout(string label, string value)
+        {
+            _dashReadoutAtTick = Environment.TickCount;
+            _dashReadoutLabel = (label ?? "").ToUpperInvariant();
+            _dashReadoutValue = (value ?? "").ToUpperInvariant();
+            _dashReadout = (label + "   " + value).ToUpperInvariant();
+        }
+
+        // The same readout, kept unjoined for surfaces that lay the label and
+        // the value out themselves. The wheel's OLED is one: its firmware
+        // draws the two on separate rows in different sizes, so it needs the
+        // halves, not the joined bar string.
+        private volatile string _dashReadoutLabel = "";
+        private volatile string _dashReadoutValue = "";
+
+        /// <summary>The readout that is live right now, or false when none is.
+        /// Same signal and the same expiry the dash's Dash.Readout property
+        /// uses, so every surface that shows it agrees on when it is up.</summary>
+        internal bool TryGetActiveReadout(out string label, out string value)
+        {
+            label = _dashReadoutLabel;
+            value = _dashReadoutValue;
+            if (label.Length == 0 && value.Length == 0) return false;
+            int age = unchecked(Environment.TickCount - _dashReadoutAtTick);
+            return age >= 0 && age <= DashReadoutMs;
+        }
+
+        // Gains read as a percentage, which is how the desktop sliders and
+        // the tiles show them. 1.0 is 100%, and a stepper that moves 1.00 to
+        // 1.12 should not report "1.1".
+        private void DashReadoutGain(string label, float gain)
+        {
+            DashReadout(label, Math.Round(gain * 100f).ToString("0") + "%");
+        }
 
         private void DashToast(string message)
         {
@@ -173,6 +941,30 @@ namespace TrueforceForAll.Plugin
 
         // Gate for the per-car surfaces (car facts, car presets). Explains
         // WHY the tap did nothing instead of silently no-opping.
+        // Caps is sticky rather than one-shot: model names run in blocks of
+        // capitals, so a shift that dropped after every letter would mean
+        // pressing it three times to type GT3.
+        private void DashKbdAppend(char c)
+        {
+            var e = _dashKbdEntry ?? "";
+            if (e.Length >= DashKbdMaxLen) return;
+            if (c >= 'A' && c <= 'Z' && !_dashKbdCaps) c = char.ToLowerInvariant(c);
+            int at = DashKbdClampCaret(e);
+            _dashKbdEntry = e.Insert(at, c.ToString());
+            _dashKbdCaret = at + 1;
+        }
+
+        // The caret is held separately from the text, so anything that
+        // shortens the text can leave it past the end.
+        private int DashKbdClampCaret(string e)
+        {
+            int c = _dashKbdCaret;
+            if (c < 0) c = 0;
+            if (c > e.Length) c = e.Length;
+            _dashKbdCaret = c;
+            return c;
+        }
+
         private bool DashRequireCar()
         {
             if (string.IsNullOrEmpty(_activeGame))
@@ -381,6 +1173,30 @@ namespace TrueforceForAll.Plugin
         private readonly float[] _scopeFfb = new float[ScopeCols];
         private volatile int _scopeHead;
         private float _scopeAccum;      // producer-thread only
+
+        /// <summary>How hard the wheel is being driven right now, 0 to 1.
+        /// The force actually written to ep3, de-scaled the way the dash scope
+        /// does it so a reduced output scale still reads full when the wheel is
+        /// genuinely railed. MAGNITUDE: a bar that fills from one end cannot
+        /// carry a direction without giving up half its travel.</summary>
+        internal double LiveFfbMagnitude01()
+        {
+            var dev = _device;
+            if (dev == null) return 0.0;
+            float f = (dev.LastFfbOutput) / 32768f;
+            float sc = dev.FfbScale;
+            if (sc > 0.05f && sc < 1f) f /= sc;
+            if (f < 0) f = -f;
+            return f > 1f ? 1.0 : f;
+        }
+
+        /// <summary>The texture level riding the Trueforce stream, 0 to 1: the
+        /// same peak the dash scope draws its upper trace from.</summary>
+        internal double LiveTrueforceLevel01()
+        {
+            float t = _scopeTex[(_scopeHead + ScopeCols - 1) % ScopeCols];
+            return t < 0f ? 0.0 : t > 1f ? 1.0 : t;
+        }
         private long _scopeNextColTicks;
 
         /// <summary>Called once per producer tick with the batch RunOneTick
@@ -489,6 +1305,15 @@ namespace TrueforceForAll.Plugin
             // the toggle mutates on another thread.
             public bool ModeBSupported;
             public bool ModeBOn;
+            // Spring-mode game (Farming Simulator): the djson swaps the
+            // Forza knob rows for the FS set on this flag. Mutually
+            // exclusive with ModeBSupported by construction.
+            public bool ModeBSpringGame;
+            // Effects-screen row slots: key -> packed index in display
+            // order, -1 = hidden for the active game. The djson rows bind
+            // position and visibility to these so per-game dead knobs
+            // close up instead of leaving holes.
+            public System.Collections.Generic.Dictionary<string, int> FxSlots;
         }
         private DashSnapshot _dashSnap = new DashSnapshot();
         // Freshness is an explicit flag + tick pair, NOT an int.MinValue
@@ -541,8 +1366,10 @@ namespace TrueforceForAll.Plugin
                 // snapshot cadence rather than the per-frame property poll.
                 s.TuningDirty = DashHasDirty();
                 s.CanRevert   = DashCanRevert();
-                s.ModeBSupported = ActiveGameSupportsModeB;
-                s.ModeBOn        = ModeBEnabledForActiveGame;
+                s.ModeBSupported  = ActiveGameSupportsModeB;
+                s.ModeBOn         = ModeBEnabledForActiveGame;
+                s.ModeBSpringGame = ActiveGameIsSpringGame;
+                s.FxSlots         = BuildDashFxSlots();
                 _dashSnap = s;
             }
             catch { /* keep serving the previous snapshot */ }
@@ -589,7 +1416,67 @@ namespace TrueforceForAll.Plugin
             new DashFx { Key = "Collision", Max = 2f,  Kind = SectionKind.Collision,    GetOn = () => ActiveCollision.Enabled,    SetOn = v => ActiveCollision.Enabled = v,    GetGain = () => ActiveCollision.Gain,    SetGain = v => ActiveCollision.Gain = v },
             new DashFx { Key = "RevLimiter", Max = 2f, Kind = SectionKind.RevLimiter,   GetOn = () => ActiveRevLimiter.Enabled,   SetOn = v => ActiveRevLimiter.Enabled = v,   GetGain = () => ActiveRevLimiter.Gain,   SetGain = v => ActiveRevLimiter.Gain = v },
             new DashFx { Key = "Airborne", Max = 0f,   Kind = SectionKind.Airborne,     GetOn = () => ActiveAirborne.Enabled,     SetOn = v => ActiveAirborne.Enabled = v,     GetGain = null,                          SetGain = null },
+            new DashFx { Key = "ImplThud", Max = 3f,   Kind = SectionKind.ImplementThud, GetOn = () => ActiveImplementThud.Enabled, SetOn = v => ActiveImplementThud.Enabled = v, GetGain = () => ActiveImplementThud.Gain, SetGain = v => ActiveImplementThud.Gain = v },
         };
+
+        // ------------------------------------------------------------------
+        // Effects-screen row packing. The desktop hides per-game dead knobs
+        // (owner rule 2026-08-08: an effect whose telemetry a game never
+        // provides reads as broken); the dash mirrors it by serving each
+        // row's packed slot index. Rows are absolutely positioned in the
+        // djson, so a plain hide would leave holes; the slot drives both
+        // Visible and position (same indirection idea as the tab bar, but
+        // identity stays per effect and only geometry is served).
+        // ------------------------------------------------------------------
+
+        // Display order of the dash Effects screen rows; MUST match the
+        // djson generator's $effects list (make-tf4all-dash.ps1 screen 3).
+        // ImplThud sits last so the static fallback grid (older plugin, no
+        // slot properties) matches today's 13-row layout with it hidden.
+        private static readonly string[] DashFxDisplayOrder =
+            { "Engine", "Bumps", "Traction", "AxleSlip", "Kerb", "Lockup", "Shift",
+              "Abs", "Pit", "Drs", "Collision", "RevLimiter", "Audio", "ImplThud" };
+
+        // Per-game availability, mirroring the desktop panel-visibility
+        // block in SettingsControl.RefreshFromPlugin; keep the two in sync
+        // by hand. No active game = show everything except Implement thud
+        // (FS-only on the desktop too).
+        private bool DashFxSupported(string key)
+        {
+            string g = _activeGame;
+            bool spring = ActiveGameIsSpringGame;
+            bool forza = g == "FM8"
+                || (g != null && g.StartsWith("FH", StringComparison.Ordinal));
+            switch (key)
+            {
+                // FS: Axle slip is its one slip voice, its brake model never
+                // outruns the road, and Kerb thump's voice folds into Road
+                // bumps ("Terrain texture") there.
+                case "Traction":
+                case "Lockup":
+                case "Kerb":
+                    return !spring;
+                // FS has no ABS, pits or DRS; Forza telemetry carries no
+                // ABS flag and Horizon has no pits and no DRS.
+                case "Abs":
+                case "Pit":
+                case "Drs":
+                    return !spring && !forza;
+                case "ImplThud":
+                    return spring;
+                default:
+                    return true;
+            }
+        }
+
+        private System.Collections.Generic.Dictionary<string, int> BuildDashFxSlots()
+        {
+            var d = new System.Collections.Generic.Dictionary<string, int>(DashFxDisplayOrder.Length);
+            int next = 0;
+            foreach (var key in DashFxDisplayOrder)
+                d[key] = DashFxSupported(key) ? next++ : -1;
+            return d;
+        }
 
         // Multiplicative gain step so one press moves small gains (0.07) and
         // large gains (1.5) by a comparable feel amount. Floor + zero rules:
@@ -643,6 +1530,19 @@ namespace TrueforceForAll.Plugin
             new DashModeBKnob { Key = "Rise",     Label = "WEIGHT BUILDUP",   Min = 0.2f,  Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBRiseGamma,       Set = (s, v) => s.ModeBRiseGamma = v },
             new DashModeBKnob { Key = "Reversal", Label = "REVERSAL DAMPING", Min = 0f,    Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBReversalDampGain, Set = (s, v) => s.ModeBReversalDampGain = v },
             new DashModeBKnob { Key = "Smooth",   Label = "SMOOTHING MS",     Min = 5f,    Max = 100f, Step = 5f,    Fmt = "0",    Get = s => s.ModeBEmaMs,           Set = (s, v) => s.ModeBEmaMs = v },
+            // Spring-mode (Farming Simulator) rows: the djson shows these
+            // INSTEAD of the Forza rows while Dash.ModeB.SpringGame is up.
+            // Same registration loop and keypad routing. Damping is the one
+            // shared field (ModeBDamper), so the FS screen reuses the
+            // "Damper" knob above and none is added here. Ranges mirror the
+            // desktop spring sliders (same clamp rationale as the Forza set).
+            new DashModeBKnob { Key = "FsStrength", Label = "STRENGTH",         Min = 0.05f, Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeStrength,          Set = (s, v) => s.SpringModeStrength = v },
+            new DashModeBKnob { Key = "FsMinForce", Label = "MIN FORCE",        Min = 0f,    Max = 0.5f, Step = 0.01f, Fmt = "0.00", Get = s => (float)s.SpringModeMinForce,          Set = (s, v) => s.SpringModeMinForce = v },
+            new DashModeBKnob { Key = "FsCenter",   Label = "CENTERING",        Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeCenterGain,        Set = (s, v) => s.SpringModeCenterGain = v },
+            new DashModeBKnob { Key = "FsTerrain",  Label = "TERRAIN STRENGTH", Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeTerrainGain,       Set = (s, v) => s.SpringModeTerrainGain = v },
+            new DashModeBKnob { Key = "FsDrag",     Label = "IMPLEMENT DRAG",   Min = 0f,    Max = 3f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeDragGain,          Set = (s, v) => s.SpringModeDragGain = v },
+            new DashModeBKnob { Key = "FsWeight",   Label = "CORNERING WEIGHT", Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeChassisWeightGain, Set = (s, v) => s.SpringModeChassisWeightGain = v },
+            new DashModeBKnob { Key = "FsSpeed",    Label = "SPEED EFFECT",     Min = 0f,    Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeSpeedEffect,       Set = (s, v) => s.SpringModeSpeedEffect = v },
         };
 
         private void DashNudgeModeB(DashModeBKnob k, float delta)
@@ -658,10 +1558,13 @@ namespace TrueforceForAll.Plugin
             DashSetModeB(k, next);
         }
 
-        // Shared commit for steppers and the keypad. All eight knobs are
+        // Shared commit for steppers and the keypad. The Forza knobs are
         // tunables consumed by ApplyModeBFromSettings (none are feel toggles),
         // so one apply call pushes the live model; the 1 kHz FFB thread picks
-        // the volatiles up next tick, no re-arm needed.
+        // the volatiles up next tick, no re-arm needed. The Fs* knobs are
+        // read live from Settings by the spring/kick paths every tick, so
+        // for them the apply call is redundant but harmless (it preserves an
+        // armed spring mode, see the _forceModeB note in ApplyModeBFromSettings).
         private void DashSetModeB(DashModeBKnob k, float value)
         {
             var s = Settings;
@@ -747,6 +1650,14 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.MaxRpm",             () => DashSnap().MaxRpm);
             this.AttachDelegate("Dash.Overlay",            () => _dashOverlay);
             this.AttachDelegate("Dash.Tab",                () => _dashTab);
+            this.AttachDelegate("Dash.KbdEntry",          () => _dashKbdEntry);
+            // Which CELL the caret sits in, for the dash to draw a bar at.
+            // Putting a caret character into the text instead shifted
+            // everything right of it by one cell, which pushed the tap
+            // targets out of step with the letters they sit under.
+            this.AttachDelegate("Dash.KbdCaret", () => DashKbdClampCaret(_dashKbdEntry ?? ""));
+            this.AttachDelegate("Dash.KbdTitle",          () => _dashKbdTitle);
+            this.AttachDelegate("Dash.KbdCaps",           () => _dashKbdCaps);
             this.AttachDelegate("Dash.KeypadEntry",        () => _dashKeypadEntry);
             this.AttachDelegate("Dash.KeypadTitle",        () => _dashKeypadTitle);
             // ---------- properties: tuning save / revert ----------
@@ -805,6 +1716,205 @@ namespace TrueforceForAll.Plugin
             });
 
             // ---------- properties: rev strip (polled at display rate) ----------
+            // ---------- properties: Drive screen slots ----------
+            // Each box on the Drive screen renders every content option and
+            // shows the one whose key matches its slot property, so a change
+            // in Settings applies on the next poll with no dash reload.
+            for (int sl = 0; sl < DashDriveSlotCount; sl++)
+            {
+                int idx = sl;
+                this.AttachDelegate("Dash.Drive.Slot" + idx, () =>
+                {
+                    var slots = _dashDriveSlots;
+                    return idx < slots.Length ? slots[idx] : "None";
+                });
+            }
+            this.AttachDelegate("Dash.Drive.TwoRows", () => Settings?.DashDriveTwoRows != false);
+            // Which boxes this GAME can never fill, for the picker to grey
+            // out. Capability, not "is there data this instant": being alone
+            // on track is not the same as a game having no opponent data, and
+            // a radar tile you cannot pick because nobody else turned up
+            // would be wrong about Assetto Corsa.
+            this.AttachDelegate("Dash.Drive.Unsupported", () => _dashUnsupported);
+            this.AttachDelegate("Dash.Drive.EditSlot", () =>
+            {
+                switch (_dashDriveEditSlot)
+                {
+                    case 0: return "TOP LEFT";
+                    case 1: return "TOP RIGHT";
+                    case 2: return "BOTTOM LEFT";
+                    default: return "BOTTOM RIGHT";
+                }
+            });
+            // Friction circle: our own Mode B numbers, not the game's. Util is
+            // how much of the tyre's grip the model is using (1 = the limit);
+            // the g pair gives the direction the load is coming from, taken
+            // from the same accelerations the crash duck reads so the box
+            // works on any telemetry source we support.
+            this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
+            this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
+            this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
+
+            // Structural colors the dashboard paints itself with.
+            this.AttachDelegate("Dash.Theme.Bg",       () => ActiveDashTheme().Bg);
+            this.AttachDelegate("Dash.Theme.Card",     () => ActiveDashTheme().Card);
+            this.AttachDelegate("Dash.Theme.CardEdge", () => ActiveDashTheme().CardEdge);
+            this.AttachDelegate("Dash.Theme.Sub",      () => ActiveDashTheme().Sub);
+            this.AttachDelegate("Dash.Theme.Btn",      () => ActiveDashTheme().Btn);
+            this.AttachDelegate("Dash.Theme.BtnEdge",  () => ActiveDashTheme().BtnEdge);
+            this.AttachDelegate("Dash.Theme.Tile",     () => ActiveDashTheme().Tile);
+            this.AttachDelegate("Dash.Theme.TileOn",   () => ActiveDashTheme().TileOn);
+            this.AttachDelegate("Dash.Theme.Text",     () => ActiveDashTheme().Text);
+            this.AttachDelegate("Dash.Theme.Muted",    () => ActiveDashTheme().Muted);
+            this.AttachDelegate("Dash.Theme.Accent1",  () => ActiveDashTheme().Accent1);
+            this.AttachDelegate("Dash.Theme.Accent2",  () => ActiveDashTheme().Accent2);
+            this.AttachDelegate("Dash.Theme.Accent3",  () => ActiveDashTheme().Accent3);
+            this.AttachDelegate("Dash.Theme.Dim",      () => ActiveDashTheme().Dim);
+            this.AttachDelegate("Dash.Theme.Line",     () => ActiveDashTheme().Line);
+            // A 0..1 phase over 1.2 s, for anything that should pulse. Derived
+            // here rather than in the dash so every connected screen pulses
+            // together, the same reason the rev flash is plugin side.
+            this.AttachDelegate("Dash.PulseT", () =>
+                (Environment.TickCount & 0x7FFFFFFF) % 1200 / 1200f);
+            // Radar: per dot a position and a level for its color, plus
+            // one level per quadrant so the wedge needs no arithmetic.
+            for (int i = 0; i < RadarDots; i++)
+            {
+                int k = i;   // captured per delegate, not shared
+                this.AttachDelegate("Dash.Radar.D" + k + "X", () =>
+                { var a = _radarX; return k < a.Length ? a[k] : 9f; });
+                this.AttachDelegate("Dash.Radar.D" + k + "Y", () =>
+                { var a = _radarY; return k < a.Length ? a[k] : 9f; });
+                this.AttachDelegate("Dash.Radar.D" + k + "L", () =>
+                { var a = _radarLvl; return k < a.Length ? a[k] : 0; });
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                int k = i;
+                this.AttachDelegate("Dash.Radar.Q" + k, () =>
+                { var a = _radarQuad; return k < a.Length ? a[k] : 0; });
+            }
+            this.AttachDelegate("Dash.Idle.On",     () => DashIdleActive());
+            this.AttachDelegate("Dash.Idle.Style",  () => LiveIdleStyle());
+            this.AttachDelegate("Dash.Idle.Name",   () => Settings?.DashIdleDriverName ?? "");
+            this.AttachDelegate("Dash.Idle.Number", () => Settings?.DashIdleNumber ?? "");
+            this.AttachDelegate("Dash.Idle.NameAbove", () => Settings?.DashIdleNameAbove == true);
+            this.AttachDelegate("Dash.Idle.Font", () => Settings?.DashIdleFont ?? "");
+            this.AttachDelegate("Dash.Idle.Color",  () =>
+            {
+                string c = Settings?.DashIdleColor;
+                return string.IsNullOrWhiteSpace(c) ? "#FFF2F4F8" : c;
+            });
+            // Animation phase, 0..1 over 20 s. A PHASE rather than a clock so
+            // every curve built on it closes seamlessly at the wrap, and
+            // derived plugin-side like the rev flash so every connected dash
+            // animates in step rather than each drifting on its own timer.
+            this.AttachDelegate("Dash.Idle.T", () =>
+                (Environment.TickCount & 0x7FFFFFFF) % IdlePhaseMs / (float)IdlePhaseMs);
+            // Plugin status, which is the other half of what an idle screen is
+            // for: it is the one time anyone is looking at the dash and not at
+            // the road.
+            this.AttachDelegate("Dash.Version",   () => DashPluginVersion());
+            this.AttachDelegate("Dash.Supporter", () => LastKnownSupporter);
+            this.AttachDelegate("Dash.UpdateReady", () =>
+                UpdateChecker != null && UpdateChecker.IsUpdateAvailable);
+            this.AttachDelegate("Dash.UpdateVersion", () =>
+                UpdateChecker != null && UpdateChecker.IsUpdateAvailable
+                    ? (UpdateChecker.LatestVersionTag ?? "") : "");
+            this.AttachDelegate("Dash.DrivePedals", () => Settings?.DashDrivePedals != false);
+
+            // ---------- properties: Forza dash extras ----------
+            // A Forza player usually has "Also forward to SimHub" off, which
+            // leaves SimHub's own game properties empty for the whole session,
+            // so the Drive tab's tyre / fuel / lap boxes would sit on their
+            // "not reported" notice while the data is arriving at OUR
+            // listener. These republish what we parse, and the dash prefers
+            // them over SimHub's when they are live. Zero means "this title
+            // does not report it": Motorsport fills tyre temps and lap data,
+            // Horizon leaves parts of it empty, and only the FM2023 packet
+            // carries wear at all.
+            this.AttachDelegate("Dash.Forza.Live",     () => ForzaUdpSource?.DashExtras != null);
+            // Is there a car on a track right now. The Drive boxes use it to
+            // decide whether an absent value is a limit of the GAME or just
+            // this moment: "this game does not report tire temperatures" is a
+            // claim about the title, and pausing is not evidence for it.
+            // Frames are arriving, and where a source knows the difference
+            // (Forza keeps sending while paused), it says we are on track.
+            // A SimHub-fed game has no such flag, so there the stall watchdog
+            // is the whole test, which is right: pausing stops its frames.
+            this.AttachDelegate("Dash.SessionLive", () =>
+                !_telemetryStalled && (_telemetrySource?.IsSessionActive ?? true));
+            this.AttachDelegate("Dash.Forza.TempFL",   () => ForzaUdpSource?.DashExtras?.TireTempFL ?? 0f);
+            this.AttachDelegate("Dash.Forza.TempFR",   () => ForzaUdpSource?.DashExtras?.TireTempFR ?? 0f);
+            this.AttachDelegate("Dash.Forza.TempRL",   () => ForzaUdpSource?.DashExtras?.TireTempRL ?? 0f);
+            this.AttachDelegate("Dash.Forza.TempRR",   () => ForzaUdpSource?.DashExtras?.TireTempRR ?? 0f);
+            this.AttachDelegate("Dash.Forza.HasWear",  () => ForzaUdpSource?.DashExtras?.HasWear == true);
+            this.AttachDelegate("Dash.Forza.WearFL",   () => ForzaUdpSource?.DashExtras?.TireWearFL ?? 0f);
+            this.AttachDelegate("Dash.Forza.WearFR",   () => ForzaUdpSource?.DashExtras?.TireWearFR ?? 0f);
+            this.AttachDelegate("Dash.Forza.WearRL",   () => ForzaUdpSource?.DashExtras?.TireWearRL ?? 0f);
+            this.AttachDelegate("Dash.Forza.WearRR",   () => ForzaUdpSource?.DashExtras?.TireWearRR ?? 0f);
+            // Forza reports fuel as a tank fraction, so publish a percentage.
+            this.AttachDelegate("Dash.Forza.FuelPct",  () => (ForzaUdpSource?.DashExtras?.FuelFraction ?? 0f) * 100f);
+            this.AttachDelegate("Dash.Forza.Boost",    () => ForzaUdpSource?.DashExtras?.Boost ?? 0f);
+            this.AttachDelegate("Dash.Forza.BestLap",  () => ForzaUdpSource?.DashExtras?.BestLapSec ?? 0f);
+            this.AttachDelegate("Dash.Forza.LastLap",  () => ForzaUdpSource?.DashExtras?.LastLapSec ?? 0f);
+            this.AttachDelegate("Dash.Forza.CurLap",   () => ForzaUdpSource?.DashExtras?.CurrentLapSec ?? 0f);
+            this.AttachDelegate("Dash.Forza.Position", () => ForzaUdpSource?.DashExtras?.RacePosition ?? 0);
+            // ---------- properties: Farming Simulator fuel ----------
+            // From the TF4ALL game mod (>= 0.2.21): the tank SimHub's own FS
+            // feed also reports, plus the burn rate it does not, which is
+            // what makes a time-left readout possible at all. -1 means "not
+            // reported" (no mod, older mod, on foot, not an FS session);
+            // the fuel box falls back to SimHub's properties on it.
+            // The running game is a Farming Simulator title. The fuel box
+            // keys its third row on THIS, not on whether a burn rate is
+            // reporting this instant: FS is "Time left" even while the
+            // engine is off (a rate-keyed row flipped to a meaningless
+            // "Laps left --" at every shutdown), racing is "Laps left".
+            this.AttachDelegate("Dash.Fs.Game", () =>
+                _activeGame != null
+                && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal));
+            this.AttachDelegate("Dash.Fs.FuelPct",     () => _fsPipeSource?.FuelPercent ?? -1f);
+            // Level and its unit travel together and BOTH honor SimHub's
+            // fuel-unit setting, so the number can never disagree with the
+            // label beside it. The tank stays native inside the plugin (the
+            // drain math is a ratio, so the unit cancels out); this is the
+            // display edge, the same place SimHub converts its own Fuel.
+            this.AttachDelegate("Dash.Fs.FuelL",       () => DashFsFuelLevel());
+            this.AttachDelegate("Dash.Fs.FuelUnit",    () => DashFsFuelUnit());
+            this.AttachDelegate("Dash.Fs.FuelMinLeft", () => _fsPipeSource?.FuelMinutesLeft ?? -1f);
+            // Gear and speed off the live frame, so the Drive tab's center
+            // works on whichever telemetry source is running rather than
+            // only when SimHub is being fed. Empty gear and a zero speed
+            // read as "no telemetry", which the dash falls back from.
+            this.AttachDelegate("Dash.Gear",     () => _telemetryStalled ? "" : _dashLiveGear);
+            this.AttachDelegate("Dash.SpeedKmh", () => _telemetryStalled ? 0f : _dashLiveSpeedKmh);
+            // Inputs box. Throttle and steering come off the frame (so they
+            // work on every source we support); brake rides the Forza extras
+            // because the force path never needed it and it is not on the
+            // frame. Steering has no SimHub equivalent at all.
+            this.AttachDelegate("Dash.Throttle", () => _telemetryStalled ? 0f : _dashLiveThrottle);
+            this.AttachDelegate("Dash.Steer",    () => _telemetryStalled ? -2f : _dashLiveSteer);
+            this.AttachDelegate("Dash.Brake",    () => ForzaUdpSource?.DashExtras?.Brake01 ?? 0f);
+            // -1 means "this source does not report it", which the inputs box
+            // reads as "hide the bar". A clutch or handbrake that is genuinely
+            // released reports 0 and still draws, so an automatic shows an
+            // empty clutch bar rather than losing it.
+            this.AttachDelegate("Dash.Clutch",    () => (float?)ForzaUdpSource?.DashExtras?.Clutch01 ?? -1f);
+            this.AttachDelegate("Dash.Handbrake", () => (float?)ForzaUdpSource?.DashExtras?.Handbrake01 ?? -1f);
+            // Grip in use, for the friction circle: the tyre model's own
+            // utilization, nothing else. The ring is the grip peak, so
+            // breaching it means the loaded axle is sliding, which is the
+            // friction-circle reading of "grip gone in that direction".
+            // Games without slip data do NOT get an imitation (measured g
+            // is just the g circle again): SlipOn is the box's data test,
+            // and the capability learner greys the picker tile. The g pair
+            // gives the direction the load comes from.
+            this.AttachDelegate("Dash.Drive.Util",   () => DashGripUse());
+            this.AttachDelegate("Dash.Drive.SlipOn", () => _dashSlipSeen);
+            this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
+            this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
+
             this.AttachDelegate("Dash.RevOutsideIn", () => Settings?.DashRevStripOutsideIn == true);
             this.AttachDelegate("Dash.Rpm", () => _telemetryStalled ? 0 : (int)_dashLiveRpm);
             this.AttachDelegate("Dash.RpmPct", () =>
@@ -835,6 +1945,12 @@ namespace TrueforceForAll.Plugin
                 if (!_dashRevFlashLatch) return true;
                 long nowMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
                 return ((nowMs / 185L) & 1L) == 0L;
+            });
+            this.AttachDelegate("Dash.Readout", () =>
+            {
+                if (_dashReadout.Length == 0) return "";
+                int rage = unchecked(Environment.TickCount - _dashReadoutAtTick);
+                return rage < 0 || rage > DashReadoutMs ? "" : _dashReadout;
             });
             this.AttachDelegate("Dash.Toast", () =>
             {
@@ -909,6 +2025,20 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashAudioGainUp",   (a, b) => DashNudgeAudioGain(+DashAudioGainStep));
             this.AddAction("DashAudioGainDown", (a, b) => DashNudgeAudioGain(-DashAudioGainStep));
 
+            // Row slots for the Effects screen (Audio included; it is a
+            // peer voice but occupies a row like any effect). -1 = hidden
+            // for the active game; the djson rows bind Visible + position
+            // to these so the grid packs per game.
+            foreach (var fxKey in DashFxDisplayOrder)
+            {
+                var kk = fxKey;
+                this.AttachDelegate("Dash.Fx." + kk + ".Slot", () =>
+                {
+                    var slots = DashSnap().FxSlots;
+                    return slots != null && slots.TryGetValue(kk, out int v) ? v : 0;
+                });
+            }
+
             // ---------- properties + actions: Telemetry FFB (Tele-FFB tab) ----------
             // Mode B settings are global (no preset/car scope), so the
             // mutate path is the master-gain shape and none of this touches
@@ -917,6 +2047,22 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.ModeB.Supported",   () => DashSnap().ModeBSupported);
             this.AttachDelegate("Dash.ModeB.On",          () => DashSnap().ModeBOn);
             this.AttachDelegate("Dash.ModeB.RevLightsOn", () => Settings?.ModeBRevLightsEnabled != false);
+            // Spring-mode game flavor of the same screen: the djson swaps
+            // the Forza rows for the FS set on SpringGame. Spring emulation
+            // itself has no enable tile (owner call 2026-08-08: it is how
+            // Farming Simulator works, not an option), so the FS tile pair
+            // is Terrain feel + rev lights. Terrain is settings-only live
+            // apply, the same contract as the desktop SpringTerrain_Changed.
+            this.AttachDelegate("Dash.ModeB.SpringGame",  () => DashSnap().ModeBSpringGame);
+            this.AttachDelegate("Dash.ModeB.TerrainOn",   () => Settings?.SpringModeTerrainEnabled != false);
+            this.AddAction("DashSpringTerrainToggle", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                Settings.SpringModeTerrainEnabled = !Settings.SpringModeTerrainEnabled;
+                PersistSettings();
+                RaiseDashRemoteChanged();
+            });
             this.AddAction("DashModeBToggle", (a, b) =>
             {
                 if (Settings == null) return;
@@ -944,6 +2090,72 @@ namespace TrueforceForAll.Plugin
                 // LEDs immediately on disable instead of leaving the last
                 // frame lit until the next natural write.
                 if (!Settings.ModeBRevLightsEnabled) TurnOffRpmLeds();
+                RaiseDashRemoteChanged();
+            });
+            // Tap the gear column on the Drive tab to switch the rev strip
+            // between full width and the gear column. It is the one dash
+            // setting you want to try rather than reason about, and the
+            // column has no other tap target, so the whole thing is the
+            // control. Also on a Settings checkbox for discoverability.
+            // Dismiss idle for this stop. Deliberately NOT a setting: it
+            // clears itself the moment the car moves, so a tap means "not
+            // now" rather than "never again".
+            this.AddAction("DashIdleExit", (a, b) =>
+            {
+                DashNoteActivity();
+                _dashIdleDismissed = true;
+                RaiseDashRemoteChanged();
+            });
+            // Change what a Drive box shows, from the dash. Four openers and
+            // one tile per content type: the picker applies to whichever box
+            // was tapped, so the tiles do not need to know about slots.
+            for (int i = 0; i < DashDriveSlotCount; i++)
+            {
+                int slot = i;   // captured per action, not shared
+                this.AddAction("DashDriveBoxOpen" + slot, (a2, b2) =>
+                {
+                    DashNoteActivity();
+                    _dashDriveEditSlot = slot;
+                    _dashOverlay = "drivebox";
+                    RaiseDashRemoteChanged();
+                });
+            }
+            for (int i = 0; i < DashDriveContentKeys.Length; i++)
+            {
+                int idx = i;
+                this.AddAction("DashDriveBoxPick" + idx, (a2, b2) =>
+                {
+                    if (Settings == null) return;
+                    DashNoteActivity();
+                    var cur = GetDashDriveSlots();
+                    int slot = _dashDriveEditSlot;
+                    if (slot < 0 || slot >= cur.Length) { _dashOverlay = ""; return; }
+                    cur[slot] = DashDriveContentKeys[idx];
+                    // Stored as a plain list of four, which is what the
+                    // sanitizer expects to read back. Which list it lands in
+                    // is the per-game setting's business, not the picker's.
+                    SetDashDriveSlots(cur);
+                    PersistSettings();
+                    RefreshDashTabSlots();
+                    _dashOverlay = "";
+                    DashToast("BOX SET TO " + DashDriveContentLabels[idx].ToUpperInvariant());
+                    RaiseDashRemoteChanged();
+                });
+            }
+            this.AddAction("DashDriveBoxCancel", (a2, b2) =>
+            {
+                _dashOverlay = "";
+                RaiseDashRemoteChanged();
+            });
+            this.AddAction("DashRevStripSpanToggle", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                Settings.DashRevStripCentered = !Settings.DashRevStripCentered;
+                PersistSettings();
+                DashToast(Settings.DashRevStripCentered
+                    ? "REV STRIP OVER THE GEAR"
+                    : "REV STRIP FULL WIDTH");
                 RaiseDashRemoteChanged();
             });
             foreach (var kb in _dashModeB)
@@ -1044,6 +2256,88 @@ namespace TrueforceForAll.Plugin
                 DashOpenKeypad("master", "MASTER GAIN (now " + MasterGain.ToString("0.00") + ", max 2)", 0f, 2f));
             this.AddAction("DashAudioGainOpen", (a, b) =>
                 DashOpenKeypad("audio", "AUDIO GAIN (now " + ActiveAudioGain.ToString("0.00") + ", max 3)", 0f, DashAudioGainMax));
+            // ---------- on-screen keyboard ----------
+            this.AddAction("DashCarNameOpen", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                if (!DashRequireCar()) return;
+                // Prefilled with the name in use, since a rename is usually a
+                // correction to what is already there rather than a fresh
+                // start. DEL is one tap away if it is not.
+                string cur = DashSnap().CarName ?? "";
+                _dashKbdEntry = cur.Length > DashKbdMaxLen ? cur.Substring(0, DashKbdMaxLen) : cur;
+                _dashKbdCaret = _dashKbdEntry.Length;
+                _dashKbdTarget = "carname";
+                _dashKbdTitle = "CAR NAME";
+                _dashKbdCaps = false;
+                _dashOverlay = "kbd";
+            });
+            this.AddAction("DashKbdCancel", (a, b) =>
+                { _dashOverlay = ""; _dashKbdEntry = ""; _dashKbdTarget = ""; });
+            this.AddAction("DashKbdCaps", (a, b) => { _dashKbdCaps = !_dashKbdCaps; });
+            this.AddAction("DashKbdBack", (a, b) =>
+            {
+                var e = _dashKbdEntry ?? "";
+                int c = DashKbdClampCaret(e);
+                if (c == 0) return;              // nothing to the left of it
+                _dashKbdEntry = e.Remove(c - 1, 1);
+                _dashKbdCaret = c - 1;
+            });
+            this.AddAction("DashKbdLeft", (a, b) =>
+            {
+                int c = DashKbdClampCaret(_dashKbdEntry ?? "");
+                if (c > 0) _dashKbdCaret = c - 1;
+            });
+            this.AddAction("DashKbdRight", (a, b) =>
+            {
+                var e = _dashKbdEntry ?? "";
+                int c = DashKbdClampCaret(e);
+                if (c < e.Length) _dashKbdCaret = c + 1;
+            });
+            // One tap target per character cell in the entry line. Tapping
+            // past the end of the text lands at the end, which is what the
+            // gesture means there.
+            for (int cell = 0; cell <= DashKbdMaxLen; cell++)
+            {
+                int at = cell;   // capture per iteration
+                this.AddAction("DashKbdCaret" + at, (a, b) =>
+                {
+                    var e = _dashKbdEntry ?? "";
+                    _dashKbdCaret = at > e.Length ? e.Length : at;
+                });
+            }
+            this.AddAction("DashKbdSpace", (a, b) => DashKbdAppend(' '));
+            foreach (char ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+            {
+                char c = ch;   // capture per iteration
+                this.AddAction("DashKbd" + c, (a, b) => DashKbdAppend(c));
+            }
+            this.AddAction("DashKbdDash", (a, b) => DashKbdAppend('-'));
+            this.AddAction("DashKbdDot",  (a, b) => DashKbdAppend('.'));
+            this.AddAction("DashKbdSet", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                string name = (_dashKbdEntry ?? "").Trim();
+                if (_dashKbdTarget != "carname") { _dashOverlay = ""; return; }
+                // Checked here so the reason can be said out loud. The save
+                // itself just returns on a name it will not take, which from
+                // the dash looks like the button did nothing.
+                if (name.Length < 2)  { DashToast("NAME IS TOO SHORT"); return; }
+                if (name.Length > 96) { DashToast("NAME IS TOO LONG"); return; }
+                // The SAME call the desktop makes. A second save path would be
+                // a second set of rules about what a name is, what gets
+                // shared and what gets deduped, and they would drift.
+                CarNameShareFlow.SetNameAndMaybeShare(this, _activeGame, _activeCarId, name, null);
+                _dashOverlay = "";
+                _dashKbdEntry = "";
+                _dashKbdTarget = "";
+                _dashSnapValid = false;   // the header shows the new name at once
+                RaiseDashRemoteChanged();
+                DashToast("CAR RENAMED");
+            });
+
             this.AddAction("DashKeypadCancel", (a, b) => { _dashOverlay = ""; _dashKeypadEntry = ""; _dashKeypadTarget = ""; });
             this.AddAction("DashKeypadBack", (a, b) =>
             {
@@ -1158,6 +2452,25 @@ namespace TrueforceForAll.Plugin
         // Shared tab switch for slot taps and the legacy direct-select
         // actions. Tapping the already-active tab is a no-op past the
         // overlay drop (the slot buttons stay live on the active slot).
+        /// <summary>Step the dash to the next or previous tab, wrapping. Walks
+        /// the SLOT list rather than the tab indices, so it follows the order
+        /// the user arranged and skips anything they disabled instead of
+        /// stopping on a hidden screen.
+        ///
+        /// Deliberately produces no readout: the dash is the feedback, and
+        /// putting the tab name on the wheel would cost the driving screen to
+        /// say something the phone already shows.</summary>
+        public void CycleDashTab(int direction)
+        {
+            var slots = _dashTabSlots;
+            if (slots == null || slots.Length == 0) return;
+            int cur = Array.IndexOf(slots, _dashTab);
+            int next = (cur < 0 ? 0 : cur) + (direction < 0 ? -1 : 1);
+            if (next < 0) next = slots.Length - 1;
+            else if (next >= slots.Length) next = 0;
+            DashSelectTab(slots[next]);
+        }
+
         private void DashSelectTab(int tab)
         {
             if (tab < 0 || tab >= DashTabCount) return;
@@ -1232,6 +2545,19 @@ namespace TrueforceForAll.Plugin
             if (next < 0f) next = 0f;
             if (next > DashAudioGainMax) next = DashAudioGainMax;
             EnsureSectionDraft(SectionKind.Audio);   // car layer, so REVERT can undo it
+            // Reaching for the gain on a capture that is off means the user
+            // wants to hear it: turning it up otherwise does nothing at all
+            // and reads as a broken control. Winding it all the way to zero
+            // is the same statement in reverse, so it switches capture off
+            // rather than leaving it running on a silent gain.
+            if (next <= 0f)
+            {
+                if (ActiveAudioEnabled) SetActiveAudioEnabledLive(false);
+            }
+            else if (!ActiveAudioEnabled)
+            {
+                SetActiveAudioEnabledLive(true);
+            }
             SetActiveAudioGainLive(next);
             PersistSettings();   // SetActiveAudioGainLive leaves persisting to the caller
             DashRecordDirty(SectionKind.Audio);
@@ -1374,6 +2700,9 @@ namespace TrueforceForAll.Plugin
             if (target == "audio")
             {
                 EnsureSectionDraft(SectionKind.Audio);   // car layer, so REVERT can undo it
+                // Same reasoning as the steppers: typing a gain in means the
+                // user expects to hear it.
+                if (!ActiveAudioEnabled && v > 0f) SetActiveAudioEnabledLive(true);
                 SetActiveAudioGainLive(v);
                 PersistSettings();
                 DashRecordDirty(SectionKind.Audio);

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -79,6 +79,74 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal("3", f.Gear);                  // gear byte 4 -> "3"
             Assert.Equal(8, f.NumCylinders);
             Assert.Equal(2468, src.CurrentCarOrdinal);
+        }
+
+        // ---- gear scale -------------------------------------------------
+        // Two scales exist. The documented one is 0=R, 1=N, 2=1st. FH6
+        // numbers forward gears from 1 and puts neutral at 11, which showed
+        // 1st as N and every other forward gear one low. Which one a title
+        // uses is detected from physics, not assumed, so both must hold.
+
+        [Fact]
+        public void GearScale_Documented_ByteOneReadsNeutral()
+        {
+            var src = NewSource();
+            var f = src.ParsePacket(DashPacket(gear: 1, accel: 0, speedMs: 0f,
+                                               rpm: 800f, maxRpm: 8000f), HorizonDashLength);
+            Assert.Equal("N", f.Gear);
+        }
+
+        [Fact]
+        public void GearScale_ByteOneDrivingUnderLoad_RescalesForwardGears()
+        {
+            var src = NewSource();
+            // Neutral cannot do this: full throttle, 45 km/h, revs well off
+            // idle. Sustained, it is proof that byte 1 is a driving gear.
+            TelemetryFrame f = default;
+            for (int i = 0; i < 6; i++)
+                f = src.ParsePacket(DashPacket(gear: 1, accel: 255, speedMs: 12.5f,
+                                               rpm: 6000f, maxRpm: 10000f), HorizonDashLength);
+            Assert.Equal("1", f.Gear);
+
+            // The whole scale moves with it, and 11 becomes neutral.
+            f = src.ParsePacket(DashPacket(gear: 3, accel: 255, speedMs: 20f), HorizonDashLength);
+            Assert.Equal("3", f.Gear);
+        }
+
+        [Fact]
+        public void GearScale_ByteOneCoasting_StaysOnTheDocumentedScale()
+        {
+            var src = NewSource();
+            // Rolling in true neutral: moving, but shut off and near idle.
+            TelemetryFrame f = default;
+            for (int i = 0; i < 20; i++)
+                f = src.ParsePacket(DashPacket(gear: 1, accel: 0, speedMs: 12.5f,
+                                               rpm: 900f, maxRpm: 10000f), HorizonDashLength);
+            Assert.Equal("N", f.Gear);
+        }
+
+        [Fact]
+        public void GearByte11_AtWalkingPace_RescalesOnTheFirstShift()
+        {
+            var src = NewSource();
+            // 11 below 30 km/h cannot be 10th gear, so it is neutral, so the
+            // forward gears start at 1. Lands on the first gear change rather
+            // than waiting for a hard pull.
+            for (int i = 0; i < 3; i++)
+                src.ParsePacket(DashPacket(gear: 11, speedMs: 3f, accel: 0,
+                                           rpm: 900f, maxRpm: 10000f), HorizonDashLength);
+            var f = src.ParsePacket(DashPacket(gear: 2, speedMs: 4f, accel: 100), HorizonDashLength);
+            Assert.Equal("2", f.Gear);
+        }
+
+        [Fact]
+        public void GearByte11_BetweenGears_HoldsTheGearInsteadOfShowingTen()
+        {
+            var src = NewSource();
+            Assert.Equal("3", src.ParsePacket(DashPacket(gear: 4), HorizonDashLength).Gear);
+            // A shift passes through neutral; the readout must not flash.
+            Assert.Equal("3", src.ParsePacket(DashPacket(gear: 11), HorizonDashLength).Gear);
+            Assert.Equal("4", src.ParsePacket(DashPacket(gear: 5), HorizonDashLength).Gear);
         }
 
         [Theory]

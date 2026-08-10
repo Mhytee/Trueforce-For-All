@@ -34,6 +34,15 @@ namespace TrueforceForAll.Core
     {
         public const ushort LogitechVid = 0x046D;
 
+        // Serializes HID++ discovery probes (root getFeature) across channels.
+        // The wheel's HID++ processor handles one transaction at a time, and a
+        // getFeature reply does not echo the page it answers: two concurrent
+        // probes mean one times out, or worse, reads the other's reply as its
+        // own (the rev-light probe latched the OLED display's feature index
+        // this way, 2026-08-08). Hold this for the probe only, never for
+        // steady-state writes.
+        internal static readonly object HidppProbeGate = new object();
+
         public static readonly (ushort Pid, string Model)[] SupportedPids =
         {
             (0xC272, "Logitech G PRO Racing Wheel (Xbox/PC)"),

@@ -57,6 +57,83 @@ namespace TrueforceForAll.Plugin
         // stored false darkened the wheel with no visible cause.)
         public bool ModeBRevLightsEnabled { get; set; } = true;
 
+        // Drive the Dynamic OLED on the wheel's base (G PRO / RS50 only) while
+        // Telemetry Based FFB (Mode B) is on. Same pipe and therefore the same
+        // rule as the rev lights above: a non-force write to HID++ cuts any
+        // force flowing there, so this shares the Mode B + tap-proven-quiet
+        // gate exactly.
+        //
+        // Default ON, like the rev lights. It was off while the protocol was
+        // known only from third-party RS50 captures; since then a G PRO has
+        // been confirmed to answer feature 0x8130, the gate has been proven
+        // necessary AND sufficient on hardware, and the panel is handed back
+        // whenever the gate closes, so the wheel's own menu is never lost.
+        public bool ModeBOledEnabled { get; set; } = true;
+
+        // Which arrangement the OLED shows. The firmware owns font size and
+        // alignment, so picking a screen IS picking how big each value is
+        // drawn. See OledScreen; Custom uses the three fields below.
+        // Gear over speed, both labelled, on the centered four rows. The owner
+        // built the pair by hand in the editor and settled on this order after
+        // running them (2026-08-10): every value is named, nothing is cropped,
+        // and it copes with a gearbox counting past 9.
+        public OledScreen OledScreen { get; set; } = OledScreen.GearOverSpeed;
+
+        // A user-built screen: which firmware layout, and which field goes in
+        // each of its slots, with the text for any slot set to Custom.
+        //
+        // Both lists MUST default EMPTY for the same loader reason as
+        // DashDriveSlots: SimHub's bare serializer APPENDS a stored array onto
+        // a non-empty initializer. Empty means "nothing chosen yet", and
+        // OledScreenModel.Sanitize* fills a short or unknown list with Empty
+        // slots, so a layout change needs no migration.
+        public OledLayoutKind OledCustomLayout { get; set; } = OledLayoutKind.FourCenter;
+        public List<string> OledCustomSlots { get; set; } = new List<string>();
+        public List<string> OledCustomTexts { get; set; } = new List<string>();
+
+        // Show the OLED speed in mph instead of km/h. Local to the display
+        // only; nothing else in the plugin changes units.
+        public bool OledUseMph { get; set; } = true;
+
+        // Flash the gear on the OLED for a moment when you shift. On by
+        // default and self-suppressing: it never fires on a screen that already
+        // shows the gear, which includes the default one, so turning it on
+        // costs nothing until you pick a screen where the gear is not visible.
+        public bool OledShiftFlash { get; set; } = true;
+
+        // Which of the two shift flashes to draw. Centered is the default: the
+        // wheel cannot center its largest font, so the big one sits off to one
+        // side, and a flash you read at a glance is better centered than large.
+        public OledFlashStyle OledShiftFlashStyle { get; set; } = OledFlashStyle.CenteredGear;
+
+        // Minimum gap between writes to the OLED, in milliseconds. 20 = 50 Hz.
+        // Lower is smoother and costs more of the shared HID++ pipe; the pipe
+        // is force-free whenever this feature is allowed to run, so the old
+        // 200 ms, and the 100 ms after it, were caution rather than a measured
+        // limit. 20 is the owner's own setting, run on a G PRO (2026-08-10);
+        // it is unverified on an RS50. Tunable live with the OLEDMS access
+        // code so the real ceiling can be found on other hardware.
+        public int OledWriteIntervalMs { get; set; } = 20;
+
+        // A greeting the first time the screen comes up in a SimHub run: the
+        // plugin name on the small row and this scrolling under it. Once per
+        // run, not per session, so it stays a hello rather than a habit.
+        public bool OledGreetingEnabled { get; set; } = true;
+        public string OledGreetingText { get; set; } = "HELLO WORLD";
+
+        // TEST OVERRIDE (access code OLEDANY). Runs the OLED regardless of the
+        // Mode B + quiet-FFB gate, so someone can find out whether a screen
+        // write actually disturbs a game's own HID++ force the way an LED write
+        // does. That has never been tested for this feature: the restriction is
+        // inherited from the rev lights. If it turns out to be harmless the
+        // screen could work in every game, which is why the question is worth a
+        // deliberately unsafe switch. Off by default and undocumented.
+        public bool OledIgnoreModeBGate { get; set; } = false;
+
+        // Take the OLED over for a few seconds when a lap finishes: the time
+        // alone for a personal best, the time over the delta otherwise.
+        public bool OledLapResult { get; set; } = true;
+
         // Retired unlock for the old rim-LED / MAIRA-passthrough settings
         // section (access codes MAIRA / TEST). The section is permanently
         // hidden since 2026-08-01: Marvin declined the passthrough, so the
@@ -299,6 +376,30 @@ namespace TrueforceForAll.Plugin
         // back-to-back. EXCLUDED from backup. null = none yet.
         public string MotdLastNagOn { get; set; }
 
+        // Local date ("yyyy-MM-dd") a MOTD support message last appeared. Support
+        // draws on this cooldown instead of the shared nag one, so the money ask
+        // keeps a steady rate no matter how many other nags exist. Showing one
+        // also stamps MotdLastNagOn, so a day still carries at most one nag.
+        // EXCLUDED from backup. null = none yet.
+        public string MotdLastSupportNagOn { get; set; }
+
+        // ---- support prompt (the periodic Patreon modal on the plugin page) ----
+
+        // Latched true the first time the backend confirms this account has ever
+        // backed the project (is_supporter now, or a non-null supporter_since from
+        // any past membership). Never cleared: supporting once retires the prompt
+        // for good, and the latch keeps that true while offline or signed out.
+        // PORTABLE: a fact about the person, not the machine.
+        public bool HasEverSupported { get; set; }
+
+        // How many times the support prompt has been shown, which position on the
+        // seat-time ladder we're at, and when it last appeared (UTC, for the
+        // real-time floor). Consecutive declines push the next one further out;
+        // clicking through to Patreon resets that. All EXCLUDED from backup.
+        public int       SupportPromptCount { get; set; }
+        public int       SupportPromptDeclineCount { get; set; }
+        public DateTime? SupportPromptLastUtc { get; set; }
+
         // How recent a contribution must be to suppress its community nudge.
         [JsonIgnore]
         public static readonly TimeSpan MotdContributionRecency = TimeSpan.FromDays(60);
@@ -402,23 +503,152 @@ namespace TrueforceForAll.Plugin
         // without overriding a later user opt-out.
         public bool FeedbackBoxDefaultedOn { get; set; } = false;
 
-        // TF4ALL Remote dash: rev-strip fill direction. false = left to right
-        // (default); true = outside-in, both ends lighting first and
-        // converging on the center like center-converge shift lights.
+        // TF4ALL Remote dash: rev-strip fill direction. false = left to right;
+        // true = outside-in (default), both ends lighting first and converging
+        // on the center, which is what the wheel's own rev lights do and what
+        // most cars with center-converge shift lights do.
         // Surfaced in the Settings tab's "Remote dashboard" section; the dash
         // reads it live (Dash.RevOutsideIn) so a change applies instantly.
-        public bool DashRevStripOutsideIn { get; set; } = false;
+        public bool DashRevStripOutsideIn { get; set; } = true;
 
         // TF4ALL Remote dash: which tab the dash opens on when SimHub starts.
         // Remember-last wins while on (the dash reopens where it was left,
         // surviving restarts); with it off, DashDefaultTab is the fixed
         // opening tab. DashLastTab is bookkeeping, not a user choice: written
         // on every tab tap, read only when DashRememberLastTab is true.
-        // Indices match the dash tab bar: 0=Drive, 1=Car facts, 2=Effects,
-        // 3=Presets, 4=Visualizer (clamped at read for forward compat).
+        // These are SCREEN indices, not positions in the bar: 0=Gains,
+        // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB,
+        // 6=Drive (clamped at read for forward compat). Both default to
+        // Drive, which leads the factory order and is the screen the dash
+        // exists for; 0 would open on Gains, which now ships switched off.
         public bool DashRememberLastTab { get; set; } = true;
-        public int  DashDefaultTab      { get; set; } = 0;
-        public int  DashLastTab         { get; set; } = 0;
+        public int  DashDefaultTab      { get; set; } = 6;
+        public int  DashLastTab         { get; set; } = 6;
+
+        // TF4ALL Dash "Drive" screen: what each of the four corner boxes shows,
+        // in slot order (top-left, top-right, bottom-left, bottom-right), plus
+        // whether both rows are used. Values are content keys from
+        // TrueforcePlugin.DashDriveContentKeys; an unknown or missing entry
+        // falls back to that slot's factory default, so an empty list means
+        // "the shipped Forza-friendly layout" and a content type added by an
+        // update needs no migration.
+        // MUST default EMPTY for the same loader reason as DashTabOrder above.
+        // Defaults (Forza-first, since that is where Telemetry FFB runs):
+        // car facts, lap times, the FFB scope, tyre temps. Standings are
+        // deliberately absent: SimHub's leaderboard item is obsolete and needs
+        // map/coordinate data no Forza title provides.
+        // TwoRows false uses only the bottom pair, which is the phone layout
+        // (the bottom boxes grow to full height); true is the tablet layout.
+        public List<string> DashDriveSlots { get; set; } = new List<string>();
+        public bool DashDriveTwoRows { get; set; } = true;
+
+        // Per-game Drive-tab layouts. The boxes read game telemetry and the
+        // games disagree wildly about what they report, so a layout that fills
+        // up in one title is half "this game does not report it" in the next.
+        //
+        // Off is the old single-layout behaviour and stays the default: this
+        // only earns its keep for someone who plays several titles, and a
+        // setting that silently splits one layout into many is a bad surprise
+        // for everyone else.
+        //
+        // On, a change made while a game is running is stored against that
+        // game, and DashDriveSlots above keeps its job as the layout for every
+        // game with no entry of its own (which is also where a change made
+        // with no game running still goes). So turning this on changes nothing
+        // until you actually re-pick a box, and turning it off again returns
+        // you to the shared layout with the per-game ones kept.
+        //
+        // Keyed by SimHub GameName, like GameEnabled and GameDefaults.
+        // MUST default EMPTY for the same loader reason as DashDriveSlots.
+        public bool DashDriveSlotsPerGame { get; set; } = false;
+        public Dictionary<string, List<string>> DashDriveSlotsByGame { get; set; }
+            = new Dictionary<string, List<string>>();
+
+        // What each game has been SEEN to report, so the box picker can grey
+        // out a box the game cannot fill without anyone hand-listing every
+        // title. Keyed by SimHub GameName; the value is the comma-wrapped set
+        // of content keys that have arrived at least once, and it only ever
+        // grows.
+        //
+        // Positive evidence only. "Seen once" is proof a game reports
+        // something; "not seen yet" is proof of nothing, which is why the
+        // seconds below exist: a box is greyed out only after that game has
+        // been DRIVEN for long enough that never having seen the value means
+        // something. Parked time does not count, or a session spent sitting
+        // in the pit box would teach us the game has no lap timing.
+        //
+        // Deliberately not the whole list of boxes. Damage cannot be learned
+        // (SimHub reports zero damage and no damage identically), and the two
+        // car-list boxes cannot either, since a driver who only ever hotlaps
+        // alone would otherwise teach us their game has no opponents. Those
+        // stay with the hand-written table in the plugin.
+        // MUST default EMPTY for the same loader reason as DashDriveSlots.
+        public Dictionary<string, string> DashDriveSeen { get; set; }
+            = new Dictionary<string, string>();
+        public Dictionary<string, int> DashDriveDrivenSec { get; set; }
+            = new Dictionary<string, int>();
+
+        // TF4ALL Dash: show a colored race-flag band across the top of
+        // whichever screen is open. Reads SimHub's own flag properties, so it
+        // only ever lights up in games that report flags (the Forza titles
+        // report none, which is why this is opt-in rather than always on).
+        // On by default: a flag is the one thing on a dash you cannot afford
+        // to miss, and in a game that reports none the band simply never
+        // appears, so it costs those players nothing.
+        public bool DashFlagsEnabled { get; set; } = true;
+
+        // TF4ALL Dash rev strip, DRIVE TAB ONLY: true (default) narrows it to
+        // the space above the gear between the two box columns, false spans
+        // the full width. Every other screen is always full width, because
+        // the middle of their header row is where the title and car name
+        // live and there is nothing to narrow to.
+        public bool DashRevStripCentered { get; set; } = true;
+
+        // TF4ALL Dash Drive tab: thin throttle and brake bars either side of
+        // the gear with a steering indicator beneath it. Uses space the gear
+        // column has spare, and is independent of the Inputs box, which shows
+        // the same three in a card.
+        public bool DashDrivePedals { get; set; } = true;
+
+        // TF4ALL Dash spotter: a bar down the edge of whichever tab is open
+        // when a car is alongside on that side. SimHub works this out from
+        // the session's opponents, so it lights in games that report car
+        // positions and simply never appears in the ones that do not, the
+        // Forza titles included.
+        public bool DashSpotterEnabled { get; set; } = true;
+
+        // TF4ALL Dash idle mode: a full-screen card over whatever tab is open
+        // once the car has been sitting still, showing an ambient animation,
+        // the driver's name and number, and the plugin's own status. Drawn as
+        // an overlay rather than a screen of its own so there is nothing to
+        // get stuck in: any sign of driving clears it.
+        public bool   DashIdleEnabled      { get; set; } = true;
+        // ONLY the game-is-running-but-parked case. With no game running the
+        // card shows at once, because then there is no dashboard to show and
+        // the card is the screen. Defaults long: sitting in a pit box or a
+        // menu is not a reason to take the dashboard away.
+        public int    DashIdleDelaySeconds { get; set; } = 600;
+        // Which built-in ambient animation. Custom images and video are a
+        // later pass: the dashboard file is rebuilt on every update, so user
+        // media has to live somewhere the rebuild cannot reach.
+        public string DashIdleStyle        { get; set; } = "Topo";
+        public string DashIdleDriverName   { get; set; } = "";
+        public string DashIdleNumber       { get; set; } = "";
+        public string DashIdleColor        { get; set; } = "#FFF2F4F8";
+        // Name above the number rather than under it. Both read fine; which
+        // one looks right depends on the number, so it is a choice.
+        public bool   DashIdleNameAbove    { get; set; } = false;
+        // Font family for the idle card's name and number. Empty means the
+        // dashboard's own. These are names the VIEWING device has to have,
+        // so the picker only offers families that ship broadly; an unknown
+        // one falls back silently rather than failing.
+        public string DashIdleFont        { get; set; } = "";
+
+        // Dashboard theme, by name. Themes are PALETTES: the layout is the
+        // same whichever is picked, because color binds live and geometry
+        // does not. Unknown names fall back to the first theme rather than
+        // leaving the dash unpainted.
+        public string DashTheme { get; set; } = "Midnight";
 
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
@@ -470,6 +700,77 @@ namespace TrueforceForAll.Plugin
         // confirmed on hardware that the centering force must be inverted, so
         // that's now unconditional (no toggle).
         public bool   StationarySpringEnabled   { get; set; } = true;
+
+        // Classic-spring emulation: for games that command their force
+        // feedback as a parametric spring on the classic Logitech protocol
+        // (Farming Simulator 25; the wheel firmware normally renders it, but
+        // not while in Trueforce mode). The plugin evaluates the game's
+        // spring against the wheel's physical position instead. Default on
+        // (owner call 2026-08-07): arming requires spring-only FFB on the
+        // bus, so games with streamed FFB never see it.
+        public bool ClassicSpringEmulationEnabled { get; set; } = true;
+
+        // Spring-mode enhancements, each its own toggle so they can be
+        // hardware-tested one at a time. Terrain feel: ground roughness from
+        // the game's rigid-body physics (FS25 vehicleComponents), high-passed
+        // into steering kicks on top of the emulated spring. Default off
+        // until validated on hardware.
+        // Factory = the owner's tuned FS recipe (2026-08-09): enhancements
+        // ship ON. Changes here require a ModeBDefaultsGeneration bump plus
+        // an entry in PreviousShippedModeBRecipes (the spring fields joined
+        // the per-field defaults merge with generation 6).
+        public bool   SpringModeTerrainEnabled { get; set; } = true;
+        public double SpringModeTerrainGain    { get; set; } = 1.0;
+
+        // Further spring-mode enhancements, one toggle each (owner directive:
+        // testable one at a time). Implement drag: engine load weights the
+        // steering (working the field feels different from driving to it).
+        // Cornering weight: yaw-rate-derived lateral load scales the spring
+        // (chassis dynamics from the game mod). Bump haptics has no toggle:
+        // the FS source always pulses OnRumbleStrip on hard suspension
+        // transients, and the Kerb thump effect's own Enabled is the control.
+        // Centering strength for the synthetic spring (multiplier on the
+        // built-in curve). 0 = spring fully off, the empirical answer to
+        // "do we even need one": damper, terrain and effects keep running.
+        public double SpringModeCenterGain           { get; set; } = 1.0;
+        // On-center firmness: how linear the curve is near straight-ahead
+        // (0 = soft quadratic center, 1 = crisp near-linear). Separate from
+        // strength because raising strength alone also heavies the edges.
+        public double SpringModeCenterFirmness       { get; set; } = 0.85;
+        // How much speed strengthens the centering (0 = constant at all
+        // speeds, 1 = fully speed-scaled with a limp standstill).
+        public double SpringModeSpeedEffect          { get; set; } = 0.70;
+        // Overall spring-mode force multiplier (spring + terrain + drag +
+        // cornering weight; damping unaffected), the FS counterpart of the
+        // Forza Strength slider. 0.80 is the owner's own G PRO setting
+        // (2026-08-10); the G923 holds the older 1.0 in ApplyWheelDefaults,
+        // because the belt motor needs the headroom the direct drive does not.
+        public double SpringModeStrength             { get; set; } = 0.80;
+        // FS's own min-force floor, separate from ModeBMinForce (owner call
+        // 2026-08-09: games' force characters differ, so the floor is per
+        // game). Lifts terrain kicks and the spring beyond slight deflection
+        // above a belt wheel's internal friction; speed-gated so a parked
+        // wheel stays limp, deflection-gated so straight-ahead can't buzz.
+        public double SpringModeMinForce             { get; set; } = 0.0;
+        public bool   SpringModeDragEnabled          { get; set; } = true;
+        public double SpringModeDragGain             { get; set; } = 1.0;
+        // How much of the drag weight plain engine strain applies while no
+        // implement is working (0 = implements only, 1 = strain counts in
+        // full, same as working). Only meaningful with mod >= 0.2.6; older
+        // mods can't tell the two apart and always apply full weight.
+        public double SpringModeDragStrainFraction   { get; set; } = 0.50;
+        public bool   SpringModeChassisWeightEnabled { get; set; } = true;
+        public double SpringModeChassisWeightGain    { get; set; } = 1.0;
+
+        // TF4ALL Enhanced Telemetry game-mod install state (Farming Simulator).
+        // Machine-local: the mod lives in THIS PC's game folders. Declined
+        // silences only the first-run dialog; the Telemetry FFB tab banner
+        // keeps offering. Versions are per game generation (FS22/FS25 have
+        // separate installs); MUST default empty (SimHub's bare-serializer
+        // load appends stored entries onto non-empty initializers).
+        public bool FsModInstallDeclined { get; set; }
+        public Dictionary<string, string> FsModInstalledVersions { get; set; }
+            = new Dictionary<string, string>();
         // 1.0 = full felt scale at full lock when parked; slider allows up to
         // 2.0 for headroom, though past ~1/FfbScale the ±full-scale clamp /
         // motor ceiling caps it (you can't exceed the wheel's max torque).
@@ -633,7 +934,7 @@ namespace TrueforceForAll.Plugin
         public float ModeBDirSoft     { get; set; } = 0f;    // center flat-spot width (BDIRK); 0 = raw linear (Direct centering + the damper own center calm now)
         public float ModeBLockupRecoverMs { get; set; } = 30f; // "Lockup recovery" slider (BRECOVER): how fast force returns after lockup/wheelspin eases
         public float ModeBLockupPoint { get; set; } = 0.8f; // |slip ratio| treated as full lockup (BLOCKPT); higher = wheel keeps its weight deeper into braking before lightening (owner 2026-07-24 on-wheel)
-        public float ModeBMinForce  { get; set; } = 0.05f;   // "Min force" slider (BMINF): smallest force the wheel renders; lifts faint detail above the motor's friction floor. G PRO/RS50 default 0.05; G923 0.25 via ApplyWheelDefaults.
+        public float ModeBMinForce  { get; set; } = 0.05f;   // "Min force" slider (BMINF): smallest force the wheel renders; lifts faint detail above the motor's friction floor. 0.05 on every wheel since the 2026-08-07 retune (the G923 used to take 0.25 via ApplyWheelDefaults).
 
         // Mode B feel features (the haptic-engine layers 6-11, all validated
         // on-wheel and graduated to default ON there; the Mode B master
@@ -650,6 +951,7 @@ namespace TrueforceForAll.Plugin
         public bool  ModeBCenterPd           { get; set; } = true;   // centering springs on the wheel's OWN position (HID reader) with a velocity look-ahead, so the pull toward straight is fresh and cannot ring (MBCPD); default ON 2026-08-01
         public float ModeBCenterLeadMs       { get; set; } = 40f;    // direct-centering look-ahead in ms (BCLEAD): how far ahead of the wheel's motion the spring aims
         public bool  ModeBGripAutoCal        { get; set; } = true;   // per-car grip-limit auto-calibration
+        public bool  ModeBAutoStrength       { get; set; } = false;  // per-car auto strength (BAUTOS): learned force-peak scale so every car lands at the Strength slider's heaviness, iRacing style. Owner validated on-wheel 2026-08-09; ships default OFF by choice, because the natural per-car spread is a feature too.
         public bool  ModeBFrictionCircle     { get; set; } = true;   // friction-circle braking law replaces the lockup gate (BCIRCLE); default ON as of 0.2.5 (owner on-wheel: generally better than the gate)
         public bool  ModeBLongitudinalGripLearn { get; set; } = true;  // auto braking-grip: circle/gate radius follows each car's grip-cal peak instead of the manual point (BLEARN); default ON as of 0.2.5
         public float ModeBGripTrim { get; set; } = 1.0f; // radius = trim x grip-cal peak when auto braking-grip is on (BGTRIM; 1 = the raw detected grip)
@@ -693,6 +995,11 @@ namespace TrueforceForAll.Plugin
         // the air), same machine-level rationale as Sidechain ducking's living
         // outside the per-car override set. See AirborneEffect / AirborneSettings.
         public AirborneSettings     Airborne     { get; set; } = new AirborneSettings();
+
+        // Implement thud (Farming Simulator). Global-only, same rationale as
+        // Airborne: one game family, one context, preset scoping would be
+        // dead machinery. See ImplementThudEffect / ImplementThudSettings.
+        public ImplementThudSettings ImplementThud { get; set; } = new ImplementThudSettings();
 
         // Per-machine performance tuning. Lives outside GameSettingsSnapshot
         // because ring sizes are a property of the machine (CPU, scheduler
@@ -1061,11 +1368,16 @@ namespace TrueforceForAll.Plugin
 
     /// <summary>Persisted per-car grip-calibration snapshot (telemetry based
     /// FFB). Mirrors GripPeakLearner's export surface: the learned metric
-    /// ceiling and the near-limit seconds that back it (confidence).</summary>
+    /// ceiling and the near-limit seconds that back it (confidence). Also
+    /// carries the auto-strength learner's force-peak pair (same learner
+    /// class, force domain); ForcePeak 0 = never learned, so entries written
+    /// by older builds deserialize as strength-unlearned and stay identity.</summary>
     public sealed class CarGripCal
     {
         public float Peak          { get; set; } = 1.0f;
         public float QualifyingSec { get; set; }
+        public float ForcePeak     { get; set; }
+        public float ForceQualSec  { get; set; }
     }
 
     /// <summary>User-authored engine definition. Stored in
@@ -1493,6 +1805,9 @@ namespace TrueforceForAll.Plugin
         // Airborne ducking travels with the preset (built-in presets seed it);
         // null in presets saved before it existed, handled on apply.
         public AirborneSettings     Airborne     { get; set; }
+        // Implement thud (FS linkage clunk). Null in presets saved before
+        // the effect existed; apply keeps the user's current values.
+        public ImplementThudSettings ImplementThud { get; set; }
 
         public Dictionary<string, CarOverride> CarOverrides { get; set; }
 
@@ -1776,13 +2091,6 @@ namespace TrueforceForAll.Plugin
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform SurfaceWaveform    { get; set; } = Waveform.Noise;
-
-        // Rumble-strip leading-edge pulse: opt-in (0 = off by default).
-        // SurfaceRumble already spikes on kerbs so the pulse is largely
-        // redundant; expose it for users who want extra leading-edge
-        // "snap" if their feel of the pure-envelope path comes up soft.
-        public float RumbleStripPulseAmp { get; set; } = 0f;
-        public int   RumbleStripPulseMs  { get; set; } = 120;
     }
 
     public sealed class TractionLossSettings
@@ -1810,6 +2118,36 @@ namespace TrueforceForAll.Plugin
 
         [JsonConverter(typeof(StringEnumConverter))]
         public Waveform Waveform { get; set; } = Waveform.Square;
+    }
+
+    // Implement thud (Farming Simulator): the linkage clunk when equipment
+    // lowers or raises. Global-only like Airborne (no preset/per-car slots):
+    // it fires in exactly one game family and one context, so preset
+    // scoping would be dead machinery.
+    public sealed class ImplementThudSettings
+    {
+        public bool  Enabled  { get; set; } = true;
+        public float Gain     { get; set; } = 1.0f;
+        public float Freq     { get; set; } = 30.0f;
+        // Raise-edge amplitude relative to lowering (linkage releasing vs
+        // the tool landing).
+        public float RaiseAmp { get; set; } = 0.6f;
+        // Hydraulic hum while a lower/raise/fold is in motion (mod 0.2.8+).
+        public float HumAmp   { get; set; } = 0.30f;
+        public float HumFreq  { get; set; } = 46.0f;
+        // Hum pitch dynamics: how far below the hum pitch the spool-up bend
+        // starts (fraction), how much travel speed raises the pitch
+        // (fraction at a fast lower, mod 0.2.14+), and the level of the
+        // octave layer inside the hum voice.
+        public float BendDepth   { get; set; } = 0.15f;
+        public float SpeedPitch  { get; set; } = 0.12f;
+        public float HarmonicAmp { get; set; } = 0.22f;
+        // How much slow travel quiets the hum: its loudness floor is
+        // 1 - SpeedVolume, so 0 = constant loudness, 1 = fully speed-tracked.
+        public float SpeedVolume { get; set; } = 0.5f;
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public Waveform Waveform { get; set; } = Waveform.Sine;
     }
 
     public sealed class AbsClickSettings
@@ -1887,7 +2225,8 @@ namespace TrueforceForAll.Plugin
     /// go, a high scrub as the front washes wide, a deep pulse as the rear
     /// steps out. The louder axle is the one losing grip. On by default
     /// (owner's call, 2026-07-14, with the tuned baseline): inert without
-    /// per-tire telemetry (Forza games today), so other games are unaffected.
+    /// per-tire telemetry (Forza, Assetto Corsa, and Farming Simulator with
+    /// the telemetry mod today), so other games are unaffected.
     /// PredictiveSlip starts the texture a fixed validated 150 ms before the
     /// slip fully develops; RevLockedRearPulse locks the rear pulse rate to
     /// the actual rear wheel rev rate when per-tire data allows.</summary>
@@ -1917,7 +2256,9 @@ namespace TrueforceForAll.Plugin
     /// <summary>Settings for the kerb thump: a single firm whack the instant
     /// a wheel first touches a kerb, distinct from the rumble that follows.
     /// Scales with speed. On by default (owner's call, 2026-07-14): inert
-    /// without kerb telemetry (Forza games today). Gain defaults to the
+    /// without kerb telemetry (Forza's kerb flag; in Farming Simulator the
+    /// source synthesizes hits from hard suspension transients and the voice
+    /// renders as the Terrain texture leading edge). Gain defaults to the
     /// owner-tuned G PRO baseline (2026-07-14); the original 1.6 was dialed
     /// in on a G923, whose weaker motor needed it much hotter. Freq sits
     /// below the 40 Hz gear thud so the two stay distinct.</summary>
@@ -1931,7 +2272,9 @@ namespace TrueforceForAll.Plugin
     /// <summary>Settings for the lockup judder: a flat-spot pulse while a
     /// braking tire is locked, slowing with the car the way a real flat spot
     /// would. On by default (owner's call, 2026-07-14): inert without
-    /// per-tire telemetry (Forza games today).</summary>
+    /// per-tire telemetry (Forza and Assetto Corsa today; the section hides
+    /// for Farming Simulator, whose brake model is presumed never to lock a
+    /// wheel).</summary>
     public sealed class LockupJudderSettings
     {
         public bool  Enabled { get; set; } = true;
@@ -2135,6 +2478,7 @@ namespace TrueforceForAll.Plugin
         public LockupJudderSettings LockupJudder { get; set; }
         public AudioCaptureSettings AudioCapture { get; set; }
         public AirborneSettings     Airborne     { get; set; }
+        public ImplementThudSettings ImplementThud { get; set; }
 
         /// <summary>Server uuid of the community row this car preset
         /// override was downloaded from. Null = locally authored.
@@ -2177,7 +2521,7 @@ namespace TrueforceForAll.Plugin
             GearShift   == null && AbsClick  == null && AudioCapture == null &&
             PitLimiter  == null && Drs       == null && Collision    == null &&
             RevLimiter  == null && AxleSlip  == null && KerbThump    == null &&
-            LockupJudder == null && Airborne == null;
+            LockupJudder == null && Airborne == null && ImplementThud == null;
 
         /// <summary>True when this override carries community lineage (download/
         /// upload tracking) even with no effect sections. Such an override must

@@ -107,7 +107,7 @@ namespace TrueforceForAll.Core.Tests
             double peak = 0.0;
             for (int i = 1; i <= 4; i++)
                 peak = Math.Max(peak, m.Tick(0.05 + 0.02 * i, 0.05, 16));
-            Assert.True(peak > 0.25, $"kerb pulse should survive, got {peak}");
+            Assert.True(peak > 0.25, $"curb pulse should survive, got {peak}");
         }
 
         [Fact]

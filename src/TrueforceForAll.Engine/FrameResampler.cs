@@ -257,6 +257,9 @@ namespace TrueforceForAll.Core
             s.AccelerationSurge = LerpN(a.AccelerationSurge, b.AccelerationSurge, t);
             s.YawRateDegPerSec  = LerpN(a.YawRateDegPerSec,  b.YawRateDegPerSec,  t);
             s.SteeringAngle     = LerpN(a.SteeringAngle,     b.SteeringAngle,     t);
+            s.Brake01           = LerpN(a.Brake01,           b.Brake01,           t);
+            s.Clutch01          = LerpN(a.Clutch01,          b.Clutch01,          t);
+            s.Handbrake01       = LerpN(a.Handbrake01,       b.Handbrake01,       t);
             s.WheelSlip         = LerpN(a.WheelSlip,         b.WheelSlip,         t);
             s.FrontSlipAngleRad     = LerpN(a.FrontSlipAngleRad,     b.FrontSlipAngleRad,     t);
             s.FrontSuspTravelMeters = LerpN(a.FrontSuspTravelMeters, b.FrontSuspTravelMeters, t);

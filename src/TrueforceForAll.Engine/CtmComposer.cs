@@ -37,9 +37,35 @@ namespace TrueforceForAll.Core
         {
             if (!f.HasTireQuads)
             {
-                f.FrontGrip01 = null;
-                f.RearGrip01  = null;
-                f.GripBalance = null;
+                // No quads to compose from, but a source may supply the axle
+                // rollups DIRECTLY: FS derives per-wheel slip from wheel
+                // rotation and pre-averages per axle. Respect those instead
+                // of erasing them; this null-out silently ate FS's axle
+                // slip while every upstream number was correct (2026-08-08).
+                if (f.FrontGrip01.HasValue || f.RearGrip01.HasValue)
+                {
+                    f.GripBalance = (f.FrontGrip01.HasValue && f.RearGrip01.HasValue)
+                        ? f.RearGrip01.Value - f.FrontGrip01.Value
+                        : (double?)null;
+                    f.Caps |= SignalGroups.AxleRollups;
+                }
+                else
+                {
+                    f.GripBalance = null;
+                }
+                return;
+            }
+
+            // Source-provided rollups stay authoritative even when quads are
+            // present: FS fills quads for the signed-ratio consumers (lockup)
+            // but pre-scales its rollups to grip utilization, and its
+            // SuspTravelM carries raw wheel Y positions the weight ladder
+            // would misread as travel shares. Forza/AC leave the rollups
+            // null, so their composed path is untouched.
+            if (f.FrontGrip01.HasValue && f.RearGrip01.HasValue)
+            {
+                f.GripBalance = f.RearGrip01.Value - f.FrontGrip01.Value;
+                f.Caps |= SignalGroups.AxleRollups;
                 return;
             }
 

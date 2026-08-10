@@ -1,4 +1,4 @@
-// Drives the Logitech G PRO (and RS50, and G923 Xbox) wheel rim's rev/shift
+﻿// Drives the Logitech G PRO (and RS50, and G923 Xbox) wheel rim's rev/shift
 // LEDs over HID++. The G923 Xbox uses the SAME 0x807A feature and level pair;
 // it just exposes no 7-byte SHORT collection, so its SHORT-form commands ride
 // the 20-byte LONG collection padded to 20B with report id 0x11 (see the
@@ -18,7 +18,7 @@
 //     then LONG fn6 `11 ff IDX 6d 00 01 00 0a 00 LL 00..` where byte 9
 //     (LL) = rev level 0..10 = how many LEDs light. G HUB resends this
 //     pair continuously even when LL is unchanged; the wheel's onboard
-//     profile owns the colours / direction / scaling, so there is NO RGB
+//     profile owns the colors / direction / scaling, so there is NO RGB
 //     or per-LED control here, only the 0..10 level.
 //
 // Transport detail (Windows): the HID++ interface is split into three HID
@@ -152,8 +152,13 @@ namespace TrueforceForAll.Core
                     return false;
                 }
 
-                foreach (var kv in groups)
-                    if (TryGroup(kv.Key, kv.Value)) return true;
+                // One HID++ probe on the wire at a time (see HidppProbeGate):
+                // racing the OLED probe at startup cost whichever lost.
+                lock (WheelDiscovery.HidppProbeGate)
+                {
+                    foreach (var kv in groups)
+                        if (TryGroup(kv.Key, kv.Value)) return true;
+                }
 
                 _log("[RPM-LED] probed all interface groups; none answered HID++ getFeature.");
                 return false;
@@ -284,16 +289,34 @@ namespace TrueforceForAll.Core
         private byte ReadFeatureReply(HidStream s, ushort pageId)
         {
             if (s == null) return 0;
+            bool timedOut = false;
             for (int attempt = 0; attempt < 4; attempt++)
             {
                 byte[] resp = new byte[LenVeryLong];
                 int n;
                 try { n = s.Read(resp, 0, resp.Length); }
-                catch (TimeoutException) { return 0; }
+                catch (TimeoutException)
+                {
+                    // A single late reply (another HID++ talker such as G HUB
+                    // mid-transaction) must not read as "feature absent".
+                    if (timedOut) return 0;
+                    timedOut = true; continue;
+                }
                 catch (Exception ex) { _log($"[RPM-LED] getFeature read failed: {ex.Message}"); return 0; }
                 if (n < 5) continue;
-                if (resp[1] != DevWired || resp[2] != RootIndex) continue;
-                if (resp[3] == 0xFF) { _log($"[RPM-LED] HID++ error for 0x{pageId:X4}"); return 0xFF; }
+                if (resp[1] != DevWired) continue;
+                // HID++ error: 0xFF in the feature slot, our request echoed after.
+                if (resp[2] == 0xFF && n >= 7 && resp[4] == RootIndex && resp[5] == RootGetFn)
+                {
+                    _log($"[RPM-LED] HID++ error 0x{resp[6]:X2} for 0x{pageId:X4}");
+                    return 0xFF;
+                }
+                // Match the FULL function byte (sw-id included). A getFeature
+                // reply does not echo the page it answers, so this is the only
+                // thing tying a reply to OUR request: without it, the OLED
+                // probe's reply on this shared pipe latched the display's
+                // feature index as revFeat (seen 2026-08-08).
+                if (resp[2] != RootIndex || resp[3] != RootGetFn) continue;
                 byte idx = resp[4];
                 if (idx != 0 && idx < 0x80) return idx;
             }
@@ -416,7 +439,7 @@ namespace TrueforceForAll.Core
         }
 
         /// <summary>Map a 0..1 rev fill (or redline) to the 0..10 level. The
-        /// wheel's onboard profile owns colours / direction; we only choose
+        /// wheel's onboard profile owns colors / direction; we only choose
         /// how many LEDs.</summary>
         public void ApplyRevBar(double pct, bool redline)
         {

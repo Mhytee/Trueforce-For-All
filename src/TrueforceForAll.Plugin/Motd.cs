@@ -75,6 +75,11 @@ namespace TrueforceForAll.Plugin
             (!string.IsNullOrEmpty(Audience) && Audience.StartsWith("non_", StringComparison.OrdinalIgnoreCase))
             || string.Equals(Category, "support", StringComparison.OrdinalIgnoreCase)
             || string.Equals(Category, "share", StringComparison.OrdinalIgnoreCase);
+        // The money ask specifically. It draws on its own cooldown rather than
+        // competing with the other nags for one shared slot, so its rate doesn't
+        // sag as community / share rows are added.
+        [JsonIgnore] public bool IsSupportNag =>
+            string.Equals(Category, "support", StringComparison.OrdinalIgnoreCase);
         [JsonIgnore] public bool IsRecurring =>
             string.Equals(Recurrence, "yearly", StringComparison.OrdinalIgnoreCase)
             && RecurMonth.HasValue && RecurDay.HasValue;

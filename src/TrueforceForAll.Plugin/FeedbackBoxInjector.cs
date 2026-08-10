@@ -69,7 +69,7 @@ namespace TrueforceForAll.Plugin
             _plugin = plugin;
         }
 
-        // Called from plugin Init. Honours the persisted opt-in.
+        // Called from plugin Init. Honors the persisted opt-in.
         public void Start()
         {
             SetEnabled(_plugin?.Settings?.ShowFeedbackBox == true);

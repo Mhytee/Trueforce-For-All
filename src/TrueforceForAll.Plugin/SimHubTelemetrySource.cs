@@ -28,6 +28,12 @@ namespace TrueforceForAll.Plugin
         public void PushFromGameData(GameData data)
         {
             if (!_running) return;
+            // SimHub keeps re-delivering the last GameData for a while after
+            // a game dies; emitting those zombie frames kept MeasuredHz alive
+            // and telemetry freshness stamped through the game-close window,
+            // holding force paths open against frozen data (2026-08-08,
+            // trace-proven). No running game = no frames.
+            if (data?.GameRunning != true) return;
             var d = data?.NewData;
             if (d == null) return;
 
@@ -89,6 +95,9 @@ namespace TrueforceForAll.Plugin
                 // some games surface throttle outside 0..100 during clutch
                 // engagement edge cases.
                 Throttle01 = Clamp01(d.Throttle / 100.0),
+                Brake01     = Clamp01(d.Brake / 100.0),
+                Clutch01    = Clamp01(d.Clutch / 100.0),
+                Handbrake01 = Clamp01(d.Handbrake / 100.0),
 
                 SpeedKmh           = d.SpeedKmh,
                 AccelerationHeave  = d.AccelerationHeave,

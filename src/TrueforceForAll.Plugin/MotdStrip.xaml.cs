@@ -54,6 +54,13 @@ namespace TrueforceForAll.Plugin
         private const int BonusPercent      = 30;  // chance/day of a second pool message
         private const int NagPercent        = 20;  // chance/day a nag is eligible
         private const int NagCooldownDays   = 3;   // minimum days between nags
+        // Support (the Patreon ask) runs on its own budget so its rate is set here
+        // rather than by how many other nags happen to be in the pool. It still
+        // takes the one nag slot for the day when it fires.
+        private const int SupportPercent      = 25; // chance/day the support ask is eligible
+        // 14, not 7: the periodic support modal on the plugin page now carries the
+        // bulk of the ask, so the strip backs off to keep the two from stacking.
+        private const int SupportCooldownDays = 14; // minimum days between support asks
 
         private static readonly TimeSpan RotateInterval = TimeSpan.FromSeconds(8);
         private static readonly Brush AccentNormal    = MakeBrush("#3A6BBE");
@@ -289,26 +296,41 @@ namespace TrueforceForAll.Plugin
             => when.HasValue && (DateTime.UtcNow - when.Value) < TrueforceSettings.MotdContributionRecency;
 
         // Choose `desired` distinct pool messages for the day, weighting toward
-        // non-nags and allowing at most one nag, gated by a few-day cooldown plus a
-        // daily chance. Picks are day-stable so the strip doesn't reshuffle on
-        // re-render.
+        // non-nags and allowing at most one nag, gated by a cooldown plus a daily
+        // chance. Support draws on its own cooldown and gets first refusal on the
+        // nag slot; the other nags then share what's left, so adding community or
+        // share rows can no longer dilute the money ask. Picks are day-stable so
+        // the strip doesn't reshuffle on re-render.
         private List<MotdItem> PickPoolForDay(List<MotdItem> pool, int desired, int dayKey, string today)
         {
+            var support = new List<MotdItem>();
             var nags = new List<MotdItem>();
             var calm = new List<MotdItem>();
-            foreach (var m in pool) (m.IsNag ? nags : calm).Add(m);
+            foreach (var m in pool)
+                (m.IsSupportNag ? support : m.IsNag ? nags : calm).Add(m);
+            support.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
             nags.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
             calm.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
 
             bool sim = _simDate != null;
-            bool nagToday = nags.Count > 0 && (sim || NagCooldownOk(today)) && DayChance(dayKey, "nag", NagPercent);
+            // Support first. Its roll and cooldown are independent, and firing it
+            // stamps the shared nag date too, so the day still carries just one.
+            bool supportToday = support.Count > 0 && (sim || SupportCooldownOk(today))
+                                && DayChance(dayKey, "supportnag", SupportPercent);
+            bool nagToday = !supportToday && nags.Count > 0 && (sim || NagCooldownOk(today))
+                            && DayChance(dayKey, "nag", NagPercent);
 
             var picks = new List<MotdItem>();
-            int calmWanted = desired - (nagToday ? 1 : 0);
+            int calmWanted = desired - ((supportToday || nagToday) ? 1 : 0);
             if (calmWanted < 0) calmWanted = 0;
             AppendDistinct(picks, calm, calmWanted, dayKey, "calm");
 
-            if (nagToday)
+            if (supportToday)
+            {
+                picks.Add(support[DayHash(dayKey, "supportpick") % support.Count]);
+                if (!sim) NoteSupportNagShown(today);
+            }
+            else if (nagToday)
             {
                 picks.Add(nags[DayHash(dayKey, "nagpick") % nags.Count]);
                 if (!sim) NoteNagShown(today);
@@ -317,10 +339,18 @@ namespace TrueforceForAll.Plugin
             // Safety net: if calm couldn't fill a guaranteed slot (tiny pool) and we
             // aren't already showing a nag, fall back to one so we never under-fill.
             // In practice the non-nag pool is large and this never runs.
-            if (picks.Count == 0 && nags.Count > 0 && desired > 0)
+            if (picks.Count == 0 && desired > 0)
             {
-                picks.Add(nags[DayHash(dayKey, "nagfallback") % nags.Count]);
-                if (!sim) NoteNagShown(today);
+                if (nags.Count > 0)
+                {
+                    picks.Add(nags[DayHash(dayKey, "nagfallback") % nags.Count]);
+                    if (!sim) NoteNagShown(today);
+                }
+                else if (support.Count > 0)
+                {
+                    picks.Add(support[DayHash(dayKey, "supportfallback") % support.Count]);
+                    if (!sim) NoteSupportNagShown(today);
+                }
             }
             return picks;
         }
@@ -342,6 +372,29 @@ namespace TrueforceForAll.Plugin
         {
             var s = _plugin?.Settings;
             if (s == null || s.MotdLastNagOn == today) return;
+            s.MotdLastNagOn = today;
+            try { _plugin.SaveMotdState(); } catch { }
+        }
+
+        // Same shape as NagCooldownOk, against the support-only date.
+        private bool SupportCooldownOk(string today)
+        {
+            string last = _plugin?.Settings?.MotdLastSupportNagOn;
+            if (string.IsNullOrEmpty(last)) return true;
+            if (last == today) return true;
+            if (DateTime.TryParseExact(last, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out var lastDate))
+                return (DateTime.Now.Date - lastDate).TotalDays >= SupportCooldownDays;
+            return true;
+        }
+
+        // A support ask stamps both dates: its own cooldown, and the shared nag one
+        // so the other nags stay off today and space themselves from it.
+        private void NoteSupportNagShown(string today)
+        {
+            var s = _plugin?.Settings;
+            if (s == null || (s.MotdLastSupportNagOn == today && s.MotdLastNagOn == today)) return;
+            s.MotdLastSupportNagOn = today;
             s.MotdLastNagOn = today;
             try { _plugin.SaveMotdState(); } catch { }
         }
