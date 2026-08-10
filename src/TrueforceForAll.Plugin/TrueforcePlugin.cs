@@ -2442,20 +2442,32 @@ namespace TrueforceForAll.Plugin
             catch { return "(unavailable)"; }
         }
 
-        /// <summary>SimHub's own version, read from the SimHubWPF.exe this
-        /// plugin is loaded into. "?" when unreadable.</summary>
+        /// <summary>SimHub's own version ("9.11.22"), or null when it can't be
+        /// read. Not from the host exe: SimHubWPF.exe ships no version resource
+        /// (FileVersion and ProductVersion read 1.0.0.0 on every build, as do
+        /// SimHub.Plugins.dll and GameReaderCommon.dll), so the real number
+        /// lives only in SimHub's own parsed version, the one its startup log
+        /// banner prints. Null rather than a placeholder string: a wrong-looking
+        /// version in a bug report is worse than none, because it stops anyone
+        /// asking, so callers fall back to prompting the reporter.</summary>
         internal static string GetSimHubVersion()
         {
+            // The property access sits in its own non-inlined method so that on
+            // a SimHub build without it, the missing-member failure surfaces
+            // when THAT method is JITted, which happens at the call below and
+            // therefore inside this try.
             try
             {
-                string exe = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
-                var info = System.Diagnostics.FileVersionInfo.GetVersionInfo(exe);
-                return string.IsNullOrEmpty(info.ProductVersion)
-                    ? (info.FileVersion ?? "?")
-                    : info.ProductVersion;
+                string v = ReadSimHubVersionCore();
+                return string.IsNullOrEmpty(v) ? null : v;
             }
-            catch { return "?"; }
+            catch { return null; }
         }
+
+        [System.Runtime.CompilerServices.MethodImpl(
+            System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static string ReadSimHubVersionCore()
+            => SimHub.Plugins.Configuration.SimHubVersion?.GetVersionAsString();
 
         /// <summary>Human-readable Windows version ("Windows 11 Home 24H2 build
         /// 26200"). Registry-sourced: Environment.OSVersion is capped by the

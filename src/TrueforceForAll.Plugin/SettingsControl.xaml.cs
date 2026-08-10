@@ -5440,29 +5440,39 @@ namespace TrueforceForAll.Plugin
             {
                 string lastUsed = _plugin?.Settings?.LastUsedWheel;
                 wheel = string.IsNullOrEmpty(lastUsed)
-                    ? "<e.g. G PRO, RS50, G923 - none detected>"
+                    ? null
                     : $"{lastUsed} (last used; not detected right now)";
             }
+
+            // SimHub can decline to tell us its version; ask rather than print
+            // something wrong, since a filled-looking field stops people asking.
+            string simHub = TrueforcePlugin.GetSimHubVersion();
 
             string logsLine = zipPath != null
                 ? $"**Logs:** drag `{System.IO.Path.GetFileName(zipPath)}` from your Desktop into this issue\n"
                 : "**Logs:** none attached (the Export logs button in the Settings tab makes a zip worth adding)\n";
+            // Placeholders are italic, never <angle brackets>: GitHub parses
+            // "<describe the issue>" as an HTML tag and renders nothing at all,
+            // so an unedited report would post with blank sections. Values go in
+            // code spans because they are raw device strings; the USBPcap
+            // interface in the tap status ("\\.\USBPcap2") would otherwise lose
+            // a backslash to Markdown escaping.
             string body =
-                  "**What happened?**\n<describe the issue>\n\n"
+                  "**What happened?**\n_describe the issue_\n\n"
                 + "**Steps to reproduce**\n1. \n2. \n\n"
-                + "**Expected behavior**\n<what should have happened>\n\n"
+                + "**Expected behavior**\n_what should have happened_\n\n"
                 + "---\n"
                 + "**Environment** (auto-filled)\n"
-                + $"- Plugin: {versions}{(versionMismatch ? "  [VERSION MISMATCH - stale DLL?]" : "")}\n"
-                + $"- SimHub: {TrueforcePlugin.GetSimHubVersion()}\n"
+                + $"- Plugin: {versions}{(versionMismatch ? "  **[VERSION MISMATCH - stale DLL?]**" : "")}\n"
+                + $"- SimHub: {(simHub == null ? "_fill in: shown on SimHub's About screen_" : "`" + simHub + "`")}\n"
                 + $"- Windows: {TrueforcePlugin.GetWindowsVersionLine()}\n"
-                + $"- Wheel: {wheel}\n"
-                + $"- Active game: {game}\n"
-                + $"- Active car: {carId}\n"
-                + $"- Stream: {_plugin?.StreamStatus ?? "(n/a)"}\n"
-                + $"- FFB tap: {_plugin?.FfbTapStatus ?? "(n/a)"}\n"
-                + $"- Capture: {_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}\n"
-                + $"- Telemetry source: {_plugin?.TelemetrySource?.Name ?? "(none)"}\n"
+                + $"- Wheel: {(wheel == null ? "_fill in: e.g. G PRO, RS50, G923; none detected_" : "`" + wheel + "`")}\n"
+                + $"- Active game: `{game}`\n"
+                + $"- Active car: `{carId}`\n"
+                + $"- Stream: `{_plugin?.StreamStatus ?? "(n/a)"}`\n"
+                + $"- FFB tap: `{_plugin?.FfbTapStatus ?? "(n/a)"}`\n"
+                + $"- Capture: `{_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}`\n"
+                + $"- Telemetry source: `{_plugin?.TelemetrySource?.Name ?? "(none)"}`\n"
                 + "\n" + logsLine;
             string url = ReportIssuesBase
                        + "?title=" + Uri.EscapeDataString("[bug] ")
@@ -5526,9 +5536,11 @@ namespace TrueforceForAll.Plugin
                     // community author name (both link the reporter to their
                     // community activity), the backup-sync envelope (a second,
                     // unredacted copy of the portable settings), the achievement
-                    // baseline (embeds the auth user id verbatim), and the dash
-                    // idle-card driver name (users type a real name expecting it
-                    // to stay on their own screen).
+                    // baseline (embeds the auth user id verbatim), and the free
+                    // text users type for their own screens (the dash idle-card
+                    // driver name, the wheel OLED greeting and its custom slots)
+                    // since a real first name is the most natural thing to put
+                    // there and none of it helps diagnose anything.
                     // Keep this list in sync when adding any secret/PII setting.
                     try
                     {
@@ -5540,7 +5552,8 @@ namespace TrueforceForAll.Plugin
                                 "LegacyDataOwnerEmail", "UserSlots", "ActiveSlotKey",
                                 "CarFactsAnonId", "SharingAuthor",
                                 "BackupLastSyncedEnvelopeJson", "BackupLastSyncedRevision",
-                                "AchievementBaseline", "DashIdleDriverName" })
+                                "AchievementBaseline", "DashIdleDriverName",
+                                "OledGreetingText", "OledCustomTexts" })
                                 jo.Remove(secret);
                             // Community lineage stamps live INSIDE CustomEngines[],
                             // Presets[*], CarOverrides[*] and DownloadedCommunityPresets[*]
@@ -5558,6 +5571,16 @@ namespace TrueforceForAll.Plugin
                                 .OfType<Newtonsoft.Json.Linq.JProperty>()
                                 .Where(p => lineage.Contains(p.Name)).ToList())
                                 prop.Remove();
+                            // Everything above makes this snapshot deliberately
+                            // lossy, and some of what it drops is portable data
+                            // that Import would NOT restore from the live object
+                            // (the anon car-fact id, the sharing author, the
+                            // upload stamps). Without a marker the file still
+                            // satisfies LooksLikeSettingsBackup, so a user who
+                            // reaches for it as a backup would be told it is one
+                            // and then silently lose those fields. Flag it so
+                            // Import refuses it outright.
+                            jo[DiagnosticSnapshotMarker] = true;
                             TryAddNoteToZip(zip, "Trueforce-settings.json",
                                 jo.ToString(Newtonsoft.Json.Formatting.Indented));
                         }
@@ -5592,7 +5615,7 @@ namespace TrueforceForAll.Plugin
                     string manifest =
                         $"Generated: {DateTime.Now:o}\n" +
                         $"Assembly versions: {versions}{(versionMismatch ? "  [VERSION MISMATCH - stale DLL; Plugin, Core and Engine must ship as a set]" : "")}\n" +
-                        $"SimHub version: {TrueforcePlugin.GetSimHubVersion()}\n" +
+                        $"SimHub version: {TrueforcePlugin.GetSimHubVersion() ?? "(unavailable)"}\n" +
                         $"Windows: {TrueforcePlugin.GetWindowsVersionLine()}\n" +
                         $"Active game: {_plugin?.ActiveGame ?? "(none)"}\n" +
                         $"Active car: {_plugin?.ActiveCarId ?? "(none)"}\n" +
@@ -14770,11 +14793,25 @@ namespace TrueforceForAll.Plugin
         // couple of distinctive top-level fields so an unrecognized or
         // malformed file is never mistaken for a backup and offered the
         // destructive replace-all path.
+        // Stamped into the redacted settings snapshot that ships inside an
+        // exported log zip. That file is diagnostic only: identity and community
+        // lineage are stripped out of it, and some of what's stripped is data
+        // Import would not put back, so it must never be offered as a restorable
+        // backup however much it otherwise resembles one.
+        internal const string DiagnosticSnapshotMarker = "_Tf4allDiagnosticSnapshot";
+
+        private static bool IsDiagnosticSnapshot(string json)
+        {
+            try { return Newtonsoft.Json.Linq.JObject.Parse(json)[DiagnosticSnapshotMarker] != null; }
+            catch { return false; }
+        }
+
         private static bool LooksLikeSettingsBackup(string json)
         {
             try
             {
                 var jo = Newtonsoft.Json.Linq.JObject.Parse(json);
+                if (jo[DiagnosticSnapshotMarker] != null) return false;
                 return jo["MasterGain"] != null && (jo["Performance"] != null || jo["Forza"] != null);
             }
             catch { return false; }
@@ -14940,6 +14977,15 @@ namespace TrueforceForAll.Plugin
                 if (LooksLikeSettingsBackup(json))
                 {
                     c.Kind = ImportCandidateKind.SettingsBackup;
+                    return c;
+                }
+                // Tell the truth about the one file that looks like a backup but
+                // deliberately isn't, so the user isn't left guessing why the
+                // settings JSON from their log zip won't import.
+                if (IsDiagnosticSnapshot(json))
+                {
+                    c.FailureMessage = "This is the redacted diagnostic copy from a log export, "
+                        + "not a backup. Use Settings > Backup for a file you can restore.";
                     return c;
                 }
                 c.FailureMessage = "Unrecognized file (not a TF4ALL preset, car preset, pack, or settings backup).";
