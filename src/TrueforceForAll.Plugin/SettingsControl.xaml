@@ -2192,7 +2192,7 @@
                                         TickFrequency="0.1" ValueChanged="ImplementThudHum_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ImplementThudHumText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="A pump whine while the linkage or a fold is actually travelling; the thud then lands when the motion settles. 0 = thud only."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="A pump whine while the linkage or a fold is actually traveling; the thud then lands when the motion settles. 0 = thud only."/>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Hum frequency (Hz):" Style="{StaticResource LabelText}"/>
@@ -2840,8 +2840,6 @@
                  player reads only the sentence that applies to them. -->
             <TextBlock x:Name="ModeBIntroText" Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
                        Text="The wheel's steering force is built from telemetry instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel. Farming Simulator 22 and 25 are supported too, through the spring option below."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
-                       Text="It also enables your wheel's rev lights. For now rev lights only work with Telemetry Based FFB: writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel, and replacing the game's force feedback frees them. A custom driver that would enable rev lights in every game is in testing, but it needs to be signed by Microsoft first."/>
 
             <!-- Contention warning. The plugin latches ModeBContentionDetected when
                  the game keeps streaming its own FFB while Mode B is driving the
@@ -2861,132 +2859,12 @@
                  and the setting is normalized to on at load (owner call
                  2026-08-08; the old checkbox also undersold everything the
                  FS stack does now). -->
-            <CheckBox x:Name="ModeBRevLightsCheck" Content="Rev lights"
-                      Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
-                       Text="Your wheel's rev lights follow the engine: the strip fills as revs climb and flashes at the shift point. Turn this off if a game drives the wheel's lights itself."/>
-
-            <!-- Wheel-base Dynamic OLED (HID++ feature 0x8130). Shares the rev
-                 lights' HID++ pipe, so it shares their Mode B + tap-proven-quiet
-                 gate and sits with them here.
-                 Collapsed by default: it grew into the largest block on this
-                 tab, and it is an optional extra rather than part of tuning the
-                 force, so it should not be the first thing you scroll past. -->
-            <Expander x:Name="OledSection" IsExpanded="False" Margin="0,4,0,4">
-                <Expander.Header>
-                    <TextBlock Text="Wheel OLED screen" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-            <CheckBox x:Name="ModeBOledCheck" Content="Show telemetry on the wheel's screen"
-                      Margin="0,0,0,2" Checked="ModeBOled_Changed" Unchecked="ModeBOled_Changed"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="Puts your speed, gear and lap delta on the little screen in the middle of the wheel, so you can read them without looking away from the road. G PRO and RS50 only. It borrows the screen that normally shows the wheel's own menu, and gives it back when you stop driving."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="The screen speaks up on its own too. It names a preset when one loads, shows the new number when a bound button changes a gain, tells you the strength Auto strength settled on for the car you are in, and warns you there if the game is still sending its own force feedback. Each of those replaces the driving screen for a moment and then gives it back."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="The wheel's screen was worked out from captures rather than documented by Logitech. It rides the same channel as the rev lights, so it needs Telemetry Based FFB for the same reason."/>
-            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                <TextBlock Text="Show:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                <!-- Items are filled from OledScreenModel.ScreenOrder so the
-                     offered order can differ from the persisted enum values. -->
-                <ComboBox x:Name="OledScreenCombo" Width="230" Margin="8,0,0,0"
-                          SelectionChanged="OledScreen_Changed"/>
-                <CheckBox x:Name="OledMphCheck" Content="mph" Margin="12,0,0,0"
-                          VerticalAlignment="Center"
-                          Checked="OledMph_Changed" Unchecked="OledMph_Changed"
-                          ToolTip="Show the speed in mph instead of km/h. Affects this screen only."/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                <CheckBox x:Name="OledShiftFlashCheck" Content="Flash the gear when I shift"
-                          VerticalAlignment="Center"
-                          Checked="OledShiftFlash_Changed" Unchecked="OledShiftFlash_Changed"
-                          ToolTip="Shows the gear for a moment on each shift. Skipped automatically on a screen that already shows the gear."/>
-                <ComboBox x:Name="OledFlashStyleCombo" Width="180" Margin="8,0,0,0"
-                          VerticalAlignment="Center"
-                          IsEnabled="{Binding IsChecked, ElementName=OledShiftFlashCheck}"
-                          SelectionChanged="OledFlashStyle_Changed"
-                          ToolTip="The wheel cannot center its biggest text, so the large gear sits to one side with the speed next to it. The centered one is a size smaller but sits in the middle with a label.">
-                    <ComboBoxItem Content="Big gear, speed beside it"/>
-                    <ComboBoxItem Content="Centered gear with a label"/>
-                </ComboBox>
-                <CheckBox x:Name="OledLapResultCheck" Content="Show the lap when I cross the line"
-                          Margin="18,0,0,0" VerticalAlignment="Center"
-                          Checked="OledLapResult_Changed" Unchecked="OledLapResult_Changed"
-                          ToolTip="A personal best gets the time on its own. Any other lap gets the time with the delta under it."/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                <CheckBox x:Name="OledGreetingCheck" Content="Say hello when the screen first comes up"
-                          VerticalAlignment="Center"
-                          Checked="OledGreeting_Changed" Unchecked="OledGreeting_Changed"
-                          ToolTip="Once each time SimHub runs, not once per session."/>
-                <TextBox x:Name="OledGreetingBox" Width="150" Margin="8,0,0,0" MaxLength="40"
-                         VerticalAlignment="Center" TextChanged="OledGreetingText_Changed"
-                         IsEnabled="{Binding IsChecked, ElementName=OledGreetingCheck}"
-                         ToolTip="Scrolls across the lower row under the plugin name. Anything longer than the row scrolls past."/>
-            </StackPanel>
-
-            <!-- The custom screen editor. Only visible for "Build my own"; the
-                 wheel's firmware fixes the size and position of every slot, so
-                 what you choose is a layout and then one field per slot. -->
-            <StackPanel x:Name="OledCustomPanel" Visibility="Collapsed" Margin="22,2,0,8">
-                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" TextWrapping="Wrap"
-                           Text="Pick a layout, then what goes in each of its slots. The wheel decides how big each slot is drawn and where it sits, so the layout is the shape and the slots are the contents. Anything set to Custom text shows exactly what you type."/>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <TextBlock Text="Layout:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="OledLayoutCombo" Width="230" Margin="8,0,0,0"
-                              SelectionChanged="OledLayout_Changed"/>
-                </StackPanel>
-                <Grid x:Name="OledSlot0Row" Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="OledSlot0Label" Text="Slot 1:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                    <ComboBox   Grid.Column="1" x:Name="OledSlot0Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
-                    <TextBox    Grid.Column="2" x:Name="OledSlot0Text" Margin="8,0,0,0" VerticalAlignment="Center"
-                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
-                </Grid>
-                <Grid x:Name="OledSlot1Row" Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="OledSlot1Label" Text="Slot 2:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                    <ComboBox   Grid.Column="1" x:Name="OledSlot1Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
-                    <TextBox    Grid.Column="2" x:Name="OledSlot1Text" Margin="8,0,0,0" VerticalAlignment="Center"
-                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
-                </Grid>
-                <Grid x:Name="OledSlot2Row" Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="OledSlot2Label" Text="Slot 3:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                    <ComboBox   Grid.Column="1" x:Name="OledSlot2Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
-                    <TextBox    Grid.Column="2" x:Name="OledSlot2Text" Margin="8,0,0,0" VerticalAlignment="Center"
-                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
-                </Grid>
-                <Grid x:Name="OledSlot3Row" Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="OledSlot3Label" Text="Slot 4:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                    <ComboBox   Grid.Column="1" x:Name="OledSlot3Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
-                    <TextBox    Grid.Column="2" x:Name="OledSlot3Text" Margin="8,0,0,0" VerticalAlignment="Center"
-                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
-                </Grid>
-            </StackPanel>
-
-            <TextBlock x:Name="OledDeltaUnavailableText" Visibility="Collapsed"
-                       Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="22,0,0,8"
-                       Text=""/>
-
-            <Grid Margin="22,0,0,12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="100"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Screen status:" Style="{StaticResource LabelText}"/>
-                <TextBlock Grid.Column="1" x:Name="OledStatusText" Text="(idle)" FontSize="11"
-                           Opacity="0.85" TextWrapping="Wrap"/>
-            </Grid>
-                </StackPanel>
-            </Expander> <!-- /OledSection -->
 
             <!-- The Forza tuning recipe. Hidden as one block while a
                  spring-mode game (Farming Simulator) is active: the sliders
                  shape the telemetry composer, which spring mode does not run.
-                 Rev lights, the wheel screen, and the spring toggle above
-                 stay: they work in spring mode too. -->
+                 The Wheel lights and screen section below stays: rev lights
+                 and the OLED work in spring mode too. -->
             <StackPanel x:Name="ModeBForzaTuningPanel">
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -3306,6 +3184,133 @@
                            Text="Restores your wheel's defaults. The G PRO, RS50, and G923 each get their own strength, and the G923 also gets its own damping. Your per-game on/off choices and each car's learned grip calibration are kept."/>
             </StackPanel>
             </StackPanel><!-- ModeBForzaTuningPanel2 -->
+
+            <!-- Wheel outputs rather than force tuning. Rev lights and the
+                 OLED live on this tab because they ride the same HID++ channel
+                 as game FFB, so they need Mode B in charge of the wheel; the
+                 section sits last so the force tuning reads first. -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12">
+                <TextBlock Text="Wheel lights and screen" Style="{StaticResource SectionHeaderText}"/>
+            </Border>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,10" TextWrapping="Wrap"
+                       Text="These need Telemetry Based FFB switched on. Writing to the lights or the screen while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them. A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first."/>
+            <CheckBox x:Name="ModeBRevLightsCheck" Content="Rev lights"
+                      Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
+                       Text="Your wheel's rev lights follow the engine: the strip fills as revs climb and flashes at the shift point. Turn this off if a game drives the wheel's lights itself."/>
+            <!-- Wheel-base Dynamic OLED (HID++ feature 0x8130). Shares the rev
+                 lights' HID++ pipe, so it shares their Mode B + tap-proven-quiet
+                 gate and sits with them here. Collapsed by default: it is the
+                 largest block on this tab and an optional extra. -->
+            <Expander x:Name="OledSection" IsExpanded="False" Margin="0,4,0,4">
+                <Expander.Header>
+                    <TextBlock Text="Wheel OLED screen" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+            <CheckBox x:Name="ModeBOledCheck" Content="Show telemetry on the wheel's screen"
+                      Margin="0,0,0,2" Checked="ModeBOled_Changed" Unchecked="ModeBOled_Changed"/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
+                       Text="Puts your speed, gear and lap delta on the little screen in the middle of the wheel, so you can read them without looking away from the road. G PRO and RS50 only. It borrows the screen that normally shows the wheel's own menu, and gives it back when you stop driving."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
+                       Text="The screen speaks up on its own too. It names a preset when one loads, shows the new number when a bound button changes a gain, tells you the strength Auto strength settled on for the car you are in, and warns you there if the game is still sending its own force feedback. Each of those replaces the driving screen for a moment and then gives it back."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
+                       Text="The wheel's screen was worked out from captures rather than documented by Logitech. It rides the same channel as the rev lights, so it needs Telemetry Based FFB for the same reason."/>
+            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                <TextBlock Text="Show:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                <!-- Items are filled from OledScreenModel.ScreenOrder so the
+                     offered order can differ from the persisted enum values. -->
+                <ComboBox x:Name="OledScreenCombo" Width="230" Margin="8,0,0,0"
+                          SelectionChanged="OledScreen_Changed"/>
+                <CheckBox x:Name="OledMphCheck" Content="mph" Margin="12,0,0,0"
+                          VerticalAlignment="Center"
+                          Checked="OledMph_Changed" Unchecked="OledMph_Changed"
+                          ToolTip="Show the speed in mph instead of km/h. Affects this screen only."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                <CheckBox x:Name="OledShiftFlashCheck" Content="Flash the gear when I shift"
+                          VerticalAlignment="Center"
+                          Checked="OledShiftFlash_Changed" Unchecked="OledShiftFlash_Changed"
+                          ToolTip="Shows the gear for a moment on each shift. Skipped automatically on a screen that already shows the gear."/>
+                <ComboBox x:Name="OledFlashStyleCombo" Width="180" Margin="8,0,0,0"
+                          VerticalAlignment="Center"
+                          IsEnabled="{Binding IsChecked, ElementName=OledShiftFlashCheck}"
+                          SelectionChanged="OledFlashStyle_Changed"
+                          ToolTip="The wheel cannot center its biggest text, so the large gear sits to one side with the speed next to it. The centered one is a size smaller but sits in the middle with a label.">
+                    <ComboBoxItem Content="Big gear, speed beside it"/>
+                    <ComboBoxItem Content="Centered gear with a label"/>
+                </ComboBox>
+                <CheckBox x:Name="OledLapResultCheck" Content="Show the lap when I cross the line"
+                          Margin="18,0,0,0" VerticalAlignment="Center"
+                          Checked="OledLapResult_Changed" Unchecked="OledLapResult_Changed"
+                          ToolTip="A personal best gets the time on its own. Any other lap gets the time with the delta under it."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                <CheckBox x:Name="OledGreetingCheck" Content="Say hello when the screen first comes up"
+                          VerticalAlignment="Center"
+                          Checked="OledGreeting_Changed" Unchecked="OledGreeting_Changed"
+                          ToolTip="Once each time SimHub runs, not once per session."/>
+                <TextBox x:Name="OledGreetingBox" Width="150" Margin="8,0,0,0" MaxLength="40"
+                         VerticalAlignment="Center" TextChanged="OledGreetingText_Changed"
+                         IsEnabled="{Binding IsChecked, ElementName=OledGreetingCheck}"
+                         ToolTip="Scrolls across the lower row under the plugin name. Anything longer than the row scrolls past."/>
+            </StackPanel>
+
+            <!-- The custom screen editor. Only visible for "Build my own"; the
+                 wheel's firmware fixes the size and position of every slot, so
+                 what you choose is a layout and then one field per slot. -->
+            <StackPanel x:Name="OledCustomPanel" Visibility="Collapsed" Margin="22,2,0,8">
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" TextWrapping="Wrap"
+                           Text="Pick a layout, then what goes in each of its slots. The wheel decides how big each slot is drawn and where it sits, so the layout is the shape and the slots are the contents. Anything set to Custom text shows exactly what you type."/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="Layout:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="OledLayoutCombo" Width="230" Margin="8,0,0,0"
+                              SelectionChanged="OledLayout_Changed"/>
+                </StackPanel>
+                <Grid x:Name="OledSlot0Row" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="OledSlot0Label" Text="Slot 1:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox   Grid.Column="1" x:Name="OledSlot0Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
+                    <TextBox    Grid.Column="2" x:Name="OledSlot0Text" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
+                </Grid>
+                <Grid x:Name="OledSlot1Row" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="OledSlot1Label" Text="Slot 2:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox   Grid.Column="1" x:Name="OledSlot1Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
+                    <TextBox    Grid.Column="2" x:Name="OledSlot1Text" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
+                </Grid>
+                <Grid x:Name="OledSlot2Row" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="OledSlot2Label" Text="Slot 3:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox   Grid.Column="1" x:Name="OledSlot2Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
+                    <TextBox    Grid.Column="2" x:Name="OledSlot2Text" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
+                </Grid>
+                <Grid x:Name="OledSlot3Row" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="OledSlot3Label" Text="Slot 4:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <ComboBox   Grid.Column="1" x:Name="OledSlot3Combo" Width="140" SelectionChanged="OledSlot_Changed"/>
+                    <TextBox    Grid.Column="2" x:Name="OledSlot3Text" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" TextChanged="OledSlotText_Changed"/>
+                </Grid>
+            </StackPanel>
+
+            <TextBlock x:Name="OledDeltaUnavailableText" Visibility="Collapsed"
+                       Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="22,0,0,8"
+                       Text=""/>
+
+            <Grid Margin="22,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Screen status:" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="1" x:Name="OledStatusText" Text="(idle)" FontSize="11"
+                           Opacity="0.85" TextWrapping="Wrap"/>
+            </Grid>
+                </StackPanel>
+            </Expander> <!-- /OledSection -->
             </StackPanel><!-- ModeBSupportedPanel -->
 
                     </StackPanel>
