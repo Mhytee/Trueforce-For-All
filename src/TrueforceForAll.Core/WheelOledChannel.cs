@@ -1,12 +1,12 @@
 ﻿// Drives the "Dynamic" OLED screen on the base of a Logitech G PRO Racing
 // Wheel / RS50 over HID++ feature 0x8130 (DisplayGameData).
 //
-// EXPERIMENTAL. Protocol documented by PeposCJ (LogiDynamicDash, issue #20 on
-// mescon's logitech-trueforce-linux-driver) and recorded in that driver's
-// PROTOCOL_SPECIFICATION.md section 12.3. Hardware-confirmed on an RS50 only;
-// the G PRO is expected to speak the same feature but is unconfirmed. A wheel
-// whose firmware does not answer 0x8130 simply never resolves and the panel is
-// left alone.
+// Protocol documented by PeposCJ (LogiDynamicDash, issue #20 on mescon's
+// logitech-trueforce-linux-driver) and recorded in that driver's
+// PROTOCOL_SPECIFICATION.md section 12.3. Hardware-confirmed on PeposCJ's RS50
+// and on a G PRO here, in game under Mode B, whose own layout table was read
+// back through fn1 (the capacities below). A wheel whose firmware does not
+// answer 0x8130 simply never resolves and the panel is left alone.
 //
 //   * Feature page 0x8130, ALWAYS resolved via HID++ root getFeature: the
 //     index is a per-device feature-table position, not a property of the

@@ -1,13 +1,12 @@
 ﻿// Owns the WheelOledChannel and decides what to put on the wheel base's
 // Dynamic OLED screen.
 //
-// EXPERIMENTAL, and gated exactly like the rim rev lights, for exactly the
-// same reason: the OLED rides the same HID++ pipe, and a non-force write to
-// that pipe cuts any force flowing on it (WheelOledChannel's header has the
-// references). So the single gate computed in TrueforcePlugin.DataUpdate is
-// "Telemetry Based FFB (Mode B) armed AND the FFB tap PROVES the game's own
-// FFB quiet AND the session is live", plus the user's opt-in
-// TrueforceSettings.ModeBOledEnabled (default OFF while this is unproven).
+// Gated exactly like the rim rev lights, for exactly the same reason: the OLED
+// rides the same HID++ pipe, and a non-force write to that pipe cuts any force
+// flowing on it (WheelOledChannel's header has the references). So the single
+// gate computed in TrueforcePlugin.DataUpdate is "Telemetry Based FFB (Mode B)
+// armed AND the FFB tap PROVES the game's own FFB quiet AND the session is
+// live", plus TrueforceSettings.ModeBOledEnabled (default ON).
 //
 // The channel open is a probe (enumerate + getFeature with timeouts) so it can
 // take a beat; it runs once on a background task, never on SimHub's DataUpdate
