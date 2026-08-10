@@ -143,7 +143,7 @@ namespace TrueforceForAll.Core
         // so that floor is not automatically ours. The 200 ms we started with
         // was caution, not measurement, and it looks like low frame rate on a
         // scrolling row. Tunable so the real ceiling can be found on hardware
-        // rather than guessed: SenderLoop ticks fine enough to honour it.
+        // rather than guessed: SenderLoop ticks fine enough to honor it.
         //
         // Every write draws an acknowledgement (~2.4-3.1 ms observed), so the
         // bus cost is roughly 3 ms per frame: about 3% duty at 10 Hz, 9% at

@@ -229,7 +229,7 @@ namespace TrueforceForAll.Core
         /// thud.</summary>
         public bool? ImplementMoving;
 
-        /// <summary>How fast the implement hydraulics are travelling, as
+        /// <summary>How fast the implement hydraulics are traveling, as
         /// the fraction of full travel covered per second: ~0.5-1.0 for a
         /// three-point lower, ~0.1 for a big slow fold, 0 while idle (mod
         /// 0.2.14+). Null on sources that don't report it. Rides the

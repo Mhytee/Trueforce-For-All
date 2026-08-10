@@ -11,7 +11,7 @@
 //   2. Otherwise the shipped default next to the plugin DLL: <dll>\TrueforceForAll-Presets.
 //
 // The plugin calls Initialize(...) early in Init (after settings load) so the
-// folder override is honoured. Anything that touches the API before that
+// folder override is honored. Anything that touches the API before that
 // triggers a lazy load from the default folder.
 
 using System;

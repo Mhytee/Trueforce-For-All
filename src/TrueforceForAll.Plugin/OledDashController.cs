@@ -159,7 +159,7 @@ namespace TrueforceForAll.Plugin
         private int _lastDriveTick;   // last time OnFrame actually drew
 
         /// <summary>A settings-panel preview is on screen and owns the panel.
-        /// The idle path has to honour this: it runs on every DataUpdate and
+        /// The idle path has to honor this: it runs on every DataUpdate and
         /// would otherwise clear the preview on the very next tick, which reads
         /// as the preview flickering on and off rather than holding.</summary>
         private bool PreviewHolding

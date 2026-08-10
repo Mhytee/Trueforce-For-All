@@ -785,7 +785,7 @@ namespace TrueforceForAll.Core
         {
             _classicResetRequested = true;
             // Drop the spring snapshot NOW, from this thread: the parser only
-            // honours the reset request at its next command, and a paused game
+            // honors the reset request at its next command, and a paused game
             // may send none. A published spring must not keep producing
             // emulated force across the pause (the spring analogue of the
             // stale-force replay this method exists to prevent). Safe here: a
@@ -1466,7 +1466,7 @@ namespace TrueforceForAll.Core
         private readonly bool[]  _classicSlotPlaying = new bool[ClassicSlotCount];
         private short _classicLastPublished;
         private bool  _classicHavePublished;
-        // Set by ClearLastFfbTarget (plugin thread) and honoured by the parser,
+        // Set by ClearLastFfbTarget (plugin thread) and honored by the parser,
         // so the slot state is only ever mutated on the parser thread. Without
         // it a bare PLAY after a pause could republish the pre-pause force.
         private volatile bool _classicResetRequested;

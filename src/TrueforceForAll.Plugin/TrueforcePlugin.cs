@@ -6527,7 +6527,7 @@ namespace TrueforceForAll.Plugin
                     _strengthCal.EffectivePeak, AutoStrengthTarget,
                     AutoStrengthMinScale, AutoStrengthMaxScale)
                 : 1f;
-            // Honour the adaptive-grip toggle, exactly like ApplyModeBFeel. With
+            // Honor the adaptive-grip toggle, exactly like ApplyModeBFeel. With
             // auto-cal OFF the force path multiplies the manual Grip limit by
             // _mbCalPeak, so writing the learned peak here silently double-scaled
             // it on every car change (worse since the fresh-car nominal moved off
@@ -10351,7 +10351,7 @@ namespace TrueforceForAll.Plugin
         /// inside the user folder (<c>...\TrueforceForAll\user\import</c>) so
         /// it's writable without admin. Auto-imported on plugin start into the
         /// user library and the originals are moved into the
-        /// <c>imported/&lt;timestamp&gt;/</c> archive subfolder. Honours
+        /// <c>imported/&lt;timestamp&gt;/</c> archive subfolder. Honors
         /// <c>Settings.UserImportsFolder</c> if set, so a user can point it
         /// anywhere they like.</summary>
         public string UserImportsFolderPath
