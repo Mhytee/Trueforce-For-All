@@ -111,12 +111,12 @@ continuous and transient effects, and a savable preset library. The tabbed
 layout, typed values on every slider, and community sharing in the preset
 library are _Beta_.
 
-(_Beta_) Four pairs of controls can be bound to anything SimHub can see, a
+Four pairs of controls can be bound to anything SimHub can see, a
 wheel button, a button box, a keyboard key, so the things worth changing
 mid-stint do not cost you a hand: Trueforce gain up and down, Telemetry
 Based FFB strength up and down, the wheel's screen forward and back, and
 dash tabs forward and back. The two gain controls report their new value
-on the dash and on the wheel's screen at the same time.
+on the dash and on the wheel's screen at the same time. (_Beta_)
 
 ## Telemetry Based FFB (_Beta_)
 
