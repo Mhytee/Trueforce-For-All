@@ -217,6 +217,8 @@ kept next to you or mounted on the rig: something to read while you
 drive, and a way to change things mid-session without alt-tabbing out of
 the game.
 
+![TF4ALL Dash](docs/images/tf4all-dash-tabs.gif)
+
 - Drive tab: a race-ready view. Gear, speed and revs in the middle with
   pedals and steering around them, and the rest of the screen is boxes
   you arrange yourself. Keep one layout for everything, or a different
@@ -244,7 +246,6 @@ the game.
 - Make it yours: hide the tabs you don't use and reorder the rest, in
   Settings > TF4ALL Dash.
 
-![TF4ALL Dash](docs/images/tf4all-dash-tabs.gif)
 
 Installs with the plugin and appears in SimHub's dashboard list.
 
