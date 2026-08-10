@@ -219,6 +219,34 @@ namespace TrueforceForAll.Plugin
         // the disk, so evidence is banked in memory and written in batches.
         private const double DashCapFlushSeconds = 60;
 
+        // SimHub's fuel-unit setting, mirrored off NewData.FuelUnit. False
+        // (litres) until a frame says otherwise, which is also the right
+        // answer for a user who never touched the setting.
+        private volatile bool _simHubFuelGallons;
+        // SimHub's own litres-to-gallons ratio, copied deliberately rather
+        // than rounded: matching its arithmetic is the whole point, so our
+        // tank and its Fuel property can never read differently. US gallons.
+        private const float LitresToGallons = 0.264172f;
+
+        /// <summary>The Farming Simulator tank in whatever unit SimHub is
+        /// set to, or -1 when not reported. Only a LIQUID tank converts: an
+        /// electric machine's kWh and a methane machine's kg are not volumes
+        /// and have no gallon reading, so they pass through untouched.</summary>
+        private float DashFsFuelLevel()
+        {
+            var fs = _fsPipeSource;
+            float lvl = fs?.FuelLevel ?? -1f;
+            if (lvl < 0f) return -1f;
+            return _simHubFuelGallons && fs.FuelUnit == "L" ? lvl * LitresToGallons : lvl;
+        }
+
+        /// <summary>The label for that number, moving with it.</summary>
+        private string DashFsFuelUnit()
+        {
+            string unit = _fsPipeSource?.FuelUnit ?? "L";
+            return _simHubFuelGallons && unit == "L" ? "gal" : unit;
+        }
+
         private string _capGame;
         private readonly HashSet<string> _capSeenRun = new HashSet<string>(StringComparer.Ordinal);
         private double _capSec;
@@ -277,6 +305,13 @@ namespace TrueforceForAll.Plugin
         {
             var s = Settings;
             var nd = data?.NewData;
+            // SimHub's own fuel-unit preference rides every frame as the
+            // enum name ("Liters" / "Gallons"). Latched here, AHEAD of the
+            // learner's early returns, because the fuel box needs it even in
+            // states the learner skips (no settings yet, game just gone).
+            if (nd != null && !string.IsNullOrEmpty(nd.FuelUnit))
+                _simHubFuelGallons =
+                    nd.FuelUnit.IndexOf("Gallon", StringComparison.OrdinalIgnoreCase) >= 0;
             string game = _activeGame;
             if (s == null || nd == null || string.IsNullOrEmpty(game)) { _capLastTick = 0; return; }
             if (!string.Equals(game, _capGame, StringComparison.Ordinal))
@@ -1840,8 +1875,13 @@ namespace TrueforceForAll.Plugin
                 _activeGame != null
                 && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal));
             this.AttachDelegate("Dash.Fs.FuelPct",     () => _fsPipeSource?.FuelPercent ?? -1f);
-            this.AttachDelegate("Dash.Fs.FuelL",       () => _fsPipeSource?.FuelLevel ?? -1f);
-            this.AttachDelegate("Dash.Fs.FuelUnit",    () => _fsPipeSource?.FuelUnit ?? "L");
+            // Level and its unit travel together and BOTH honor SimHub's
+            // fuel-unit setting, so the number can never disagree with the
+            // label beside it. The tank stays native inside the plugin (the
+            // drain math is a ratio, so the unit cancels out); this is the
+            // display edge, the same place SimHub converts its own Fuel.
+            this.AttachDelegate("Dash.Fs.FuelL",       () => DashFsFuelLevel());
+            this.AttachDelegate("Dash.Fs.FuelUnit",    () => DashFsFuelUnit());
             this.AttachDelegate("Dash.Fs.FuelMinLeft", () => _fsPipeSource?.FuelMinutesLeft ?? -1f);
             // Gear and speed off the live frame, so the Drive tab's center
             // works on whichever telemetry source is running rather than

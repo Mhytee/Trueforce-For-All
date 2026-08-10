@@ -71,6 +71,9 @@ namespace TrueforceForAll.Plugin
         private volatile object _implementEvent;    // boxed int or null
         // Manual-only motion flag (mod >= 0.2.19).
         private volatile object _implementManual;   // boxed bool or null
+        // Stage-end counter + the stopping part's speed (mod >= 0.2.22).
+        private volatile object _implementPhase;      // boxed int or null
+        private volatile object _implementPhaseSpeed; // boxed float or null
 
         private volatile string _reportedModVersion;
         /// <summary>The mod version the pipe is ACTUALLY streaming from
@@ -524,6 +527,21 @@ namespace TrueforceForAll.Plugin
             else if (implMove.HasValue)
                 // Same stale-latch rule, for pre-0.2.19 mods.
                 _implementManual = null;
+            var implPhase = o.Value<int?>("implPhase");
+            if (implPhase.HasValue)
+            {
+                _implementPhase = implPhase.Value;
+                var phSpd = o.Value<double?>("implPhSpd");
+                _implementPhaseSpeed = phSpd.HasValue && !double.IsNaN(phSpd.Value)
+                    ? (object)(float)Math.Min(Math.Max(phSpd.Value, 0.0), 5.0)
+                    : null;
+            }
+            else if (implMove.HasValue)
+            {
+                // Same stale-latch rule, for pre-0.2.22 mods.
+                _implementPhase = null;
+                _implementPhaseSpeed = null;
+            }
             var modVer = o.Value<string>("modVer");
             if (!string.IsNullOrWhiteSpace(modVer)) _reportedModVersion = modVer.Trim();
             var fill = o.Value<double?>("fill");
@@ -570,6 +588,8 @@ namespace TrueforceForAll.Plugin
                 ImplementSpeed   = (float?)_implementSpeed,
                 ImplementEvent   = (int?)_implementEvent,
                 ImplementManual  = (bool?)_implementManual,
+                ImplementPhase      = (int?)_implementPhase,
+                ImplementPhaseSpeed = (float?)_implementPhaseSpeed,
                 Rpms       = rpm,
                 MaxRpm     = maxRpm,
                 SpeedKmh   = speed,

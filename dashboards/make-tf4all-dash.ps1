@@ -1389,10 +1389,20 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $visTime = KeyVis 'Fuel' ($dFuel + '&&(' + $fsGame + ')')
     BoxLine "d$slot-fu-laps" $ix ($iy + 110) $iw 'Laps left' ('var v=1*$prop("DataCorePlugin.Computed.Fuel_RemainingLaps");return isNaN(v)||v<=0?"--":v.toFixed(1)') $visLaps 17 | ForEach-Object { $items.Add($_) }
     BoxLine "d$slot-fu-time" $ix ($iy + 110) $iw 'Time left' ('var m=' + $fsMin + ';if(!(m>=0))return "--";m=Math.round(m);var h=Math.floor(m/60);return h>0?h+"h "+(m-h*60)+"m":m+" min"') $visTime 17 | ForEach-Object { $items.Add($_) }
-    # Level where a game reports one: the FS mod's tank (native unit:
-    # litres, kWh for electrics, kg for methane), else SimHub's litres;
-    # Forza only ever gives a fraction.
-    BoxLine "d$slot-fu-lit" $ix ($iy + 142) $iw 'In tank' ('var f=1*$prop("' + $P + '.Fs.FuelL");if(f>=0){var u=""+($prop("' + $P + '.Fs.FuelUnit")||"L");return (f>=100?Math.round(f):f.toFixed(1))+" "+u;}var v=1*$prop("' + $SIM + 'Fuel");return isNaN(v)||v<=0?"--":v.toFixed(1)+" L"') $vis 17 | ForEach-Object { $items.Add($_) }
+    # Level where a game reports one: the FS mod's tank first (it carries
+    # its own unit, already in whatever SimHub is set to, and an electric
+    # or methane machine reads kWh / kg rather than a volume), else
+    # SimHub's own level. Forza only ever gives a fraction.
+    # SimHub CONVERTS its Fuel property to the user's unit setting but
+    # names the unit only in NewData.FuelUnit ("Liters" / "Gallons"), so
+    # reading the number without it labelled gallons as litres.
+    BoxLine "d$slot-fu-lit" $ix ($iy + 142) $iw 'In tank' (
+        'var f=1*$prop("' + $P + '.Fs.FuelL");' +
+        'if(f>=0){var u=""+($prop("' + $P + '.Fs.FuelUnit")||"L");' +
+        'return (f>=100?Math.round(f):f.toFixed(1))+" "+u;}' +
+        'var v=1*$prop("' + $SIM + 'Fuel");if(isNaN(v)||v<=0)return "--";' +
+        'return v.toFixed(1)+((""+$prop("' + $SIM + 'FuelUnit")).indexOf("Gallon")>=0?" gal":" L")'
+    ) $vis 17 | ForEach-Object { $items.Add($_) }
     $items.Add((AddNote 'fu' 'This game does not report fuel.' 'Fuel' $dFuel))
 
     # ---------------- LAP TIMES ---------------------------------------

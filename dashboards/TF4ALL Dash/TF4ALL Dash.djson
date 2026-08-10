@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "653d14f6-8275-4b95-9e22-2e9394354dfc",
+    "Id":  "fdd6d3cd-d954-4759-80ec-e28d81d06069",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "56799dc3-5e6e-4917-8fb9-e57f60a71a2d",
+                        "ScreenId":  "d32c8347-eb8c-4151-ad9c-e18eb97beb1c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14700,7 +14700,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "b8bf5f5a-2146-4d92-b099-8a5f84fb9ade",
+                        "ScreenId":  "5bb6714e-5994-47c4-bc90-27c876b56fc4",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -41075,7 +41075,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "b99eb16d-6f9b-4ce6-a9f1-19af27f60284",
+                        "ScreenId":  "11776804-3f9f-473f-8561-b1d07154fa70",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -65702,7 +65702,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f2f873c5-abb0-4e39-b238-bd71ee5eb5f5",
+                        "ScreenId":  "7e070381-53a3-4287-8d54-0eb8efee8578",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -79337,7 +79337,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f9872328-c66c-4cb3-beab-8cbf33d7f1d9",
+                        "ScreenId":  "2f361c95-525e-49ea-a8d6-0b2c701b3fb5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -99309,7 +99309,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f6557d39-2063-4283-998f-9e3e49d83b94",
+                        "ScreenId":  "bc0e7f67-242f-4899-8f9a-dc1bfe3604a5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -120457,7 +120457,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "bc8c8163-64f6-4c0d-814c-d501107b5a1b",
+                        "ScreenId":  "bd347a51-7e28-4a77-82c0-13c4375c2a5a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -126466,7 +126466,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
+                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");if(isNaN(v)||v\u003c=0)return \"--\";return v.toFixed(1)+((\"\"+$prop(\"DataCorePlugin.GameData.NewData.FuelUnit\")).indexOf(\"Gallon\")\u003e=0?\" gal\":\" L\")"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -141070,7 +141070,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
+                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");if(isNaN(v)||v\u003c=0)return \"--\";return v.toFixed(1)+((\"\"+$prop(\"DataCorePlugin.GameData.NewData.FuelUnit\")).indexOf(\"Gallon\")\u003e=0?\" gal\":\" L\")"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -156698,7 +156698,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
+                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");if(isNaN(v)||v\u003c=0)return \"--\";return v.toFixed(1)+((\"\"+$prop(\"DataCorePlugin.GameData.NewData.FuelUnit\")).indexOf(\"Gallon\")\u003e=0?\" gal\":\" L\")"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -173824,7 +173824,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");return isNaN(v)||v\u003c=0?\"--\":v.toFixed(1)+\" L\""
+                                                                                        "Expression":  "var f=1*$prop(\"TrueforcePlugin.Dash.Fs.FuelL\");if(f\u003e=0){var u=\"\"+($prop(\"TrueforcePlugin.Dash.Fs.FuelUnit\")||\"L\");return (f\u003e=100?Math.round(f):f.toFixed(1))+\" \"+u;}var v=1*$prop(\"DataCorePlugin.GameData.NewData.Fuel\");if(isNaN(v)||v\u003c=0)return \"--\";return v.toFixed(1)+((\"\"+$prop(\"DataCorePlugin.GameData.NewData.FuelUnit\")).indexOf(\"Gallon\")\u003e=0?\" gal\":\" L\")"
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"

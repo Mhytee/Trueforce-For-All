@@ -18,7 +18,7 @@ TF4ALLTelemetry = {}
 -- Keep in sync with modDesc.xml <version> (build-mod.py verifies). The
 -- plugin compares this against its shipped version to tell the user when
 -- the game is still running an older copy (mods load only at game start).
-local MOD_VERSION = "0.2.21"
+local MOD_VERSION = "0.2.24"
 local ctx = {
 	pipeName = "\\\\.\\pipe\\TF4ALLTelemetry",
 	file = nil,
@@ -48,6 +48,16 @@ local ctx = {
 	toolPrev = {},
 	-- One-shot moving-tools field probe, same spirit as the fn probe.
 	mtProbeDone = false,
+	-- Phase ends (mod 0.2.22): per-component motion bookkeeping so each
+	-- stage of a multi-part cycle (lift, then fold wings, then fold again)
+	-- lands its own thud instead of only the final settle. compState holds
+	-- {moving, lastRate, still} per tracked component and resets with
+	-- jointAlpha; implPhase is session-monotonic like implEvt and NEVER
+	-- resets on vehicle change (a reset reads as a bump plugin-side).
+	compState = {},
+	implPhase = 0,
+	implPhSpd = 0,
+	phaseCool = 0,
 	-- Wheel-rotation state for the derived slip signal: previous lastXDrive
 	-- angle + timestamp per wheel index (FS25 exposes no slip value, so we
 	-- compute wheel surface speed from the rotation angle the game uses to
@@ -151,32 +161,140 @@ local function gatherAttachState(vehicle)
 	if finite(ctx.frameDt) and ctx.frameDt >= 5 and ctx.frameDt <= 100 then
 		dtSec = ctx.frameDt / 1000
 	end
+	-- Per-component stall detection (mod 0.2.22). Every tracked part
+	-- (each joint, each foldable, each moving tool) reports its OWN rate
+	-- here; a part that was moving and has been still for a few frames
+	-- has finished its stage. A fold keeps its commanded direction set
+	-- across an internal pause, so the aggregate motion stays true while
+	-- the part's rate drops to zero: that gap is the stage boundary.
+	-- Stalls are collected and judged after the walk, once it is known
+	-- whether anything else is still moving (if nothing is, the motion
+	-- simply ended and the plugin's own settle covers it).
+	local stalls = {}
+	local function noteComp(key, compRate, isMoving)
+		if isMoving == nil then
+			isMoving = compRate > 0
+		end
+		local st = ctx.compState[key]
+		if st == nil then
+			st = { moving = false, lastRate = 0, still = 0, run = 0 }
+			ctx.compState[key] = st
+		end
+		if isMoving then
+			st.moving = true
+			st.still = 0
+			st.run = st.run + 1
+			if compRate > 0 then
+				st.lastRate = compRate
+			end
+		elseif st.moving then
+			st.still = st.still + 1
+			-- 4 frames (~40 ms at the mod's cadence): long enough that the
+			-- end of a whole cycle clears its commanded flag first (so the
+			-- final settle is not preceded by a phantom stage thud), short
+			-- enough to still feel attached to the part stopping.
+			if st.still >= 4 then
+				st.moving = false
+				-- Only a part that genuinely travelled counts as a stage.
+				-- Loader tools track the linkage and dither a frame or two
+				-- over rough ground; that is not a mechanism finishing, and
+				-- without this gate alternating parts would machine-gun the
+				-- wheel at the cooldown rate.
+				if st.run >= 8 then
+					table.insert(stalls, st.lastRate)
+				end
+				st.run = 0
+			end
+		end
+	end
+	-- Stable per-unit key. The attached-implement walk index shifts when
+	-- something is detached, which hands one unit's tracked state to
+	-- another: the rate tables absorb that through their stale-delta
+	-- swallow, but compState's moving flag would latch a fake edge and
+	-- stall into a phantom stage thud. rootNode is instance-unique, the
+	-- same identity the vehicle-change reset relies on.
+	local function unitKey(u, fallback)
+		local rn = u ~= nil and u.rootNode or nil
+		if rn ~= nil then
+			return tostring(rn)
+		end
+		return "i" .. tostring(fallback)
+	end
 	local function unitFolding(u, key)
 		local ok, r = pcall(function()
 			local sf = u.spec_foldable
 			if sf == nil then
 				return false
 			end
+			local dir = sf.foldMoveDirection
+			local folding = dir ~= nil and dir ~= 0
+			-- The 0.2.23 fold diagnostics (whole-cycle trace + field dumps)
+			-- did their job and are gone: FS25 exposes no per-part anim
+			-- bounds (foldingParts entries came back nil..nil) and the fold
+			-- timeline runs at a constant rate with no pause between
+			-- stages, so stage edges are not visible in this signal at all.
+			-- Re-add them from git history if the stage work resumes.
 			-- Fold speed from the normalized anim time, same derivative
 			-- trick as the joint alphas below.
+			local fr = 0
+			local fmov = false
 			local t = sf.foldAnimTime
 			if finite(t) then
 				local prev = ctx.foldT[key]
 				ctx.foldT[key] = t
-				if prev ~= nil and dtSec ~= nil then
+				if prev ~= nil then
 					local d = math.abs(t - prev)
 					-- A real per-frame delta stays small; a big jump is a
 					-- stale prev (implement reindex, reconnect gap), not
 					-- fast motion. Swallow it, keep the fresh prev.
-					if d < 0.25 then
-						local fr = d / dtSec
-						if fr > rate then
-							rate = fr
+					if d > 0.0005 and d < 0.25 then
+						-- Moving is judged on the DELTA, not the derived
+						-- rate: a frame gap outside the sane window leaves
+						-- dtSec nil, and a fold mid-travel must not read as
+						-- a finished stage just because its rate was
+						-- unavailable (the joints take the same care).
+						fmov = true
+						if dtSec ~= nil then
+							fr = d / dtSec
+							if fr > rate then
+								rate = fr
+							end
+						end
+					end
+					-- Stage edges from the fold's own part table, when the
+					-- game exposes one: as the animation sweeps past an
+					-- INTERIOR part boundary that part has just finished,
+					-- which is a stage end even if the animation never
+					-- pauses. The outer bounds are the cycle's own start and
+					-- end, and the settle already covers those.
+					if fmov then
+						local fp = sf.foldingParts
+						if type(fp) == "table" then
+							local lo, hi = prev, t
+							if lo > hi then
+								lo, hi = hi, lo
+							end
+							for _, part in ipairs(fp) do
+								local function edge(x)
+									if finite(x) and x > 0.02 and x < 0.98
+										and x > lo and x <= hi then
+										table.insert(stalls, fr)
+									end
+								end
+								if part ~= nil then
+									edge(part.startAnimTime)
+									edge(part.endAnimTime)
+								end
+							end
 						end
 					end
 				end
 			end
-			return sf.foldMoveDirection ~= nil and sf.foldMoveDirection ~= 0
+			-- Rate, not the commanded flag: a fold paused between stages
+			-- still reads as commanded, and that pause is exactly the stall
+			-- the phase detector is looking for.
+			noteComp("f" .. key, fr, fmov)
+			return folding
 		end)
 		return ok and r == true
 	end
@@ -238,6 +356,9 @@ local function gatherAttachState(vehicle)
 				local cur = { r1 = r1, r2 = r2, r3 = r3, t1 = t1, t2 = t2, t3 = t3 }
 				ctx.toolPrev[k] = cur
 				if prev ~= nil then
+					-- Per-tool motion, so one arm segment finishing while
+					-- another still swings reads as a stage end.
+					local tr, tmov = 0, false
 					local function comp(c, p, mn, mx, span)
 						if not finite(c) or not finite(p) then
 							return
@@ -248,8 +369,12 @@ local function gatherAttachState(vehicle)
 						local d = math.abs(c - p) / span
 						if d > 0.0005 then
 							moving = true
+							tmov = true
 							if dtSec ~= nil and d < 0.25 then
 								local r = d / dtSec
+								if r > tr then
+									tr = r
+								end
 								if r > rate then
 									rate = r
 								end
@@ -262,6 +387,7 @@ local function gatherAttachState(vehicle)
 					comp(cur.t1, prev.t1, mt.transMin, mt.transMax, 1.0)
 					comp(cur.t2, prev.t2, mt.transMin, mt.transMax, 1.0)
 					comp(cur.t3, prev.t3, mt.transMin, mt.transMax, 1.0)
+					noteComp(k, tr, tmov)
 				end
 			end
 		end)
@@ -297,6 +423,7 @@ local function gatherAttachState(vehicle)
 			ctx.foldT = {}
 			ctx.statePrev = {}
 			ctx.toolPrev = {}
+			ctx.compState = {}
 			ctx.xdrvPrev = {}
 			ctx.wsEma = {}
 			ctx.slipProbeDone = false
@@ -309,17 +436,23 @@ local function gatherAttachState(vehicle)
 				if finite(a) then
 					local prev = ctx.jointAlpha[j]
 					ctx.jointAlpha[j] = a
+					local jr, jmov = 0, false
 					if prev ~= nil and math.abs(a - prev) > 0.0005 then
 						moving = true
 						cycle = true
+						jmov = true
 						-- Same stale-prev bound as the fold rate above.
 						if dtSec ~= nil and math.abs(a - prev) < 0.25 then
-							local jr = math.abs(a - prev) / dtSec
+							jr = math.abs(a - prev) / dtSec
 							if jr > rate then
 								rate = jr
 							end
 						end
 					end
+					-- jmov, not jr > 0: a joint whose rate was swallowed by
+					-- the stale-delta guard is still moving, and must not
+					-- read as a finished stage.
+					noteComp("j" .. j, jr, jmov)
 				end
 			end
 		end
@@ -327,7 +460,8 @@ local function gatherAttachState(vehicle)
 	if unitOn(vehicle) then
 		impl = true
 	end
-	if unitFolding(vehicle, 0) then
+	local vk = unitKey(vehicle, 0)
+	if unitFolding(vehicle, vk) then
 		moving = true
 		cycle = true
 	end
@@ -341,8 +475,8 @@ local function gatherAttachState(vehicle)
 			rate = 0.35
 		end
 	end
-	unitStateEvents(vehicle, 0)
-	unitToolMotion(vehicle, 0)
+	unitStateEvents(vehicle, vk)
+	unitToolMotion(vehicle, vk)
 	if not ctx.fnProbeDone then
 		pcall(function()
 			local sp = vehicle.spec_pipe
@@ -367,7 +501,8 @@ local function gatherAttachState(vehicle)
 					if unitOn(u) then
 						impl = true
 					end
-					if unitFolding(u, ai) then
+					local uk = unitKey(u, ai)
+					if unitFolding(u, uk) then
 						moving = true
 						cycle = true
 					end
@@ -379,8 +514,8 @@ local function gatherAttachState(vehicle)
 							rate = 0.35
 						end
 					end
-					unitStateEvents(u, ai)
-					unitToolMotion(u, ai)
+					unitStateEvents(u, uk)
+					unitToolMotion(u, uk)
 					local f = unitFill(u)
 					if f > fill then
 						fill = f
@@ -397,6 +532,27 @@ local function gatherAttachState(vehicle)
 	end
 	if rate > 5 then
 		rate = 5
+	end
+	-- Stage ends (mod 0.2.22). A part went still while the cycle carries
+	-- on, so the machine finished a stage rather than the whole job: bump
+	-- the counter and report how fast that part was travelling when it
+	-- stopped, which the plugin turns into a momentum-weighted thud. When
+	-- NOTHING is still moving the motion simply ended, and the plugin's
+	-- own settle already covers it. The cooldown coalesces a sequence of
+	-- parts landing together into one thud instead of a burst.
+	if ctx.phaseCool > 0 then
+		ctx.phaseCool = ctx.phaseCool - (finite(ctx.frameDt) and ctx.frameDt or 0)
+	end
+	if #stalls > 0 and moving and ctx.phaseCool <= 0 then
+		local best = 0
+		for _, s in ipairs(stalls) do
+			if s > best then
+				best = s
+			end
+		end
+		ctx.implPhase = ctx.implPhase + 1
+		ctx.implPhSpd = best > 5 and 5 or best
+		ctx.phaseCool = 200
 	end
 	return impl, fill, massKg, moving, rate, moving and not cycle
 end
@@ -583,6 +739,8 @@ function TF4ALLTelemetry:buildLine()
 		end
 		table.insert(parts, string.format('"implEvt":%d', ctx.implEvt))
 		table.insert(parts, '"implMan":' .. tostring(implMan == true))
+		table.insert(parts, string.format('"implPhase":%d,"implPhSpd":%.3f',
+			ctx.implPhase, ctx.implPhSpd))
 		if finite(fill) then
 			table.insert(parts, string.format('"fill":%.3f', fill))
 		end

@@ -242,6 +242,19 @@ namespace TrueforceForAll.Core
         /// increment lands a light thud.</summary>
         public int? ImplementEvent;
 
+        /// <summary>Session-monotonic count of STAGE ends within a running
+        /// implement cycle: one part of a multi-part sequence finished while
+        /// the cycle carries on, e.g. a wide cultivator's lift completing
+        /// before its wings fold (mod 0.2.22+). Null on sources that don't
+        /// report it. Each increment lands a momentum-weighted thud.</summary>
+        public int? ImplementPhase;
+
+        /// <summary>How fast the part that just finished its stage was
+        /// travelling when it stopped, in the same fraction-of-full-travel
+        /// per second unit as <see cref="ImplementSpeed"/> (mod 0.2.22+).
+        /// Scales the stage thud.</summary>
+        public float? ImplementPhaseSpeed;
+
         /// <summary>True while the current implement motion is MANUAL-ONLY:
         /// a stick-driven arm (loader, crane, telehandler) with no joint,
         /// fold or pipe cycle running (mod 0.2.19+). Null on sources that
