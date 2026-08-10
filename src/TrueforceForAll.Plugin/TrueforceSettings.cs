@@ -560,7 +560,7 @@ namespace TrueforceForAll.Plugin
         //
         // Keyed by SimHub GameName, like GameEnabled and GameDefaults.
         // MUST default EMPTY for the same loader reason as DashDriveSlots.
-        public bool DashDriveSlotsPerGame { get; set; } = false;
+        public bool DashDriveSlotsPerGame { get; set; } = true;
         public Dictionary<string, List<string>> DashDriveSlotsByGame { get; set; }
             = new Dictionary<string, List<string>>();
 
@@ -631,7 +631,7 @@ namespace TrueforceForAll.Plugin
         // Which built-in ambient animation. Custom images and video are a
         // later pass: the dashboard file is rebuilt on every update, so user
         // media has to live somewhere the rebuild cannot reach.
-        public string DashIdleStyle        { get; set; } = "Topo";
+        public string DashIdleStyle        { get; set; } = "Pipes";
         public string DashIdleDriverName   { get; set; } = "";
         public string DashIdleNumber       { get; set; } = "";
         public string DashIdleColor        { get; set; } = "#FFF2F4F8";
@@ -648,7 +648,7 @@ namespace TrueforceForAll.Plugin
         // same whichever is picked, because color binds live and geometry
         // does not. Unknown names fall back to the first theme rather than
         // leaving the dash unpainted.
-        public string DashTheme { get; set; } = "Midnight";
+        public string DashTheme { get; set; } = "Neon";
 
         // TF4ALL Dash tab layout. DashTabOrder holds SCREEN indices (0=Drive,
         // 1=Car facts, 2=Effects, 3=Presets, 4=Visualizer, 5=Tele-FFB) in the
