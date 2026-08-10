@@ -2419,31 +2419,81 @@ namespace TrueforceForAll.Plugin
             PersistSettings();
         }
 
-        /// <summary>Log the versions of the three shipped assemblies (Plugin,
-        /// Core, Engine) and warn loudly if they differ. They must be deployed
-        /// as a matched set; a stale Core or Engine DLL copied alongside a newer
-        /// Plugin otherwise fails silently (dead wheel / missing effects) with no
-        /// obvious cause. Directory.Build.props stamps all three from one version.
-        /// EngineLoop lives in the Engine assembly, TrueforceDevice in Core, so
-        /// typeof(...).Assembly resolves each despite the shared namespace.</summary>
-        private static void LogAssemblyVersionCrossCheck()
+        /// <summary>"Plugin X, Core Y, Engine Z" with a mismatch flag. The three
+        /// assemblies must be deployed as a matched set; a stale Core or Engine
+        /// DLL copied alongside a newer Plugin fails silently (dead wheel /
+        /// missing effects) with no obvious cause. Directory.Build.props stamps
+        /// all three from one version. EngineLoop lives in the Engine assembly,
+        /// TrueforceDevice in Core, so typeof(...).Assembly resolves each despite
+        /// the shared namespace. Shared by the startup log cross-check, the
+        /// Export-logs manifest, and the pre-filled issue body so the top known
+        /// dead-wheel cause is visible in all three.</summary>
+        internal static string GetAssemblyVersionLine(out bool mismatch)
         {
+            mismatch = false;
             try
             {
                 var plugin = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
                 var core   = typeof(TrueforceDevice).Assembly.GetName().Version;
                 var engine = typeof(EngineLoop).Assembly.GetName().Version;
-                string line = $"Plugin {plugin}, Core {core}, Engine {engine}";
-                if (plugin == core && core == engine)
-                    SimHub.Logging.Current.Info($"[TF4ALL] Assembly versions: {line}.");
-                else
-                    SimHub.Logging.Current.Warn(
-                        "[TF4ALL] Assembly version MISMATCH: " + line + ". The Plugin, "
-                        + "Core, and Engine DLLs must come from the same build - a stale "
-                        + "copy causes silent failures (dead wheel / missing effects). "
-                        + "Reinstall via the installer, or copy all three DLLs together.");
+                mismatch = !(plugin == core && core == engine);
+                return $"Plugin {plugin}, Core {core}, Engine {engine}";
             }
-            catch { /* never let a diagnostic block Init */ }
+            catch { return "(unavailable)"; }
+        }
+
+        /// <summary>SimHub's own version, read from the SimHubWPF.exe this
+        /// plugin is loaded into. "?" when unreadable.</summary>
+        internal static string GetSimHubVersion()
+        {
+            try
+            {
+                string exe = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+                var info = System.Diagnostics.FileVersionInfo.GetVersionInfo(exe);
+                return string.IsNullOrEmpty(info.ProductVersion)
+                    ? (info.FileVersion ?? "?")
+                    : info.ProductVersion;
+            }
+            catch { return "?"; }
+        }
+
+        /// <summary>Human-readable Windows version ("Windows 11 Home 24H2 build
+        /// 26200"). Registry-sourced: Environment.OSVersion is capped by the
+        /// host exe's compatibility manifest, so it can under-report. The
+        /// CurrentVersion key is WOW64-shared, so the 32-bit SimHub process
+        /// reads the real values. ProductName still says "Windows 10" on
+        /// Windows 11 installs; build 22000 is the actual boundary.</summary>
+        internal static string GetWindowsVersionLine()
+        {
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
+                {
+                    if (key == null) return Environment.OSVersion.VersionString;
+                    string product = key.GetValue("ProductName") as string ?? "Windows";
+                    string display = key.GetValue("DisplayVersion") as string ?? "";
+                    string build   = key.GetValue("CurrentBuildNumber") as string ?? "";
+                    if (int.TryParse(build, out int buildNum) && buildNum >= 22000)
+                        product = product.Replace("Windows 10", "Windows 11");
+                    string line = (product + " " + display).Trim();
+                    return build.Length > 0 ? $"{line} build {build}" : line;
+                }
+            }
+            catch { return Environment.OSVersion.VersionString; }
+        }
+
+        private static void LogAssemblyVersionCrossCheck()
+        {
+            string line = GetAssemblyVersionLine(out bool mismatch);
+            if (!mismatch)
+                SimHub.Logging.Current.Info($"[TF4ALL] Assembly versions: {line}.");
+            else
+                SimHub.Logging.Current.Warn(
+                    "[TF4ALL] Assembly version MISMATCH: " + line + ". The Plugin, "
+                    + "Core, and Engine DLLs must come from the same build - a stale "
+                    + "copy causes silent failures (dead wheel / missing effects). "
+                    + "Reinstall via the installer, or copy all three DLLs together.");
         }
 
         public void Init(PluginManager pluginManager)

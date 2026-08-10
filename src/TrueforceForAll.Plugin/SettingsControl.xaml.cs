@@ -5415,30 +5415,55 @@ namespace TrueforceForAll.Plugin
                 DialogKind.Confirm, okLabel: "Attach logs", cancelLabel: "Skip logs",
                 goldOk: true);
             if (choice == null) return;          // closed/Esc = cancel the whole report
+            string zipPath = null;
             if (choice == true)
             {
                 // Re-use the export-logs path. If it fails, surface the error
                 // but still open the issue form so the user can file something.
-                TryExportLogs(silentOnSuccess: false);
+                zipPath = TryExportLogs(silentOnSuccess: false);
             }
 
-            // Generic "report a bug / feature request" path. Pre-fills version +
-            // active game so common context is captured without typing.
+            // Generic "report a bug / feature request" path. Everything the
+            // plugin can know is auto-filled so triage never waits on a
+            // "which wheel? which SimHub?" round-trip, and the status block
+            // travels in the body itself: a report filed WITHOUT the log zip
+            // still shows wheel/stream/capture state (that context otherwise
+            // exists only inside the zip's manifest).
             string game = _plugin?.ActiveGame ?? "(none)";
             string carId = _plugin?.ActiveCarId ?? "(none)";
-            string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
+            string versions = TrueforcePlugin.GetAssemblyVersionLine(out bool versionMismatch);
+
+            // Live wheel first; fall back to the persisted last-used model so
+            // an "it broke, I unplugged it" report still names the hardware.
+            string wheel = _plugin?.WheelStatus;
+            if (string.IsNullOrEmpty(wheel) || wheel.StartsWith("Not detected", StringComparison.Ordinal))
+            {
+                string lastUsed = _plugin?.Settings?.LastUsedWheel;
+                wheel = string.IsNullOrEmpty(lastUsed)
+                    ? "<e.g. G PRO, RS50, G923 - none detected>"
+                    : $"{lastUsed} (last used; not detected right now)";
+            }
+
+            string logsLine = zipPath != null
+                ? $"**Logs:** drag `{System.IO.Path.GetFileName(zipPath)}` from your Desktop into this issue\n"
+                : "**Logs:** none attached (the Export logs button in the Settings tab makes a zip worth adding)\n";
             string body =
                   "**What happened?**\n<describe the issue>\n\n"
                 + "**Steps to reproduce**\n1. \n2. \n\n"
                 + "**Expected behavior**\n<what should have happened>\n\n"
                 + "---\n"
-                + "**Environment**\n"
-                + $"- Plugin version: {version}\n"
+                + "**Environment** (auto-filled)\n"
+                + $"- Plugin: {versions}{(versionMismatch ? "  [VERSION MISMATCH - stale DLL?]" : "")}\n"
+                + $"- SimHub: {TrueforcePlugin.GetSimHubVersion()}\n"
+                + $"- Windows: {TrueforcePlugin.GetWindowsVersionLine()}\n"
+                + $"- Wheel: {wheel}\n"
                 + $"- Active game: {game}\n"
                 + $"- Active car: {carId}\n"
-                + "- SimHub version: <fill in>\n"
-                + "- Wheel: <e.g. G PRO, RS50, G923>\n"
-                + "\n**Logs:** attach the .zip from your Desktop (if exported)\n";
+                + $"- Stream: {_plugin?.StreamStatus ?? "(n/a)"}\n"
+                + $"- FFB tap: {_plugin?.FfbTapStatus ?? "(n/a)"}\n"
+                + $"- Capture: {_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}\n"
+                + $"- Telemetry source: {_plugin?.TelemetrySource?.Name ?? "(none)"}\n"
+                + "\n" + logsLine;
             string url = ReportIssuesBase
                        + "?title=" + Uri.EscapeDataString("[bug] ")
                        + "&body="  + Uri.EscapeDataString(body);
@@ -5497,6 +5522,13 @@ namespace TrueforceForAll.Plugin
                     // REDACT secrets/PII first: users attach this zip to public
                     // GitHub issues, so the auth session (tokens + email), the
                     // remembered email, and the per-user slot data must never travel.
+                    // Also stripped: the anonymous car-fact submitter GUID and the
+                    // community author name (both link the reporter to their
+                    // community activity), the backup-sync envelope (a second,
+                    // unredacted copy of the portable settings), the achievement
+                    // baseline (embeds the auth user id verbatim), and the dash
+                    // idle-card driver name (users type a real name expecting it
+                    // to stay on their own screen).
                     // Keep this list in sync when adding any secret/PII setting.
                     try
                     {
@@ -5505,8 +5537,27 @@ namespace TrueforceForAll.Plugin
                         {
                             var jo = Newtonsoft.Json.Linq.JObject.FromObject(snapshot);
                             foreach (var secret in new[] { "AuthSession", "LastSignInEmail",
-                                "LegacyDataOwnerEmail", "UserSlots", "ActiveSlotKey" })
+                                "LegacyDataOwnerEmail", "UserSlots", "ActiveSlotKey",
+                                "CarFactsAnonId", "SharingAuthor",
+                                "BackupLastSyncedEnvelopeJson", "BackupLastSyncedRevision",
+                                "AchievementBaseline", "DashIdleDriverName" })
                                 jo.Remove(secret);
+                            // Community lineage stamps live INSIDE CustomEngines[],
+                            // Presets[*], CarOverrides[*] and DownloadedCommunityPresets[*]
+                            // entries, where a top-level Remove can never reach: the
+                            // account uuid stamped on the user's own uploads (the same
+                            // value as the redacted AuthSession.UserId), the row id of
+                            // their public listing, the cached uploader uuid on
+                            // downloads, and author display names. All are identity
+                            // joins with zero diagnostic value, so strip them wherever
+                            // they appear in the tree.
+                            var lineage = new HashSet<string> {
+                                "CommunityUploadedByUserId", "CommunityUploadedById",
+                                "OwnerUserId", "Author", "SharingAuthor" };
+                            foreach (var prop in jo.Descendants()
+                                .OfType<Newtonsoft.Json.Linq.JProperty>()
+                                .Where(p => lineage.Contains(p.Name)).ToList())
+                                prop.Remove();
                             TryAddNoteToZip(zip, "Trueforce-settings.json",
                                 jo.ToString(Newtonsoft.Json.Formatting.Indented));
                         }
@@ -5526,8 +5577,11 @@ namespace TrueforceForAll.Plugin
                         catch (Exception ex) { TryAddNoteToZip(zip, "usb-trace.pcap.error.txt", ex.Message); }
                     }
                     // Mini context manifest so support knows what version
-                    // generated the zip without unpacking everything.
-                    string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
+                    // generated the zip without unpacking everything. The
+                    // three-way assembly line carries the same MISMATCH marker
+                    // as the startup log cross-check: a stale Core/Engine DLL
+                    // (the top dead-wheel cause) is page-1 visible.
+                    string versions = TrueforcePlugin.GetAssemblyVersionLine(out bool versionMismatch);
                     // At-a-glance UDP config so a wrong port / non-local bind
                     // address (the common "no telemetry" cause) is visible in the
                     // manifest without opening the full settings JSON below.
@@ -5537,9 +5591,12 @@ namespace TrueforceForAll.Plugin
                           $"forward={(fz.ForwardEnabled ? $"{fz.ForwardHost}:{fz.ForwardPort}" : "off")}";
                     string manifest =
                         $"Generated: {DateTime.Now:o}\n" +
-                        $"Plugin version: {version}\n" +
+                        $"Assembly versions: {versions}{(versionMismatch ? "  [VERSION MISMATCH - stale DLL; Plugin, Core and Engine must ship as a set]" : "")}\n" +
+                        $"SimHub version: {TrueforcePlugin.GetSimHubVersion()}\n" +
+                        $"Windows: {TrueforcePlugin.GetWindowsVersionLine()}\n" +
                         $"Active game: {_plugin?.ActiveGame ?? "(none)"}\n" +
                         $"Active car: {_plugin?.ActiveCarId ?? "(none)"}\n" +
+                        $"Telemetry source: {_plugin?.TelemetrySource?.Name ?? "(none)"}\n" +
                         $"Wheel status: {_plugin?.WheelStatus}\n" +
                         $"Stream status: {_plugin?.StreamStatus}\n" +
                         $"FFB tap status: {_plugin?.FfbTapStatus}\n" +
