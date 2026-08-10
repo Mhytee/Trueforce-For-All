@@ -1269,6 +1269,10 @@ namespace TrueforceForAll.Plugin
             // the toggle mutates on another thread.
             public bool ModeBSupported;
             public bool ModeBOn;
+            // Spring-mode game (Farming Simulator): the djson swaps the
+            // Forza knob rows for the FS set on this flag. Mutually
+            // exclusive with ModeBSupported by construction.
+            public bool ModeBSpringGame;
         }
         private DashSnapshot _dashSnap = new DashSnapshot();
         // Freshness is an explicit flag + tick pair, NOT an int.MinValue
@@ -1321,8 +1325,9 @@ namespace TrueforceForAll.Plugin
                 // snapshot cadence rather than the per-frame property poll.
                 s.TuningDirty = DashHasDirty();
                 s.CanRevert   = DashCanRevert();
-                s.ModeBSupported = ActiveGameSupportsModeB;
-                s.ModeBOn        = ModeBEnabledForActiveGame;
+                s.ModeBSupported  = ActiveGameSupportsModeB;
+                s.ModeBOn         = ModeBEnabledForActiveGame;
+                s.ModeBSpringGame = ActiveGameIsSpringGame;
                 _dashSnap = s;
             }
             catch { /* keep serving the previous snapshot */ }
@@ -1424,6 +1429,19 @@ namespace TrueforceForAll.Plugin
             new DashModeBKnob { Key = "Rise",     Label = "WEIGHT BUILDUP",   Min = 0.2f,  Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBRiseGamma,       Set = (s, v) => s.ModeBRiseGamma = v },
             new DashModeBKnob { Key = "Reversal", Label = "REVERSAL DAMPING", Min = 0f,    Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => s.ModeBReversalDampGain, Set = (s, v) => s.ModeBReversalDampGain = v },
             new DashModeBKnob { Key = "Smooth",   Label = "SMOOTHING MS",     Min = 5f,    Max = 100f, Step = 5f,    Fmt = "0",    Get = s => s.ModeBEmaMs,           Set = (s, v) => s.ModeBEmaMs = v },
+            // Spring-mode (Farming Simulator) rows: the djson shows these
+            // INSTEAD of the Forza rows while Dash.ModeB.SpringGame is up.
+            // Same registration loop and keypad routing. Damping is the one
+            // shared field (ModeBDamper), so the FS screen reuses the
+            // "Damper" knob above and none is added here. Ranges mirror the
+            // desktop spring sliders (same clamp rationale as the Forza set).
+            new DashModeBKnob { Key = "FsStrength", Label = "STRENGTH",         Min = 0.05f, Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeStrength,          Set = (s, v) => s.SpringModeStrength = v },
+            new DashModeBKnob { Key = "FsMinForce", Label = "MIN FORCE",        Min = 0f,    Max = 0.5f, Step = 0.01f, Fmt = "0.00", Get = s => (float)s.SpringModeMinForce,          Set = (s, v) => s.SpringModeMinForce = v },
+            new DashModeBKnob { Key = "FsCenter",   Label = "CENTERING",        Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeCenterGain,        Set = (s, v) => s.SpringModeCenterGain = v },
+            new DashModeBKnob { Key = "FsTerrain",  Label = "TERRAIN STRENGTH", Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeTerrainGain,       Set = (s, v) => s.SpringModeTerrainGain = v },
+            new DashModeBKnob { Key = "FsDrag",     Label = "IMPLEMENT DRAG",   Min = 0f,    Max = 3f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeDragGain,          Set = (s, v) => s.SpringModeDragGain = v },
+            new DashModeBKnob { Key = "FsWeight",   Label = "CORNERING WEIGHT", Min = 0f,    Max = 2f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeChassisWeightGain, Set = (s, v) => s.SpringModeChassisWeightGain = v },
+            new DashModeBKnob { Key = "FsSpeed",    Label = "SPEED EFFECT",     Min = 0f,    Max = 1f,   Step = 0.05f, Fmt = "0.00", Get = s => (float)s.SpringModeSpeedEffect,       Set = (s, v) => s.SpringModeSpeedEffect = v },
         };
 
         private void DashNudgeModeB(DashModeBKnob k, float delta)
@@ -1439,10 +1457,13 @@ namespace TrueforceForAll.Plugin
             DashSetModeB(k, next);
         }
 
-        // Shared commit for steppers and the keypad. All eight knobs are
+        // Shared commit for steppers and the keypad. The Forza knobs are
         // tunables consumed by ApplyModeBFromSettings (none are feel toggles),
         // so one apply call pushes the live model; the 1 kHz FFB thread picks
-        // the volatiles up next tick, no re-arm needed.
+        // the volatiles up next tick, no re-arm needed. The Fs* knobs are
+        // read live from Settings by the spring/kick paths every tick, so
+        // for them the apply call is redundant but harmless (it preserves an
+        // armed spring mode, see the _forceModeB note in ApplyModeBFromSettings).
         private void DashSetModeB(DashModeBKnob k, float value)
         {
             var s = Settings;
@@ -1888,6 +1909,22 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.ModeB.Supported",   () => DashSnap().ModeBSupported);
             this.AttachDelegate("Dash.ModeB.On",          () => DashSnap().ModeBOn);
             this.AttachDelegate("Dash.ModeB.RevLightsOn", () => Settings?.ModeBRevLightsEnabled != false);
+            // Spring-mode game flavor of the same screen: the djson swaps
+            // the Forza rows for the FS set on SpringGame. Spring emulation
+            // itself has no enable tile (owner call 2026-08-08: it is how
+            // Farming Simulator works, not an option), so the FS tile pair
+            // is Terrain feel + rev lights. Terrain is settings-only live
+            // apply, the same contract as the desktop SpringTerrain_Changed.
+            this.AttachDelegate("Dash.ModeB.SpringGame",  () => DashSnap().ModeBSpringGame);
+            this.AttachDelegate("Dash.ModeB.TerrainOn",   () => Settings?.SpringModeTerrainEnabled != false);
+            this.AddAction("DashSpringTerrainToggle", (a, b) =>
+            {
+                if (Settings == null) return;
+                DashNoteActivity();
+                Settings.SpringModeTerrainEnabled = !Settings.SpringModeTerrainEnabled;
+                PersistSettings();
+                RaiseDashRemoteChanged();
+            });
             this.AddAction("DashModeBToggle", (a, b) =>
             {
                 if (Settings == null) return;

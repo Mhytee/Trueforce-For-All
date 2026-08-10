@@ -6274,6 +6274,14 @@ namespace TrueforceForAll.Plugin
         /// whether the tab's toggle is enabled). Empty in menus.</summary>
         public bool ActiveGameSupportsModeB => IsModeBCapableGame(_activeGame);
 
+        /// <summary>True while a spring-mode game (Farming Simulator) is the
+        /// active game. Deliberately not folded into ActiveGameSupportsModeB:
+        /// FS runs the spring pipeline with its own tunable set, so surfaces
+        /// that key off this (desktop panels, the dash Tele-FFB screen) show
+        /// the FS controls instead of the Forza recipe.</summary>
+        public bool ActiveGameIsSpringGame => _activeGame != null
+            && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
+
         /// <summary>Toggle Mode B for the active game (the tab checkbox).
         /// Persists the per-game flag and re-arms. No-op in menus / unsupported
         /// games.</summary>

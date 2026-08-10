@@ -3171,9 +3171,13 @@ RevStrip $P | ForEach-Object { $s5.Add($_) }
 # =====================================================================
 # Screen 6: TELE-FFB (Telemetry FFB / Mode B tuning)
 # Mode B settings are GLOBAL (no preset/car scope): edits apply live and
-# persist immediately, so this screen has no save/revert bar. Everything
-# below the title gates on Dash.ModeB.Supported (the Forza titles);
-# unsupported games get an explainer instead of dead controls.
+# persist immediately, so this screen has no save/revert bar. The screen
+# has two flavors sharing one geometry: Dash.ModeB.Supported (the Forza
+# titles) shows the Mode B recipe rows, Dash.ModeB.SpringGame (Farming
+# Simulator) shows the spring-mode set instead (spring emulation has no
+# enable tile there; it is how FS works, so the FS tile pair is Terrain
+# feel + rev lights). Games that are neither get an explainer instead
+# of dead controls.
 # =====================================================================
 $s6 = [System.Collections.Generic.List[object]]::new()
 $s6.Add((New-Text 'mb-title' 16 14 300 34 22 'TELEMETRY FFB' $WHITE 0 $null 'Bold'))
@@ -3182,12 +3186,21 @@ $s6.Add((New-Text 'mb-game' 320 14 464 34 16 '' $MUTED 2 @{
 }))
 
 $mbSupported = '$prop("' + $P + '.ModeB.Supported")'
-# Gated content collects here; every item gets a Supported Visible
-# binding stamped below (Hide-ButtonsUnderOverlay then ANDs the
-# overlay-closed gate onto the buttons).
-$mbGated = [System.Collections.Generic.List[object]]::new()
+$mbSpring    = '$prop("' + $P + '.ModeB.SpringGame")'
+# Three gated collections, stamped with their Visible bindings below
+# (Hide-ButtonsUnderOverlay then ANDs the overlay-closed gate onto the
+# buttons): $mbGated shows on Supported (the Forza recipe), $mbFsGated
+# on SpringGame (the Farming Simulator set), $mbShared (rev lights) on
+# either. Supported and SpringGame are mutually exclusive plugin-side,
+# so the two knob sets can share one geometry.
+$mbGated   = [System.Collections.Generic.List[object]]::new()
+$mbFsGated = [System.Collections.Generic.List[object]]::new()
+$mbShared  = [System.Collections.Generic.List[object]]::new()
 
-# Toggle tiles: per-game enable + rev lights
+# Toggle tiles. Forza: per-game enable. FS: Terrain feel (spring
+# emulation itself has no toggle; it is how FS works). Rev lights is
+# the shared right tile; spring mode inherits the Mode B rev-light
+# contract, so it works in both flavors.
 $mbGated.Add((New-Rect 'mb-en-bg' 16 54 376 54 $TILE @{
     BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $P + '.ModeB.On")?"' + $TILEON + '":"' + $TILE + '"')
 }))
@@ -3195,13 +3208,20 @@ $mbGated.Add((New-Text 'mb-en-t' 16 54 376 54 19 '' $WHITE 1 @{
     Text = BindJS 'Text' ('return $prop("' + $P + '.ModeB.On")?"TELEMETRY FFB ON":"TELEMETRY FFB OFF"')
 } 'Bold'))
 $mbGated.Add((New-Button 'mb-en-btn' 16 54 376 54 'DashModeBToggle'))
-$mbGated.Add((New-Rect 'mb-rl-bg' 408 54 376 54 $TILE @{
+$mbFsGated.Add((New-Rect 'mbf-ter-bg' 16 54 376 54 $TILE @{
+    BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $P + '.ModeB.TerrainOn")?"' + $TILEON + '":"' + $TILE + '"')
+}))
+$mbFsGated.Add((New-Text 'mbf-ter-t' 16 54 376 54 19 '' $WHITE 1 @{
+    Text = BindJS 'Text' ('return $prop("' + $P + '.ModeB.TerrainOn")?"TERRAIN FEEL ON":"TERRAIN FEEL OFF"')
+} 'Bold'))
+$mbFsGated.Add((New-Button 'mbf-ter-btn' 16 54 376 54 'DashSpringTerrainToggle'))
+$mbShared.Add((New-Rect 'mb-rl-bg' 408 54 376 54 $TILE @{
     BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $P + '.ModeB.RevLightsOn")?"' + $TILEON + '":"' + $TILE + '"')
 }))
-$mbGated.Add((New-Text 'mb-rl-t' 408 54 376 54 19 '' $WHITE 1 @{
+$mbShared.Add((New-Text 'mb-rl-t' 408 54 376 54 19 '' $WHITE 1 @{
     Text = BindJS 'Text' ('return $prop("' + $P + '.ModeB.RevLightsOn")?"REV LIGHTS ON":"REV LIGHTS OFF"')
 } 'Bold'))
-$mbGated.Add((New-Button 'mb-rl-btn' 408 54 376 54 'DashModeBRevLightsToggle'))
+$mbShared.Add((New-Button 'mb-rl-btn' 408 54 376 54 'DashModeBRevLightsToggle'))
 
 # Knob rows, Effects-screen geometry: label + [-] value [+]; the value is
 # a tap zone for the shared keypad. Keys/steps/ranges live plugin-side in
@@ -3234,17 +3254,59 @@ for ($i = 0; $i -lt $mbKnobs.Count; $i++) {
     $mbGated.Add((New-Button "mb-$key-up"   ($x + 316) $y 50 50 "DashModeB${key}Up"))
 }
 $mbGated.Add((New-Text 'mb-hint' 16 394 768 44 14 'Tap a value to type an exact number. Changes apply instantly and are shared across games. More options live on the desktop Telemetry FFB tab.' $GRAY 0))
+
+# Spring-mode (Farming Simulator) knob rows: same geometry, the FS
+# tunable set. Keys are the plugin's Fs* table entries except Damping,
+# which is the one field shared with the Forza recipe and reuses its
+# Damper property/actions (distinct item IDs, so both rows can exist).
+$mbfKnobs = @(
+    @('FsStrength', 'Strength',         2),
+    @('FsMinForce', 'Min force',        2),
+    @('Damper',     'Damping',          2),
+    @('FsCenter',   'Centering',        2),
+    @('FsTerrain',  'Terrain strength', 2),
+    @('FsDrag',     'Implement drag',   2),
+    @('FsWeight',   'Cornering weight', 2),
+    @('FsSpeed',    'Speed effect',     2)
+)
+for ($i = 0; $i -lt $mbfKnobs.Count; $i++) {
+    $key = $mbfKnobs[$i][0]; $label = $mbfKnobs[$i][1]; $dec = $mbfKnobs[$i][2]
+    $col = [math]::Floor($i / 4); $row = $i % 4
+    $x = 10 + $col * 404; $y = 126 + $row * 56
+    $mbFsGated.Add((New-Text "mbf-$key-t" ($x + 8) $y 160 50 16 $label $WHITE 0))
+    $mbFsGated.Add((New-Rect  "mbf-$key-dn-bg" ($x + 176) $y 50 50 $TILE))
+    $mbFsGated.Add((New-Text  "mbf-$key-dn-t"  ($x + 176) $y 50 50 26 '-' $WHITE 1 $null 'Bold'))
+    $mbFsGated.Add((New-Button "mbf-$key-dn"   ($x + 176) $y 50 50 "DashModeB${key}Down"))
+    $mbFsGated.Add((New-Rect "mbf-$key-val-bg" ($x + 230) $y 82 50 $PANEL $null 0))
+    $mbFsGated.Add((New-Text "mbf-$key-val" ($x + 230) $y 82 50 17 '' $WHITE 1 @{
+        Text = BindJS 'Text' ('return (1*$prop("' + $P + '.ModeB.' + $key + '")).toFixed(' + $dec + ')')
+    }))
+    $mbFsGated.Add((New-Button "mbf-$key-val-tap" ($x + 230) $y 82 50 "DashModeB${key}Open"))
+    $mbFsGated.Add((New-Rect  "mbf-$key-up-bg" ($x + 316) $y 50 50 $TILE))
+    $mbFsGated.Add((New-Text  "mbf-$key-up-t"  ($x + 316) $y 50 50 26 '+' $WHITE 1 $null 'Bold'))
+    $mbFsGated.Add((New-Button "mbf-$key-up"   ($x + 316) $y 50 50 "DashModeB${key}Up"))
+}
+$mbFsGated.Add((New-Text 'mbf-hint' 16 394 768 44 14 'Tap a value to type an exact number. Changes apply instantly and are for Farming Simulator only. More options live on the desktop Telemetry FFB tab.' $GRAY 0))
+
 foreach ($it in $mbGated) {
     $it.Bindings['Visible'] = BindJS 'Visible' ('return ' + $mbSupported + '?true:false')
+    $s6.Add($it)
+}
+foreach ($it in $mbFsGated) {
+    $it.Bindings['Visible'] = BindJS 'Visible' ('return ' + $mbSpring + '?true:false')
+    $s6.Add($it)
+}
+foreach ($it in $mbShared) {
+    $it.Bindings['Visible'] = BindJS 'Visible' ('return (' + $mbSupported + ' || ' + $mbSpring + ')?true:false')
     $s6.Add($it)
 }
 
 # Unsupported-game explainer (inverse gate; also what shows in menus)
 $mbNote1 = New-Text 'mb-na-t1' 0 180 800 34 22 'Telemetry FFB is not available for this game' $WHITE 1 $null 'Bold'
-$mbNote1.Bindings['Visible'] = BindJS 'Visible' ('return !' + $mbSupported)
+$mbNote1.Bindings['Visible'] = BindJS 'Visible' ('return !' + $mbSupported + ' && !' + $mbSpring)
 $s6.Add($mbNote1)
-$mbNote2 = New-Text 'mb-na-t2' 60 224 680 60 16 'It works in Forza Motorsport and Forza Horizon 4, 5 and 6. Start one of those games to tune it here.' $MUTED 1
-$mbNote2.Bindings['Visible'] = BindJS 'Visible' ('return !' + $mbSupported)
+$mbNote2 = New-Text 'mb-na-t2' 60 224 680 60 16 'It works in Forza Motorsport, Forza Horizon 4, 5 and 6, and Farming Simulator. Start one of those games to tune it here.' $MUTED 1
+$mbNote2.Bindings['Visible'] = BindJS 'Visible' ('return !' + $mbSupported + ' && !' + $mbSpring)
 $s6.Add($mbNote2)
 
 TabBar $P | ForEach-Object { $s6.Add($_) }
