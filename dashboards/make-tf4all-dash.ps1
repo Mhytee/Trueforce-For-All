@@ -731,7 +731,7 @@ function BoxDataJs([string]$P) {
     $t = [ordered]@{
         Damage    = '(""+$prop("' + $script:SIM + 'CarDamage1")||"")!=""'
         Friction  = '($prop("' + $P + '.Drive.SlipOn"))'
-        Fuel      = '((1*$prop("' + $P + '.Forza.FuelPct"))>0)||((1*$prop("' + $script:SIM + 'MaxFuel"))>0)'
+        Fuel      = '((1*$prop("' + $P + '.Fs.FuelPct"))>=0)||((1*$prop("' + $P + '.Forza.FuelPct"))>0)||((1*$prop("' + $script:SIM + 'MaxFuel"))>0)'
         GCircle   = $g
         Delta     = '(""+$prop("' + $script:TRK + 'EstimatedLapTime")||"")!=""'
         Radar     = $opp
@@ -1352,12 +1352,13 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $hd = AddHead 'fu' 'FUEL' 'Fuel'
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
     $items.Add($hd)
-    # Forza reports a tank fraction rather than litres, so the big number
-    # is a percentage there and a level everywhere else.
-    # Tank fraction, ours first. Drives both the readout and the bar, so
-    # they can never disagree about how much is left.
-    $fuPct = 'var p=1*$prop("' + $P + '.Forza.FuelPct");' +
-             'if(!(p>0))p=1*$prop("' + $SIM + 'FuelPercent");' +
+    # Tank fraction, ours first: the Farming Simulator game mod (a -1
+    # sentinel when it is not reporting, so an EMPTY tank's 0 still
+    # counts), then our Forza parse, then SimHub. Drives both the readout
+    # and the bar, so they can never disagree about how much is left.
+    $fuPct = 'var p=1*$prop("' + $P + '.Fs.FuelPct");' +
+             'if(!(p>=0)){p=1*$prop("' + $P + '.Forza.FuelPct");' +
+             'if(!(p>0))p=1*$prop("' + $SIM + 'FuelPercent");}' +
              'if(isNaN(p))p=-1;if(p>100)p=100;'
     $t = New-Text "d$slot-fu-lvl" $ix ($iy + 20) $iw 52 42 '' $script:WHITE 1 @{
         Text = BindJS 'Text' ($fuPct + 'return p<0?"--":Math.round(p)+"%"')
@@ -2918,9 +2919,15 @@ ReadoutPill $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
 
 # =====================================================================
-# Screen 3: EFFECTS (13 rows in 2 columns: toggle tile + gain readout + steppers)
+# Screen 3: EFFECTS (up to 14 rows in 2 columns: toggle tile + gain + steppers)
 # Airborne ducking is deliberately absent: it is a background modifier with
 # no gain, not a feel effect to tune from a phone; toggle it on the desktop.
+# Rows repack per game: the desktop hides effects the active game cannot
+# drive (owner rule 2026-08-08, dead knobs read as broken) and the dash
+# mirrors it via Dash.Fx.<Key>.Slot, the row's packed index (-1 = hidden
+# here). Every row item binds Visible + Left/Top to its slot; an older
+# plugin without the property falls back to the static index, which is
+# the fixed 13-row grid with Implement thud (last, FS-only) hidden.
 # =====================================================================
 $s3 = [System.Collections.Generic.List[object]]::new()
 $s3.Add((New-Text 'fx-title' 16 14 400 34 22 'EFFECTS' $WHITE 0 $null 'Bold'))
@@ -2938,8 +2945,23 @@ $effects = @(
     @('Drs',        'DRS',           $true),
     @('Collision',  'Collision',     $true),
     @('RevLimiter', 'Redline buzz',  $true),
-    @('Audio',      'Audio haptics', $true)
+    @('Audio',      'Audio haptics', $true),
+    @('ImplThud',   'Implement thud', $true)
 )
+# Stamps one row item with its slot bindings. Visible stays a SINGLE
+# expression: Hide-ButtonsUnderOverlay wraps button Visible formulas in
+# "closed && (...)", and a var/if statement inside those parens is a
+# silent formula break (the generator landmine, again). Left/Top are
+# never rewritten, so they can afford the readable statement form.
+function Add-FxSlotBindings($it, [int]$staticIdx, [int]$xoff, [string]$slotProp) {
+    $p = '$prop("' + $slotProp + '")'
+    $fb = if ($staticIdx -ge 0) { 'true' } else { 'false' }
+    $it.Bindings['Visible'] = BindJS 'Visible' ('return (' + $p + '==null)?' + $fb + ':(1*' + $p + ')>=0')
+    $base = 'var s=' + $p + ';if(s==null)s=' + $staticIdx + ';s=1*s;if(s<0)s=0;var c=s>6?1:0;'
+    $it.Bindings['Left'] = BindJS 'Left' ($base + 'return 10+c*404+' + $xoff)
+    $it.Bindings['Top']  = BindJS 'Top'  ($base + 'return 50+(s-c*7)*56')
+    $it
+}
 # Row layout: name tile (tap = toggle), then a [-] value [+] cluster so the
 # steppers visually flank the value they change (a trailing -/+ pair read as
 # ambiguous between neighboring rows on a real screen). Tapping the value
@@ -2954,25 +2976,36 @@ for ($i = 0; $i -lt $effects.Count; $i++) {
     $dn   = if ($key -eq 'Audio') { 'DashAudioGainDown' } else { "DashFx${key}GainDown" }
     $open = if ($key -eq 'Audio') { 'DashAudioGainOpen' } else { "DashFx${key}GainOpen" }
     $onProp = $P + '.Fx.' + $key + '.On'
-    $s3.Add((New-Rect "fx-$key-bg" $x $y 170 50 $TILE @{
+    $slotProp = $P + '.Fx.' + $key + '.Slot'
+    # Static fallback: ImplThud hides (an older plugin cannot pack the
+    # grid, and its FS gating is the whole reason the row exists).
+    $fb = if ($key -eq 'ImplThud') { -1 } else { $i }
+    $s3.Add((Add-FxSlotBindings (New-Rect "fx-$key-bg" $x $y 170 50 $TILE @{
         BackgroundColor = BindJS 'BackgroundColor' ('return $prop("' + $onProp + '")?"' + $TILEON + '":"' + $TILE + '"')
-    }))
-    $s3.Add((New-Text "fx-$key-t" ($x + 8) $y 156 50 16 $label $WHITE 0 @{
+    }) $fb 0 $slotProp))
+    $lbl = New-Text "fx-$key-t" ($x + 8) $y 156 50 16 $label $WHITE 0 @{
         TextColor = BindJS 'TextColor' ('return $prop("' + $onProp + '")?"' + $WHITE + '":"' + $GRAY + '"')
-    }))
-    $s3.Add((New-Button "fx-$key-tgl" $x $y 170 50 $tgl))
+    }
+    if ($key -eq 'Bumps') {
+        # FS naming fold (desktop parity): no kerbs exist in Farming
+        # Simulator, so Road bumps voices the terrain texture there and
+        # renames with it.
+        $lbl.Bindings['Text'] = BindJS 'Text' ('return $prop("' + $P + '.ModeB.SpringGame")?"Terrain texture":"Road bumps"')
+    }
+    $s3.Add((Add-FxSlotBindings $lbl $fb 8 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Button "fx-$key-tgl" $x $y 170 50 $tgl) $fb 0 $slotProp))
     if (-not $hasGain) { continue }
-    $s3.Add((New-Rect  "fx-$key-dn-bg" ($x + 176) $y 50 50 $TILE))
-    $s3.Add((New-Text  "fx-$key-dn-t"  ($x + 176) $y 50 50 26 '-' $WHITE 1 $null 'Bold'))
-    $s3.Add((New-Button "fx-$key-dn"   ($x + 176) $y 50 50 $dn))
-    $s3.Add((New-Rect "fx-$key-gain-bg" ($x + 230) $y 82 50 $PANEL $null 0))
-    $s3.Add((New-Text "fx-$key-gain" ($x + 230) $y 82 50 17 '' $WHITE 1 @{
+    $s3.Add((Add-FxSlotBindings (New-Rect  "fx-$key-dn-bg" ($x + 176) $y 50 50 $TILE) $fb 176 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Text  "fx-$key-dn-t"  ($x + 176) $y 50 50 26 '-' $WHITE 1 $null 'Bold') $fb 176 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Button "fx-$key-dn"   ($x + 176) $y 50 50 $dn) $fb 176 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Rect "fx-$key-gain-bg" ($x + 230) $y 82 50 $PANEL $null 0) $fb 230 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Text "fx-$key-gain" ($x + 230) $y 82 50 17 '' $WHITE 1 @{
         Text = BindJS 'Text' ('return (1*$prop("' + $P + '.Fx.' + $key + '.Gain")).toFixed(3)')
-    }))
-    $s3.Add((New-Button "fx-$key-gain-tap" ($x + 230) $y 82 50 $open))
-    $s3.Add((New-Rect  "fx-$key-up-bg" ($x + 316) $y 50 50 $TILE))
-    $s3.Add((New-Text  "fx-$key-up-t"  ($x + 316) $y 50 50 26 '+' $WHITE 1 $null 'Bold'))
-    $s3.Add((New-Button "fx-$key-up"   ($x + 316) $y 50 50 $up))
+    }) $fb 230 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Button "fx-$key-gain-tap" ($x + 230) $y 82 50 $open) $fb 230 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Rect  "fx-$key-up-bg" ($x + 316) $y 50 50 $TILE) $fb 316 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Text  "fx-$key-up-t"  ($x + 316) $y 50 50 26 '+' $WHITE 1 $null 'Bold') $fb 316 $slotProp))
+    $s3.Add((Add-FxSlotBindings (New-Button "fx-$key-up"   ($x + 316) $y 50 50 $up) $fb 316 $slotProp))
 }
 # Save/Revert bar, top right, visible only while unsaved dash tuning
 # exists (effect/audio edits are drafts; a car change or restart drops
@@ -4203,10 +4236,21 @@ $pvGains = @{
     Kerb = '0.700'; Lockup = '0.500'; Shift = '0.400'; Abs = '0.350'
     Pit = '0.300'; Drs = '0.250'; Collision = '0.800'; RevLimiter = '0.650'; Audio = '0.550'
 }
+# Every row item is Visible-bound to its slot now, so the preview must
+# Show each one it wants drawn. ImplThud stays hidden: the preview game
+# is Assetto Corsa and the row is FS-only, so the thumbnail shows the
+# packed 13-row layout a non-FS session actually gets.
 foreach ($e in $effects) {
     $key = $e[0]
-    $ovFx["fx-$key-bg"] = @{ BackgroundColor = $TILEON }
-    if ($e[2]) { $ovFx["fx-$key-gain"] = @{ Text = $pvGains[$key] } }
+    if ($key -eq 'ImplThud') { continue }
+    $ovFx["fx-$key-bg"]      = @{ Show = $true; BackgroundColor = $TILEON }
+    $ovFx["fx-$key-t"]       = @{ Show = $true }
+    $ovFx["fx-$key-dn-bg"]   = @{ Show = $true }
+    $ovFx["fx-$key-dn-t"]    = @{ Show = $true }
+    $ovFx["fx-$key-gain-bg"] = @{ Show = $true }
+    if ($e[2]) { $ovFx["fx-$key-gain"] = @{ Show = $true; Text = $pvGains[$key] } }
+    $ovFx["fx-$key-up-bg"]   = @{ Show = $true }
+    $ovFx["fx-$key-up-t"]    = @{ Show = $true }
 }
 
 $ovPresets = PreviewChrome 78 5

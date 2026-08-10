@@ -313,7 +313,8 @@ namespace TrueforceForAll.Plugin
                 && (nd.TyreWearFrontLeft > 0 || (fz?.HasWear == true && (fz?.TireWearFL ?? 0f) > 0)))
                 _capSeenRun.Add("TyreWear");
             if (!_capSeenRun.Contains("Fuel")
-                && (nd.MaxFuel > 0 || (fz?.FuelFraction ?? 0f) > 0))
+                && (nd.MaxFuel > 0 || (fz?.FuelFraction ?? 0f) > 0
+                    || (_fsPipeSource?.FuelPercent ?? -1f) >= 0f))
                 _capSeenRun.Add("Fuel");
             // Lap timing, not a lap DELTA: a running lap clock is the proof
             // that the game times laps at all, and it is there from the moment
@@ -1273,6 +1274,11 @@ namespace TrueforceForAll.Plugin
             // Forza knob rows for the FS set on this flag. Mutually
             // exclusive with ModeBSupported by construction.
             public bool ModeBSpringGame;
+            // Effects-screen row slots: key -> packed index in display
+            // order, -1 = hidden for the active game. The djson rows bind
+            // position and visibility to these so per-game dead knobs
+            // close up instead of leaving holes.
+            public System.Collections.Generic.Dictionary<string, int> FxSlots;
         }
         private DashSnapshot _dashSnap = new DashSnapshot();
         // Freshness is an explicit flag + tick pair, NOT an int.MinValue
@@ -1328,6 +1334,7 @@ namespace TrueforceForAll.Plugin
                 s.ModeBSupported  = ActiveGameSupportsModeB;
                 s.ModeBOn         = ModeBEnabledForActiveGame;
                 s.ModeBSpringGame = ActiveGameIsSpringGame;
+                s.FxSlots         = BuildDashFxSlots();
                 _dashSnap = s;
             }
             catch { /* keep serving the previous snapshot */ }
@@ -1376,6 +1383,65 @@ namespace TrueforceForAll.Plugin
             new DashFx { Key = "Airborne", Max = 0f,   Kind = SectionKind.Airborne,     GetOn = () => ActiveAirborne.Enabled,     SetOn = v => ActiveAirborne.Enabled = v,     GetGain = null,                          SetGain = null },
             new DashFx { Key = "ImplThud", Max = 3f,   Kind = SectionKind.ImplementThud, GetOn = () => ActiveImplementThud.Enabled, SetOn = v => ActiveImplementThud.Enabled = v, GetGain = () => ActiveImplementThud.Gain, SetGain = v => ActiveImplementThud.Gain = v },
         };
+
+        // ------------------------------------------------------------------
+        // Effects-screen row packing. The desktop hides per-game dead knobs
+        // (owner rule 2026-08-08: an effect whose telemetry a game never
+        // provides reads as broken); the dash mirrors it by serving each
+        // row's packed slot index. Rows are absolutely positioned in the
+        // djson, so a plain hide would leave holes; the slot drives both
+        // Visible and position (same indirection idea as the tab bar, but
+        // identity stays per effect and only geometry is served).
+        // ------------------------------------------------------------------
+
+        // Display order of the dash Effects screen rows; MUST match the
+        // djson generator's $effects list (make-tf4all-dash.ps1 screen 3).
+        // ImplThud sits last so the static fallback grid (older plugin, no
+        // slot properties) matches today's 13-row layout with it hidden.
+        private static readonly string[] DashFxDisplayOrder =
+            { "Engine", "Bumps", "Traction", "AxleSlip", "Kerb", "Lockup", "Shift",
+              "Abs", "Pit", "Drs", "Collision", "RevLimiter", "Audio", "ImplThud" };
+
+        // Per-game availability, mirroring the desktop panel-visibility
+        // block in SettingsControl.RefreshFromPlugin; keep the two in sync
+        // by hand. No active game = show everything except Implement thud
+        // (FS-only on the desktop too).
+        private bool DashFxSupported(string key)
+        {
+            string g = _activeGame;
+            bool spring = ActiveGameIsSpringGame;
+            bool forza = g == "FM8"
+                || (g != null && g.StartsWith("FH", StringComparison.Ordinal));
+            switch (key)
+            {
+                // FS: Axle slip is its one slip voice, its brake model never
+                // outruns the road, and Kerb thump's voice folds into Road
+                // bumps ("Terrain texture") there.
+                case "Traction":
+                case "Lockup":
+                case "Kerb":
+                    return !spring;
+                // FS has no ABS, pits or DRS; Forza telemetry carries no
+                // ABS flag and Horizon has no pits and no DRS.
+                case "Abs":
+                case "Pit":
+                case "Drs":
+                    return !spring && !forza;
+                case "ImplThud":
+                    return spring;
+                default:
+                    return true;
+            }
+        }
+
+        private System.Collections.Generic.Dictionary<string, int> BuildDashFxSlots()
+        {
+            var d = new System.Collections.Generic.Dictionary<string, int>(DashFxDisplayOrder.Length);
+            int next = 0;
+            foreach (var key in DashFxDisplayOrder)
+                d[key] = DashFxSupported(key) ? next++ : -1;
+            return d;
+        }
 
         // Multiplicative gain step so one press moves small gains (0.07) and
         // large gains (1.5) by a comparable feel amount. Floor + zero rules:
@@ -1759,6 +1825,16 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Forza.LastLap",  () => ForzaUdpSource?.DashExtras?.LastLapSec ?? 0f);
             this.AttachDelegate("Dash.Forza.CurLap",   () => ForzaUdpSource?.DashExtras?.CurrentLapSec ?? 0f);
             this.AttachDelegate("Dash.Forza.Position", () => ForzaUdpSource?.DashExtras?.RacePosition ?? 0);
+            // ---------- properties: Farming Simulator fuel ----------
+            // From the TF4ALL game mod (>= 0.2.21): the tank SimHub's own FS
+            // feed also reports, plus the burn rate it does not, which is
+            // what makes a time-left readout possible at all. -1 means "not
+            // reported" (no mod, older mod, on foot, not an FS session);
+            // the fuel box falls back to SimHub's properties on it.
+            this.AttachDelegate("Dash.Fs.FuelPct",     () => _fsPipeSource?.FuelPercent ?? -1f);
+            this.AttachDelegate("Dash.Fs.FuelL",       () => _fsPipeSource?.FuelLevel ?? -1f);
+            this.AttachDelegate("Dash.Fs.FuelUnit",    () => _fsPipeSource?.FuelUnit ?? "L");
+            this.AttachDelegate("Dash.Fs.FuelMinLeft", () => _fsPipeSource?.FuelMinutesLeft ?? -1f);
             // Gear and speed off the live frame, so the Drive tab's center
             // works on whichever telemetry source is running rather than
             // only when SimHub is being fed. Empty gear and a zero speed
@@ -1900,6 +1976,20 @@ namespace TrueforceForAll.Plugin
             });
             this.AddAction("DashAudioGainUp",   (a, b) => DashNudgeAudioGain(+DashAudioGainStep));
             this.AddAction("DashAudioGainDown", (a, b) => DashNudgeAudioGain(-DashAudioGainStep));
+
+            // Row slots for the Effects screen (Audio included; it is a
+            // peer voice but occupies a row like any effect). -1 = hidden
+            // for the active game; the djson rows bind Visible + position
+            // to these so the grid packs per game.
+            foreach (var fxKey in DashFxDisplayOrder)
+            {
+                var kk = fxKey;
+                this.AttachDelegate("Dash.Fx." + kk + ".Slot", () =>
+                {
+                    var slots = DashSnap().FxSlots;
+                    return slots != null && slots.TryGetValue(kk, out int v) ? v : 0;
+                });
+            }
 
             // ---------- properties + actions: Telemetry FFB (Tele-FFB tab) ----------
             // Mode B settings are global (no preset/car scope), so the
