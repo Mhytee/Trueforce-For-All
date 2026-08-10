@@ -1484,7 +1484,7 @@ namespace TrueforceForAll.Plugin
         // spring game is active without the mod. After one accepted install,
         // newer plugin versions refresh the file silently (the consent was
         // to the file, not to one version of it).
-        private const string FsModVersion = "0.2.17";
+        private const string FsModVersion = "0.2.19";
         private bool _fsModPromptShown;   // once per SimHub session
 
         /// <summary>Maps a Farming Simulator game name to its mods folder and
@@ -3279,7 +3279,7 @@ namespace TrueforceForAll.Plugin
                     else
                     {
                         SimHub.Logging.Current.Info(
-                            $"[TF4ALL] Wheel defaults check ({shortModel}): nothing to change (each Mode B setting already matches the {shortModel} defaults or is customized). 'Reset tuning to defaults' applies the full {shortModel} defaults.");
+                            $"[TF4ALL] Wheel defaults check ({shortModel}): nothing to change (each Mode B setting already matches the {shortModel} defaults or is customized). 'Reset FFB tuning to defaults' applies the full {shortModel} defaults.");
                     }
                     try { PersistSettingsCore(); } catch { }
                 }
@@ -6620,7 +6620,7 @@ namespace TrueforceForAll.Plugin
         /// perceptible; the wheel now takes the same 0.05 as the others.
         /// Damping is the only thing still separating the G923 from the G PRO.
         ///
-        /// Used by "Reset tuning to defaults" (wheel-aware) and by the one-time
+        /// Used by "Reset FFB tuning to defaults" (wheel-aware) and by the one-time
         /// fresh-install specialization on wheel detection.</summary>
         public static void ApplyWheelDefaults(TrueforceSettings s, string wheelModel)
         {

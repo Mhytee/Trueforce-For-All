@@ -1044,6 +1044,9 @@ namespace TrueforceForAll.Plugin
                 if (OledSection != null)
                     OledSection.Visibility = _plugin.WheelHasOledScreen
                         ? Visibility.Visible : Visibility.Collapsed;
+                if (WheelLightsHeaderText != null)
+                    WheelLightsHeaderText.Text = _plugin.WheelHasOledScreen
+                        ? "Wheel lights and screen" : "Wheel lights";
                 if (ModeBOledCheck != null)
                     ModeBOledCheck.IsChecked = _plugin.Settings?.ModeBOledEnabled == true;
                 // The screen picker is filled and selected by Tag in
@@ -4868,7 +4871,7 @@ namespace TrueforceForAll.Plugin
             SchedulePersistDebounced();
         }
 
-        // "Reset tuning to defaults": restore the whole Mode B recipe (every
+        // "Reset FFB tuning to defaults": restore the whole Mode B recipe (every
         // slider + feel toggle) to the shipped baseline. Confirms first because
         // it discards custom tuning with no undo; leaves the per-game enable and
         // each car's learned grip calibration alone. RefreshFromPlugin re-syncs
@@ -4878,7 +4881,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
                 "Reset Telemetry Based FFB",
-                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your per-game on/off choices and each car's learned grip calibration are kept.",
+                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings are kept.",
                 DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
             if (ok != true) return;
             _plugin.ResetModeBTuningToDefaults();

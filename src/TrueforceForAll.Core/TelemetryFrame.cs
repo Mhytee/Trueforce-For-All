@@ -242,6 +242,13 @@ namespace TrueforceForAll.Core
         /// increment lands a light thud.</summary>
         public int? ImplementEvent;
 
+        /// <summary>True while the current implement motion is MANUAL-ONLY:
+        /// a stick-driven arm (loader, crane, telehandler) with no joint,
+        /// fold or pipe cycle running (mod 0.2.19+). Null on sources that
+        /// don't report it. Manual settles land quieter, scaled by the
+        /// speed at the stop.</summary>
+        public bool? ImplementManual;
+
         // ---- Collision ----
         /// <summary>Normalized collision magnitude this frame. ~0 = no
         /// impact, 1.0 = moderate hit, 2.0+ = hard wreck. Source-defined

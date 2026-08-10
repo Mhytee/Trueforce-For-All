@@ -68,6 +68,8 @@ namespace TrueforceForAll.Plugin
         private volatile object _implementSpeed;    // boxed float or null
         // Discrete-event counter (mod >= 0.2.16).
         private volatile object _implementEvent;    // boxed int or null
+        // Manual-only motion flag (mod >= 0.2.19).
+        private volatile object _implementManual;   // boxed bool or null
 
         private volatile string _reportedModVersion;
         /// <summary>The mod version the pipe is ACTUALLY streaming from
@@ -367,6 +369,12 @@ namespace TrueforceForAll.Plugin
             else if (implMove.HasValue)
                 // Same stale-latch rule as implSpd, for pre-0.2.16 mods.
                 _implementEvent = null;
+            var implMan = o.Value<bool?>("implMan");
+            if (implMan.HasValue)
+                _implementManual = implMan.Value;
+            else if (implMove.HasValue)
+                // Same stale-latch rule, for pre-0.2.19 mods.
+                _implementManual = null;
             var modVer = o.Value<string>("modVer");
             if (!string.IsNullOrWhiteSpace(modVer)) _reportedModVersion = modVer.Trim();
             var fill = o.Value<double?>("fill");
@@ -395,6 +403,7 @@ namespace TrueforceForAll.Plugin
                 ImplementMoving  = (bool?)_implementMoving,
                 ImplementSpeed   = (float?)_implementSpeed,
                 ImplementEvent   = (int?)_implementEvent,
+                ImplementManual  = (bool?)_implementManual,
                 Rpms       = rpm,
                 MaxRpm     = maxRpm,
                 SpeedKmh   = speed,

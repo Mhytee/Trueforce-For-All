@@ -14,9 +14,10 @@
 // rate; older mods leave it at neutral), and carries a quiet phase-locked
 // octave layer so it reads as machinery rather than a pure sine.
 //
-// Motion covers joints, folds and pipe travel (a combine's unloading pipe,
-// mod 0.2.16+). Discrete toggles with no travel (the straw-swath flap)
-// arrive as an event counter and land the light release-weight thud.
+// Motion covers joints, folds, pipe travel (a combine's unloading pipe,
+// mod 0.2.16+) and manually driven arms (loader/crane/telehandler moving
+// tools, mod 0.2.18+). Discrete toggles with no travel (the straw-swath
+// flap) arrive as an event counter and land the light release-weight thud.
 
 using System;
 using TrueforceForAll.Core;
@@ -97,6 +98,13 @@ namespace TrueforceForAll.Plugin.Effects
         private const float FastTravelPerSec = 0.8f;       // full-travel fraction/s that counts as fast
         private const float SpeedEmaAlpha    = 0.01f;      // ~200 ms smoothing at the 500 Hz telemetry tick
 
+        // Manual-only settles (a stick-driven arm easing to a halt, mod
+        // 0.2.19+) land at momentum weight: peak half a landing, scaled by
+        // the speed at the stop, so feathering whispers and a snapped stick
+        // gives a firm bump. Machine cycles keep the full working-flag
+        // weight.
+        private const float ManualSettlePeak = 0.5f;
+
         private bool?  _lastWorking;
         private bool?  _lastMoving;
         private int?   _lastEventCount;
@@ -108,6 +116,7 @@ namespace TrueforceForAll.Plugin.Effects
         private float  _bendPos;             // 0..1 pitch glide, re-armed on motion edges
         private float  _speedEma;            // smoothed implement travel rate (fraction/s)
         private bool   _speedKnown;          // source reports a rate (mod 0.2.14+)
+        private bool   _manualMotion;        // latched while moving: manual-only motion
         private int    _envelopeRemaining;   // samples
         private int    _envelopeTotal = 80;
         private float  _envelopeAmpScale = 1.0f;
@@ -249,9 +258,10 @@ namespace TrueforceForAll.Plugin.Effects
             TriggerThud(landing: true);
         }
 
-        private void TriggerThud(bool landing)
+        private void TriggerThud(bool landing) => TriggerThud(landing ? 1.0f : RaiseAmp);
+
+        private void TriggerThud(float ampScale)
         {
-            float ampScale = landing ? 1.0f : RaiseAmp;
             if (ampScale <= 0f) return;
             _envelopeTotal = Math.Max(1, (int)(EnvelopeMs * SampleRateHz / 1000.0));
             _envelopeRemaining = _envelopeTotal;
@@ -275,6 +285,7 @@ namespace TrueforceForAll.Plugin.Effects
                 _humTarget   = false;
                 _speedEma    = 0f;
                 _speedKnown  = false;
+                _manualMotion = false;
                 return;
             }
 
@@ -314,9 +325,25 @@ namespace TrueforceForAll.Plugin.Effects
                 float spd = f.ImplementSpeed ?? 0f;
                 if (spd < 0f) spd = 0f;
                 _speedEma += (Math.Min(spd, 4f) - _speedEma) * SpeedEmaAlpha;
+                // Latch the motion kind WHILE moving: at the settle frame
+                // the flag already reads false again, so the latch is what
+                // knows whether this motion was a stick-driven arm.
+                if (moving.Value && f.ImplementManual.HasValue)
+                    _manualMotion = f.ImplementManual.Value;
                 _humTarget = moving.Value;
                 if (_lastMoving == true && moving.Value == false)
-                    TriggerThud(landing: working.Value);
+                {
+                    if (_manualMotion)
+                    {
+                        float speedNorm = Math.Min(_speedEma / FastTravelPerSec, 1f);
+                        TriggerThud(ManualSettlePeak * (0.3f + 0.7f * speedNorm));
+                        _manualMotion = false;
+                    }
+                    else
+                    {
+                        TriggerThud(landing: working.Value);
+                    }
+                }
                 _lastMoving = moving;
                 _lastWorking = working;   // tracked, but edges defer to settle
                 return;
@@ -340,6 +367,7 @@ namespace TrueforceForAll.Plugin.Effects
             _bendPos     = 0f;
             _speedEma    = 0f;
             _speedKnown  = false;
+            _manualMotion = false;
             _envelopeRemaining = 0;
             _phase = 0;
         }

@@ -18,7 +18,7 @@ TF4ALLTelemetry = {}
 -- Keep in sync with modDesc.xml <version> (build-mod.py verifies). The
 -- plugin compares this against its shipped version to tell the user when
 -- the game is still running an older copy (mods load only at game start).
-local MOD_VERSION = "0.2.17"
+local MOD_VERSION = "0.2.19"
 local ctx = {
 	pipeName = "\\\\.\\pipe\\TF4ALLTelemetry",
 	file = nil,
@@ -43,6 +43,11 @@ local ctx = {
 	-- Previous discrete states behind implEvt, keyed per unit like foldT;
 	-- THESE reset with jointAlpha so re-entry can't fire a stale edge.
 	statePrev = {},
+	-- Previous moving-tool rotation/translation per unit+tool (mod 0.2.18:
+	-- loader/crane/telehandler arms). Reset with jointAlpha.
+	toolPrev = {},
+	-- One-shot moving-tools field probe, same spirit as the fn probe.
+	mtProbeDone = false,
 	-- Wheel-rotation state for the derived slip signal: previous lastXDrive
 	-- angle + timestamp per wheel index (FS25 exposes no slip value, so we
 	-- compute wheel surface speed from the rotation angle the game uses to
@@ -137,6 +142,10 @@ local function gatherAttachState(vehicle)
 	-- for a three-point lower, ~0.1 for a big slow fold). Max across all
 	-- moving parts; rides the plugin's hydraulic-hum pitch.
 	local moving = false
+	-- Machine-cycle motion (joints, folds, pipe): true alongside moving.
+	-- Moving WITHOUT cycle means manual-only motion (a stick-driven arm,
+	-- mod 0.2.19); the plugin lands those settles quieter.
+	local cycle = false
 	local rate = 0
 	local dtSec = nil
 	if finite(ctx.frameDt) and ctx.frameDt >= 5 and ctx.frameDt <= 100 then
@@ -183,6 +192,58 @@ local function gatherAttachState(vehicle)
 		end)
 		return ok and r == true
 	end
+	-- Manually driven arms (mod 0.2.18): loader, crane and telehandler
+	-- tools are player-controlled cylinders (spec_cylindered.movingTools),
+	-- invisible to the joint/fold/pipe detectors. Track each tool's
+	-- rotation and translation deltas, normalized against its travel
+	-- limits where the game exposes them (nominal spans otherwise) so the
+	-- rate lands in the same fraction-of-full-travel unit as the joints.
+	-- The stale-prev swallow (d < 0.25) also folds a continuous-slew
+	-- crane's angle wrap back to silence instead of a spike.
+	local function unitToolMotion(u, key)
+		pcall(function()
+			local scy = u.spec_cylindered
+			if scy == nil or type(scy.movingTools) ~= "table" then
+				return
+			end
+			if not ctx.mtProbeDone and #scy.movingTools > 0 then
+				ctx.mtProbeDone = true
+				local t1 = scy.movingTools[1]
+				print(string.format(
+					"TF4ALLTelemetry: mt probe: n=%d curRot=%s curTrans=%s rotMin=%s rotMax=%s",
+					#scy.movingTools, tostring(t1.curRot), tostring(t1.curTrans),
+					tostring(t1.rotMin), tostring(t1.rotMax)))
+			end
+			for ti, mt in ipairs(scy.movingTools) do
+				local k = "mt" .. key .. "_" .. ti
+				local prev = ctx.toolPrev[k]
+				local cur = { r = mt.curRot, t = mt.curTrans }
+				ctx.toolPrev[k] = cur
+				if prev ~= nil then
+					local function comp(c, p, mn, mx, span)
+						if not finite(c) or not finite(p) then
+							return
+						end
+						if finite(mn) and finite(mx) and mx > mn then
+							span = mx - mn
+						end
+						local d = math.abs(c - p) / span
+						if d > 0.0005 then
+							moving = true
+							if dtSec ~= nil and d < 0.25 then
+								local r = d / dtSec
+								if r > rate then
+									rate = r
+								end
+							end
+						end
+					end
+					comp(cur.r, prev.r, mt.rotMin, mt.rotMax, 2.5)
+					comp(cur.t, prev.t, mt.transMin, mt.transMax, 1.0)
+				end
+			end
+		end)
+	end
 	-- Discrete mechanism toggles (mod 0.2.16): state flips with no
 	-- measurable travel, e.g. the straw-swath flap. Each observed change
 	-- bumps the session-monotonic implEvt counter; the plugin lands a
@@ -213,6 +274,7 @@ local function gatherAttachState(vehicle)
 			ctx.jointAlpha = {}
 			ctx.foldT = {}
 			ctx.statePrev = {}
+			ctx.toolPrev = {}
 			ctx.xdrvPrev = {}
 			ctx.wsEma = {}
 			ctx.slipProbeDone = false
@@ -227,6 +289,7 @@ local function gatherAttachState(vehicle)
 					ctx.jointAlpha[j] = a
 					if prev ~= nil and math.abs(a - prev) > 0.0005 then
 						moving = true
+						cycle = true
 						-- Same stale-prev bound as the fold rate above.
 						if dtSec ~= nil and math.abs(a - prev) < 0.25 then
 							local jr = math.abs(a - prev) / dtSec
@@ -244,9 +307,11 @@ local function gatherAttachState(vehicle)
 	end
 	if unitFolding(vehicle, 0) then
 		moving = true
+		cycle = true
 	end
 	if unitPipeMoving(vehicle) then
 		moving = true
+		cycle = true
 		-- Pipe travel has no measurable alpha, so give it a nominal mid
 		-- rate (mod 0.2.17): the hum gets a sensible loudness and a touch
 		-- of speed pitch instead of reading as rate 0.
@@ -255,6 +320,7 @@ local function gatherAttachState(vehicle)
 		end
 	end
 	unitStateEvents(vehicle, 0)
+	unitToolMotion(vehicle, 0)
 	if not ctx.fnProbeDone then
 		pcall(function()
 			local sp = vehicle.spec_pipe
@@ -281,15 +347,18 @@ local function gatherAttachState(vehicle)
 					end
 					if unitFolding(u, ai) then
 						moving = true
+						cycle = true
 					end
 					if unitPipeMoving(u) then
 						moving = true
+						cycle = true
 						-- Same nominal rate as the vehicle's own pipe.
 						if rate < 0.35 then
 							rate = 0.35
 						end
 					end
 					unitStateEvents(u, ai)
+					unitToolMotion(u, ai)
 					local f = unitFill(u)
 					if f > fill then
 						fill = f
@@ -307,7 +376,7 @@ local function gatherAttachState(vehicle)
 	if rate > 5 then
 		rate = 5
 	end
-	return impl, fill, massKg, moving, rate
+	return impl, fill, massKg, moving, rate, moving and not cycle
 end
 
 local function motorLoad01(vehicle)
@@ -426,7 +495,7 @@ function TF4ALLTelemetry:buildLine()
 	if load ~= nil then
 		table.insert(parts, string.format('"motorLoad":%.4f', load))
 	end
-	local okI, impl, fill, towKg, implMove, implSpd = pcall(gatherAttachState, vehicle)
+	local okI, impl, fill, towKg, implMove, implSpd, implMan = pcall(gatherAttachState, vehicle)
 	if okI then
 		table.insert(parts, '"impl":' .. tostring(impl == true))
 		table.insert(parts, '"implMove":' .. tostring(implMove == true))
@@ -435,6 +504,7 @@ function TF4ALLTelemetry:buildLine()
 			table.insert(parts, string.format('"implSpd":%.3f', implSpd))
 		end
 		table.insert(parts, string.format('"implEvt":%d', ctx.implEvt))
+		table.insert(parts, '"implMan":' .. tostring(implMan == true))
 		if finite(fill) then
 			table.insert(parts, string.format('"fill":%.3f', fill))
 		end

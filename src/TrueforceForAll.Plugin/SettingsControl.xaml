@@ -3177,11 +3177,11 @@
                  first (discards custom tuning with no undo); leaves the per-game
                  enable and each car's learned grip calibration alone. -->
             <StackPanel Margin="0,14,0,0">
-                <Button x:Name="ModeBResetButton" Content="Reset tuning to defaults" Padding="10,3"
+                <Button x:Name="ModeBResetButton" Content="Reset FFB tuning to defaults" Padding="10,3"
                         HorizontalAlignment="Left" Click="ModeBReset_Click"
                         ToolTip="Put every Telemetry Based FFB slider and feel toggle back to your wheel's defaults."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="Restores your wheel's defaults. The G PRO, RS50, and G923 each get their own strength, and the G923 also gets its own damping. Your per-game on/off choices and each car's learned grip calibration are kept."/>
+                           Text="Restores your wheel's defaults. The G PRO, RS50, and G923 each get their own strength, and the G923 also gets its own damping. Your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings are kept."/>
             </StackPanel>
             </StackPanel><!-- ModeBForzaTuningPanel2 -->
 
@@ -3189,32 +3189,30 @@
                  OLED live on this tab because they ride the same HID++ channel
                  as game FFB, so they need Mode B in charge of the wheel; the
                  section sits last so the force tuning reads first. -->
+            <!-- Header text set in RefreshFromPlugin: "Wheel lights" on a
+                 wheel with no screen (the OLED expander hides there too). -->
             <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12">
-                <TextBlock Text="Wheel lights and screen" Style="{StaticResource SectionHeaderText}"/>
+                <TextBlock x:Name="WheelLightsHeaderText" Text="Wheel lights and screen" Style="{StaticResource SectionHeaderText}"/>
             </Border>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,10" TextWrapping="Wrap"
-                       Text="These need Telemetry Based FFB switched on. Writing to the lights or the screen while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them. A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first."/>
+                       Text="These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them. A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first."/>
             <CheckBox x:Name="ModeBRevLightsCheck" Content="Rev lights"
                       Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
                        Text="Your wheel's rev lights follow the engine: the strip fills as revs climb and flashes at the shift point. Turn this off if a game drives the wheel's lights itself."/>
             <!-- Wheel-base Dynamic OLED (HID++ feature 0x8130). Shares the rev
                  lights' HID++ pipe, so it shares their Mode B + tap-proven-quiet
-                 gate and sits with them here. Collapsed by default: it is the
-                 largest block on this tab and an optional extra. -->
-            <Expander x:Name="OledSection" IsExpanded="False" Margin="0,4,0,4">
-                <Expander.Header>
-                    <TextBlock Text="Wheel OLED screen" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
+                 gate and sits with them here. RefreshFromPlugin hides this
+                 whole panel on a wheel with no screen. -->
+            <StackPanel x:Name="OledSection" Margin="0,4,0,4">
             <CheckBox x:Name="ModeBOledCheck" Content="Show telemetry on the wheel's screen"
                       Margin="0,0,0,2" Checked="ModeBOled_Changed" Unchecked="ModeBOled_Changed"/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="Puts your speed, gear and lap delta on the little screen in the middle of the wheel, so you can read them without looking away from the road. G PRO and RS50 only. It borrows the screen that normally shows the wheel's own menu, and gives it back when you stop driving."/>
+                       Text="Puts your speed, gear, lap delta, and more on the little screen in the middle of the wheel, so you can read them without looking away from the road."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="The screen speaks up on its own too. It names a preset when one loads, shows the new number when a bound button changes a gain, tells you the strength Auto strength settled on for the car you are in, and warns you there if the game is still sending its own force feedback. Each of those replaces the driving screen for a moment and then gives it back."/>
+                       Text="It also reports changes as they happen: a preset loading, a gain nudged from a bound button, Auto strength settling on a car, or a warning that the game is still sending its own force feedback. Each shows for a moment, then your driving screen comes back."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="The wheel's screen was worked out from captures rather than documented by Logitech. It rides the same channel as the rev lights, so it needs Telemetry Based FFB for the same reason."/>
+                       Text="The screen's protocol was reverse engineered; Logitech never documented it for the public."/>
             <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
                 <TextBlock Text="Show:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                 <!-- Items are filled from OledScreenModel.ScreenOrder so the
@@ -3309,8 +3307,7 @@
                 <TextBlock Grid.Column="1" x:Name="OledStatusText" Text="(idle)" FontSize="11"
                            Opacity="0.85" TextWrapping="Wrap"/>
             </Grid>
-                </StackPanel>
-            </Expander> <!-- /OledSection -->
+            </StackPanel> <!-- /OledSection -->
             </StackPanel><!-- ModeBSupportedPanel -->
 
                     </StackPanel>
