@@ -155,7 +155,7 @@ namespace TrueforceForAll.Plugin
         internal static readonly string[] DashDriveContentLabels =
             { "Car facts", "Damage", "Friction circle", "Fuel", "G circle",
               "Gains", "Inputs", "Lap times", "Presets", "Radar",
-              "Relative", "Tyre temps", "Tyre wear", "Visualizer", "Empty" };
+              "Relative", "Tire temps", "Tire wear", "Visualizer", "Empty" };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.
@@ -510,7 +510,7 @@ namespace TrueforceForAll.Plugin
 
         // Axle slip rollups off the live frame, for the friction circle.
         // Written on the telemetry thread in DispatchFrame; the stamp gates
-        // staleness so the dot parks at centre when frames stop. There is
+        // staleness so the dot parks at center when frames stop. There is
         // deliberately NO measured-g fallback: without slip a "friction
         // circle" is just the g circle normalized to a guess, and the dash
         // already has the real g circle one box over. Games without slip
@@ -533,8 +533,8 @@ namespace TrueforceForAll.Plugin
 
         // ---------- themes ----------
         // A theme is a PALETTE, not a layout: the dashboard binds its
-        // structural colours to these, so switching one repaints every
-        // screen live with no reload. Semantic colours (green for good, red
+        // structural colors to these, so switching one repaints every
+        // screen live with no reload. Semantic colors (green for good, red
         // for trouble) are deliberately NOT themed, because a theme that
         // can turn a warning green is a theme that can lie.
         //
@@ -552,7 +552,7 @@ namespace TrueforceForAll.Plugin
             // read-only so that a palette cannot set them. A warm grey under
             // Ember and a green one under Forest read as the dashboard being
             // tinted rather than themed, and nearly every value on screen is
-            // text, so that tint lands on everything at once. Colour belongs
+            // text, so that tint lands on everything at once. Color belongs
             // in the outlines, the tiles and the idle art, all of which a
             // theme still owns.
             public string Text => "#FFF4F4F4";
@@ -588,7 +588,7 @@ namespace TrueforceForAll.Plugin
 
         internal static readonly DashTheme[] DashThemes =
         {
-            // Colour lives in the OUTLINES, the tiles and the idle art. It
+            // Color lives in the OUTLINES, the tiles and the idle art. It
             // is deliberately absent from the ground and from the text: a
             // theme that tints those looks washed rather than styled, and
             // less clean than the plain ones it was meant to beat. The text
@@ -658,8 +658,8 @@ namespace TrueforceForAll.Plugin
         // Opponents carry RelativeCoordinatesToPlayer, a PointF already in
         // the player's own frame, plus a length in metres. SimHub's own
         // SpotterCarLeft/Right is a bare yes or no with no distance in it,
-        // and its radar item colours every opponent alike, so both the dot
-        // colours and the proximity warning are worked out here.
+        // and its radar item colors every opponent alike, so both the dot
+        // colors and the proximity warning are worked out here.
         internal const int   RadarDots   = 8;
         internal const float RadarRangeM = 40f;   // the rim
         internal const float RadarMidM   = 20f;   // white becomes yellow
@@ -667,7 +667,7 @@ namespace TrueforceForAll.Plugin
 
         // Normalised to the circle, -1..1, y negative ahead. Level is 0 for
         // an empty slot, then 1 far, 2 middle, 3 close, which is what picks
-        // the dot colour. Quadrants are the diagonals, front/right/rear/left,
+        // the dot color. Quadrants are the diagonals, front/right/rear/left,
         // 0 clear, 1 something in there, 2 something close.
         private volatile float[] _radarX = new float[RadarDots];
         private volatile float[] _radarY = new float[RadarDots];
@@ -788,7 +788,7 @@ namespace TrueforceForAll.Plugin
                 : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
         }
 
-        /// <summary>The friction circle's distance from centre. Slip is the
+        /// <summary>The friction circle's distance from center. Slip is the
         /// only quantity that can actually EXCEED the limit: measured
         /// acceleration physically cannot (a sliding tyre transmits LESS, so
         /// the reading drops as grip lets go), which is why slip is the only
@@ -801,7 +801,7 @@ namespace TrueforceForAll.Plugin
         /// model uses, so the ring sits at the car's real peak and not at
         /// the game's nominal 1.0. No slip, no circle: the box is
         /// unsupported on such games (see the SlipOn latch), and stale slip
-        /// (frames stopped) parks the dot at centre.</summary>
+        /// (frames stopped) parks the dot at center.</summary>
         private float DashGripUse()
         {
             if (_telemetryStalled) return 0f;
@@ -1137,6 +1137,30 @@ namespace TrueforceForAll.Plugin
         private readonly float[] _scopeFfb = new float[ScopeCols];
         private volatile int _scopeHead;
         private float _scopeAccum;      // producer-thread only
+
+        /// <summary>How hard the wheel is being driven right now, 0 to 1.
+        /// The force actually written to ep3, de-scaled the way the dash scope
+        /// does it so a reduced output scale still reads full when the wheel is
+        /// genuinely railed. MAGNITUDE: a bar that fills from one end cannot
+        /// carry a direction without giving up half its travel.</summary>
+        internal double LiveFfbMagnitude01()
+        {
+            var dev = _device;
+            if (dev == null) return 0.0;
+            float f = (dev.LastFfbOutput) / 32768f;
+            float sc = dev.FfbScale;
+            if (sc > 0.05f && sc < 1f) f /= sc;
+            if (f < 0) f = -f;
+            return f > 1f ? 1.0 : f;
+        }
+
+        /// <summary>The texture level riding the Trueforce stream, 0 to 1: the
+        /// same peak the dash scope draws its upper trace from.</summary>
+        internal double LiveTrueforceLevel01()
+        {
+            float t = _scopeTex[(_scopeHead + ScopeCols - 1) % ScopeCols];
+            return t < 0f ? 0.0 : t > 1f ? 1.0 : t;
+        }
         private long _scopeNextColTicks;
 
         /// <summary>Called once per producer tick with the batch RunOneTick
@@ -1609,7 +1633,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
             this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
 
-            // Structural colours the dashboard paints itself with.
+            // Structural colors the dashboard paints itself with.
             this.AttachDelegate("Dash.Theme.Bg",       () => ActiveDashTheme().Bg);
             this.AttachDelegate("Dash.Theme.Card",     () => ActiveDashTheme().Card);
             this.AttachDelegate("Dash.Theme.CardEdge", () => ActiveDashTheme().CardEdge);
@@ -1630,7 +1654,7 @@ namespace TrueforceForAll.Plugin
             // together, the same reason the rev flash is plugin side.
             this.AttachDelegate("Dash.PulseT", () =>
                 (Environment.TickCount & 0x7FFFFFFF) % 1200 / 1200f);
-            // Radar: per dot a position and a level for its colour, plus
+            // Radar: per dot a position and a level for its color, plus
             // one level per quadrant so the wedge needs no arithmetic.
             for (int i = 0; i < RadarDots; i++)
             {
@@ -1690,7 +1714,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Forza.Live",     () => ForzaUdpSource?.DashExtras != null);
             // Is there a car on a track right now. The Drive boxes use it to
             // decide whether an absent value is a limit of the GAME or just
-            // this moment: "this game does not report tyre temperatures" is a
+            // this moment: "this game does not report tire temperatures" is a
             // claim about the title, and pausing is not evidence for it.
             // Frames are arriving, and where a source knows the difference
             // (Forza keeps sending while paused), it says we are on track.
@@ -1714,7 +1738,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Forza.LastLap",  () => ForzaUdpSource?.DashExtras?.LastLapSec ?? 0f);
             this.AttachDelegate("Dash.Forza.CurLap",   () => ForzaUdpSource?.DashExtras?.CurrentLapSec ?? 0f);
             this.AttachDelegate("Dash.Forza.Position", () => ForzaUdpSource?.DashExtras?.RacePosition ?? 0);
-            // Gear and speed off the live frame, so the Drive tab's centre
+            // Gear and speed off the live frame, so the Drive tab's center
             // works on whichever telemetry source is running rather than
             // only when SimHub is being fed. Empty gear and a zero speed
             // read as "no telemetry", which the dash falls back from.

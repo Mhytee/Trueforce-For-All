@@ -1530,7 +1530,7 @@
                              it only appears under Transient. -->
                         <StackPanel x:Name="SpikeTamingBody" Margin="0,4,0,0">
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                                       Text="Some games deliver kerb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
+                                       Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
                             <TextBlock Text="Method:" Style="{StaticResource LabelText}" Margin="0,2,0,4"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                 <RadioButton x:Name="SpikeModeTransientRadio" GroupName="SpikeMode"
@@ -1765,7 +1765,7 @@
                 <Expander x:Name="BumpsExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="SlipEnabledCheck" Content="Road bumps &amp; kerbs"
+                            <CheckBox x:Name="SlipEnabledCheck" Content="Road bumps &amp; curbs"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
                                       Checked="SlipEnabled_Changed" Unchecked="SlipEnabled_Changed"/>
                             <Border x:Name="BumpsNewBadge" Style="{StaticResource NewEffectBadge}">
@@ -1860,7 +1860,7 @@
                                 </Grid>
                                 <Grid Margin="0,0,0,0">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Kerb pulse:" Style="{StaticResource LabelText}"
+                                    <TextBlock Grid.Column="0" Text="Curb pulse:" Style="{StaticResource LabelText}"
                                                ToolTip="Extra amplitude added on the rising edge of any wheel touching a rumble strip. 0 = disabled."/>
                                     <Slider     Grid.Column="1" x:Name="BumpsRumbleStripPulseSlider" Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
                                                 TickFrequency="0.25" ValueChanged="BumpsRumbleStripPulseSlider_ValueChanged" VerticalAlignment="Center"/>
@@ -2038,7 +2038,7 @@
                 <Expander x:Name="KerbThumpExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="KerbThumpEnabledCheck" Content="Kerb thump"
+                            <CheckBox x:Name="KerbThumpEnabledCheck" Content="Curb thump"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
                                       Checked="KerbThumpEnabled_Changed" Unchecked="KerbThumpEnabled_Changed"/>
                             <Border x:Name="KerbThumpNewBadge" Style="{StaticResource NewEffectBadge}">
@@ -2052,7 +2052,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A single firm whack the instant a wheel first touches a kerb, distinct from the rumble that follows. Scales with speed. Needs kerb telemetry (Forza games today)."/>
+                                   Text="A single firm whack the instant a wheel first touches a curb, distinct from the rumble that follows. Scales with speed. Needs curb telemetry (Forza games today)."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2490,7 +2490,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A thud on impact that hits harder the bigger the crash. Sources: PC2 reads its native impact magnitude directly; other sources derive from sudden lateral/vertical accel spikes above ~5g (well above hard cornering or kerbs)."/>
+                                   Text="A thud on impact that hits harder the bigger the crash. Sources: PC2 reads its native impact magnitude directly; other sources derive from sudden lateral/vertical accel spikes above ~5g (well above hard cornering or curbs)."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2876,13 +2876,13 @@
 
             <!-- Wheel-base Dynamic OLED (HID++ feature 0x8130). Shares the rev
                  lights' HID++ pipe, so it shares their Mode B + tap-proven-quiet
-                 gate and sits with them here. Default off: experimental.
+                 gate and sits with them here.
                  Collapsed by default: it grew into the largest block on this
                  tab, and it is an optional extra rather than part of tuning the
                  force, so it should not be the first thing you scroll past. -->
             <Expander x:Name="OledSection" IsExpanded="False" Margin="0,4,0,4">
                 <Expander.Header>
-                    <TextBlock Text="Wheel screen (experimental)" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="Wheel OLED screen" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
             <CheckBox x:Name="ModeBOledCheck" Content="Show telemetry on the wheel's screen"
@@ -2892,7 +2892,7 @@
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
                        Text="The screen speaks up on its own too. It names a preset when one loads, shows the new number when a bound button changes a gain, tells you the strength Auto strength settled on for the car you are in, and warns you there if the game is still sending its own force feedback. Each of those replaces the driving screen for a moment and then gives it back."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="This one is new and only lightly tested. The wheel's screen was worked out from captures rather than documented by Logitech. It rides the same channel as the rev lights, so it needs Telemetry Based FFB for the same reason."/>
+                       Text="The wheel's screen was worked out from captures rather than documented by Logitech. It rides the same channel as the rev lights, so it needs Telemetry Based FFB for the same reason."/>
             <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
                 <TextBlock Text="Show:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                 <!-- Items are filled from OledScreenModel.ScreenOrder so the
@@ -2913,7 +2913,7 @@
                           VerticalAlignment="Center"
                           IsEnabled="{Binding IsChecked, ElementName=OledShiftFlashCheck}"
                           SelectionChanged="OledFlashStyle_Changed"
-                          ToolTip="The wheel cannot centre its biggest text, so the large gear sits to one side with the speed next to it. The centered one is a size smaller but sits in the middle with a label.">
+                          ToolTip="The wheel cannot center its biggest text, so the large gear sits to one side with the speed next to it. The centered one is a size smaller but sits in the middle with a label.">
                     <ComboBoxItem Content="Big gear, speed beside it"/>
                     <ComboBoxItem Content="Centered gear with a label"/>
                 </ComboBox>
@@ -3174,7 +3174,7 @@
             <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Steering weight tops out just before the grip limit and holds, like a real tire; the plateau is your approach warning."/>
             <CheckBox x:Name="ModeBRoadKickCheck" Margin="0,0,0,2" Content="Road kick (one-wheel bumps)"
                       Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="One front wheel hitting a bump or kerb kicks the rim the way a real rack does; both wheels together cancel."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="One front wheel hitting a bump or curb kicks the rim the way a real rack does; both wheels together cancel."/>
             <Grid Margin="20,0,0,8">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Road kick strength:" Style="{StaticResource LabelText}"/>
@@ -3463,7 +3463,7 @@
                         <TextBlock Text="Theme" VerticalAlignment="Center" Width="52"/>
                         <ComboBox x:Name="RemoteDashThemeCombo" Width="140"
                                   SelectionChanged="RemoteDashTheme_Changed"
-                                  ToolTip="Repaints the dashboard live. Themes change the structural colours only: the greens and reds that mean something keep their meaning."/>
+                                  ToolTip="Repaints the dashboard live. Themes change the structural colors only: the greens and reds that mean something keep their meaning."/>
                     </StackPanel>
 
                     <!-- Phone-access funnel: same handler as the header phone
@@ -3540,7 +3540,7 @@
                             <ComboBox   Grid.Row="3" Grid.Column="1" x:Name="RemoteDashDriveSlot3Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
                             </Grid>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tyre and fuel readouts come from the game, so what they show depends on what that game reports."/>
+                            Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tire and fuel readouts come from the game, so what they show depends on what that game reports."/>
 
                             <CheckBox x:Name="RemoteDashDrivePerGameCheck" Content="Remember box layout per game" Margin="0,14,0,0"
                             Checked="RemoteDashDrivePerGame_Changed" Unchecked="RemoteDashDrivePerGame_Changed"
@@ -3579,7 +3579,7 @@
                         <StackPanel Margin="0,8,0,4">
                             <CheckBox x:Name="RemoteDashFlagsCheck" Content="Show race flags on the dash" Margin="0,14,0,0"
                             Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
-                            ToolTip="A coloured band across the top of the dash whenever a flag is out."/>
+                            ToolTip="A colored band across the top of the dash whenever a flag is out."/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                             Text="Shows yellow, blue, black, white and chequered flags across whichever tab is open. Only games that report flags can drive it, which the Forza titles do not, so it simply never appears there."/>
 
@@ -3617,7 +3617,7 @@
                             <TextBlock Text="Number" VerticalAlignment="Center" Margin="24,0,0,0"/>
                             <TextBox x:Name="RemoteDashIdleNumberBox" Width="70" Margin="8,0,0,0" TextAlignment="Center"
                             LostFocus="RemoteDashIdleNumber_Commit" KeyDown="RemoteDashIdleNumber_KeyDown"/>
-                            <TextBlock Text="Colour" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            <TextBlock Text="Color" VerticalAlignment="Center" Margin="24,0,0,0"/>
                             <ComboBox x:Name="RemoteDashIdleColorCombo" Width="110" Margin="8,0,0,0"
                             SelectionChanged="RemoteDashIdleColor_Changed"/>
                             <TextBlock Text="Font" VerticalAlignment="Center" Margin="24,0,0,0"/>

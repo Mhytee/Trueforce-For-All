@@ -10,7 +10,7 @@ $OutDir = Join-Path $PSScriptRoot 'TF4ALL Dash'
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 # ---- theme ----
-# Colours are not baked. The dashboard binds its structural colours to
+# Colors are not baked. The dashboard binds its structural colors to
 # Dash.Theme.*, which the plugin serves from whichever palette is selected,
 # so picking a theme in Settings repaints every screen live with no reload.
 #
@@ -42,7 +42,7 @@ $CARD_EDGE = '#FF4E5668'
 #   New-Card  the outlined container
 #   SUBPANEL  a lightened area inside a card, barely there
 #   New-Btn   something you press, always solid
-# How far the card title sits BELOW the border it breaks. Centred exactly
+# How far the card title sits BELOW the border it breaks. Centered exactly
 # on the line made the tops of the cards read unevenly against each other;
 # dropping it a few pixels keeps the break while giving the title room to
 # breathe. One number, so it stays easy to re-tune by eye.
@@ -51,8 +51,8 @@ $SUBPANEL = '#FF0E0E10'
 $BTN      = '#FF1C1C20'
 $BTN_EDGE = '#FF3A4150'
 # Hairlines: ring outlines, rev sockets, tick marks. These live HERE with
-# the rest of the palette, not beside the scope colours further down: the
-# screens are built as the file runs, so a colour defined halfway through
+# the rest of the palette, not beside the scope colors further down: the
+# screens are built as the file runs, so a color defined halfway through
 # is null for everything above it. That shipped 72 items with an empty
 # BackgroundColor, which SimHub cannot parse, and the dashboard stopped
 # opening at all.
@@ -60,9 +60,9 @@ $LINE     = '#FF39404C'   # themed as Dim
 $REVBG    = '#FF15181E'   # themed as Sub
 
 # Every big container goes through here, so a new box cannot quietly opt
-# out of the theme. The border is always ONE pixel and only its COLOUR
+# out of the theme. The border is always ONE pixel and only its COLOR
 # changes: a palette that wants no outline sets it transparent, because
-# thickness is geometry and geometry does not switch as cleanly as colour.
+# thickness is geometry and geometry does not switch as cleanly as color.
 function New-Card([string]$name, $x, $y, $w, $h, [int]$radius = 10) {
     $r = New-Rect $name $x $y $w $h $script:PANEL $null $radius
     $r.BorderStyle.BorderColor = $script:CARD_EDGE
@@ -101,13 +101,13 @@ $YELLOW  = '#FFE8C547'   # spike-reduction badge lit state
 # Best lap. Violet is what every timing screen in the sport uses for a
 # fastest time, so it needs no legend, and it is the one highlight that
 # cannot be mistaken for the green/red of a delta sitting two rows above
-# it. A meaning colour like those two, so no theme repaints it.
+# it. A meaning color like those two, so no theme repaints it.
 $VIOLET  = '#FFB388FF'
-# Text is white or grey, never coloured, and these three match the tones
+# Text is white or grey, never colored, and these three match the tones
 # the plugin serves for Text/Muted/Dim. They used to be a blue-tinted white
 # and a blue-grey, which is subtle in isolation and obvious once a theme
 # put a warm or green outline next to it. They are also baked into ~120
-# computed colour expressions where no theme pass can reach them, so the
+# computed color expressions where no theme pass can reach them, so the
 # constants themselves have to be right.
 # Entry line of the on-screen keyboard. 40 characters is the longest name it
 # takes, and Consolas advances 0.55 of its size, so 30pt gives an 16.5px cell
@@ -124,12 +124,12 @@ $CLEAR   = '#00FFFFFF'
 
 # Tyre temperature ramp: blue, green, yellow, orange, red, interpolated
 # rather than stepped, because a tyre does not change state at a threshold
-# and the drift toward the next colour IS the reading. Breakpoints match
+# and the drift toward the next color IS the reading. Breakpoints match
 # the old stepped scale, so a tyre that read amber still does. The blue
 # lead-in keeps cold readable as cold: without it a tyre with no heat in
 # it shows the same green as one in its window. One table: the dash
 # formula and the preview renderer are both generated from it, so a
-# thumbnail can never show a colour the dash would not.
+# thumbnail can never show a color the dash would not.
 # Built with the unary comma per row: a bare @(@(..),@(..)) flattens in
 # PowerShell and the rows stop being rows.
 $TEMP_STOPS = @()
@@ -141,7 +141,7 @@ $TEMP_STOPS += , @(100, 232, 163,  61)   # orange
 $TEMP_STOPS += , @(115, 229,  72,  77)   # red
 $TEMP_STOPS += , @(140, 138,  14,  18)   # deep red, cooked
 
-# Emits the ramp up to "c holds the colour", so the block fill and the
+# Emits the ramp up to "c holds the color", so the block fill and the
 # label on top are computed from one piece of arithmetic.
 function TempRampJs([string]$emptyReturn) {
     $js = 'if(isNaN(v)||v<=0){' + $emptyReturn + '}var s=['
@@ -164,7 +164,7 @@ function TempColorJs([string]$tileColor) {
 
 # The ends of the ramp are dark enough to swallow dark text, so the label
 # picks its own contrast from the fill it is sitting on rather than being
-# a fixed colour that only works across the middle of the range.
+# a fixed color that only works across the middle of the range.
 function TempTextColorJs([string]$emptyColor) {
     (TempRampJs ('return "' + $emptyColor + '";')) +
     'var lum=(c[1]*299+c[2]*587+c[3]*114)/1000;' +
@@ -651,7 +651,7 @@ function DeltaColorJs {
 }
 
 # One labelled value line inside a box.
-# The two trailing sizes and the colour are for a box that has room to
+# The two trailing sizes and the color are for a box that has room to
 # spare and a row worth picking out; every caller that says nothing keeps
 # exactly what it had.
 function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [string]$vis, [int]$size = 20,
@@ -743,8 +743,8 @@ function Add-DashImage([string]$name, [byte[]]$png, [int]$w, [int]$h) {
     })
 }
 
-# A 90 degree wedge from the CENTRE of a square canvas, pointing in one of
-# the four directions. Square and centred on purpose: an item centred on
+# A 90 degree wedge from the CENTER of a square canvas, pointing in one of
+# the four directions. Square and centered on purpose: an item centered on
 # the radar covers it exactly, so no rotation is needed at all and the four
 # orientations are four images. Rotation would be one image, but whether
 # the viewer re-renders a BOUND rotation is unproven, and four tiny PNGs
@@ -756,14 +756,14 @@ function New-WedgePng([string]$hex, [int]$size, [double]$dirDeg) {
     $g.Clear([System.Drawing.Color]::Transparent)
     $col = [System.Drawing.ColorTranslator]::FromHtml($hex)
     # GDI angles run clockwise from 3 o'clock; ours run clockwise from 12,
-    # hence the -90. Half a quadrant either side of the centre line.
+    # hence the -90. Half a quadrant either side of the center line.
     $start = $dirDeg - 90 - 45
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
     $path.AddPie(0, 0, $size, $size, $start, 90)
     $br = New-Object System.Drawing.Drawing2D.PathGradientBrush($path)
     $br.CenterPoint = (New-Object System.Drawing.PointF(($size / 2.0), ($size / 2.0)))
     # Strongest at the middle, fading to the rim: a warning that grows
-    # toward you rather than a flat slab of colour.
+    # toward you rather than a flat slab of color.
     $br.CenterColor = [System.Drawing.Color]::FromArgb(150, $col.R, $col.G, $col.B)
     $br.SurroundColors = @([System.Drawing.Color]::FromArgb(18, $col.R, $col.G, $col.B))
     $g.FillPath($br, $path)
@@ -778,8 +778,8 @@ function New-WedgePng([string]$hex, [int]$size, [double]$dirDeg) {
 # images are drawn at generation time and bundled into the dashboard.
 Add-Type -AssemblyName System.Drawing
 
-# Proximity wedges: four directions, two warning colours. Front, right,
-# rear and left, each centred on its axis so a car dead ahead lights the
+# Proximity wedges: four directions, two warning colors. Front, right,
+# rear and left, each centered on its axis so a car dead ahead lights the
 # front rather than half of two corners.
 $WEDGE_PX = 256
 foreach ($wd in @(@('f', 0), @('r', 90), @('b', 180), @('l', 270))) {
@@ -788,7 +788,7 @@ foreach ($wd in @(@('f', 0), @('r', 90), @('b', 180), @('l', 270))) {
 }
 
 # A soft radial glow: one GradientItem carrying a WPF RadialGradientBrush,
-# opaque at the centre and fading to fully transparent at the rim. Stacked
+# opaque at the center and fading to fully transparent at the rim. Stacked
 # translucent discs approximate this, but each disc has an edge and the
 # steps show; a real gradient has none. The brush is serialised the way
 # SimHub stores it, an XML brush expressed as JSON attributes.
@@ -912,7 +912,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
 
     # One tap zone per BOX, on the title itself. The title moved onto the
     # card's top border, so a zone still sitting inside the card is a zone
-    # under the thing it belongs to. Fixed width and centred rather than
+    # under the thing it belongs to. Fixed width and centered rather than
     # measured, because the button is built before the title exists and its
     # width depends on the title's length; 220 covers every label we use
     # and still leaves a gap to the next card.
@@ -931,7 +931,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # says so without a second widget, and the tap zone is the title's own
     # half of the row so it cannot swallow a badge or a value on the right.
     function AddHead([string]$id, [string]$title, [string]$k) {
-        # Centred on the card's own top border, with a slice of background
+        # Centered on the card's own top border, with a slice of background
         # painted over the line behind it: the border appears to break for
         # the title rather than the title floating inside a frame.
         $lbl = $title + '  ' + [char]0x25BE
@@ -1054,9 +1054,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
 
     # ---------------- GAINS (ours) -----------------------------------
     # Shaped like the Home tab rather than a list of rows: a caption, the
-    # value large and centred with a tap zone hugging the digits, and a
+    # value large and centered with a tap zone hugging the digits, and a
     # wide minus / plus pair beneath. Both gains get that treatment, and
-    # the two toggles are full-width tiles that colour with their state,
+    # the two toggles are full-width tiles that color with their state,
     # exactly as the tab's PLUGIN and AUDIO HAPTICS tiles do.
     $vis = KeyVis 'Home' $null
     $hd = AddHead 'hm' 'GAINS' 'Home'
@@ -1071,7 +1071,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         TextColor = BindJS 'TextColor' ('return $prop("' + $P + '.WheelOk")?"' + $script:GREEN + '":"' + $script:RED + '"')
     } 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    # Both gains get the tab's treatment: caption, big centred value with
+    # Both gains get the tab's treatment: caption, big centered value with
     # the tap zone hugging the digits, wide minus / plus underneath.
     # Dropping the on/off tiles freed the room for the second one.
     # Parenthesised on purpose: PowerShell's comma binds tighter than +,
@@ -1173,15 +1173,15 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     }
 
     # ---------------- TYRE TEMPS (visual) ----------------------------
-    # Four tyre blocks coloured by temperature, so the box reads at a
+    # Four tyre blocks colored by temperature, so the box reads at a
     # glance instead of needing four numbers parsed. Bands are broad on
     # purpose: games disagree on what they report (core vs surface, C vs
     # F), so this is a relative cue with the number kept for detail.
     $vis = KeyVis 'TyreTemps' $dTemp
     $bandOrder = @(@('Outer', 'Middle', 'Inner'), @('Inner', 'Middle', 'Outer'))
-    # A tyre does not change state at a threshold, so the colour does not
+    # A tyre does not change state at a threshold, so the color does not
     # step at one either: it is interpolated between four stops, and the
-    # drift toward the next colour IS the reading. Stops keep the old
+    # drift toward the next color IS the reading. Stops keep the old
     # breakpoints so a tyre that read amber still does. Games disagree on
     # units and on core vs surface, so this stays a relative cue.
     $tempScale = TempColorJs $script:TILE
@@ -1212,7 +1212,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $tyW = 54; $tyH = [math]::Min(74, ($h - 70) / 2); $gapX = 26
     $cx0 = $ix + ($iw - ($tyW * 2 + $gapX)) / 2
     # The blocks are capped at 74 tall, so in the taller one-row box the
-    # grid does not grow; centre it in the space below the header instead
+    # grid does not grow; center it in the space below the header instead
     # of leaving it pinned to the top.
     $cy0 = ($iy + 30 + $y + $h - 12) / 2 - ($tyH + 5)
     $fzTemp = @('TempFL', 'TempFR', 'TempRL', 'TempRR')
@@ -1274,7 +1274,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add((AddNote 'tt' 'This game does not report tire temperatures.' 'TyreTemps' $dTemp))
 
     # ---------------- TYRE WEAR (visual) -----------------------------
-    # Same blocks; here the colour is how much tread is left.
+    # Same blocks; here the color is how much tread is left.
     $vis = KeyVis 'TyreWear' $dWear
     $hd = AddHead 'tw' 'TIRE WEAR' 'TyreWear'
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
@@ -1284,7 +1284,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $cx = $cx0 + ($q % 2) * ($tyW + $gapX)
         $cy = $cy0 + [math]::Floor($q / 2) * ($tyH + 10)
         # Forza reports wear 0 = fresh, so invert it into tread-left to
-        # match how SimHub reports it and how the colours below read.
+        # match how SimHub reports it and how the colors below read.
         $vJs = 'var v=NaN;if($prop("' + $P + '.Forza.HasWear")){var fw=1*$prop("' + $P + '.Forza.' + $fzWear[$q] + '");if(fw>=0)v=100-fw*100;}' +
                'if(isNaN(v))v=1*$prop("' + $SIM + $wearProps[$q] + '");'
         $colJs = $vJs + 'if(isNaN(v))return "' + $script:TILE + '";' +
@@ -1381,7 +1381,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         @('best', 'Best',      (FmtLapDualJs ($P + '.Forza.BestLap') ($SIM + 'BestLapTime')), 23, $script:VIOLET)
     )
     # The best lap gets a chip behind it as well as the violet, because on
-    # the dimmer themes colour alone is doing all the work. Added before the
+    # the dimmer themes color alone is doing all the work. Added before the
     # rows so it sits under them, and inset past the text on both sides so it
     # reads as a band on the row rather than a button someone could tap.
     $r = ThemePaint (New-Rect "d$slot-dl-hl" ($ix - 6) ($dlY0 + ($dlRows.Count - 1) * $dlGap) ($iw + 12) 30 $script:SUBPANEL $null 6) 'Sub'
@@ -1404,10 +1404,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $items.Add($hd)
     $gr  = [math]::Min(($iw - 24) / 2, ($h - 66) / 2)
     $gcx = $ix + $iw / 2
-    # Centre in the area below the header rather than hanging off the top
+    # Center in the area below the header rather than hanging off the top
     # of it. In the tall one-row box the radius is capped by WIDTH, so the
     # circle cannot grow into the extra height and would otherwise sit
-    # well above centre. The dots position off these constants, so this
+    # well above center. The dots position off these constants, so this
     # has to be right here: a post-hoc shift would move the rings and
     # leave the bound dots behind.
     $gcy = ($iy + 30 + $y + $h - 12) / 2
@@ -1491,7 +1491,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         @('DriverBehind_00', $script:WHITE), @('DriverBehind_01', $script:MUTED)
     )
     # Capped, so the one-row layout does not stretch five rows into bands;
-    # whatever is left over becomes padding and the block sits centred.
+    # whatever is left over becomes padding and the block sits centered.
     $relTop0 = $iy + 26
     $relBot  = $y + $h - 12
     $relRowH = [math]::Min(38, ($relBot - $relTop0) / $relRows.Count)
@@ -1535,7 +1535,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
 
     # ---------------- RADAR ------------------------------------------
     # Our own dots rather than SimHub's radar item, for two reasons it
-    # cannot do: every opponent gets the same colour there, and its scale
+    # cannot do: every opponent gets the same color there, and its scale
     # is an undocumented multiplier, so a ring could not mean a distance.
     # Here one scale is shared by the dots, the rings and the warning.
     #   rim 40 m, mid ring 20 m, inner ring 8 m
@@ -1575,7 +1575,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         }
     }
 
-    # Rings ARE the thresholds the colours change on.
+    # Rings ARE the thresholds the colors change on.
     $items.Add((New-Ring "d$slot-rd-r1" $rdCx $rdCy $rdR $script:LINE 1 $vis))
     $items.Add((New-Ring "d$slot-rd-r2" $rdCx $rdCy ($rdR * 20 / 40) '#FF3A3A2A' 1 $vis))
     $items.Add((New-Ring "d$slot-rd-r3" $rdCx $rdCy ($rdR * 8 / 40) '#FF4A2226' 1 $vis))
@@ -1587,7 +1587,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $dyJs = '(1*$prop("' + $P + '.Radar.D' + $i + 'Y"))'
         $dlJs = 'var l=1*$prop("' + $P + '.Radar.D' + $i + 'L");'
         # Identical to the player marker: same car, same size, one scale.
-        # Only the colour separates them.
+        # Only the color separates them.
         $dot = New-Rect "d$slot-rd-d$i" ($rdCx - 4) ($rdCy - 7) 8 14 $script:WHITE @{
             BackgroundColor = BindJS 'BackgroundColor' ($dlJs +
                 'return l>2?"' + $script:RED + '":(l>1?"#FFE8C547":"' + $script:WHITE + '")')
@@ -1641,7 +1641,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $r = New-Rect "d$slot-dm-body" $cl $ct $cw $ch $script:SUBPANEL $null 22
     $r.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($r)
 
-    # 1 front, 2 rear, 3 left, 4 right, 5 centre: SimHub's order, laid out
+    # 1 front, 2 rear, 3 left, 4 right, 5 center: SimHub's order, laid out
     # where those panels actually are.
     foreach ($dm in @(
         @('f',  1, 10,             4,             ($cw - 20), 34, 14),
@@ -1719,8 +1719,8 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $t.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($t)
     }
-    # Steering: centre-origin bar. Hidden entirely when the source has no
-    # steering to report, rather than sitting convincingly at centre.
+    # Steering: center-origin bar. Hidden entirely when the source has no
+    # steering to report, rather than sitting convincingly at center.
     $steerJs = 'var s=1*$prop("' + $P + '.Steer");'
     $steerHas = 'return (' + ($isKeyBase = $sel + '=="Inputs"' + $rowCond) + ') && (1*$prop("' + $P + '.Steer"))>-1.5'
     $stY = $barY + $barH + 26
@@ -1749,7 +1749,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
     $items.Add($hd)
     # CLIP and SPIKE badges, same contract as the full screen: grey at
-    # rest, with a coloured layer and light text crossfading in on the
+    # rest, with a colored layer and light text crossfading in on the
     # plugin-computed glow (1 at the event, decaying to 0).
     $badges = @(
         @('clip',  'CLIP',  $script:RED,    'Scope.FfbClipGlow', $script:WHITE),
@@ -1796,9 +1796,9 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Clip threshold rails, dotted like the full screen: the force line
     # reaching them IS the clip, which is what the badge then reports.
     # 0.98 of the lane is where the trace clips, but a 2px dash drawn
-    # centred on that line half-hangs out of the panel. Pull it in by the
+    # centered on that line half-hangs out of the panel. Pull it in by the
     # dash height so the rails stay inside the lightened area.
-    # Centre each dash ON its line (hence the -1 for the 2px height),
+    # Center each dash ON its line (hence the -1 for the 2px height),
     # otherwise both are drawn downward from it and the bottom one eats
     # its own gap while the top one keeps a full one.
     $railOff = [math]::Min(($scLane / 2) * 0.98, ($scLane / 2) - 5)
@@ -1836,7 +1836,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $col.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($col)
     }
-    # Colour key, bottom left, the same pairing the full screen uses. It
+    # Color key, bottom left, the same pairing the full screen uses. It
     # sits over the quiet end of the envelope lane rather than taking a
     # row of its own, so it costs no height in a box this size.
     $lgY = $y + $h - 18
@@ -1852,10 +1852,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # In the taller one-row layout a text stack would otherwise sit at the
     # top of a half-empty card, which reads as misaligned beside the boxes
     # that do fill their space. Nudge the text groups down so each card is
-    # vertically centred. Visual content (tyres, both circles, radar, the
+    # vertically centered. Visual content (tyres, both circles, radar, the
     # visualizer lanes) already sizes itself from the box height and is
     # deliberately left alone, as is the panel.
-    # Measure each text group's real bounding box and centre THAT in the
+    # Measure each text group's real bounding box and center THAT in the
     # panel, rather than assuming a nominal content height: the groups
     # differ (car facts is three rows, relative is five), so a fixed
     # offset leaves some of them sitting visibly high.
@@ -1980,7 +1980,7 @@ function TabBar([string]$P) {
 }
 
 # Race flags (Dash.FlagsOn, off by default). A band across the top of
-# whichever screen is showing, coloured like the flag being waved, so a
+# whichever screen is showing, colored like the flag being waved, so a
 # glance at a wheel-mounted phone tells you what the marshals are doing.
 # Reads SimHub's own flag properties, so it lights up in the games that
 # report flags and stays silent in the ones that do not (Forza reports
@@ -2139,7 +2139,7 @@ function IdleCard([string]$P) {
                 # because lookup walks the call stack. New-Rect then wrote a
                 # boolean into BorderColor, SimHub could not convert True to a
                 # Color, and the whole dashboard failed to load: the phone
-                # reported it as not existing. 623 colours were poisoned by
+                # reported it as not existing. 623 colors were poisoned by
                 # this one name. The guard before the write catches a repeat.
                 $runIsClear = $true
                 if ($sep -gt 0) {
@@ -2178,7 +2178,7 @@ function IdleCard([string]$P) {
         $efm = $ei % 6                          # fractal mark
         $efl = [int][math]::Floor($ei / 6)      # fractal level, 0..6
 
-        # Contours: rings about a drifting centre, dealt round robin between
+        # Contours: rings about a drifting center, dealt round robin between
         # three of them. Nothing computes a contour; the crossings are the
         # picture. These ARE oval on purpose, so the ground has an angle.
         $tM = $ctrM[$eci]; $tN = $ctrN[$eci]; $tP = $ctrP[$eci]
@@ -2226,7 +2226,7 @@ function IdleCard([string]$P) {
         $frP = [math]::Round($efl / 7.0, 4)
         $frPre = 'var q=(T+' + $frP + ')%1;var sc=Math.pow(1.7,7*q);'
 
-        # Pulse: rings leaving a wandering centre, fading as they go. Only
+        # Pulse: rings leaving a wandering center, fading as they go. Only
         # every third mark takes part and they stop short of the corners:
         # this is the pattern that took the viewer down when all forty eight
         # were drawn at nearly the full width of the card.
@@ -2445,9 +2445,9 @@ function FlagBar([string]$P) {
            '||$prop("' + $F + 'White")||$prop("' + $F + 'Checkered")' +
            '||$prop("' + $F + 'Orange")||$prop("' + $F + 'Green"))'
     $vis = 'return ' + $any
-    # Colour follows the flag, checkered reads as white.
+    # Color follows the flag, checkered reads as white.
     # The meatball is a BLACK flag with an orange disc, so it takes the
-    # black band and earns its discs below rather than a colour of its own.
+    # black band and earns its discs below rather than a color of its own.
     $colJs = 'if($prop("' + $F + 'Yellow"))return "#F2E8C33D";' +
              'if($prop("' + $F + 'Blue"))return "#F23D7FE8";' +
              'if($prop("' + $F + 'Black")||$prop("' + $F + 'Orange"))return "#F21A1A1A";' +
@@ -2612,7 +2612,7 @@ function DriveBoxOverlay([string]$P) {
         $btn = OnOverlay (New-Button "db-t$i" $cx $cy $tw $th "DashDriveBoxPick$i") 'drivebox'
         if ($sup) {
             # Themed on both sides rather than switched between two literals:
-            # a bound colour is one the theme pass leaves alone, so a hard
+            # a bound color is one the theme pass leaves alone, so a hard
             # -coded grey here would be the one tile label no palette could
             # repaint. Tile and label dim together; the label alone read as
             # a rendering glitch rather than a disabled control.
@@ -3024,8 +3024,8 @@ ToastBar $P | ForEach-Object { $s4.Add($_) }
 # 32 ms ring (purple). Palette mirrors the FFB-architecture doc (base
 # amber / tf purple).
 # =====================================================================
-$SCOPE_AMBER  = '#FFE3A445'   # NOT themed: this colour is the legend
-$SCOPE_PURPLE = '#FFA08CFF'   # NOT themed: this colour is the legend
+$SCOPE_AMBER  = '#FFE3A445'   # NOT themed: this color is the legend
+$SCOPE_PURPLE = '#FFA08CFF'   # NOT themed: this color is the legend
 $SCOPE_GRID   = '#FF262F3A'   # themed as Sub
 $s5 = [System.Collections.Generic.List[object]]::new()
 $s5.Add((New-Text 'sc-title' 16 18 300 34 22 'VISUALIZER' $WHITE 0 $null 'Bold'))
@@ -3249,7 +3249,7 @@ $s7.Add($gear)
 # Revs above the gear, in the band between the rev strip and the digits.
 # Positioned per band: the strip drops to 16 when it is narrowed to this
 # column, and the gear sits lower in the one-row layout, so all four
-# combinations get their own resting place. Sits 6px below the centre of
+# combinations get their own resting place. Sits 6px below the center of
 # its band rather than on it, which reads as belonging to the gear
 # instead of floating between it and the strip.
 $rpmTop = 'return ' + $twoRows + '?(' + $revCen + '?34:26):(' + $revCen + '?71:63)'
@@ -3268,7 +3268,7 @@ $s7.Add($rpm)
 #
 # Follows the revs down through all four band positions rather than picking
 # its own, one line below them, and the gear column has the room for it: the
-# digits are centred in a 210px box, so their glyphs do not begin until well
+# digits are centered in a 210px box, so their glyphs do not begin until well
 # below this line in either layout.
 #
 # No text at all when there is nothing to compare against, which is most of
@@ -3348,7 +3348,7 @@ foreach ($pd in @(
     $s7.Add($fl)
 }
 # Steering sits on the bottom edge, level with the foot of the boxes, so
-# it reads as the base of the gear column in either layout. Centre-origin,
+# it reads as the base of the gear column in either layout. Center-origin,
 # hidden when the source reports no steering rather than sitting
 # convincingly straight.
 $steerVis = 'return ' + $pedOn + ' && (1*$prop("' + $P + '.Steer"))>-1.5'
@@ -3428,35 +3428,35 @@ function Hide-ButtonsUnderOverlay($items) {
     $items
 }
 
-# Themes every static palette colour on a finished screen, in one pass.
+# Themes every static palette color on a finished screen, in one pass.
 #
-# Doing this at each call site meant most of them were missed: colours
+# Doing this at each call site meant most of them were missed: colors
 # were bound in a handful of places and hardcoded in hundreds, which is
 # why early themes only appeared to change the background. A pass over the
 # built items cannot miss one, and a new box is themed the day it is
 # added without anyone remembering to do it.
 #
-# An item that already binds a colour is left alone. Those are the ones
+# An item that already binds a color is left alone. Those are the ones
 # that MEAN something (a tyre at temperature, a delta against the best, a
 # flag), and a theme must not be able to repaint meaning.
-# Built imperatively rather than as a literal: the keys are COLOUR VALUES,
+# Built imperatively rather than as a literal: the keys are COLOR VALUES,
 # and a hashtable literal throws on a duplicate key. Two palette entries
-# sharing a colour is normal in a themed set (Ember's card edge and button
+# sharing a color is normal in a themed set (Ember's card edge and button
 # edge are the same orange), so first-wins is the rule and the order below
 # is the priority. As a literal this exploded the moment a palette reused
-# a colour, which is a trap waiting for whoever adds the next theme.
+# a color, which is a trap waiting for whoever adds the next theme.
 $THEME_MAP = @{}
-function Map-Theme([string]$prop, [string]$colour, [string]$key) {
-    if ([string]::IsNullOrEmpty($colour)) { return }
+function Map-Theme([string]$prop, [string]$color, [string]$key) {
+    if ([string]::IsNullOrEmpty($color)) { return }
     if (-not $script:THEME_MAP.ContainsKey($prop)) { $script:THEME_MAP[$prop] = @{} }
-    if (-not $script:THEME_MAP[$prop].ContainsKey($colour)) { $script:THEME_MAP[$prop][$colour] = $key }
+    if (-not $script:THEME_MAP[$prop].ContainsKey($color)) { $script:THEME_MAP[$prop][$color] = $key }
 }
 Map-Theme 'BackgroundColor' $SCOPE_GRID   'Sub'
 Map-Theme 'BackgroundColor' $REVBG        'Sub'
 # NOT $PANEL, and NOT $BG. $PANEL is transparent in the outlined look, so
 # it is the same value as $CLEAR, and keying on it matched every text item,
 # button, ellipse and image that simply has no background: 1533 of them,
-# every one of which would have painted the card colour in any theme where
+# every one of which would have painted the card color in any theme where
 # a card is filled. New-Card and the screen backdrop bind themselves, so
 # neither ever needed to be in this map.
 Map-Theme 'BackgroundColor' $SUBPANEL     'Sub'
@@ -3497,7 +3497,7 @@ function Apply-Theme($items) {
         # Done here rather than at the call sites for the usual reason: there
         # are about 150 of them across seven screens and any one that got
         # missed would be invisible until someone happened to compare two
-        # tabs. Setting the static colour is enough, because the pass below
+        # tabs. Setting the static color is enough, because the pass below
         # is what turns it into a binding.
         if ($it.Contains('BackgroundColor') -and $it.BorderStyle -and
             [int]$it.BorderStyle.BorderTop -eq 0 -and
@@ -3511,7 +3511,7 @@ function Apply-Theme($items) {
             }
         }
 
-        # The outline is a special case in BOTH directions: the colour the
+        # The outline is a special case in BOTH directions: the color the
         # viewer draws comes from BorderStyle, not from the item's own
         # BorderColor, and so does the binding it reads. The old pass got
         # both wrong, so it compared against a value nothing renders and
@@ -3523,7 +3523,7 @@ function Apply-Theme($items) {
         if ($key) {
             $it.BorderStyle.Bindings['BorderColor'] = ThemeBind 'BorderColor' $key
             # Keep the legacy top-level copy agreeing with it, so the two
-            # never disagree about what colour the box is meant to be.
+            # never disagree about what color the box is meant to be.
             if ($it.Contains('BorderColor')) { $it.BorderColor = $it.BorderStyle.BorderColor }
         }
     }
@@ -3592,19 +3592,19 @@ $doc = [ordered]@{
 # its static value, which looks like a dead control rather than a broken
 # formula (the Inputs pedal bars sat at zero for a release this way).
 # Unbalanced quotes or brackets catch that class of mistake here instead.
-# An empty colour is a constant that was read before it was assigned.
+# An empty color is a constant that was read before it was assigned.
 # SimHub rejects the whole dashboard for one of them, with an error that
 # names a screen index and nothing else, so catch it here where the item
 # name is still known.
 #
-# Checked by SHAPE, not just for emptiness. A colour here has been an empty
+# Checked by SHAPE, not just for emptiness. A color here has been an empty
 # string (a constant read before it was assigned) and a boolean (a local
 # named $clear shadowing the palette's $CLEAR, because names are case
 # insensitive and lookup walks the call stack). Both sail through every
 # other check and both make SimHub reject the entire dashboard, which
 # reaches the user as the dash no longer existing.
 $badcol = @()
-$colourRx = '^#[0-9A-Fa-f]{8}$'
+$colorrx = '^#[0-9A-Fa-f]{8}$'
 foreach ($scr in $doc.Screens) {
     foreach ($it in $scr.Items) {
         $checks = @()
@@ -3618,13 +3618,13 @@ foreach ($scr in $doc.Screens) {
             $v = $c[1]
             if ($null -eq $v) { continue }
             if ($v -isnot [string]) { $badcol += "$($it.Name).$($c[0]) = $v [$($v.GetType().Name)]"; continue }
-            if ($v -notmatch $colourRx) { $badcol += "$($it.Name).$($c[0]) = '$v'" }
+            if ($v -notmatch $colorrx) { $badcol += "$($it.Name).$($c[0]) = '$v'" }
         }
     }
 }
 if ($badcol.Count) {
-    $badcol | Select-Object -First 10 | ForEach-Object { Write-Host "NOT A COLOUR  $_" -ForegroundColor Red }
-    throw "$($badcol.Count) value(s) are not #AARRGGBB colours; dashboard NOT written."
+    $badcol | Select-Object -First 10 | ForEach-Object { Write-Host "NOT A COLOR  $_" -ForegroundColor Red }
+    throw "$($badcol.Count) value(s) are not #AARRGGBB colors; dashboard NOT written."
 }
 
 # A BorderColor binding on the ITEM is accepted by the viewer, saved, and
@@ -3646,11 +3646,11 @@ if ($misplaced.Count) {
     throw "$($misplaced.Count) item(s) bind BorderColor where it is never read; dashboard NOT written."
 }
 
-# Text is white or grey. The only colours allowed on it are the ones that
+# Text is white or grey. The only colors allowed on it are the ones that
 # MEAN something, and they are listed here by hand so that adding another
 # is a decision rather than an accident.
 #
-# This is checked rather than trusted because a text colour can arrive from
+# This is checked rather than trusted because a text color can arrive from
 # three places: the item, the theme, or a literal baked into a computed
 # expression. The last kind is invisible to the theme pass, and ~120 of
 # them sat there holding a blue-grey through every palette.
@@ -3686,7 +3686,7 @@ foreach ($scr in $doc.Screens) {
 }
 if ($tinted.Count) {
     $tinted | Select-Object -First 10 | ForEach-Object { Write-Host "TINTED TEXT  $_" -ForegroundColor Red }
-    throw "$($tinted.Count) text colour(s) are neither grey nor meaningful; dashboard NOT written."
+    throw "$($tinted.Count) text color(s) are neither grey nor meaningful; dashboard NOT written."
 }
 
 # An animated expression that declares "var T=" must get it from telemetry.
@@ -3762,7 +3762,7 @@ if ($bad.Count) {
     throw "$($bad.Count) malformed binding expression(s); dashboard NOT written."
 }
 
-# ---- colour guard ----
+# ---- color guard ----
 # Every slot whose name carries "Color" must hold a NON-EMPTY STRING, or a
 # binding object that computes one. Anything else is a build bug, and the
 # whole class of them lands the same way: SimHub's loader cannot convert the
@@ -3771,39 +3771,39 @@ if ($bad.Count) {
 # file gets written and looks fine, so nothing shows up until someone opens
 # the dash on a phone.
 #
-# This has now bitten three times, each from a different direction: a colour
+# This has now bitten three times, each from a different direction: a color
 # read before it was defined (null), a theming pass keying on transparent
-# (wrong colour everywhere), and a local $clear shadowing the palette's
+# (wrong color everywhere), and a local $clear shadowing the palette's
 # $CLEAR (boolean). Checking the OUTPUT catches all three and whatever the
 # fourth turns out to be, which reading the code carefully has not.
 $badColour = New-Object System.Collections.ArrayList
-function Test-Colours($node, [string]$path) {
+function Test-Colors($node, [string]$path) {
     if ($node -is [System.Collections.IDictionary]) {
         foreach ($k in @($node.Keys)) {
             $v = $node[$k]
             $p = if ($path) { "$path.$k" } else { [string]$k }
             if ([string]$k -like '*Color*') {
-                # A binding object is fine: it computes the colour at runtime.
-                if ($v -is [System.Collections.IDictionary]) { Test-Colours $v $p }
+                # A binding object is fine: it computes the color at runtime.
+                if ($v -is [System.Collections.IDictionary]) { Test-Colors $v $p }
                 elseif ($v -is [string] -and $v.Length -gt 0) { }
                 else {
                     $tn = if ($null -eq $v) { 'null' } else { $v.GetType().Name }
                     [void]$script:badColour.Add("$p = '$v' [$tn]")
                 }
             }
-            else { Test-Colours $v $p }
+            else { Test-Colors $v $p }
         }
     }
     elseif ($node -is [System.Collections.IEnumerable] -and $node -isnot [string]) {
         $i = 0
-        foreach ($e in $node) { Test-Colours $e ("$path[$i]"); $i++ }
+        foreach ($e in $node) { Test-Colors $e ("$path[$i]"); $i++ }
     }
 }
-Test-Colours $doc ''
+Test-Colors $doc ''
 if ($badColour.Count) {
-    $badColour | Select-Object -First 12 | ForEach-Object { Write-Host "BAD COLOUR  $_" -ForegroundColor Red }
+    $badColour | Select-Object -First 12 | ForEach-Object { Write-Host "BAD COLOR  $_" -ForegroundColor Red }
     if ($badColour.Count -gt 12) { Write-Host "  ... and $($badColour.Count - 12) more" -ForegroundColor Red }
-    throw ("$($badColour.Count) colour slot(s) do not hold a colour string; dashboard NOT written. " +
+    throw ("$($badColour.Count) color slot(s) do not hold a color string; dashboard NOT written. " +
            "A Boolean here almost always means a local variable name collided with a palette name: " +
            "PowerShell variable names are CASE INSENSITIVE, so `$clear shadows `$CLEAR.")
 }
@@ -3931,8 +3931,8 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
             }
         }
         elseif ($type -like '*GradientItem*') {
-            # PathGradientBrush is GDI's radial: centre colour out to the
-            # surround colour at the ellipse edge, which is what the WPF
+            # PathGradientBrush is GDI's radial: center color out to the
+            # surround color at the ellipse edge, which is what the WPF
             # RadialGradientBrush does in the viewer.
             $stops = $it.Color.RadialGradientBrush.'RadialGradientBrush.GradientStops'.GradientStop
             if ($stops) {
@@ -4041,7 +4041,7 @@ function Render-Preview($items, [hashtable]$ov, [string]$outPath) {
 function PreviewChrome([double]$pct, [int]$activeSlot) {
     $o = @{}
     # Outside-in, matching the shipped DashRevStripOutsideIn default: the
-    # thresholds and colours are the same pair-index scheme RevStrip binds,
+    # thresholds and colors are the same pair-index scheme RevStrip binds,
     # so the thumbnail shows the strip a new user actually gets.
     for ($i = 0; $i -lt 16; $i++) {
         $pair = [math]::Min($i, 15 - $i)
@@ -4221,7 +4221,7 @@ $ovDriveTab['d3-gc-h']   = @{ Show = $true }
 $ovDriveTab['d3-gc-r1']  = @{ Show = $true }
 $ovDriveTab['d3-gc-r2']  = @{ Show = $true }
 # Mid corner: loaded left and braking, so the dot sits up and right of
-# centre under the felt-force convention the live dot uses.
+# center under the felt-force convention the live dot uses.
 $ovDriveTab['d3-gc-dot'] = @{ Show = $true; Left = 690; Top = 300 }
 $ovDriveTab['d3-gc-v']   = @{ Show = $true; Text = '0.82 g' }
 # Pedals and steering around the gear, on by default: throttle carrying

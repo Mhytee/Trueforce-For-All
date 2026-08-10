@@ -60,6 +60,15 @@ namespace TrueforceForAll.Core
         /// <summary>Throttle pedal, normalized 0..1.</summary>
         public double Throttle01;
 
+        /// <summary>Brake, clutch and handbrake, 0..1, null when the source
+        /// does not report them. Nullable rather than defaulting to 0 so a
+        /// consumer can tell "not pressed" from "this game never says", which
+        /// matters for a display: a brake meter pinned at empty all session is
+        /// worse than one that is honestly absent. Populated by the sources
+        /// that have them (SimHub, Forza's dash packet); AC's shared memory
+        /// reader does not currently read them.</summary>
+        public double? Brake01, Clutch01, Handbrake01;
+
         // ---- Motion ----
         public double SpeedKmh;
         /// <summary>Vertical acceleration in m/s². Null when source doesn't surface it.</summary>

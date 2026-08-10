@@ -1,4 +1,4 @@
-// Drives the Logitech G PRO (and RS50, and G923 Xbox) wheel rim's rev/shift
+﻿// Drives the Logitech G PRO (and RS50, and G923 Xbox) wheel rim's rev/shift
 // LEDs over HID++. The G923 Xbox uses the SAME 0x807A feature and level pair;
 // it just exposes no 7-byte SHORT collection, so its SHORT-form commands ride
 // the 20-byte LONG collection padded to 20B with report id 0x11 (see the
@@ -18,7 +18,7 @@
 //     then LONG fn6 `11 ff IDX 6d 00 01 00 0a 00 LL 00..` where byte 9
 //     (LL) = rev level 0..10 = how many LEDs light. G HUB resends this
 //     pair continuously even when LL is unchanged; the wheel's onboard
-//     profile owns the colours / direction / scaling, so there is NO RGB
+//     profile owns the colors / direction / scaling, so there is NO RGB
 //     or per-LED control here, only the 0..10 level.
 //
 // Transport detail (Windows): the HID++ interface is split into three HID
@@ -439,7 +439,7 @@ namespace TrueforceForAll.Core
         }
 
         /// <summary>Map a 0..1 rev fill (or redline) to the 0..10 level. The
-        /// wheel's onboard profile owns colours / direction; we only choose
+        /// wheel's onboard profile owns colors / direction; we only choose
         /// how many LEDs.</summary>
         public void ApplyRevBar(double pct, bool redline)
         {

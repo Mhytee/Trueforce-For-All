@@ -1,4 +1,4 @@
-// The periodic "support us" modal, shown on the plugin page to people who have
+﻿// The periodic "support us" modal, shown on the plugin page to people who have
 // never backed the project. Paced by TrueforcePlugin.ShouldShowSupportPrompt off
 // banked seat time, so it only ever reaches someone the plugin has worked for.
 //
@@ -25,15 +25,15 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush MutedFg  = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A));
         private static readonly Brush HeaderFg = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A));
         private static readonly Brush AccentFg = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A));
-        // Text colour for the gold support button (dark, for contrast on gold).
+        // Text color for the gold support button (dark, for contrast on gold).
         private static readonly Brush ButtonDarkFg = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-        // Hairline rule under the centred header (same tone as other modal borders).
+        // Hairline rule under the centered header (same tone as other modal borders).
         private static readonly Brush DividerBg = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
 
         // Hover / pressed shades for the gold button. The stock WPF button template
         // swaps in its own themed brush on mouse-over, so Background alone loses to
         // it and the gold turns gray under the cursor. Owning the template keeps the
-        // colour and lets hover lighten rather than repaint.
+        // color and lets hover lighten rather than repaint.
         private static readonly Brush AccentHover   = new SolidColorBrush(Color.FromRgb(0xF2, 0xD1, 0x63));
         private static readonly Brush AccentPressed = new SolidColorBrush(Color.FromRgb(0xC9, 0xA5, 0x36));
 
@@ -114,7 +114,7 @@ namespace TrueforceForAll.Plugin
                 TextWrapping = TextWrapping.Wrap,
             });
 
-            // Divider: closes the centred header block off from the left-aligned
+            // Divider: closes the centered header block off from the left-aligned
             // bullets below it.
             root.Children.Add(new Border {
                 Height = 1, Background = DividerBg,
@@ -147,7 +147,7 @@ namespace TrueforceForAll.Plugin
             });
 
             // Earned-value line. Skipped under an hour so it can never read as
-            // "you have driven 0 hours with it". Centred, so it reads as its own
+            // "you have driven 0 hours with it". Centered, so it reads as its own
             // beat between the list and the ask rather than as a body paragraph.
             if (bankedHours >= 1)
             {
@@ -213,7 +213,7 @@ namespace TrueforceForAll.Plugin
             laterBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(laterBtn);
 
-            // Gold, and the only coloured control in the modal, so the ask is the
+            // Gold, and the only colored control in the modal, so the ask is the
             // one thing the eye lands on. Dark text: gold needs the contrast.
             // It carries its own template because the stock button re-themes its
             // background on hover, which turned the gold gray under the cursor.

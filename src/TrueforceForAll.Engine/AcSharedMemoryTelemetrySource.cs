@@ -39,6 +39,14 @@ namespace TrueforceForAll.Core
         // Physics page field offsets (Pack=4 sequential layout).
         private const int OFF_PACKET_ID       = 0;     // int, increments each AC physics tick
         private const int OFF_GAS             = 4;     // float, 0..1
+        // Brake sits between gas and fuel in SPageFilePhysics, and every
+        // neighbouring offset this file already uses (gear 16, rpms 20, steer
+        // 24, speed 28) matches the documented layout, so 8 is not a guess.
+        // Clutch and handbrake are deliberately NOT read: they live far later
+        // in the struct, past fields whose presence varies by AC version, so
+        // an offset picked without a struct to check against would risk
+        // rendering whatever happened to be at that address.
+        private const int OFF_BRAKE           = 8;     // float, 0..1
         private const int OFF_GEAR            = 16;    // int, 0=R 1=N 2..N=fwd
         private const int OFF_RPMS            = 20;    // int
         // steerAngle: normalized steering input, ~[-1, 1] (0 = centered).
@@ -333,6 +341,7 @@ namespace TrueforceForAll.Core
         private TelemetryFrame ReadFrame()
         {
             float gas      = _physicsView.ReadSingle(OFF_GAS);
+            float brake    = _physicsView.ReadSingle(OFF_BRAKE);
             int   gear     = _physicsView.ReadInt32 (OFF_GEAR);
             int   rpms     = _physicsView.ReadInt32 (OFF_RPMS);
             float steer    = _physicsView.ReadSingle(OFF_STEER_ANGLE);
@@ -439,6 +448,7 @@ namespace TrueforceForAll.Core
             {
                 Rpms       = rpms,
                 Throttle01 = throttle01,
+                Brake01    = brake < 0 ? 0.0 : brake > 1 ? 1.0 : (double)brake,
 
                 SpeedKmh          = speedKmh,
                 AccelerationSway  = accGX * G,

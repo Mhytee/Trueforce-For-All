@@ -21,7 +21,7 @@
 //  1. LARGE ROWS DRAW IN TWO ZONES: the first character is pinned to the left
 //     and everything after it is right-aligned. It applies to the two-row
 //     layout's lower row and the right-aligned four-row layout's large rows.
-//     Small wide rows draw normally, and the CENTRED four-row layout centres
+//     Small wide rows draw normally, and the CENTERED four-row layout centers
 //     the whole string instead.
 //
 //     This is what made layout 7 look broken. "112%" drew "1" at the left and
@@ -34,7 +34,7 @@
 //     Spaces are content, so both edges are steerable: a LEADING space skips
 //     the left zone and gives a clean right-aligned value, and TRAILING spaces
 //     push that value back leftward off the right edge. Together they place
-//     text anywhere along the row, centre included. Compose adds the leading
+//     text anywhere along the row, center included. Compose adds the leading
 //     space for every field except custom text, which is passed through
 //     exactly as typed so both zones and the padding stay usable on purpose.
 //     Used deliberately these layouts give a one-character value on the left
@@ -44,7 +44,7 @@
 //     there it is character-exact in both directions. In the small
 //     side-by-side layouts padding does nothing at all. The largest font
 //     (37px) lives only in those side-by-side layouts, so it still cannot be
-//     centred; the four-row centred layout's 18px remains the largest CENTRED
+//     centered; the four-row centered layout's 18px remains the largest CENTERED
 //     text the panel can draw.
 
 using System;
@@ -88,6 +88,11 @@ namespace TrueforceForAll.Plugin
         public string GreetingText;
         /// <summary>Minimum gap between writes to the panel, in ms.</summary>
         public int WriteIntervalMs;
+
+        // Meter sources that do not live on the telemetry frame: the pedals
+        // come off SimHub's status object, and the last two are ours alone,
+        // read from the device and the Trueforce stream.
+        public double Brake01, Clutch01, Handbrake01, FfbTorque01, TrueforceLevel01;
     }
 
     public sealed class OledDashController : IDisposable
@@ -150,6 +155,22 @@ namespace TrueforceForAll.Plugin
         // of releases behind it: only the newest token gets to clear.
         private const int PreviewMs = 6000;
         private int _previewToken;
+        private int _previewAtTick;
+        private int _lastDriveTick;   // last time OnFrame actually drew
+
+        /// <summary>A settings-panel preview is on screen and owns the panel.
+        /// The idle path has to honour this: it runs on every DataUpdate and
+        /// would otherwise clear the preview on the very next tick, which reads
+        /// as the preview flickering on and off rather than holding.</summary>
+        private bool PreviewHolding
+        {
+            get
+            {
+                if (_previewAtTick == 0) return false;
+                int age = unchecked(Environment.TickCount - _previewAtTick);
+                return age >= 0 && age < PreviewMs;
+            }
+        }
 
         // The hello. The step is its OWN rate, deliberately not the channel's:
         // tying them together meant turning the write interval down made the
@@ -311,7 +332,7 @@ namespace TrueforceForAll.Plugin
                     // Two honest options, because the panel cannot give both at
                     // once: the biggest font it has, which only exists in a
                     // layout that sits left and has room for the speed beside
-                    // it, or a centred labelled gear at the middle size.
+                    // it, or a centered labelled gear at the middle size.
                     setter = ctx.FlashStyle == OledFlashStyle.BigGearAndSpeed
                         // BigSmall's first field is ONE character. A gear that
                         // needs more than that takes the labelled flash instead,
@@ -326,7 +347,12 @@ namespace TrueforceForAll.Plugin
                 else
                     setter = Compose(frame, ctx);
 
-                if (setter != null) { _channel.Show(setter); _showing = true; }
+                if (setter != null)
+                {
+                    _channel.Show(setter);
+                    _showing = true;
+                    _lastDriveTick = Environment.TickCount;
+                }
             }
             catch (Exception ex) { _log($"[OLED] compose error: {ex.Message}"); }
         }
@@ -365,6 +391,35 @@ namespace TrueforceForAll.Plugin
             return loop;
         }
 
+        /// <summary>Something time-boxed is still on screen and has not had its
+        /// moment yet. All of these expire on their own, so this only ever
+        /// delays a release rather than preventing one.</summary>
+        private bool TransientHolding()
+        {
+            int now = Environment.TickCount;
+            if (_lapResultFrame != null)
+            {
+                int age = unchecked(now - _lapResultAtTick);
+                if (age >= 0 && age <= LapResultMs) return true;
+            }
+            if (_shiftAtTick != 0)
+            {
+                int age = unchecked(now - _shiftAtTick);
+                if (age >= 0 && age <= ShiftFlashMs) return true;
+            }
+            if (_wasContending)
+            {
+                int age = unchecked(now - _alertAtTick);
+                if (age >= 0 && age <= AlertHoldMs) return true;
+            }
+            if (_greetSteps > 0)
+            {
+                int age = unchecked(now - _greetAtTick);
+                if (age >= 0 && age < _greetSteps * GreetStepMs) return true;
+            }
+            return false;
+        }
+
         /// <summary>The scrolling hello, for one full lap of the message.
         /// There is no animation in the protocol, so this is just a different
         /// ten-character window of the same string on each write, which is
@@ -398,6 +453,23 @@ namespace TrueforceForAll.Plugin
         {
             if (_testing) return;
             bool has = !string.IsNullOrEmpty(readoutLabel) || !string.IsNullOrEmpty(readoutValue);
+            // A live preview keeps the panel until it expires. A readout still
+            // wins, because that is the user asking for something newer.
+            if (!has && PreviewHolding) return;
+            if (has) _previewAtTick = 0;
+            if (!has)
+            {
+                // Telemetry is declared stalled after only 500 ms, and when
+                // frames stop OnFrame is not called at all, so THIS is the only
+                // path that can release the panel and it needs the release
+                // discipline OnFrame's gate has. Without it a brief gap (a
+                // pause, a hitch, an FH6 keepalive flap) clears the screen out
+                // from under a lap card or a shift flash and it comes straight
+                // back when frames resume.
+                if (TransientHolding()) return;
+                int sinceDrive = unchecked(Environment.TickCount - _lastDriveTick);
+                if (_lastDriveTick != 0 && sinceDrive >= 0 && sinceDrive < ReleaseDebounceMs) return;
+            }
             if (!has)
             {
                 if (_showing && _channel.IsReady)
@@ -438,6 +510,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex) { _log($"[OLED] preview error: {ex.Message}"); return 0; }
 
+            _previewAtTick = Environment.TickCount;
             int token = Interlocked.Increment(ref _previewToken);
             Task.Run(() =>
             {
@@ -557,8 +630,19 @@ namespace TrueforceForAll.Plugin
 
             int[] widths = OledScreenModel.SlotWidths(kind);
             var cell = new string[slots.Length];
+            var meter = new double[slots.Length];
             for (int i = 0; i < slots.Length; i++)
             {
+                if (OledScreenModel.SlotIsGauge(kind, i))
+                {
+                    meter[i] = OledScreenModel.RenderGauge(
+                        slots[i], frame.Throttle01, frame.RpmPercent,
+                        frame.FrontGrip01, frame.RearGrip01, frame.SteeringAngle,
+                        ctx.Brake01, ctx.Clutch01, ctx.Handbrake01,
+                        ctx.FfbTorque01, ctx.TrueforceLevel01);
+                    cell[i] = "";
+                    continue;
+                }
                 cell[i] = OledScreenModel.Render(
                     slots[i], i < texts.Length ? texts[i] : null,
                     frame.Gear, frame.SpeedKmh, ctx.UseMph,
@@ -577,8 +661,17 @@ namespace TrueforceForAll.Plugin
             }
 
             string S(int i) => i < cell.Length ? (cell[i] ?? "") : "";
+            double G(int i) => i < meter.Length ? meter[i] : 0.0;
             switch (kind)
             {
+                // The meter layouts. E draws its 7-character field on the LEFT
+                // and its 3-character one on the RIGHT, which is the opposite
+                // of their payload order, so the slots are listed left to right
+                // here and handed to the builder the way it expects them.
+                case OledLayoutKind.Gauge: return _channel.BuildGauge(G(0));
+                case OledLayoutKind.GaugeLabel: return _channel.BuildGaugeLabel(G(0), G(1), S(2));
+                case OledLayoutKind.GaugeTwoText:
+                    return _channel.BuildGaugeTwoText(G(0), G(1), right3: S(3), left7: S(2));
                 case OledLayoutKind.BigRight: return _channel.BuildSmallBig(S(0), S(1));
                 case OledLayoutKind.Stacked: return _channel.BuildTwoRow(S(0), S(1));
                 case OledLayoutKind.FourCenter: return _channel.BuildFourRowCenter(S(0), S(1), S(2), S(3));

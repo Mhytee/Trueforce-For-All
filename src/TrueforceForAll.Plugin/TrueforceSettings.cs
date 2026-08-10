@@ -57,20 +57,23 @@ namespace TrueforceForAll.Plugin
         // stored false darkened the wheel with no visible cause.)
         public bool ModeBRevLightsEnabled { get; set; } = true;
 
-        // EXPERIMENTAL: drive the Dynamic OLED on the wheel's base (G PRO /
-        // RS50 only) while Telemetry Based FFB (Mode B) is on. Same pipe and
-        // therefore the same rule as the rev lights above: a non-force write
-        // to HID++ cuts any force flowing there, so this shares the Mode B +
-        // tap-proven-quiet gate exactly. Default OFF because the protocol
-        // (feature 0x8130) is documented from third-party captures and
-        // hardware-confirmed on an RS50 only, and because the panel is also
-        // the wheel's own settings menu, which we take over while it is on.
-        public bool ModeBOledEnabled { get; set; } = false;
+        // Drive the Dynamic OLED on the wheel's base (G PRO / RS50 only) while
+        // Telemetry Based FFB (Mode B) is on. Same pipe and therefore the same
+        // rule as the rev lights above: a non-force write to HID++ cuts any
+        // force flowing there, so this shares the Mode B + tap-proven-quiet
+        // gate exactly.
+        //
+        // Default ON, like the rev lights. It was off while the protocol was
+        // known only from third-party RS50 captures; since then a G PRO has
+        // been confirmed to answer feature 0x8130, the gate has been proven
+        // necessary AND sufficient on hardware, and the panel is handed back
+        // whenever the gate closes, so the wheel's own menu is never lost.
+        public bool ModeBOledEnabled { get; set; } = true;
 
         // Which arrangement the OLED shows. The firmware owns font size and
         // alignment, so picking a screen IS picking how big each value is
         // drawn. See OledScreen; Custom uses the three fields below.
-        // Speed over gear, both labelled, on the centred four rows. The owner
+        // Speed over gear, both labelled, on the centered four rows. The owner
         // built this one by hand in the editor and it is the best default:
         // every value is named, nothing is cropped, and it is the arrangement
         // that copes with a gearbox counting past 9.
@@ -98,9 +101,9 @@ namespace TrueforceForAll.Plugin
         // costs nothing until you pick a screen where the gear is not visible.
         public bool OledShiftFlash { get; set; } = true;
 
-        // Which of the two shift flashes to draw. Centred is the default: the
-        // wheel cannot centre its largest font, so the big one sits off to one
-        // side, and a flash you read at a glance is better centred than large.
+        // Which of the two shift flashes to draw. Centered is the default: the
+        // wheel cannot center its largest font, so the big one sits off to one
+        // side, and a flash you read at a glance is better centered than large.
         public OledFlashStyle OledShiftFlashStyle { get; set; } = OledFlashStyle.CenteredGear;
 
         // Minimum gap between writes to the OLED, in milliseconds. 100 = 10 Hz.
@@ -583,7 +586,7 @@ namespace TrueforceForAll.Plugin
         public Dictionary<string, int> DashDriveDrivenSec { get; set; }
             = new Dictionary<string, int>();
 
-        // TF4ALL Dash: show a coloured race-flag band across the top of
+        // TF4ALL Dash: show a colored race-flag band across the top of
         // whichever screen is open. Reads SimHub's own flag properties, so it
         // only ever lights up in games that report flags (the Forza titles
         // report none, which is why this is opt-in rather than always on).
@@ -640,7 +643,7 @@ namespace TrueforceForAll.Plugin
         public string DashIdleFont        { get; set; } = "";
 
         // Dashboard theme, by name. Themes are PALETTES: the layout is the
-        // same whichever is picked, because colour binds live and geometry
+        // same whichever is picked, because color binds live and geometry
         // does not. Unknown names fall back to the first theme rather than
         // leaving the dash unpainted.
         public string DashTheme { get; set; } = "Midnight";

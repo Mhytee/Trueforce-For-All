@@ -180,7 +180,7 @@ namespace TrueforceForAll.Plugin
                 case EffectKind.RevLimiter:     return "Redline buzz";
                 case EffectKind.Airborne:       return "Airborne ducking";
                 case EffectKind.AxleSlip:       return "Axle slip";
-                case EffectKind.KerbThump:      return "Kerb thump";
+                case EffectKind.KerbThump:      return "Curb thump";
                 case EffectKind.LockupJudder:   return "Lockup judder";
                 case EffectKind.ImplementThud:  return "Implement thud";
             }
@@ -803,7 +803,7 @@ namespace TrueforceForAll.Plugin
                         // so presets carry one block either way.
                         ShowEffect(KerbThumpExpander,    !springGame);
                         if (SlipEnabledCheck != null)
-                            SlipEnabledCheck.Content = springGame ? "Terrain texture" : "Road bumps & kerbs";
+                            SlipEnabledCheck.Content = springGame ? "Terrain texture" : "Road bumps & curbs";
                         if (BumpsLeadingEdgePanel != null)
                             BumpsLeadingEdgePanel.Visibility = springGame
                                 ? System.Windows.Visibility.Visible
@@ -2765,7 +2765,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 16),
             });
 
-            // Brand-coloured cards with the platform's own logo. Built as
+            // Brand-colored cards with the platform's own logo. Built as
             // Borders (not Buttons) so SimHub's stock theme can't override the
             // brand fills; the label is handed to the click action so the
             // copy-link rows can flash "Link copied" feedback in place.
@@ -4928,7 +4928,7 @@ namespace TrueforceForAll.Plugin
             if (SpikeModeDescription != null)
                 SpikeModeDescription.Text = slew
                     ? "Slew-rate limiter (iRacing-style): caps how fast the force is allowed to change. No amplitude reduction, sustained forces always reach full strength; a sharp spike just gets spread across a few extra milliseconds."
-                    : "Transient detector: soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big kerb hits get rounded off.";
+                    : "Transient detector: soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big curb hits get rounded off.";
             if (FfbSpikeLimitLabel != null)
                 FfbSpikeLimitLabel.Text = slew ? "Slew rate:" : "Spike threshold:";
             if (FfbSpikeLimitHelp != null)
@@ -7181,7 +7181,7 @@ namespace TrueforceForAll.Plugin
         }
 
         // ---------------- idle card ----------------
-        // Style and colour are fixed lists rather than free text: both feed a
+        // Style and color are fixed lists rather than free text: both feed a
         // dash formula, and a typo there fails silently as a blank card.
         private static readonly string[] IdleStyleKeys   = { "Pipes", "Fractal", "Topo", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
         private static readonly string[] IdleStyleLabels = { "Pipes", "Fractal zoom", "Contours", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
@@ -12885,29 +12885,38 @@ namespace TrueforceForAll.Plugin
                     if (labels[i] != null)
                         labels[i].Text = $"Slot {i + 1} ({OledScreenModel.SlotHint(kind, i)}):";
 
+                    // A meter slot offers meters, a text slot offers text
+                    // fields. Rebuilt whenever the slot changes kind, which a
+                    // layout change can do underneath a given slot number.
+                    bool isGauge = OledScreenModel.SlotIsGauge(kind, i);
+                    string[] fieldKeys   = isGauge ? OledScreenModel.GaugeFieldKeys   : OledScreenModel.FieldKeys;
+                    string[] fieldLabels = isGauge ? OledScreenModel.GaugeFieldLabels : OledScreenModel.FieldLabels;
+
                     var cb = combos[i];
                     if (cb != null)
                     {
-                        if (cb.Items.Count != OledScreenModel.FieldKeys.Length)
+                        bool rebuild = cb.Items.Count != fieldKeys.Length
+                            || !(cb.Items.Count > 0
+                                 && ((cb.Items[0] as ComboBoxItem)?.Tag as string) == fieldKeys[0]);
+                        if (rebuild)
                         {
                             cb.Items.Clear();
-                            for (int k = 0; k < OledScreenModel.FieldKeys.Length; k++)
-                                cb.Items.Add(new ComboBoxItem
-                                {
-                                    Content = OledScreenModel.FieldLabels[k],
-                                    Tag = OledScreenModel.FieldKeys[k],
-                                });
+                            for (int k = 0; k < fieldKeys.Length; k++)
+                                cb.Items.Add(new ComboBoxItem { Content = fieldLabels[k], Tag = fieldKeys[k] });
                         }
+                        cb.SelectedItem = null;
                         foreach (ComboBoxItem it in cb.Items)
                             if ((it.Tag as string) == slots[i]) { cb.SelectedItem = it; break; }
                     }
 
                     if (boxes[i] != null)
                     {
-                        boxes[i].Visibility = slots[i] == OledScreenModel.FieldCustom
+                        // Custom text only, and never on a meter.
+                        boxes[i].Visibility = (!isGauge && slots[i] == OledScreenModel.FieldCustom)
                             ? Visibility.Visible : Visibility.Collapsed;
                         boxes[i].Text = texts[i] ?? "";
-                        boxes[i].MaxLength = OledScreenModel.SlotWidths(kind)[i];
+                        int wid = OledScreenModel.SlotWidths(kind)[i];
+                        boxes[i].MaxLength = wid > 0 ? wid : 1;
                     }
                 }
             }
@@ -12927,8 +12936,9 @@ namespace TrueforceForAll.Plugin
             if (_plugin.Settings.ModeBOledEnabled != true) return;
             int ms = _plugin.PreviewOledScreen();
             if (ms >= 0 || OledStatusText == null) return;
-            OledStatusText.Text = "preview held back: a game is running and sending its own force "
-                + "feedback, so writing the screen now could cut it. Preview works with the game closed.";
+            OledStatusText.Text = "preview held back: telemetry is arriving, so a game may be sending "
+                + "its own force feedback and writing the screen now could cut it. Close the game, or "
+                + "turn on Telemetry Based FFB, and the preview works.";
         }
 
         /// <summary>Say so when the running game never reports a lap delta,

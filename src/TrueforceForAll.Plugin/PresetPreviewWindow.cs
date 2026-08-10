@@ -481,7 +481,7 @@ namespace TrueforceForAll.Plugin
             AddSection(host, ovr, "RoadBumps",    "Road bumps");
             AddSection(host, ovr, "TractionLoss", "Traction loss");
             AddSection(host, ovr, "AxleSlip",     "Axle slip");
-            AddSection(host, ovr, "KerbThump",    "Kerb thump");
+            AddSection(host, ovr, "KerbThump",    "Curb thump");
             AddSection(host, ovr, "LockupJudder", "Lockup judder");
             AddSection(host, ovr, "GearShift",    "Gear shift");
             AddSection(host, ovr, "AbsClick",     "ABS click");

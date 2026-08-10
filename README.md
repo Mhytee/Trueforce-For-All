@@ -60,7 +60,7 @@ preserves via FFB pass-through. It mixes:
 - **FFB pass-through (the foundation).** Driving the Trueforce motor would
   otherwise silence the game's own force feedback, so the plugin taps that
   signal off the USB bus and folds it back into the Trueforce stream. Your
-  real cornering load, weight transfer and kerb forces keep coming through
+  real cornering load, weight transfer and curb forces keep coming through
   underneath every effect below, in any game whose force feedback uses
   standard HID++ (effectively all of them on these wheels).
 
@@ -78,13 +78,13 @@ preserves via FFB pass-through. It mixes:
   - **DRS**: short chirp on the rising edge when the wing opens, plus an
     optional sustained flutter while DRS stays active. Silent on games
     that don't expose the flag.
-  - **Road bumps**: triggered by vertical acceleration so kerbs and
+  - **Road bumps**: triggered by vertical acceleration so curbs and
     rough terrain rumble through the wheel. On Forza, the per-tire
     surface-rumble and rumble-strip fields are read directly for a
     richer, more accurate continuous road feel on top of the heave
     channel.
-  - **Kerb thump**: a firm whack the instant a wheel first catches a
-    kerb, distinct from the rumble that follows it, scaling with speed
+  - **Curb thump**: a firm whack the instant a wheel first catches a
+    curb, distinct from the rumble that follows it, scaling with speed
     so a fast strike hits harder. (Per-tire telemetry, currently the
     Forza titles.)
   - **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
@@ -155,11 +155,11 @@ has to be signed by Microsoft before it can ship.)
 ## FFB spike reduction
 
 Some games (Assetto Corsa being the worst offender we've seen) deliver
-kerb and collision FFB spikes wildly out of proportion to what's safe or
+curb and collision FFB spikes wildly out of proportion to what's safe or
 comfortable. On a strong wheelbase they can ruin a racing line or cause
 real wrist strain over a session. iRacing has a built-in softener; most
 other games don't. The plugin taps the game's outgoing FFB on the USB
-bus and attenuates spikes only, so kerbs land as confident pushes
+bus and attenuates spikes only, so curbs land as confident pushes
 instead of yanks while sustained cornering load and weight transfer
 pass through untouched. Useful on its own, even with all our other
 effects turned off.
@@ -271,13 +271,13 @@ more responsive, and it needs no SimHub license:
 
 **Assetto Corsa** has a dedicated path: shared memory is read directly at
 AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within
-1 ms of being written). The higher rate makes kerb collisions, road-bumps,
+1 ms of being written). The higher rate makes curb collisions, road-bumps,
 traction-loss and other haptic effects noticeably sharper and more
 responsive than SimHub's 60 Hz feed can deliver.
 
 **Forza Motorsport and Forza Horizon 4, 5, and 6** also have a direct UDP
 Data Out reader that picks up per-tire fields for the surface-texture,
-rumble-strip, and kerb collision effects, and feeds
+rumble-strip, and curb collision effects, and feeds
 [Telemetry Based FFB](#telemetry-based-ffb). The Horizon games send this
 telemetry once per rendered frame, so it tracks your frame rate (often
 well above 60 Hz), giving more depth in surface detail effects than some
@@ -485,7 +485,7 @@ The wire protocol and init sequence are derived from the
   the wheel's driver and wire protocol. This project would not exist
   without their work.
 - **Andrew Boersma**: built the telemetry-based force feedback engine
-  and the axle slip, kerb thump, and lockup judder effects. The headline
+  and the axle slip, curb thump, and lockup judder effects. The headline
   features of the 0.2.0 release are his work.
 - **[USBPcap][usbpcap]** by Tomasz Mon: the kernel-mode USB filter that
   lets us tap the wheel's bus traffic for FFB pass-through.

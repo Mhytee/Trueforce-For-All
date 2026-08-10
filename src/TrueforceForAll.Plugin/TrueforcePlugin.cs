@@ -4622,7 +4622,7 @@ namespace TrueforceForAll.Plugin
             _producerThread = null;
 
             try { _device?.ClearStream(); } catch { }
-            // Brief pause so the centre-wheel samples drain to the device.
+            // Brief pause so the center-wheel samples drain to the device.
             Thread.Sleep(60);
             CleanupDevice();
             SimHub.Logging.Current.Info("[TF4ALL] Plugin stopped.");
@@ -4687,6 +4687,12 @@ namespace TrueforceForAll.Plugin
                     _shTotalLaps  = race.TotalLaps;
                     _shLastLapMs  = (int)race.LastLapTime.TotalMilliseconds;
                     _shBestLapMs  = (int)race.BestLapTime.TotalMilliseconds;
+                    // Pedals for the OLED meters. SimHub reports these 0-100
+                    // while everything on the telemetry frame is 0-1, so they
+                    // are normalized here rather than at every use.
+                    _shBrake01     = (float)(race.Brake / 100.0);
+                    _shClutch01    = (float)(race.Clutch / 100.0);
+                    _shHandbrake01 = (float)(race.Handbrake / 100.0);
                 }
                 catch { /* a game that reports none of this must not break DataUpdate */ }
             }
@@ -4698,7 +4704,7 @@ namespace TrueforceForAll.Plugin
             // without a game. With nothing to report this hands the screen back,
             // so the wheel's own menu is what you see at rest.
             if (_oledDash != null && (Settings?.ModeBOledEnabled ?? false)
-                && string.IsNullOrEmpty(_activeGame))
+                && NoTelemetryArriving())
             {
                 string idleLabel = null, idleValue = null;
                 if (TryGetActiveReadout(out string il, out string iv))
@@ -5331,7 +5337,7 @@ namespace TrueforceForAll.Plugin
             // in TrueforcePlugin.DashRemote.cs). Stashed post-enrichment so the
             // strip sees the same RPM the effects do.
             _dashLiveRpm = (float)frame.Rpms;
-            // Gear and speed for the Drive tab's centre readout, from the same
+            // Gear and speed for the Drive tab's center readout, from the same
             // enriched frame. These come from whichever source is live, so a
             // Forza player who never turned on "Also forward to SimHub" still
             // gets them: SimHub's own properties are empty for that setup, and
@@ -5348,7 +5354,7 @@ namespace TrueforceForAll.Plugin
             // interesting one: SimHub has no universal steering property (see
             // TelemetryFrame.SteeringAngle), so this is the only place the
             // dash can get it. -2 means "this source does not report it",
-            // which the box shows as a dash rather than a centred wheel.
+            // which the box shows as a dash rather than a centered wheel.
             _dashLiveThrottle = (float)frame.Throttle01;
             _dashLiveSteer = frame.SteeringAngle.HasValue ? (float)frame.SteeringAngle.Value : -2f;
 
@@ -5872,6 +5878,21 @@ namespace TrueforceForAll.Plugin
                             GreetingEnabled = Settings?.OledGreetingEnabled != false,
                             GreetingText    = Settings?.OledGreetingText,
                             WriteIntervalMs = Settings?.OledWriteIntervalMs ?? 100,
+                            // The frame wins when its source reports pedals,
+                            // and SimHub's copy is the fallback. That ordering
+                            // is what makes these work in a Forza setup pointed
+                            // straight at the plugin with forwarding off, where
+                            // SimHub's own numbers are all zero.
+                            Brake01     = frame.Brake01     ?? _shBrake01,
+                            Clutch01    = frame.Clutch01    ?? _shClutch01,
+                            Handbrake01 = frame.Handbrake01 ?? _shHandbrake01,
+                            // Ours: the force actually written to the wheel, and
+                            // the texture riding the Trueforce stream. Magnitude
+                            // only, and de-scaled the same way the dash scope
+                            // does it so a reduced output scale still reads full
+                            // when the wheel is actually railed.
+                            FfbTorque01      = LiveFfbMagnitude01(),
+                            TrueforceLevel01 = LiveTrueforceLevel01(),
                             ShiftFlashEnabled = Settings?.OledShiftFlash != false,
                             FlashStyle = Settings?.OledShiftFlashStyle ?? OledFlashStyle.CenteredGear,
                             LapResultEnabled  = Settings?.OledLapResult != false,
@@ -6410,6 +6431,7 @@ namespace TrueforceForAll.Plugin
         private volatile int _shLastLapMs, _shBestLapMs;
         private int _oledPrevLastLapMs;           // lap-completion edge detector
         private volatile bool _oledHidppFree;     // last computed gate, for the settings panel
+        private volatile float _shBrake01, _shClutch01, _shHandbrake01;
 
         // RESETGRIP access code. The learner and the calibration dict are
         // owned by the telemetry thread (Tick / LoadGripCal / FlushGripCal),
@@ -7594,8 +7616,23 @@ namespace TrueforceForAll.Plugin
         /// free, or the user has taken the gate off deliberately.</summary>
         public bool OledWritesSafeNow =>
             (Settings?.OledIgnoreModeBGate ?? false)
-            || string.IsNullOrEmpty(_activeGame)
-            || _oledHidppFree;
+            || _oledHidppFree
+            || NoTelemetryArriving();
+
+        /// <summary>True when no telemetry frame has arrived recently, which is
+        /// the honest test for "nothing is driving the wheel right now".
+        ///
+        /// This used to ask whether _activeGame was empty, which was wrong:
+        /// that is SimHub's SELECTED game and stays set with nothing running,
+        /// so the panel refused to preview and the idle readouts never fired
+        /// even with every game closed. Frames stopping is the thing that
+        /// actually means no force can be on the HID++ pipe.</summary>
+        private bool NoTelemetryArriving()
+        {
+            long stamp = System.Threading.Interlocked.Read(ref _lastFrameTicks);
+            if (stamp == 0) return true;   // nothing has ever arrived this run
+            return Stopwatch.GetTimestamp() - stamp > FrameStallTicks;
+        }
 
         /// <summary>Put the screen currently being edited on the wheel with
         /// stand-in telemetry. Returns how long it will be up, 0 if the channel
@@ -24028,7 +24065,7 @@ namespace TrueforceForAll.Plugin
             // A late SimHub tick landing inside End()'s teardown window must
             // not command the device: the stop direction would send Stop+Pause
             // as the last wire traffic (exiting Trueforce mode off-center =
-            // firmware autocenter snap, and silencing the End() centre-drain),
+            // firmware autocenter snap, and silencing the End() center-drain),
             // and the resume direction would spuriously re-enter Trueforce
             // mode on a dying stream (2026-08-08 review). End() owns the
             // device from here on.

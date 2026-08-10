@@ -1,4 +1,4 @@
-// Catalog of effects + per-version changelog entries that drive the
+﻿// Catalog of effects + per-version changelog entries that drive the
 // "what's new" banner and the per-effect NEW badges.
 //
 // Two ideas live here:
@@ -402,7 +402,7 @@ namespace TrueforceForAll.Plugin
                     },
                     new ChangelogEntry {
                         Headline = "Forza Horizon: ABS section flagged as not exposed",
-                        Description = "Forza's Data Out telemetry doesn't include ABS pump activity (the brake pedal is there, but no anti-lock intervention flag), so the ABS effect can't fire in FH4/FH5/FH6 regardless of how you tune it. A grey 'not exposed by Forza UDP' badge now sits in the ABS header when an FH title is active, with a tooltip explaining why. The section stays interactive so the values still save for other games.",
+                        Description = "Forza's Data Out telemetry doesn't include ABS pump activity (the brake pedal is there, but no anti-lock intervention flag), so the ABS effect can't fire in FH4/FH5/FH6 regardless of how you tune it. A gray 'not exposed by Forza UDP' badge now sits in the ABS header when an FH title is active, with a tooltip explaining why. The section stays interactive so the values still save for other games.",
                     },
                     new ChangelogEntry {
                         Headline = "Forza Horizon: built-in preset road bumps + traction loss tuned down",
@@ -580,7 +580,7 @@ namespace TrueforceForAll.Plugin
             },
             new ChangelogVersion {
                 Version = new Version(0, 2, 0),
-                Title = "New grip and kerb effects + smarter ducking",
+                Title = "New grip and curb effects + smarter ducking",
                 Entries = new List<ChangelogEntry>
                 {
                     new ChangelogEntry {
@@ -592,8 +592,8 @@ namespace TrueforceForAll.Plugin
                     new ChangelogEntry {
                         EffectId = "KerbThump",
                         Group = "New effects",
-                        Headline = "Kerb thump: a firm whack the instant a wheel finds a kerb",
-                        Description = "A single firm hit when a wheel first touches a kerb, distinct from the rumble that follows. Scales with speed. Off by default. Needs kerb telemetry (Forza games today).",
+                        Headline = "Curb thump: a firm whack the instant a wheel finds a curb",
+                        Description = "A single firm hit when a wheel first touches a curb, distinct from the rumble that follows. Scales with speed. Off by default. Needs curb telemetry (Forza games today).",
                     },
                     new ChangelogEntry {
                         EffectId = "LockupJudder",
@@ -620,7 +620,7 @@ namespace TrueforceForAll.Plugin
                     },
                     new ChangelogEntry {
                         Group = "Improvements",
-                        Headline = "Axle slip, Kerb thump and Lockup judder are now on by default",
+                        Headline = "Axle slip, Curb thump and Lockup judder are now on by default",
                         Description = "With strengths and pitches tuned on a G PRO as the new baseline. They only speak where the game's telemetry supports them, and choices you have already made are kept.",
                     },
                     new ChangelogEntry {

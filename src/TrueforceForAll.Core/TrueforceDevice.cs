@@ -1,4 +1,4 @@
-// Trueforce session + audio-haptic stream.
+﻿// Trueforce session + audio-haptic stream.
 //
 // Ported from mescon/logitech-rs50-linux-driver:
 //   userspace/libtrueforce/src/session.c   (Open + InitSequence)
@@ -74,7 +74,7 @@ namespace TrueforceForAll.Core
         // Set false by StopAcceptingSamples() to release blocked PushFloats /
         // PushInt16 callers ahead of full shutdown, lets the host drain the
         // producer without also halting the stream thread (which still needs
-        // to push centre-wheel quietness samples to the wheel before Dispose).
+        // to push center-wheel quietness samples to the wheel before Dispose).
         private volatile bool _acceptingSamples = true;
 
         private byte _seq;
@@ -452,7 +452,7 @@ namespace TrueforceForAll.Core
         // Stop accepting new samples and wake any producer parked in PushFloats
         // so it can observe the application's shutdown signal. Leaves the
         // internal stream thread running so any samples already queued, plus
-        // the centre-wheel quietness pulse a subsequent ClearStream queues
+        // the center-wheel quietness pulse a subsequent ClearStream queues
         // still drain to the wheel before Dispose tears the HID stream down.
         public void StopAcceptingSamples()
         {
@@ -816,7 +816,7 @@ namespace TrueforceForAll.Core
                 if (splitActive)
                 {
                     // Shift the window and append new samples = audio (if any) plus
-                    // the road texture, summed in signed space and re-centred at
+                    // the road texture, summed in signed space and re-centered at
                     // 0x8000. With no audio this carries the texture alone.
                     const int shift = NewPerPacket;
                     Array.Copy(_window, shift, _window, 0, Window - shift);

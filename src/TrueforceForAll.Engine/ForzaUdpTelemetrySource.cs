@@ -617,6 +617,8 @@ namespace TrueforceForAll.Core
             float speedMs   = 0;
             byte  accelByte = 0;
             byte  brakeByte = 0;
+            byte  clutchByte = 0;
+            byte  handbrakeByte = 0;
             byte  gearByte  = 1;   // 1 = N
             double? steerNorm = null;
             int dashBase = ResolveDashBase(buf, len);
@@ -625,6 +627,8 @@ namespace TrueforceForAll.Core
                 speedMs   = ReadFloat(buf, dashBase + DASH_SPEED);
                 accelByte = buf[dashBase + DASH_ACCEL];
                 brakeByte = buf[dashBase + DASH_BRAKE];
+                clutchByte = buf[dashBase + DASH_CLUTCH];
+                handbrakeByte = buf[dashBase + DASH_HANDBRAKE];
                 gearByte  = buf[dashBase + DASH_GEAR];
                 byte rawGear = gearByte;
                 // Which gear scale this title uses, decided by physics rather
@@ -877,6 +881,11 @@ namespace TrueforceForAll.Core
                 Rpms       = curRpm,
                 MaxRpm     = maxRpm,
                 Throttle01 = accelByte / 255.0,
+                // Straight off the dash packet, so these survive a setup that
+                // points Data Out at the plugin and never forwards to SimHub.
+                Brake01     = dashBase > 0 ? brakeByte     / 255.0 : (double?)null,
+                Clutch01    = dashBase > 0 ? clutchByte    / 255.0 : (double?)null,
+                Handbrake01 = dashBase > 0 ? handbrakeByte / 255.0 : (double?)null,
                 SpeedKmh   = speedMs * 3.6,
 
                 AccelerationHeave = settling ? 0.0 : accelY, // m/s², up

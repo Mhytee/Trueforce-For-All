@@ -243,6 +243,16 @@ namespace TrueforceForAll.Plugin
             "ModeBLockupPoint", "ModeBLongitudinalGripLearn", "ModeBGripTrim",
             "ModeBLateralDemand", "ModeBAutoStrength",
             "ModeBMinForce", "ModeBCenterPd", "ModeBCenterLeadMs",
+            // Spring mode is Mode B's Farming Simulator half and is tuned per
+            // wheel the same way: ApplyWheelDefaults gives the G923 its own
+            // SpringModeMinForce (0.15, for the belt friction that eats FS's
+            // light spring) where every other wheel ships 0. Without these
+            // names the gate let a G923 backup write that floor onto a G PRO.
+            "SpringModeCenterGain", "SpringModeCenterFirmness", "SpringModeSpeedEffect",
+            "SpringModeStrength", "SpringModeMinForce",
+            "SpringModeTerrainEnabled", "SpringModeTerrainGain",
+            "SpringModeDragEnabled", "SpringModeDragGain", "SpringModeDragStrainFraction",
+            "SpringModeChassisWeightEnabled", "SpringModeChassisWeightGain",
             "CarGripCalibration",
         };
 

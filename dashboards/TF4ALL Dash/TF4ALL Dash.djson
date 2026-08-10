@@ -116495,7 +116495,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -130979,7 +130979,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -145983,7 +145983,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -162973,7 +162973,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TYRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"

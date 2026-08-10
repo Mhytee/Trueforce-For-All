@@ -1,4 +1,4 @@
-// Owns the WheelLedChannel and decides when/what to push to the rim LEDs.
+﻿// Owns the WheelLedChannel and decides when/what to push to the rim LEDs.
 //
 // Two gates feed OnFrame (both computed in TrueforcePlugin.DataUpdate):
 //   * Mode B: rev lights whenever Telemetry Based FFB is armed and the FFB
@@ -187,7 +187,7 @@ namespace TrueforceForAll.Plugin
 
             // Rev-level sweep using the real (captured) G PRO protocol: walk
             // the level 0..10..0 a couple of times, then a brief redline hold.
-            // Colours / direction come from the wheel's own profile (the user
+            // Colors / direction come from the wheel's own profile (the user
             // set outside-in); we only drive how many LEDs.
             const int stepMs   = 220;   // a touch slower than the ~156 ms keepalive
             const int redlineMs = 1500;

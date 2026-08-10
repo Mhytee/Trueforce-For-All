@@ -1822,7 +1822,7 @@ namespace TrueforceForAll.Plugin
             AppendEffectLine(sb, "Road bumps",       snap.RoadBumps);
             AppendEffectLine(sb, "Traction loss",    snap.TractionLoss);
             AppendEffectLine(sb, "Axle slip",        snap.AxleSlip);
-            AppendEffectLine(sb, "Kerb thump",       snap.KerbThump);
+            AppendEffectLine(sb, "Curb thump",       snap.KerbThump);
             AppendEffectLine(sb, "Lockup judder",    snap.LockupJudder);
             AppendEffectLine(sb, "Gear shift",       snap.GearShift);
             AppendEffectLine(sb, "ABS",              snap.AbsClick);
@@ -1879,7 +1879,7 @@ namespace TrueforceForAll.Plugin
             AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    baseline?.RoadBumps);
             AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, baseline?.TractionLoss);
             AppendOverrideSection(sections, "Axle slip",        ov.AxleSlip,     baseline?.AxleSlip);
-            AppendOverrideSection(sections, "Kerb thump",       ov.KerbThump,    baseline?.KerbThump);
+            AppendOverrideSection(sections, "Curb thump",       ov.KerbThump,    baseline?.KerbThump);
             AppendOverrideSection(sections, "Lockup judder",    ov.LockupJudder, baseline?.LockupJudder);
             AppendOverrideSection(sections, "Gear shift",       ov.GearShift,    baseline?.GearShift);
             AppendOverrideSection(sections, "ABS",              ov.AbsClick,     baseline?.AbsClick);
@@ -2097,7 +2097,7 @@ namespace TrueforceForAll.Plugin
                         AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    null);
                         AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, null);
                         AppendOverrideSection(sections, "Axle slip",        ov.AxleSlip,     null);
-                        AppendOverrideSection(sections, "Kerb thump",       ov.KerbThump,    null);
+                        AppendOverrideSection(sections, "Curb thump",       ov.KerbThump,    null);
                         AppendOverrideSection(sections, "Lockup judder",    ov.LockupJudder, null);
                         AppendOverrideSection(sections, "Gear shift",       ov.GearShift,    null);
                         AppendOverrideSection(sections, "ABS",              ov.AbsClick,     null);

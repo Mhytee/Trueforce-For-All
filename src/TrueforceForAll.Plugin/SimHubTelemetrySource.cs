@@ -95,6 +95,9 @@ namespace TrueforceForAll.Plugin
                 // some games surface throttle outside 0..100 during clutch
                 // engagement edge cases.
                 Throttle01 = Clamp01(d.Throttle / 100.0),
+                Brake01     = Clamp01(d.Brake / 100.0),
+                Clutch01    = Clamp01(d.Clutch / 100.0),
+                Handbrake01 = Clamp01(d.Handbrake / 100.0),
 
                 SpeedKmh           = d.SpeedKmh,
                 AccelerationHeave  = d.AccelerationHeave,

@@ -31,16 +31,26 @@ namespace TrueforceForAll.Plugin
         FourCenter = 3,
         /// <summary>I: the same four rows, right-aligned.</summary>
         FourRight = 4,
+        /// <summary>C: one horizontal meter, nothing else.</summary>
+        Gauge = 5,
+        /// <summary>D: a meter, a thin second meter, and an 11-char caption.</summary>
+        GaugeLabel = 6,
+        /// <summary>E: a meter, a thin second meter, and two text fields.</summary>
+        GaugeTwoText = 7,
     }
 
-    /// <summary>How the shift flash draws. The panel cannot centre its largest
+    /// <summary>What a slot accepts. A meter takes a number from 0 to 1 and the
+    /// firmware fills a bar with it; everything else takes text.</summary>
+    public enum OledSlotKind { Text = 0, Gauge = 1 }
+
+    /// <summary>How the shift flash draws. The panel cannot center its largest
     /// font (see OledDashController's header), so these two are a real trade
-    /// rather than a preference: bigger, or centred and labelled.</summary>
+    /// rather than a preference: bigger, or centered and labelled.</summary>
     public enum OledFlashStyle
     {
         /// <summary>The 37px gear with the speed beside it, sitting left.</summary>
         BigGearAndSpeed = 0,
-        /// <summary>"GEAR" small over the gear, centred, at 18px.</summary>
+        /// <summary>"GEAR" small over the gear, centered, at 18px.</summary>
         CenteredGear = 1,
     }
 
@@ -61,6 +71,7 @@ namespace TrueforceForAll.Plugin
         GearOnly = 9,
         SpeedOverGearPlain = 10,
         GearOverSpeedPlain = 11,
+        GearAndDelta = 12,
     }
 
     public static class OledScreenModel
@@ -70,7 +81,8 @@ namespace TrueforceForAll.Plugin
         /// Index-matched to OledScreen.</summary>
         public static readonly string[] ScreenShortNames =
             { "GEAR+SPEED", "SPEED+GEAR", "SPD+DELTA", "SPD GEAR D", "SPD OVER G", "CUSTOM",
-              "SPEED/GEAR", "GEAR/SPEED", "SPEED", "GEAR", "SPD GEAR", "GEAR SPD" };
+              "SPEED/GEAR", "GEAR/SPEED", "SPEED", "GEAR", "SPD GEAR", "GEAR SPD",
+              "GEAR+DELTA" };
 
         /// <summary>The order screens are offered and cycled in, which is NOT
         /// the enum's numeric order: the labelled pair are the ones to reach
@@ -82,7 +94,8 @@ namespace TrueforceForAll.Plugin
             OledScreen.SpeedOverGearPlain, OledScreen.GearOverSpeedPlain,
             OledScreen.SpeedOnly, OledScreen.GearOnly,
             OledScreen.GearAndSpeed, OledScreen.SpeedAndGear,
-            OledScreen.SpeedAndDelta, OledScreen.SpeedGearAndDelta,
+            OledScreen.SpeedAndDelta, OledScreen.GearAndDelta,
+            OledScreen.SpeedGearAndDelta,
             OledScreen.Custom,
         };
         public static readonly string[] ScreenOrderLabels =
@@ -96,6 +109,7 @@ namespace TrueforceForAll.Plugin
             "Big gear, speed beside it",
             "Big speed, gear beside it",
             "Speed and lap delta",
+            "Gear and lap delta",
             "Speed, gear and lap delta",
             "Build my own",
         };
@@ -119,6 +133,7 @@ namespace TrueforceForAll.Plugin
         {
             OledLayoutKind.BigLeft, OledLayoutKind.BigRight, OledLayoutKind.Stacked,
             OledLayoutKind.FourCenter, OledLayoutKind.FourRight,
+            OledLayoutKind.Gauge, OledLayoutKind.GaugeLabel, OledLayoutKind.GaugeTwoText,
         };
         public static readonly string[] LayoutLabels =
         {
@@ -127,7 +142,21 @@ namespace TrueforceForAll.Plugin
             "Two stacked, second one larger",
             "Four rows, centered",
             "Four rows, right aligned",
+            "One meter",
+            "Two meters and a caption",
+            "Two meters and two texts",
         };
+
+        // ---- Meter catalog -------------------------------------------------
+        // What a 0-to-1 slot can show. Only values the plugin genuinely has as
+        // a fraction; there is no brake channel in the telemetry frame, so
+        // there is no brake meter.
+        public static readonly string[] GaugeFieldKeys =
+            { "Throttle", "Brake", "Clutch", "Handbrake", "Revs",
+              "FfbTorque", "TrueforceLevel", "FrontGrip", "RearGrip", "Steering", "None" };
+        public static readonly string[] GaugeFieldLabels =
+            { "Throttle", "Brake", "Clutch", "Handbrake", "Revs",
+              "Force output", "Trueforce texture", "Front grip", "Rear grip", "Steering", "Empty" };
 
         public const int MaxSlots = 4;
 
@@ -139,9 +168,72 @@ namespace TrueforceForAll.Plugin
                 case OledLayoutKind.BigLeft:
                 case OledLayoutKind.BigRight: return new[] { 1, 3 };
                 case OledLayoutKind.Stacked: return new[] { 21, 10 };
+                // Meter slots have no character width; the zeroes are padding
+                // so widths and kinds stay index-matched.
+                case OledLayoutKind.Gauge: return new[] { 0 };
+                case OledLayoutKind.GaugeLabel: return new[] { 0, 0, 11 };
+                case OledLayoutKind.GaugeTwoText: return new[] { 0, 0, 7, 3 };
                 default: return new[] { 19, 10, 19, 10 };
             }
         }
+
+        /// <summary>Which slots are meters rather than text, index-matched to
+        /// SlotWidths. The meter layouts lead with their bars so the editor
+        /// lists them in the order the panel draws them, top to bottom.</summary>
+        public static OledSlotKind[] SlotKinds(OledLayoutKind kind)
+        {
+            switch (kind)
+            {
+                case OledLayoutKind.Gauge:
+                    return new[] { OledSlotKind.Gauge };
+                case OledLayoutKind.GaugeLabel:
+                    return new[] { OledSlotKind.Gauge, OledSlotKind.Gauge, OledSlotKind.Text };
+                case OledLayoutKind.GaugeTwoText:
+                    return new[] { OledSlotKind.Gauge, OledSlotKind.Gauge,
+                                   OledSlotKind.Text, OledSlotKind.Text };
+                default:
+                    var all = new OledSlotKind[SlotWidths(kind).Length];
+                    return all;   // Text is 0
+            }
+        }
+
+        public static bool SlotIsGauge(OledLayoutKind kind, int slot)
+        {
+            var k = SlotKinds(kind);
+            return slot >= 0 && slot < k.Length && k[slot] == OledSlotKind.Gauge;
+        }
+
+        /// <summary>A meter's value, 0 to 1. Steering is the odd one: it runs
+        /// -1 to 1, so it is folded onto the bar with center at half full. The
+        /// bar only ever fills from the left, so that is a position readout
+        /// rather than a needle, and there is no way to make it one.</summary>
+        public static double RenderGauge(string fieldKey, double throttle01, double rpmPercent,
+                                         double? frontGrip, double? rearGrip, double? steering,
+                                         double brake01, double clutch01, double handbrake01,
+                                         double ffbTorque01, double trueforceLevel01)
+        {
+            switch (fieldKey)
+            {
+                case "Throttle": return Clamp01(throttle01);
+                case "Brake": return Clamp01(brake01);
+                case "Clutch": return Clamp01(clutch01);
+                case "Handbrake": return Clamp01(handbrake01);
+                case "Revs": return Clamp01(rpmPercent);
+                // Ours, not the game's: how hard the wheel is being driven right
+                // now, and how much texture is riding on the Trueforce stream.
+                // Force is a MAGNITUDE, because a bar that fills from one end
+                // cannot show a direction without giving up half its range.
+                case "FfbTorque": return Clamp01(ffbTorque01);
+                case "TrueforceLevel": return Clamp01(trueforceLevel01);
+                case "FrontGrip": return frontGrip.HasValue ? Clamp01(frontGrip.Value) : 0.0;
+                case "RearGrip": return rearGrip.HasValue ? Clamp01(rearGrip.Value) : 0.0;
+                case "Steering": return steering.HasValue ? Clamp01((steering.Value + 1.0) * 0.5) : 0.5;
+                default: return 0.0;
+            }
+        }
+
+        private static double Clamp01(double v) =>
+            double.IsNaN(v) ? 0.0 : v < 0 ? 0.0 : v > 1 ? 1.0 : v;
 
         public static int SlotCount(OledLayoutKind kind) => SlotWidths(kind).Length;
 
@@ -154,7 +246,7 @@ namespace TrueforceForAll.Plugin
         /// A leading space skips the left zone, which is how a value gets
         /// cleanly right-aligned. Only the LARGE rows behave this way; the
         /// small wide rows draw normally, and the four-row CENTERED layout
-        /// centres the whole string instead.</summary>
+        /// centers the whole string instead.</summary>
         public static bool SlotSplits(OledLayoutKind kind, int slot)
         {
             switch (kind)
@@ -181,12 +273,18 @@ namespace TrueforceForAll.Plugin
         {
             int[] w = SlotWidths(kind);
             if (slot < 0 || slot >= w.Length) return "";
+            if (SlotIsGauge(kind, slot))
+                return slot == 1 && kind != OledLayoutKind.Gauge
+                    ? "thin meter, fills from the left"
+                    : "meter, fills from the left";
             string size;
             switch (kind)
             {
                 case OledLayoutKind.BigLeft: size = slot == 0 ? "huge" : "medium"; break;
                 case OledLayoutKind.BigRight: size = slot == 0 ? "medium" : "huge"; break;
                 case OledLayoutKind.Stacked: size = slot == 0 ? "small" : "large"; break;
+                case OledLayoutKind.GaugeLabel:
+                case OledLayoutKind.GaugeTwoText: size = "caption"; break;
                 default: size = (slot % 2 == 0) ? "small" : "large"; break;
             }
             string hint = $"{size}, up to {w[slot]} character" + (w[slot] == 1 ? "" : "s");
@@ -225,6 +323,19 @@ namespace TrueforceForAll.Plugin
                         : new[] { speedLabel, null, null, null };
                     return;
 
+                // The sibling of the speed-and-delta screen, and captioned in
+                // the same voice as that pair rather than the newer ones: a
+                // screen should match the one it sits beside.
+                case OledScreen.GearAndDelta:
+                    kind = OledLayoutKind.FourCenter;
+                    slots = deltaOk
+                        ? new[] { "Custom", "Gear", "Custom", "Delta" }
+                        : new[] { "Custom", "Gear", "None", "None" };
+                    texts = deltaOk
+                        ? new[] { "GEAR", null, "LAP DELTA", null }
+                        : new[] { "GEAR", null, null, null };
+                    return;
+
                 case OledScreen.SpeedGearAndDelta:
                     // Speed small on top, gear large under it, delta where the
                     // delta screen keeps it. Replaces an earlier arrangement
@@ -239,7 +350,7 @@ namespace TrueforceForAll.Plugin
                         : new string[4];
                     return;
 
-                // The labelled pair. Four centred rows: a small caption over a
+                // The labelled pair. Four centered rows: a small caption over a
                 // large value, twice. The value carries the unit so the caption
                 // does not have to, and the gear gets a ten-character row, so
                 // this is also the arrangement that copes with a farm gearbox.
@@ -307,7 +418,7 @@ namespace TrueforceForAll.Plugin
         /// which is right for a game that counts 1 to 6 and useless in Farming
         /// Simulator, where it runs -6 to 18 and some gears are named. Seeing
         /// the whole gear matters more than seeing it huge, so those screens
-        /// step aside for the centred four rows: speed small on top, gear large
+        /// step aside for the centered four rows: speed small on top, gear large
         /// under it with ten characters to play with.
         ///
         /// Presets only. A custom screen is the user's own arrangement and is
@@ -394,13 +505,18 @@ namespace TrueforceForAll.Plugin
             string g = (gear ?? "").Trim();
             if (g.Length == 0) return "-";
             if (maxWidth <= 0) return "";
+            // Neutral BEFORE the fits-verbatim return below. A source that
+            // reports neutral as "0" (Farming Simulator does, whenever the mod
+            // has no gear name for the vehicle) is one character long, so it
+            // would otherwise pass straight through and put a literal 0 on the
+            // panel where every other game shows N.
+            if (g == "0") return "N";
             if (g.Length <= maxWidth) return g;
 
             bool negative = g[0] == '-';
             if (maxWidth == 1)
             {
                 if (negative) return "R";
-                if (g == "0") return "N";
                 return g.Substring(g.Length - 1);
             }
             // Wider but still short: keep the sign, then the rightmost digits,
@@ -442,7 +558,12 @@ namespace TrueforceForAll.Plugin
             for (int i = 0; i < n; i++)
             {
                 string v = (stored != null && i < stored.Count) ? stored[i] : null;
-                outSlots[i] = (v != null && Array.IndexOf(FieldKeys, v) >= 0) ? v : FieldNone;
+                // Each slot is validated against ITS OWN catalog: a text field
+                // stored against a slot that is now a meter (or the reverse,
+                // after a layout change) falls back to Empty rather than
+                // rendering as something the slot cannot draw.
+                string[] catalog = SlotIsGauge(kind, i) ? GaugeFieldKeys : FieldKeys;
+                outSlots[i] = (v != null && Array.IndexOf(catalog, v) >= 0) ? v : FieldNone;
             }
             return outSlots;
         }
