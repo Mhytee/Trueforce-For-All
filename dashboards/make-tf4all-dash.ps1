@@ -683,13 +683,13 @@ function BoxLine([string]$name, $x, $y, $w, [string]$label, [string]$valueJs, [s
 # Boxes of ours have NO entry and are never greyed out: car facts, gains,
 # presets, the visualizer and inputs run on our own data in every game.
 function BoxDataJs([string]$P) {
-    # Accelerations: the g circle's own test, and half the friction one.
+    # Accelerations: the g circle's test.
     $g   = '!isNaN(1*$prop("' + $P + '.Drive.GLat"))'
     # One test for both car-list boxes: they need someone else out there.
     $opp = '(1*$prop("' + $script:SIM + 'OpponentsCount"))>1'
     $t = [ordered]@{
         Damage    = '(""+$prop("' + $script:SIM + 'CarDamage1")||"")!=""'
-        Friction  = '($prop("' + $P + '.ModeB.On"))||(' + $g + ')'
+        Friction  = '($prop("' + $P + '.Drive.SlipOn"))'
         Fuel      = '((1*$prop("' + $P + '.Forza.FuelPct"))>0)||((1*$prop("' + $script:SIM + 'MaxFuel"))>0)'
         GCircle   = $g
         Delta     = '(""+$prop("' + $script:TRK + 'EstimatedLapTime")||"")!=""'
@@ -970,9 +970,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # read; the lap one lost its last caller when the box moved to the
     # EstimatedLapTime test below.)
     #
-    # Telemetry FFB gives the better grip number for the friction circle,
-    # but it is no longer the only one: with it off the box runs on measured
-    # accelerations, so it needs whatever the g circle needs.
+    # The friction circle runs on the tyre model's slip number and nothing
+    # else: a measured-g imitation is just the g circle again, so a game
+    # without slip data shows the not-reported note instead. SlipOn is a
+    # per-game-run latch plugin-side, so a pause cannot flap the box.
     #
     # Damage is SimHub's CarDamage1-5, one of the few boxes with no
     # telemetry of our own behind it (Forza's packet carries no damage at
@@ -1198,13 +1199,13 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
                   'var uF=uu.toUpperCase().indexOf("F")>=0;'
     # The unit lives in the header: the blocks are too narrow to carry a
     # degree suffix, and a bare number in the wrong unit is worse than none.
-    $ttHead = AddHead 'tt' 'TYRE TEMPS' 'TyreTemps'
+    $ttHead = AddHead 'tt' 'TIRE TEMPS' 'TyreTemps'
     $g = AddHeadGap; if ($g) { $items.Add($g) }
     # Binding the text replaces the static title, caret included, so this
     # has to put it back: without it this is the one box whose header does
     # not look tappable.
     $ttHead.Bindings['Text'] = BindJS 'Text' ($tempUnitJs +
-        'return "TYRE TEMPS "+(uF?"°F":"°C")+"  ' + [char]0x25BE + '"')
+        'return "TIRE TEMPS "+(uF?"°F":"°C")+"  ' + [char]0x25BE + '"')
     $items.Add($ttHead)
     $tyreProps = @('TyreTemperatureFrontLeft', 'TyreTemperatureFrontRight', 'TyreTemperatureRearLeft', 'TyreTemperatureRearRight')
     $wearProps = @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight')
@@ -1270,12 +1271,12 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $tv.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($tv)
     }
-    $items.Add((AddNote 'tt' 'This game does not report tyre temperatures.' 'TyreTemps' $dTemp))
+    $items.Add((AddNote 'tt' 'This game does not report tire temperatures.' 'TyreTemps' $dTemp))
 
     # ---------------- TYRE WEAR (visual) -----------------------------
     # Same blocks; here the colour is how much tread is left.
     $vis = KeyVis 'TyreWear' $dWear
-    $hd = AddHead 'tw' 'TYRE WEAR' 'TyreWear'
+    $hd = AddHead 'tw' 'TIRE WEAR' 'TyreWear'
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
     $items.Add($hd)
     $fzWear = @('WearFL', 'WearFR', 'WearRL', 'WearRR')
@@ -1299,7 +1300,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         $tv.Bindings['Visible'] = BindJS 'Visible' $vis
         $items.Add($tv)
     }
-    $items.Add((AddNote 'tw' 'This game does not report tyre wear.' 'TyreWear' $dWear))
+    $items.Add((AddNote 'tw' 'This game does not report tire wear.' 'TyreWear' $dWear))
 
     # ---------------- FUEL -------------------------------------------
     $vis = KeyVis 'Fuel' $dFuel
@@ -1435,10 +1436,11 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # ---------------- FRICTION CIRCLE (ours) -------------------------
     # Not the g diagram: this is how much of the tyre's GRIP is in use.
     # The ring IS the limit, so a dot touching it means there is nothing
-    # left. With Telemetry FFB running the number comes from its model,
-    # which knows what the tyre is doing and not merely what the car ended
-    # up doing. Without it, the measured load against the hardest this car
-    # has taken, which every game reporting accelerations can feed.
+    # left, and a dot past it means the loaded axle is sliding. The number
+    # is the tyre model's own utilization (worst axle, so a rear slide
+    # pegs it too), which only exists on games that report tire slip;
+    # everything else shows the not-reported note, because without slip
+    # the only thing left to draw is the g circle, and we have one.
     $vis = KeyVis 'Friction' $dFric
     $hd = AddHead 'fc' 'FRICTION CIRCLE' 'Friction'
     $g = AddHeadGap; if ($g) { $items.Add($g) }   # under the title, not over it
@@ -1467,7 +1469,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
             'if(g<0)g=0;if(g>100)g=100;return g+"% grip left"')
     }
     $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
-    $items.Add((AddNote 'fc' 'This game does not report accelerations.' 'Friction' $dFric))
+    $items.Add((AddNote 'fc' 'This game does not report tire slip.' 'Friction' $dFric))
 
     # ---------------- RELATIVE ---------------------------------------
     # Two cars ahead and two behind, from the tracker plugin rather than
@@ -2582,7 +2584,7 @@ function DriveBoxOverlay([string]$P) {
     # its box needs from the game, and BoxDataJs is keyed the plugin's way.
     $labels = @('Car facts', 'Damage', 'Friction circle', 'Fuel', 'G circle', 'Gains',
                 'Inputs', 'Lap times', 'Presets', 'Radar', 'Relative',
-                'Tyre temps', 'Tyre wear', 'Visualizer', 'Empty')
+                'Tire temps', 'Tire wear', 'Visualizer', 'Empty')
     $keys   = @('CarFacts', 'Damage', 'Friction', 'Fuel', 'GCircle', 'Home',
                 'Inputs', 'Delta', 'Presets', 'Radar', 'Relative',
                 'TyreTemps', 'TyreWear', 'Scope', 'None')
@@ -2883,7 +2885,7 @@ $effects = @(
     @('Bumps',      'Road bumps',    $true),
     @('Traction',   'Traction loss', $true),
     @('AxleSlip',   'Axle slip',     $true),
-    @('Kerb',       'Kerb thump',    $true),
+    @('Kerb',       'Curb thump',    $true),
     @('Lockup',     'Lockup judder', $true),
     @('Shift',      'Gear shift',    $true),
     @('Abs',        'ABS',           $true),

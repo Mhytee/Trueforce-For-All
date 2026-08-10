@@ -5486,6 +5486,24 @@ namespace TrueforceForAll.Plugin
                 _lastFrontSlipRatio = 0f;   // no signed slip on a scalar source: gate stays open
                 _lastFrontSlipRatioAbs = 0f; // friction circle: full lateral share
             }
+            // Axle rollups for the dash friction circle: composed above on
+            // quad sources, carried natively on Farming Simulator frames
+            // (which have rollups but no slip quads, so the branch above
+            // never runs for them). A source with one axle reports it for
+            // both rather than losing the box.
+            if (frame.FrontGrip01.HasValue || frame.RearGrip01.HasValue)
+            {
+                _dashSlipFront   = (float)(frame.FrontGrip01 ?? frame.RearGrip01).Value;
+                _dashSlipRear    = (float)(frame.RearGrip01 ?? frame.FrontGrip01).Value;
+                _dashSlipStampMs = Environment.TickCount;
+                if (!_dashSlipSeen)
+                {
+                    // First slip of this game run: un-grey the friction box
+                    // now rather than at the next capability flush.
+                    _dashSlipSeen = true;
+                    RecomputeDashUnsupported();
+                }
+            }
             // Suspension-load input: front suspension compression vs its own
             // slow baseline = live front-axle load ratio. The baseline EMA
             // (~3 s) learns the car's ride height, so the ratio reads dive,
@@ -7439,8 +7457,8 @@ namespace TrueforceForAll.Plugin
                         : 1f;
                     if (Settings != null) { Settings.ModeBAutoStrength = _mbAutoStrengthOn; PersistSettings(); }
                     return _mbAutoStrengthOn
-                        ? $"Auto strength per car ON: each car's strength scales toward its learned force ceiling (this car now x{_mbAutoStrengthScale:0.00}; learns over a few laps)."
-                        : "Auto strength per car OFF: the Strength slider applies to every car equally.";
+                        ? $"Auto strength per car ON: cars level out at the heaviness your Strength slider sets (this car now x{_mbAutoStrengthScale:0.00}; learns over a few laps)."
+                        : "Auto strength per car OFF: cars keep their natural spread; Strength is a plain multiplier on all of them.";
                 case "BLDEM":
                     _mbLateralDemandOn = value >= 0.5f;
                     if (Settings != null) { Settings.ModeBLateralDemand = _mbLateralDemandOn; PersistSettings(); }

@@ -1,9 +1,9 @@
-{
+﻿{
     "DashboardDebugManager":  {
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "67252f54-cebd-4f41-aae3-bf588e41478a",
+    "Id":  "83c4ba41-a7a9-4bc6-9781-aaa0e1087616",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "4d0c541d-b0db-45f5-b2dd-4b1cbd043567",
+                        "ScreenId":  "4aadc778-d311-4e3d-a94b-5a7774f0de44",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14700,7 +14700,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "f838c25a-5701-4e33-b8f5-2eb450961b51",
+                        "ScreenId":  "0dc79b5b-7ae8-4535-9a67-89686ca0c8d0",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -41075,7 +41075,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "5600ca91-1006-4c94-b308-8f9071c31f12",
+                        "ScreenId":  "df72fd5f-8400-493e-bd54-90ee182ebb4c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -43105,7 +43105,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  16,
-                                          "Text":  "Kerb thump",
+                                          "Text":  "Curb thump",
                                           "TextColor":  "#FFF4F4F4",
                                           "HorizontalAlignment":  0,
                                           "VerticalAlignment":  1,
@@ -61654,7 +61654,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "4affb0a5-3652-4192-a83a-c86dab59b48c",
+                        "ScreenId":  "51a87287-556e-4d8c-bab9-df2e2fa43c6a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -75289,7 +75289,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "0267f698-d939-4fc5-914f-8680a22ae8d5",
+                        "ScreenId":  "8b272452-369b-41a2-bc9c-eef904f6f9fd",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -95261,7 +95261,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7a51982b-ad14-4437-93f0-123fe7c250b9",
+                        "ScreenId":  "bb767900-fab3-4c7e-809d-6b6fff85c71b",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -112722,7 +112722,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "e3247b08-f16f-4447-9944-6bef6e629bb2",
+                        "ScreenId":  "7670b799-9871-4e73-bec1-036958b4f6a7",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -116460,7 +116460,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
-                                          "Text":  "TYRE TEMPS  ▾",
+                                          "Text":  "TIRE TEMPS  ▾",
                                           "TextColor":  "#FFA0A0A0",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -117644,7 +117644,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report tyre temperatures.",
+                                          "Text":  "This game does not report tire temperatures.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -117736,7 +117736,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
-                                          "Text":  "TYRE WEAR  ▾",
+                                          "Text":  "TIRE WEAR  ▾",
                                           "TextColor":  "#FFA0A0A0",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -118172,7 +118172,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report tyre wear.",
+                                          "Text":  "This game does not report tire wear.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -119786,7 +119786,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -119830,7 +119830,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -119898,7 +119898,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -119938,7 +119938,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -119959,7 +119959,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report accelerations.",
+                                          "Text":  "This game does not report tire slip.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -119978,7 +119978,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -130944,7 +130944,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
-                                          "Text":  "TYRE TEMPS  ▾",
+                                          "Text":  "TIRE TEMPS  ▾",
                                           "TextColor":  "#FFA0A0A0",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -132128,7 +132128,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report tyre temperatures.",
+                                          "Text":  "This game does not report tire temperatures.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -132220,7 +132220,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
-                                          "Text":  "TYRE WEAR  ▾",
+                                          "Text":  "TIRE WEAR  ▾",
                                           "TextColor":  "#FFA0A0A0",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -132656,7 +132656,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report tyre wear.",
+                                          "Text":  "This game does not report tire wear.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -134270,7 +134270,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -134314,7 +134314,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -134382,7 +134382,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -134422,7 +134422,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -134443,7 +134443,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report accelerations.",
+                                          "Text":  "This game does not report tire slip.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -134462,7 +134462,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -145948,7 +145948,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
-                                          "Text":  "TYRE TEMPS  ▾",
+                                          "Text":  "TIRE TEMPS  ▾",
                                           "TextColor":  "#FFA0A0A0",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -147428,7 +147428,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report tyre temperatures.",
+                                          "Text":  "This game does not report tire temperatures.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -147536,7 +147536,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
-                                          "Text":  "TYRE WEAR  ▾",
+                                          "Text":  "TIRE WEAR  ▾",
                                           "TextColor":  "#FFA0A0A0",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -148076,7 +148076,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report tyre wear.",
+                                          "Text":  "This game does not report tire wear.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -150010,7 +150010,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -150086,7 +150086,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -150186,7 +150186,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -150226,7 +150226,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -150255,7 +150255,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report accelerations.",
+                                          "Text":  "This game does not report tire slip.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -150274,7 +150274,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -162938,7 +162938,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
-                                          "Text":  "TYRE TEMPS  ▾",
+                                          "Text":  "TIRE TEMPS  ▾",
                                           "TextColor":  "#FFA0A0A0",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -164418,7 +164418,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report tyre temperatures.",
+                                          "Text":  "This game does not report tire temperatures.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -164526,7 +164526,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  12,
-                                          "Text":  "TYRE WEAR  ▾",
+                                          "Text":  "TIRE WEAR  ▾",
                                           "TextColor":  "#FFA0A0A0",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -165066,7 +165066,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report tyre wear.",
+                                          "Text":  "This game does not report tire wear.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -167000,7 +167000,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -167076,7 +167076,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -167176,7 +167176,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -167216,7 +167216,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 (((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -167245,7 +167245,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  14,
-                                          "Text":  "This game does not report accelerations.",
+                                          "Text":  "This game does not report tire slip.",
                                           "TextColor":  "#FF6E6E6E",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -167264,7 +167264,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.ModeB.On\"))||(!isNaN(1*$prop(\"TrueforcePlugin.Dash.Drive.GLat\")))))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"Friction\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.SessionLive\") \u0026\u0026 !(((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Unsupported\")).indexOf(\",Friction,\")\u003c0)\u0026\u0026(($prop(\"TrueforcePlugin.Dash.Drive.SlipOn\"))))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -198349,7 +198349,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  15,
-                                          "Text":  "Tyre temps",
+                                          "Text":  "Tire temps",
                                           "TextColor":  "#FFF4F4F4",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,
@@ -198532,7 +198532,7 @@
                                           "TextWrapping":  1,
                                           "FontStyle":  "Normal",
                                           "FontSize":  15,
-                                          "Text":  "Tyre wear",
+                                          "Text":  "Tire wear",
                                           "TextColor":  "#FFF4F4F4",
                                           "HorizontalAlignment":  1,
                                           "VerticalAlignment":  1,

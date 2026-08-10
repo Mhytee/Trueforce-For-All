@@ -209,7 +209,7 @@ namespace TrueforceForAll.Plugin
         // after a decent amount of driving is real evidence. The rest of the
         // gated boxes are not learnable and rely on the table above.
         private static readonly string[] DashLearnableKeys =
-            { "Delta", "Fuel", "TyreTemps", "TyreWear" };
+            { "Delta", "Friction", "Fuel", "TyreTemps", "TyreWear" };
         // How long a game has to be DRIVEN before absence counts as evidence.
         // Ten minutes is far past the point where a game that reports tyre
         // temperatures has reported them, and short enough that a Horizon
@@ -251,6 +251,10 @@ namespace TrueforceForAll.Plugin
             {
                 if (seen.IndexOf("," + k + ",", StringComparison.Ordinal) >= 0) continue;
                 if (_capSeenRun.Contains(k)) continue;                     // seen this run, not banked yet
+                // Slip is our own frame data and its latch can flip between
+                // learner passes; honor it directly so a game already driven
+                // 10+ minutes pre-update is never greyed while slip flows.
+                if (k == "Friction" && _dashSlipSeen) continue;
                 if (sb.ToString().IndexOf("," + k + ",", StringComparison.Ordinal) >= 0) continue;
                 sb.Append(k).Append(",");
             }
@@ -281,6 +285,7 @@ namespace TrueforceForAll.Plugin
                 _capGame = game;
                 _capSeenRun.Clear();
                 _capSec = 0; _capUnflushedSec = 0; _capLastTick = 0;
+                _dashSlipSeen = false;   // the new game earns its own latch
             }
 
             // Driving time only. A car sitting in the pits reports no lap
@@ -315,6 +320,10 @@ namespace TrueforceForAll.Plugin
             // you leave the pits rather than after a reference lap exists.
             if (!_capSeenRun.Contains("Delta") && nd.CurrentLapTime.TotalSeconds > 0)
                 _capSeenRun.Add("Delta");
+            // Slip rollups are our own frame data, not SimHub's: the stash
+            // latch in DispatchFrame is the sighting.
+            if (!_capSeenRun.Contains("Friction") && _dashSlipSeen)
+                _capSeenRun.Add("Friction");
 
             if (_capUnflushedSec >= DashCapFlushSeconds) DashFlushCapabilities();
         }
@@ -499,15 +508,28 @@ namespace TrueforceForAll.Plugin
         private volatile string _dashLiveGear = "";
         private volatile float _dashLiveSpeedKmh;
 
-        // The friction circle's reference: the hardest combined load this car
-        // has actually taken. Every car and surface has its own ceiling, so a
-        // fixed number would read 40% in a road car and peg in a race car.
-        // Floored at 0.8 g so a gentle cruise cannot make itself the reference
-        // and report being at the limit, and it bleeds down slowly so one kerb
-        // strike does not flatten the scale.
-        private const float DashGripFloorG = 0.8f;
-        private float _dashGripPeakG = DashGripFloorG;
-        private int   _dashGripCarKey;
+        // Axle slip rollups off the live frame, for the friction circle.
+        // Written on the telemetry thread in DispatchFrame; the stamp gates
+        // staleness so the dot parks at centre when frames stop. There is
+        // deliberately NO measured-g fallback: without slip a "friction
+        // circle" is just the g circle normalized to a guess, and the dash
+        // already has the real g circle one box over. Games without slip
+        // data have the box declared unsupported instead (the SlipOn latch
+        // below for the box's own notice, the capability learner for the
+        // picker).
+        private volatile float _dashSlipFront;
+        private volatile float _dashSlipRear;
+        private volatile int   _dashSlipStampMs;
+        // Latched per game run: rollups seen once = this game reports slip.
+        // The live half of the friction box's data test. A latch rather
+        // than freshness so a pause or a pit stop cannot flap the box into
+        // its "not reported" notice mid-session.
+        private volatile bool _dashSlipSeen;
+        // Display lag state: -1 = re-seed on next sample.
+        private const int   DashSlipFreshMs = 700;
+        private const float DashSlipUiTauS  = 0.12f;
+        private float _dashSlipEma = -1f;
+        private int   _dashSlipEmaTick;
 
         // ---------- themes ----------
         // A theme is a PALETTE, not a layout: the dashboard binds its
@@ -766,35 +788,47 @@ namespace TrueforceForAll.Plugin
                 : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
         }
 
-        /// <summary>How much of this car's grip the CAR is using: combined
-        /// lateral and longitudinal acceleration against the hardest it has
-        /// managed. This is the friction circle's distance from centre.
-        ///
-        /// Deliberately NOT Telemetry FFB's grip model. That model reads
-        /// FRONT AXLE slip, because front slip is what makes a force at the
-        /// wheel, and in a rear-wheel slide the fronts are still gripping and
-        /// steering: it reads moderate while the car is sideways. Right for
-        /// force feedback, wrong for an instrument asking what the CAR is
-        /// doing. Sharing one vector with the direction also stops the dot
-        /// pointing one way while its length argues for another.</summary>
-        private float DashMeasuredGripUse()
+        /// <summary>The friction circle's distance from centre. Slip is the
+        /// only quantity that can actually EXCEED the limit: measured
+        /// acceleration physically cannot (a sliding tyre transmits LESS, so
+        /// the reading drops as grip lets go), which is why slip is the only
+        /// thing that can push the dot outside the ring and MEAN "grip is
+        /// gone in that direction". Worst of both axles, not the front-only
+        /// number Mode B steers by: the fronts still grip and steer in a
+        /// rear slide, so that number read moderate while the car was fully
+        /// sideways. Divided by the grip auto-cal's learned per-car peak
+        /// (1.0 when auto-cal is off), the same truth divisor the force
+        /// model uses, so the ring sits at the car's real peak and not at
+        /// the game's nominal 1.0. No slip, no circle: the box is
+        /// unsupported on such games (see the SlipOn latch), and stale slip
+        /// (frames stopped) parks the dot at centre.</summary>
+        private float DashGripUse()
         {
             if (_telemetryStalled) return 0f;
-            float lat = _lastSwayAccel / 9.81f, lon = _lastSurgeAccel / 9.81f;
-            if (float.IsNaN(lat) || float.IsNaN(lon)) return 0f;
-            float g = (float)Math.Sqrt(lat * lat + lon * lon);
-            // A car change starts the reference over: the old ceiling says
-            // nothing about the new car.
-            int carKey = (_activeCarId ?? "").GetHashCode();
-            if (carKey != _dashGripCarKey)
+            int now = Environment.TickCount;
+            if (unchecked(now - _dashSlipStampMs) > DashSlipFreshMs)
             {
-                _dashGripCarKey = carKey;
-                _dashGripPeakG  = DashGripFloorG;
+                _dashSlipEma = -1f;   // re-seed the lag when slip comes back
+                return 0f;
             }
-            if (g > _dashGripPeakG) _dashGripPeakG = g;
-            else _dashGripPeakG = Math.Max(DashGripFloorG, _dashGripPeakG - 0.00002f);
-            return g / _dashGripPeakG;
+            float raw = Math.Max(_dashSlipFront, _dashSlipRear)
+                / Math.Max(0.2f, _mbCalPeak);
+            if (float.IsNaN(raw)) return 0f;
+            // Cap well above the dash's 1.3-radius clamp: a burnout can push
+            // normalized slip to 5+, and an uncapped lag would then spend
+            // noticeable time sliding back down through the visible range.
+            if (raw > 3f) raw = 3f;
+            // Light time-based display lag so a one-frame kerb spike reads
+            // as a flick rather than the dot teleporting.
+            float dt = unchecked(now - _dashSlipEmaTick) / 1000f;
+            _dashSlipEmaTick = now;
+            if (dt < 0f) dt = 0f; else if (dt > 0.25f) dt = 0.25f;
+            if (_dashSlipEma < 0f) _dashSlipEma = raw;
+            else _dashSlipEma += (raw - _dashSlipEma)
+                * (1f - (float)Math.Exp(-dt / DashSlipUiTauS));
+            return _dashSlipEma;
         }
+
         // Driver inputs for the Drive tab's inputs box. Steer is -2 when the
         // active source reports no steering at all.
         private volatile float _dashLiveThrottle;
@@ -1699,12 +1733,16 @@ namespace TrueforceForAll.Plugin
             // empty clutch bar rather than losing it.
             this.AttachDelegate("Dash.Clutch",    () => (float?)ForzaUdpSource?.DashExtras?.Clutch01 ?? -1f);
             this.AttachDelegate("Dash.Handbrake", () => (float?)ForzaUdpSource?.DashExtras?.Handbrake01 ?? -1f);
-            // Grip in use, for the friction circle: the car's own combined
-            // acceleration against the hardest it has managed. Same vector
-            // that sets the dot's direction, so length and bearing can never
-            // disagree. See DashMeasuredGripUse for why Telemetry FFB's grip
-            // model, which reads the front axle, is the wrong quantity here.
-            this.AttachDelegate("Dash.Drive.Util", () => DashMeasuredGripUse());
+            // Grip in use, for the friction circle: the tyre model's own
+            // utilization, nothing else. The ring is the grip peak, so
+            // breaching it means the loaded axle is sliding, which is the
+            // friction-circle reading of "grip gone in that direction".
+            // Games without slip data do NOT get an imitation (measured g
+            // is just the g circle again): SlipOn is the box's data test,
+            // and the capability learner greys the picker tile. The g pair
+            // gives the direction the load comes from.
+            this.AttachDelegate("Dash.Drive.Util",   () => DashGripUse());
+            this.AttachDelegate("Dash.Drive.SlipOn", () => _dashSlipSeen);
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
 
