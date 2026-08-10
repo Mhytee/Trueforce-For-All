@@ -66,10 +66,9 @@ preserves via FFB pass-through. It mixes:
     rumbles through the wheel. On Forza, the per-tire surface-rumble
     field is read directly for a richer, more accurate continuous road
     feel on top of the heave channel.
-  - **Implement thud**: lower or raise an implement and you feel the
-    hydraulic hum while it moves and the thump as it lands, following how
-    fast the implement is moving so each one feels like its own
-    machinery. (Farming Simulator.)
+  - **Implement thud**: lower, raise or extend an implement, or work a
+    loader or crane arm yourself, and you feel the hydraulic hum while it
+    moves and the thump as it lands. (Farming Simulator.)
   - **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
     lockup, drift). Read directly from per-wheel slip in games that
     expose it (AC and the Forza titles), weighing each tire by load so
