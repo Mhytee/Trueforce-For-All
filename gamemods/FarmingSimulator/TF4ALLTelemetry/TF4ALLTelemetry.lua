@@ -18,7 +18,7 @@ TF4ALLTelemetry = {}
 -- Keep in sync with modDesc.xml <version> (build-mod.py verifies). The
 -- plugin compares this against its shipped version to tell the user when
 -- the game is still running an older copy (mods load only at game start).
-local MOD_VERSION = "0.2.19"
+local MOD_VERSION = "0.2.20"
 local ctx = {
 	pipeName = "\\\\.\\pipe\\TF4ALLTelemetry",
 	file = nil,
@@ -200,6 +200,19 @@ local function gatherAttachState(vehicle)
 	-- rate lands in the same fraction-of-full-travel unit as the joints.
 	-- The stale-prev swallow (d < 0.25) also folds a continuous-slew
 	-- crane's angle wrap back to silence instead of a spike.
+	-- FS stores a tool's curRot/curTrans as 3-component tables updated
+	-- IN PLACE (on-wheel probe 2026-08-10: curRot=table, rotMin=nil), so
+	-- the components are read out and COPIED each frame: finite() on the
+	-- table itself read the whole detector dead (the mod 0.2.19 crane
+	-- bug), and keeping the table reference would compare the game's
+	-- table to itself. All three components are tracked rather than
+	-- guessing the driven axis; the idle ones simply never move.
+	local function toolAxes(v)
+		if type(v) == "table" then
+			return v[1], v[2], v[3]
+		end
+		return v, nil, nil
+	end
 	local function unitToolMotion(u, key)
 		pcall(function()
 			local scy = u.spec_cylindered
@@ -208,16 +221,21 @@ local function gatherAttachState(vehicle)
 			end
 			if not ctx.mtProbeDone and #scy.movingTools > 0 then
 				ctx.mtProbeDone = true
-				local t1 = scy.movingTools[1]
+				local p1 = scy.movingTools[1]
+				local pr1, pr2, pr3 = toolAxes(p1.curRot)
+				local pt1, pt2, pt3 = toolAxes(p1.curTrans)
 				print(string.format(
-					"TF4ALLTelemetry: mt probe: n=%d curRot=%s curTrans=%s rotMin=%s rotMax=%s",
-					#scy.movingTools, tostring(t1.curRot), tostring(t1.curTrans),
-					tostring(t1.rotMin), tostring(t1.rotMax)))
+					"TF4ALLTelemetry: mt probe: n=%d rot=%s/%s/%s trans=%s/%s/%s rotMin=%s rotMax=%s",
+					#scy.movingTools, tostring(pr1), tostring(pr2), tostring(pr3),
+					tostring(pt1), tostring(pt2), tostring(pt3),
+					tostring(p1.rotMin), tostring(p1.rotMax)))
 			end
 			for ti, mt in ipairs(scy.movingTools) do
 				local k = "mt" .. key .. "_" .. ti
 				local prev = ctx.toolPrev[k]
-				local cur = { r = mt.curRot, t = mt.curTrans }
+				local r1, r2, r3 = toolAxes(mt.curRot)
+				local t1, t2, t3 = toolAxes(mt.curTrans)
+				local cur = { r1 = r1, r2 = r2, r3 = r3, t1 = t1, t2 = t2, t3 = t3 }
 				ctx.toolPrev[k] = cur
 				if prev ~= nil then
 					local function comp(c, p, mn, mx, span)
@@ -238,8 +256,12 @@ local function gatherAttachState(vehicle)
 							end
 						end
 					end
-					comp(cur.r, prev.r, mt.rotMin, mt.rotMax, 2.5)
-					comp(cur.t, prev.t, mt.transMin, mt.transMax, 1.0)
+					comp(cur.r1, prev.r1, mt.rotMin, mt.rotMax, 2.5)
+					comp(cur.r2, prev.r2, mt.rotMin, mt.rotMax, 2.5)
+					comp(cur.r3, prev.r3, mt.rotMin, mt.rotMax, 2.5)
+					comp(cur.t1, prev.t1, mt.transMin, mt.transMax, 1.0)
+					comp(cur.t2, prev.t2, mt.transMin, mt.transMax, 1.0)
+					comp(cur.t3, prev.t3, mt.transMin, mt.transMax, 1.0)
 				end
 			end
 		end)

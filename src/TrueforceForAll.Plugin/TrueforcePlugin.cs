@@ -1484,7 +1484,7 @@ namespace TrueforceForAll.Plugin
         // spring game is active without the mod. After one accepted install,
         // newer plugin versions refresh the file silently (the consent was
         // to the file, not to one version of it).
-        private const string FsModVersion = "0.2.19";
+        private const string FsModVersion = "0.2.20";
         private bool _fsModPromptShown;   // once per SimHub session
 
         /// <summary>Maps a Farming Simulator game name to its mods folder and
