@@ -160,7 +160,7 @@ namespace TrueforceForAll.Plugin
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.
         private static readonly string[] DashDriveFactorySlots =
-            { "CarFacts", "TyreTemps", "Scope", "GCircle" };
+            { "CarFacts", "TyreTemps", "Scope", "Friction" };
         internal const int DashDriveSlotCount = 4;
         // Which box the on-dash picker is editing. Set when it opens, read
         // by the picker's title and by every tile it offers.

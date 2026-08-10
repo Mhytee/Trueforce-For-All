@@ -15444,13 +15444,19 @@ namespace TrueforceForAll.Plugin
                 }
                 prevWasBlank = false;
 
-                // Markdown images (![alt](url), or link-wrapped [![...]).
+                // Markdown images (![alt](url), or link-wrapped [![...]) and
+                // the HTML ones GitHub writes when you drag a file into the
+                // release editor (<img src="...user-attachments/...">, and
+                // <video> / <picture> for the same reason).
                 // This renderer is text-only (and WPF wouldn't animate a
                 // release GIF anyway), so image lines are dropped instead of
-                // showing as raw markdown. One dim pointer per body tells
+                // showing as raw markup. One dim pointer per body tells
                 // in-app readers where the visuals live.
                 if (trimmed.StartsWith("![", StringComparison.Ordinal)
-                    || trimmed.StartsWith("[![", StringComparison.Ordinal))
+                    || trimmed.StartsWith("[![", StringComparison.Ordinal)
+                    || trimmed.StartsWith("<img", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("<video", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("<picture", StringComparison.OrdinalIgnoreCase))
                 {
                     if (!imageNoteShown)
                     {
