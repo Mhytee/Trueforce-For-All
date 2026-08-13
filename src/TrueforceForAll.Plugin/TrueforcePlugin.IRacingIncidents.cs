@@ -130,7 +130,24 @@ namespace TrueforceForAll.Plugin
                 }
 
                 ReadIncidentLimit(raw);
+                ConsumeIncidentCount(count, source);
+            }
+            catch { /* dash garnish: never disturb the data pump */ }
+        }
 
+        /// <summary>The path-independent half: latch the count and announce a
+        /// rise. Called from IRacingIncidentsTick on the SimHub route, and
+        /// from IRacingDirectTick's reader thread on the direct route. The
+        /// two routes are mutually exclusive via _irSdkLive, so there is one
+        /// writer at a time, the same contract every other shared latch has.
+        /// Without the direct-route call the whole feature goes dark on a
+        /// healthy rig: IRacingTelemetryTick returns before this file's tick
+        /// the moment the direct reader is live.</summary>
+        internal void ConsumeIncidentCount(int count, string source)
+        {
+            if (count < 0) return;
+            try
+            {
                 if (!_irIncidentLogged)
                 {
                     _irIncidentLogged = true;

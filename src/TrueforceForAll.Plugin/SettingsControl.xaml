@@ -2711,10 +2711,23 @@
                  ModeBSlipStarvedDetected when Mode B is armed but no tire-slip
                  telemetry ever reaches it (typically Forza's Data Out points at
                  SimHub's port, so the plugin's own UDP source has nothing to
-                 read); the game's tapped FFB is passed through meanwhile. -->
-            <TextBlock x:Name="ModeBSlipStarvedWarning" Visibility="Collapsed"
-                       Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
-                       Text="Telemetry Based FFB is on, but the game's tire telemetry is not reaching this plugin, so the game's own force feedback is passed through for now. Point Forza's Data Out directly at the plugin: IP 127.0.0.1 with the Forza UDP port from the Settings tab. If startup logged that the port is busy, pick a different port there first, then update the game to match, and turn on forwarding so SimHub still receives telemetry."/>
+                 read); the game's tapped FFB is passed through meanwhile. The
+                 button reuses the fallback banner's jump (Settings tab, UDP
+                 expander opened, scrolled to the Forza section). -->
+            <Grid x:Name="ModeBSlipStarvedWarning" Visibility="Collapsed" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap"
+                           VerticalAlignment="Center"
+                           Text="Telemetry Based FFB is on, but the game's tire telemetry is not reaching this plugin, so the game's own force feedback is passed through for now. Point Forza's Data Out directly at the plugin: IP 127.0.0.1 with the Forza UDP port from the Settings tab. If SimHub or another app already uses that port, pick a different port there first, then update the game to match, and turn on forwarding so SimHub still receives telemetry."/>
+                <Button Grid.Column="1" x:Name="ModeBSlipStarvedSetupButton" Content="Set up…"
+                        Style="{StaticResource UpdateCtaButton}"
+                        Width="90" Height="28" Margin="10,0,0,0" VerticalAlignment="Center"
+                        Click="ForzaFallbackBannerButton_Click"
+                        ToolTip="Jump to the Forza telemetry setup."/>
+            </Grid>
 
             <CheckBox x:Name="ModeBEnabledCheck" Content="Enable Telemetry Based FFB for this game"
                       Margin="0,4,0,2" Checked="ModeBEnabled_Changed" Unchecked="ModeBEnabled_Changed"/>

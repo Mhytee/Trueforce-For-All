@@ -6733,6 +6733,14 @@ namespace TrueforceForAll.Plugin
         // benign (one extra or lost tick of a diagnostic banner).
         private long _mbArmedTicks;      // stamped on every clean engage
         private bool _slipStarvedWarned;
+        // Consecutive live starved pass-through ticks (FFB thread only).
+        // Debounces the warning: the unpause race can land a handful of
+        // starved ticks on a healthy enhanced source (raceOn flips true a
+        // few ms before the resume frame's slip stamp lands), and a false
+        // "fix your Data Out" diagnosis on a correct setup is worse than a
+        // late one on a broken setup.
+        private int _starvedLiveTicks;
+        private const int StarvedWarnAfterTicks = 250;   // ~250 ms at the 1 kHz provider
         private const double ModeBSlipStarvedAfterMs = 3000.0;
         /// <summary>True while Mode B is armed but slip telemetry is absent,
         /// so the game's tapped FFB is passed through (diagnostic surface for
@@ -6746,7 +6754,9 @@ namespace TrueforceForAll.Plugin
         /// tick or two behind the arm) can never false-positive.</summary>
         private void NoteModeBSlipStarved()
         {
+            if (_starvedLiveTicks < int.MaxValue) _starvedLiveTicks++;
             if (_slipStarvedWarned) return;
+            if (_starvedLiveTicks < StarvedWarnAfterTicks) return;
             long armed = _mbArmedTicks;
             if (armed == 0
                 || (Stopwatch.GetTimestamp() - armed) * 1000.0 / Stopwatch.Frequency
@@ -6759,10 +6769,10 @@ namespace TrueforceForAll.Plugin
                 + "so there is nothing to synthesize steering force from; the game's own force "
                 + "feedback (if the game is sending any) is passed through instead. Telemetry "
                 + "Based FFB needs Forza's telemetry sent DIRECTLY to this plugin: in the game's "
-                + $"Data Out settings use IP 127.0.0.1 and port {forzaPort}. If the log shows that "
-                + "port failed to bind at startup (another app holds it), first change the Forza "
-                + "UDP port in Trueforce's Settings tab to a free one, then point the game at it, "
-                + "and enable forwarding there so SimHub keeps receiving telemetry.");
+                + $"Data Out settings use IP 127.0.0.1 and port {forzaPort}. If SimHub or another "
+                + "app already uses that port, first change the Forza UDP port in the plugin's "
+                + "Settings tab to a free one, then point the game at it, and enable forwarding "
+                + "there so SimHub keeps receiving telemetry.");
         }
 
         /// <summary>FFB thread. Clears the slip-starved latch once synthesis is
@@ -6770,6 +6780,7 @@ namespace TrueforceForAll.Plugin
         /// zero cannot flicker the banner).</summary>
         private void NoteModeBSlipRecovered()
         {
+            _starvedLiveTicks = 0;
             if (!_slipStarvedWarned || _mbRamp <= 0f) return;
             _slipStarvedWarned = false;
             ModeBSlipStarvedDetected = false;
@@ -7282,10 +7293,12 @@ namespace TrueforceForAll.Plugin
             // Slip feed dead past the dwell = the active source cannot provide
             // slip at all (the 2026-08-13 RS50/FH6 report: Forza UDP bind lost
             // to a port conflict, SimHub fallback carries no slip), not a menu
-            // blip. Null hands the decision to MaybeReshapeFfb, which passes
-            // the game's tapped force through instead of muting the wheel.
-            // Short stalls keep the ramp-out zero below; a real menu is caught
-            // by the provider's pause release long before this dwell elapses.
+            // blip. Null hands the decision to MaybeReshapeFfb's starved
+            // branch, which passes the game's tapped force through ONLY while
+            // the session is provably live and holds zero otherwise (pauses,
+            // fast travel, and UDP halts must not replay the tap's frozen
+            // force; the reasoning lives at that branch). Short stalls keep
+            // the ramp-out zero below.
             if (ageMs > ModeBSlipStarvedAfterMs) return null;
             if (_mbRamp <= 0f) return 0;
 
@@ -7918,6 +7931,19 @@ namespace TrueforceForAll.Plugin
 
                 BuildIRacingOverlayFromSdk(frame, vars, maxNm);
                 MaybeParseIRacingSessionYaml(r);
+
+                // Incident count rides the same snapshot. It HAS to be read
+                // here: IRacingTelemetryTick (which hosts the SimHub-route
+                // incidents tick) returns before it the moment this reader is
+                // live, so without this call the feature is dark on every
+                // healthy rig. Same channel priority as ReadIncidentCount.
+                double inc;
+                if (SdkScalar(frame, vars, "PlayerCarMyIncidentCount", out inc)
+                    || SdkScalar(frame, vars, "PlayerCarDriverIncidentCount", out inc)
+                    || SdkScalar(frame, vars, "PlayerCarTeamIncidentCount", out inc))
+                {
+                    if (inc >= 0.0) ConsumeIncidentCount((int)inc, "direct");
+                }
             }
             catch { /* never let the reader thread die on one bad tick */ }
         }
@@ -8088,6 +8114,11 @@ namespace TrueforceForAll.Plugin
             string yaml = r.SessionYaml;
             if (yaml == null || ReferenceEquals(yaml, _irLastSessionYaml)) return;
             _irLastSessionYaml = yaml;
+            // The incident LIMIT lives in this same YAML. The SimHub-route
+            // reader (ReadIncidentLimit) never runs while the direct reader
+            // is live, so it has to be picked up here or the dash band shows
+            // a count with no denominator.
+            _irIncidentLimit = ParseIncidentLimit(yaml);
             var parsed = ParseIRacingSessionInfo(yaml);
             if (parsed == null) return;
             _irCarInfo = parsed;
@@ -9178,12 +9209,32 @@ namespace TrueforceForAll.Plugin
                     // port, slip never arrives, the game's real FFB was
                     // discarded, wheel totally dead). Pass the tapped game
                     // force through instead, exactly like Mode B off, and
-                    // tell the user how to feed the plugin. The stability
-                    // tail is skipped: its terms are ramp-gated to zero in
-                    // this state anyway, and they belong to synthesis, not
-                    // to the game's own force.
-                    NoteModeBSlipStarved();
-                    return target;
+                    // tell the user how to feed the plugin.
+                    //
+                    // Pass through ONLY while the session is provably live:
+                    // fresh frames AND the physics proxy reads driving. FH6
+                    // re-emits the frozen pre-pause force through pauses,
+                    // results, fast travel, and load screens (the tap stays
+                    // "fresh" the whole time), and streaming that force at a
+                    // stationary wheel walks it to the rotational stop (the
+                    // issue #13 full-lock class). Everything not provably
+                    // live holds zero force, the same wire the pre-fix code
+                    // (and the provider's pause release) produced, so the
+                    // enhanced-source fast-travel halt keeps its exact
+                    // pre-fix behavior too.
+                    //
+                    // The stability tail is skipped in both arms: its terms
+                    // are ramp-gated to zero in this state anyway, and they
+                    // belong to synthesis, not to the game's own force.
+                    var starvedSrc = _telemetrySource;
+                    if (starvedSrc != null && starvedSrc.IsSessionActive
+                        && starvedSrc.MsSinceLastFrame <= 250.0)
+                    {
+                        NoteModeBSlipStarved();
+                        return target;
+                    }
+                    _starvedLiveTicks = 0;
+                    return (short?)0;
                 }
                 NoteModeBSlipRecovered();
                 target = synth;
