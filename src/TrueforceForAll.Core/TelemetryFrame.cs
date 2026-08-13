@@ -96,6 +96,15 @@ namespace TrueforceForAll.Core
         /// <summary>"R", "N", "1", "2", …, string convention matches SimHub's
         /// StatusDataBase.Gear so existing effect code compares unchanged.</summary>
         public string Gear;
+
+        /// <summary>How many FORWARD gears this car has, when the source knows.
+        /// Null means unknown, and consumers must treat unknown as "no opinion"
+        /// rather than guessing: a learned highest-gear-seen would wrongly read
+        /// 5th as top until the driver first used 6th, which would silence the
+        /// shift cue exactly when it is most wanted. iRacing publishes it
+        /// outright as DriverCarGearNumForward in its session info; most other
+        /// sources leave this null and keep their existing behaviour.</summary>
+        public int? ForwardGearCount;
         /// <summary>0 = ABS not active, &gt;0 = active. Edge transitions drive AbsClick PerTick mode.</summary>
         public int AbsActive;
 

@@ -396,7 +396,7 @@ namespace TrueforceForAll.Plugin
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 6),
                 IsChecked = false,
-                ToolTip = "Trueforce ships in some games directly (iRacing, ACC, F1 22+, etc) and the plugin yields to those. Check this if your preset targets a co-operative setup like MAIRA in iRacing.",
+                ToolTip = "Trueforce ships in some games directly (iRacing, ACC, F1 22+, etc) and the plugin yields to those. Check this if your preset targets a setup where the game's own Trueforce is switched off.",
             };
             showNativeCheck.Checked   += (s, e) => rebuildGames(true);
             showNativeCheck.Unchecked += (s, e) => rebuildGames(false);

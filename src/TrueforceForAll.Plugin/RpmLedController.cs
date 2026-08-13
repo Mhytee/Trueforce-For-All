@@ -5,9 +5,8 @@
 //     tap PROVES the game's own FFB quiet (fail-closed). User-toggleable via
 //     TrueforceSettings.ModeBRevLightsEnabled (default on) for games that
 //     drive the wheel's lights natively.
-//   * iRacing via MAIRA passthrough: on by default, no toggle; the live
-//     passthrough itself guarantees a quiet HID++ pipe. Dormant until a
-//     MAIRA fork ships the publisher side.
+//   A second, iRacing-specific gate rode an external FFB handoff that has
+//   been removed; native iRacing telemetry FFB will bring its own.
 //
 // The HID++ channel open is a probe (enumerate + getFeature with timeouts) so
 // it can take a beat; it runs once on a background task, never on SimHub's
@@ -50,9 +49,19 @@ namespace TrueforceForAll.Plugin
 
         public bool IsReady => _channel.IsReady;
         public bool IsTesting => _testing;
+
+        /// <summary>True while the gate is open and frames are being pushed,
+        /// i.e. the live bar itself will render a pattern change and a
+        /// preview sweep would only interrupt it.</summary>
+        public bool IsDriving => _lastBucket != -1 && _channel.IsReady;
+        // The open state used to append WheelLedChannel.ResolvedInfo, i.e. the
+        // HID++ feature index and the device path. That is log material, not
+        // panel material, and the log already carries the same string from the
+        // open itself ("[RPM-LED] resolved ..."). Same change as the OLED
+        // status one section down the tab.
         public string Status =>
             _testing          ? _testStatus
-          : _openState == 2 ? $"open ({_channel.ResolvedInfo})"
+          : _openState == 2 ? "open"
           : _openState == 3 ? "channel not found (see log)"
           : _openState == 1 ? "opening…"
           : "idle";
@@ -99,20 +108,24 @@ namespace TrueforceForAll.Plugin
         private void Push(double pct, bool redline, bool force)
         {
             long nowMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+            // Per-wheel step count from fn0: 10 on the G PRO/RS50, 5 on a
+            // G923. Scaling to the wheel's own range keeps a 50% fill half a
+            // bar on every wheel instead of clipping at the channel.
+            int steps = _channel.StripLength;
             int target;
             if (redline)
             {
                 // Peak: blink the full bar (~2.7 Hz) like iRacing's shift
                 // blink, instead of holding it solid.
                 bool on = ((nowMs / 185L) & 1L) == 0L;
-                target = on ? WheelLedChannel.LedCount : 0;
+                target = on ? steps : 0;
             }
             else
             {
-                double scaled = pct * WheelLedChannel.LedCount;
+                double scaled = pct * steps;
                 int lvl = (int)Math.Floor(scaled + 0.5);
                 if (lvl < 0) lvl = 0;
-                else if (lvl > WheelLedChannel.LedCount) lvl = WheelLedChannel.LedCount;
+                else if (lvl > steps) lvl = steps;
                 // Hysteresis: need ~0.55 LED past the boundary to change, so a
                 // steady RPM with telemetry jitter doesn't flicker the bar
                 // (the mid-RPM flashing the user saw).
@@ -191,7 +204,12 @@ namespace TrueforceForAll.Plugin
             // set outside-in); we only drive how many LEDs.
             const int stepMs   = 220;   // a touch slower than the ~156 ms keepalive
             const int redlineMs = 1500;
-            int total = (2 * (2 * WheelLedChannel.LedCount + 1)) * stepMs + redlineMs + 400;
+            // Exact once the channel is open; an upper bound before that
+            // (StripLength is only known post-open, and a G923 sweeps 5
+            // steps, not 10). The UI stops polling off RpmLedIsTesting, so
+            // overestimating only pads its fallback timer.
+            int stepsGuess = _channel.IsReady ? _channel.StripLength : WheelLedChannel.LedCount;
+            int total = (2 * (2 * stepsGuess + 1)) * stepMs + redlineMs + 400;
 
             // Mark testing BEFORE returning so the UI's status-poll timer sees the
             // test immediately (it self-stops ~1 s after RpmLedIsTesting clears).
@@ -220,17 +238,20 @@ namespace TrueforceForAll.Plugin
                         return;
                     }
 
+                    // The wheel's own step count (10 G PRO/RS50, 5 G923),
+                    // known once the channel resolved.
+                    int steps = _channel.StripLength;
                     for (int cycle = 0; cycle < 2 && _channel.IsReady; cycle++)
                     {
-                        for (int lvl = 0; lvl <= WheelLedChannel.LedCount && _channel.IsReady; lvl++)
+                        for (int lvl = 0; lvl <= steps && _channel.IsReady; lvl++)
                         {
-                            _testStatus = $"▶ rev sweep - level {lvl}/{WheelLedChannel.LedCount}";
+                            _testStatus = $"▶ rev sweep - level {lvl}/{steps}";
                             _channel.SetLevel(lvl);
                             Thread.Sleep(stepMs);
                         }
-                        for (int lvl = WheelLedChannel.LedCount - 1; lvl >= 0 && _channel.IsReady; lvl--)
+                        for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady; lvl--)
                         {
-                            _testStatus = $"▶ rev sweep - level {lvl}/{WheelLedChannel.LedCount}";
+                            _testStatus = $"▶ rev sweep - level {lvl}/{steps}";
                             _channel.SetLevel(lvl);
                             Thread.Sleep(stepMs);
                         }
@@ -238,8 +259,8 @@ namespace TrueforceForAll.Plugin
                     if (_channel.IsReady)
                     {
                         _testStatus = "▶ redline (all LEDs)";
-                        _log("[RPM-LED] Test: redline hold (level 10)");
-                        _channel.SetLevel(WheelLedChannel.LedCount);
+                        _log($"[RPM-LED] Test: redline hold (level {steps})");
+                        _channel.SetLevel(steps);
                         Thread.Sleep(redlineMs);
                     }
                 }
@@ -259,6 +280,119 @@ namespace TrueforceForAll.Plugin
                 }
             });
             return total;
+        }
+
+        /// <summary>The wheel's pattern selection as last read or written
+        /// (0 = not seen yet). What both settings pickers display.</summary>
+        public int KnownSelection => _channel.KnownSelection;
+
+        /// <summary>Kick the background open (which reads the wheel's
+        /// selection as part of resolving) without waiting for the gate or a
+        /// button. Idempotent: EnsureOpening's own state machine handles
+        /// already-open / opening / retry-cooldown / latched.</summary>
+        public void OpenInBackground() => EnsureOpening();
+
+        /// <summary>Set the wheel's pattern selection now, opening the
+        /// channel first if nothing has yet (so a pick works cold, like the
+        /// preview). Blocking (a cold open can take seconds); callers run it
+        /// off the UI thread. Caller decides the pipe is safe.</summary>
+        public bool SelectPatternNow(int effect)
+        {
+            if (_testing) return false;   // never mid-sweep
+            if (!_channel.IsReady)
+            {
+                bool ok;
+                try { ok = _channel.OpenAndResolve(); }
+                catch (Exception ex) { _log($"[RPM-LED] pattern-select open threw: {ex.Message}"); ok = false; }
+                Interlocked.Exchange(ref _openState, ok ? 2 : 3);
+                if (!ok) return false;
+            }
+            return _channel.SelectPatternNow(effect);
+        }
+
+        /// <summary>A car with a remembered pattern just became active:
+        /// stage it (the next arm applies it regardless), and land it now
+        /// when the caller says the pipe is writable and the channel is up.</summary>
+        public void ApplyRemembered(int effect, bool canWriteNow)
+        {
+            try
+            {
+                _channel.StagePattern(effect);
+                if (canWriteNow && _channel.IsReady && !_testing)
+                    _channel.SelectPatternNow(effect);
+            }
+            catch (Exception ex) { _log($"[RPM-LED] remembered-pattern apply failed: {ex.Message}"); }
+        }
+
+        /// <summary>Remember a pick for the next arm (unsafe-to-write-now
+        /// path; the log explains at the call site).</summary>
+        public void StagePattern(int effect)
+        {
+            try { _channel.StagePattern(effect); } catch { }
+        }
+
+        /// <summary>One rev cycle (0 -> full -> 0) so a pattern pick shows on
+        /// the wheel the moment it is made. The CALLER decides it is safe to
+        /// write (no game telemetry arriving); this only keeps itself off the
+        /// Test button's toes via the same _testing latch. The arm applies
+        /// the stored pattern override and the closing TurnOff restores the
+        /// wheel's own selection, so the preview leaves no trace. A pick made
+        /// while a preview is still sweeping applies live mid-sweep through
+        /// the channel's own switch path, so no re-entry is needed.</summary>
+        public int PreviewPattern()
+        {
+            if (_testing) return 0;
+            const int stepMs = 180;   // just above the channel's 160 ms change floor
+
+            _testing = true;
+            Task.Run(() =>
+            {
+                bool opened = _channel.IsReady;
+                try
+                {
+                    if (!opened)
+                    {
+                        bool ok;
+                        try { ok = _channel.OpenAndResolve(); }
+                        catch (Exception ex) { _log($"[RPM-LED] preview open threw: {ex.Message}"); ok = false; }
+                        Interlocked.Exchange(ref _openState, ok ? 2 : 3);
+                        opened = ok;
+                    }
+                    if (!opened)
+                    {
+                        _testStatus = "could not open the LED channel (see log)";
+                        return;
+                    }
+
+                    int steps = _channel.StripLength;
+                    for (int lvl = 0; lvl <= steps && _channel.IsReady; lvl++)
+                    {
+                        _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
+                        _channel.SetLevel(lvl);
+                        Thread.Sleep(stepMs);
+                    }
+                    for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady; lvl--)
+                    {
+                        _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
+                        _channel.SetLevel(lvl);
+                        Thread.Sleep(stepMs);
+                    }
+                }
+                catch (Exception ex) { _log($"[RPM-LED] preview error: {ex.Message}"); }
+                finally
+                {
+                    if (opened)
+                    {
+                        try { _channel.TurnOff(); } catch { }
+                        _lastBucket = -1;
+                        _testStatus = "";
+                    }
+                    _testing = false;
+                }
+            });
+
+            int stepsGuess = _channel.IsReady ? _channel.StripLength : WheelLedChannel.LedCount;
+            return (2 * stepsGuess + 1) * stepMs + 300;
         }
 
         /// <summary>Explicitly turn the rim LEDs off now. Called when the

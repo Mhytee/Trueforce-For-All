@@ -73,6 +73,10 @@ namespace TrueforceForAll.Plugin
         public string ReadoutLabel;
         public string ReadoutValue;
         public bool GameFfbContending;
+        /// <summary>iRacing's own word for what a moment just cost: "1x", "2x",
+        /// "4x". Non-empty only while the announcement is live, and the plugin
+        /// expires it, so nothing here has to time it.</summary>
+        public string IncidentFlash;
 
         // Race context, straight off SimHub's status object. Zero means the
         // game does not report it.
@@ -198,9 +202,13 @@ namespace TrueforceForAll.Plugin
 
         public bool IsReady => _channel.IsReady;
         public bool IsTesting => _testing;
+        // The open state used to append WheelOledChannel.ResolvedInfo, i.e. the
+        // HID++ feature index, the layout count and the device path. That is
+        // log material, not panel material, and the log already carries the
+        // same string from the open itself ("[OLED] resolved ...").
         public string Status =>
             _testing ? _testStatus
-          : _openState == 2 ? $"open ({_channel.ResolvedInfo})"
+          : _openState == 2 ? "open"
           : _openState == 3 ? "no OLED wheel found (see log)"
           : _openState == 1 ? "opening…"
           : "idle";
@@ -266,17 +274,22 @@ namespace TrueforceForAll.Plugin
                 //      changes what you would DO right now, and it explains a
                 //      wheel that already feels wrong, so it outranks a value
                 //      you just asked for.
-                //   2. a readout: a control that changes a number takes the
+                //   2. an incident you just took. Rare, involuntary, and it
+                //      changes how you drive the next ten minutes, so it
+                //      outranks anything you asked for on purpose. It also has
+                //      no second chance: it is over in a couple of seconds and
+                //      the number it names is never shown again.
+                //   3. a readout: a control that changes a number takes the
                 //      screen over while it reports, the same way it takes over
                 //      the dash's bar. This is the case the panel is best at:
                 //      you press a wheel button without looking at anything and
                 //      the answer appears where you were already looking.
-                //   3. the lap you just finished. Worth more than a value echo,
+                //   4. the lap you just finished. Worth more than a value echo,
                 //      and it only competes with one for a few seconds a lap.
-                //   4. the shift flash, lowest of the interruptions: it fires
+                //   5. the shift flash, lowest of the interruptions: it fires
                 //      constantly, so it must never bury something rarer.
-                //   5. the driving screen you picked.
-                // Levels 1 to 3 use layout H, which puts the label small over
+                //   6. the driving screen you picked.
+                // Levels 1 to 4 use layout H, which puts the label small over
                 // the value large: the dash's readout bar stood on end.
                 // Edge detection runs on EVERY frame: a gear change or a lap
                 // time can land on any one of them, and a missed edge is a
@@ -321,6 +334,13 @@ namespace TrueforceForAll.Plugin
                     // large row, and shortened to fit it stops saying what to
                     // set, so the two swap jobs instead.
                     setter = Stacked("SET GAME FFB TO ZERO", "FFB CLASH");
+                else if (!string.IsNullOrEmpty(ctx.IncidentFlash))
+                    // iRacing's own language on the large row, so what the
+                    // panel says and what the sim just said are the same
+                    // thing. The label carries the meaning, which leaves the
+                    // whole large row to a value that is only two characters:
+                    // legible in peripheral vision, which is all this gets.
+                    setter = Stacked("INCIDENT", ctx.IncidentFlash);
                 else if (GreetingDue(in ctx, out byte[] greeting))
                     setter = greeting;
                 else if (!string.IsNullOrEmpty(ctx.ReadoutLabel) || !string.IsNullOrEmpty(ctx.ReadoutValue))

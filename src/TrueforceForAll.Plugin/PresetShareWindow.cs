@@ -384,8 +384,8 @@ namespace TrueforceForAll.Plugin
                 // Toggle for the native-Trueforce subset. Default off
                 // because the plugin auto-yields for native-TF games so
                 // sharing for them gains nothing in the common case.
-                // The MAIRA + iRacing cooperative setup is the documented
-                // exception, so users can flip this on when they need it.
+                // A setup with the game's own Trueforce switched off is the
+                // documented exception, so users can flip this on for it.
                 var showNativeCheck = new CheckBox
                 {
                     Content = "Show games with native Trueforce (advanced)",
@@ -393,7 +393,7 @@ namespace TrueforceForAll.Plugin
                     Margin = new Thickness(0, 0, 0, 6),
                     IsChecked = false,
                     IsEnabled = signedIn,
-                    ToolTip = "Trueforce ships in some games directly (iRacing, ACC, F1 22+, etc) and the plugin yields to those. Check this if you're sharing for a co-operative setup like MAIRA in iRacing.",
+                    ToolTip = "Trueforce ships in some games directly (iRacing, ACC, F1 22+, etc) and the plugin yields to those. Check this if you're sharing for a setup where the game's own Trueforce is switched off.",
                 };
                 showNativeCheck.Checked   += (s, e) => rebuildGames(true);
                 showNativeCheck.Unchecked += (s, e) => rebuildGames(false);

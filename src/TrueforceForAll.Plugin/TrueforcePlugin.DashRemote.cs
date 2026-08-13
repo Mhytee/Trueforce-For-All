@@ -1235,13 +1235,35 @@ namespace TrueforceForAll.Plugin
             float ffb = (dev?.LastFfbOutput ?? (short)0) / 32768f;
             if (dev != null)
             {
-                if (dev.FfbInvertSign) ffb = -ffb;
-                // Undo display attenuation: with FfbScale < 1 the output tops
-                // out at the scale value, which parked the clip point mid-lane
-                // on the dash. Normalizing puts the rail (= clipping) at the
-                // lane edge; scale >= 1 already rails at 1.0 via the clamp.
-                float sc = dev.FfbScale;
-                if (sc > 0.05f && sc < 1f) ffb /= sc;
+                // BOTH corrections below undo something the DEVICE did, so both
+                // must be skipped when the device skipped it. An authored mode
+                // (the iRacing reshape) sets FfbBypassTapCorrections and applies
+                // neither invert nor scale, so undoing them anyway reports a
+                // force that was never sent.
+                //
+                // The scale one is the bug that matters: with FfbScale at 0.80,
+                // dividing an already-full-scale value by 0.80 inflates it 1.25x
+                // and the CLIP badge lights at 80% of true full scale. Nothing
+                // crashes and nothing looks wrong, you just conclude your
+                // Strength is too high and quietly back it off for no reason.
+                if (dev.FfbBypassTapCorrections)
+                {
+                    // Authored modes negate at SOURCE (see ComputeIRacingForce),
+                    // so the display still flips to read in the game's direction.
+                    // Unconditional here, unlike below, because that negation is
+                    // ours and does not depend on the user's invert setting.
+                    ffb = -ffb;
+                }
+                else
+                {
+                    if (dev.FfbInvertSign) ffb = -ffb;
+                    // Undo display attenuation: with FfbScale < 1 the output tops
+                    // out at the scale value, which parked the clip point mid-lane
+                    // on the dash. Normalizing puts the rail (= clipping) at the
+                    // lane edge; scale >= 1 already rails at 1.0 via the clamp.
+                    float sc = dev.FfbScale;
+                    if (sc > 0.05f && sc < 1f) ffb /= sc;
+                }
             }
             if (ffb > 1f) ffb = 1f; else if (ffb < -1f) ffb = -1f;
             // Light one-pole smoothing so the line trace bends instead of
@@ -1447,21 +1469,42 @@ namespace TrueforceForAll.Plugin
             bool spring = ActiveGameIsSpringGame;
             bool forza = g == "FM8"
                 || (g != null && g.StartsWith("FH", StringComparison.Ordinal));
+            // iRacing publishes no per-tire slip angle, slip ratio or wheel
+            // rotation speed, so the voices built on those have no honest input
+            // and are hidden rather than shown doing nothing.
+            bool ir = IsIRacingReshapeGame(g);
             switch (key)
             {
                 // FS: Axle slip is its one slip voice, its brake model never
                 // outruns the road, and Kerb thump's voice folds into Road
                 // bumps ("Terrain texture") there.
                 case "Traction":
-                case "Lockup":
+                    return !spring;
+                // iRacing: Lockup judder needs a signed slip ratio and wheel
+                // rotation speed, neither of which iRacing publishes, so there is
+                // no honest source for it. Kerb thump DOES work there now: the
+                // rumble-strip event is raised from PlayerTrackSurfaceMaterial.
                 case "Kerb":
                     return !spring;
+                case "Lockup":
+                    return !spring && !ir;
                 // FS has no ABS, pits or DRS; Forza telemetry carries no
                 // ABS flag and Horizon has no pits and no DRS.
+                //
+                // iRacing KEEPS DRS. A dump of its channels from one car showed
+                // none, but iRacing rebuilds its telemetry variable table PER
+                // CAR, so that only proved the MX-5 has no DRS. The handful of
+                // cars that do have it publish it, SimHub maps it, and the row
+                // is correct for them.
                 case "Abs":
                 case "Pit":
                 case "Drs":
                     return !spring && !forza;
+                // Axle slip needs front/rear grip rollups. Those are reachable
+                // for iRacing only through a bicycle-model estimate, which is not
+                // built yet; showing the row now would promise a dead voice.
+                case "AxleSlip":
+                    return !ir;
                 case "ImplThud":
                     return spring;
                 default:
@@ -1679,6 +1722,27 @@ namespace TrueforceForAll.Plugin
                 this.AttachDelegate("Dash.Scope.Tex" + idx, () => _scopeTex[(_scopeHead + idx) % ScopeCols]);
                 this.AttachDelegate("Dash.Scope.Ffb" + idx, () => _scopeFfb[(_scopeHead + idx) % ScopeCols]);
             }
+            // Auto max force readiness, for the dash button. Confidence rather
+            // than a bare boolean so the button can come UP to readiness in view
+            // instead of flipping with no warning: a driver watching it fill can
+            // tell that pressing is about to be worthwhile.
+            // Whether the auto-force row belongs on screen at all: iRacing, with
+            // us actually driving the wheel. With the takeover off, the number it
+            // sets changes nothing, and a control that does nothing is worse than
+            // an absent one.
+            this.AttachDelegate("Dash.IRacingAutoShow",
+                () => IsIRacingReshapeGame(_activeGame) && ModeBEnabledForActiveGame ? 1 : 0);
+            this.AttachDelegate("Dash.IRacingAutoReady",
+                () => IsIRacingReshapeGame(_activeGame) && IRacingPeakSettled ? 1 : 0);
+            this.AttachDelegate("Dash.IRacingAutoConfidence",
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingPeakConfidence : 0.0);
+            // What pressing it would set, so the button can show the number
+            // rather than asking the driver to trust it blind.
+            this.AttachDelegate("Dash.IRacingAutoNm",
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingLearnedMaxNm : 0.0);
+            this.AttachDelegate("Dash.IRacingMaxForceNm",
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingEffectiveMaxForceNm : 0.0);
+
             // Live clip state (+1/-1/0, 150 ms hold): drives the rail
             // marker strips on the visualizer.
             this.AttachDelegate("Dash.Scope.FfbClip", () =>
@@ -1754,6 +1818,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
             this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
+            AttachIncidentProperties();
 
             // Structural colors the dashboard paints itself with.
             this.AttachDelegate("Dash.Theme.Bg",       () => ActiveDashTheme().Bg);
@@ -2063,6 +2128,35 @@ namespace TrueforceForAll.Plugin
                 PersistSettings();
                 RaiseDashRemoteChanged();
             });
+            // Auto max force, bindable to a wheel button. This is the one control
+            // whose natural moment is ON TRACK, at the end of a clean lap, when
+            // the peak is freshest. Making the driver alt-tab to press it is
+            // asking them to lose the very data it depends on.
+            this.AddAction("IRacingAutoMaxForce", (a, b) =>
+            {
+                DashNoteActivity();
+                if (!IsIRacingReshapeGame(_activeGame))
+                {
+                    DashToast("AUTO MAX FORCE IS IRACING ONLY");
+                    return;
+                }
+                // Refusing early is the point: pressing on an out-lap would set
+                // Max force from a peak the car has not reached yet, making
+                // everything too strong, and nothing would say why.
+                if (!IRacingPeakSettled)
+                {
+                    DashToast(IRacingObservedPeakNm <= 0.5
+                        ? "DRIVE A LAP FIRST"
+                        : "STILL LEARNING THIS CAR - KEEP DRIVING");
+                    return;
+                }
+                double applied = ApplyIRacingAutoMaxForce();
+                DashToast(applied > 0.5
+                    ? "MAX FORCE SET TO " + applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " NM"
+                    : "NOTHING LEARNED YET");
+                RaiseDashRemoteChanged();
+            });
+
             this.AddAction("DashModeBToggle", (a, b) =>
             {
                 if (Settings == null) return;

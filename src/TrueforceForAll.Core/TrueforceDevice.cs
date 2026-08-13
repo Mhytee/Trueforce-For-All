@@ -176,6 +176,25 @@ namespace TrueforceForAll.Core
         public bool  FfbInvertSign { get; set; } = true;
         public float FfbScale      { get; set; } = 1.0f;
 
+        /// <summary>Skip FfbInvertSign and FfbScale for this packet's target.
+        /// Set while a mode AUTHORS the force outright rather than mirroring the
+        /// game's tapped FFB.
+        ///
+        /// Both of those exist to reconcile a TAPPED value with this endpoint:
+        /// the sign because ep0 HID++ FFB and ep3 cur disagree by convention,
+        /// the scale because the firmware may weight the two differently.
+        /// Neither correction means anything when we produced the number
+        /// ourselves, and applying them anyway leaves a user adjusting a
+        /// tapped-path control to fix a path that has no tap in it.
+        ///
+        /// Deliberately NOT set for Mode B or spring mode. Their output is
+        /// authored to come out right AFTER the inversion, so switching it off
+        /// under them would flip the force direction and have the wheel fight
+        /// the driver, and dropping the scale would jump their strength. Those
+        /// recipes are tuned WITH these applied; only a mode that was authored
+        /// knowing this flag exists may set it.</summary>
+        public volatile bool FfbBypassTapCorrections;
+
         // IIR low-pass time constant (ms) applied to the captured FFB target
         // before it goes into ep3 cur. AC's HID++ FFB updates at ~140 Hz (every
         // 7 ms) but our StreamTick runs at 1 kHz, so smoothing > 0 turns the
@@ -933,8 +952,11 @@ namespace TrueforceForAll.Core
                     }
 
                     int t = (int)Math.Round(_smoothedFfb);
-                    if (FfbInvertSign) t = -t;
-                    if (FfbScale != 1.0f) t = (int)(t * FfbScale);
+                    if (!FfbBypassTapCorrections)
+                    {
+                        if (FfbInvertSign) t = -t;
+                        if (FfbScale != 1.0f) t = (int)(t * FfbScale);
+                    }
 
                     // Transient-detector soft ceiling. Tracks a slow-follower
                     // envelope of |t| (200ms TC) and treats only the excess

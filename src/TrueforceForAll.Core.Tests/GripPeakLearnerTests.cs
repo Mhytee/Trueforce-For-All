@@ -123,5 +123,38 @@ namespace TrueforceForAll.Core.Tests
             Drive(l, 50.0, 600.0);   // absurd metric forever
             Assert.InRange(l.EffectivePeak, l.PeakMin, l.PeakMax);
         }
+
+        [Fact]
+        public void ConfiguringNominalPeak_MovesTheFreshStartingEstimate()
+        {
+            // A second instance pointed at another domain (auto strength watches
+            // intrinsic FORCE, nominal 0.90, not grip) must start there. Keeping
+            // the grip domain's 1.2 made the first minute on every car read a
+            // ceiling 33 percent too high, and only the 45 s fall constant
+            // brought it back, so the applied scale was biased light throughout.
+            var force = new GripPeakLearner
+            {
+                NominalPeak    = 0.90,
+                CorneringFloor = 0.15,
+                PeakMin        = 0.30,
+                PeakMax        = 1.50,
+            };
+            Assert.Equal(0.90, force.Peak, 9);
+            Assert.Equal(0.90, force.EffectivePeak, 9);
+
+            // The grip learner's own default is untouched.
+            Assert.Equal(1.2, new GripPeakLearner().Peak, 9);
+        }
+
+        [Fact]
+        public void ConfiguringNominalPeak_DoesNotClobberLearnedState()
+        {
+            // Guard on the fix above: the seeding only applies while nothing has
+            // been learned, so a restored car keeps its saved peak.
+            var l = new GripPeakLearner { NominalPeak = 0.90, PeakMin = 0.30, PeakMax = 1.50 };
+            l.Restore(1.35, 60.0);
+            l.NominalPeak = 0.80;
+            Assert.Equal(1.35, l.Peak, 9);
+        }
     }
 }

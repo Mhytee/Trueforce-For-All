@@ -32,30 +32,38 @@ namespace TrueforceForAll.Plugin
         // ep3 stream would conflict with the game's own.
         public bool PluginEnabled { get; set; } = true;
 
-        // Auto-link with MAIRA. When on (default), TF4ALL watches for MAIRA's
-        // "Pass FFB signal through TF4ALL" shared memory; the moment MAIRA's
-        // toggle goes on (it then stops sending PID to the wheel and publishes
-        // its force + RPM), TF4ALL renders that force through the Trueforce ep3
-        // stream and drives the rim LEDs. No PID on the HID++ pipe => LEDs and
-        // FFB stop fighting (the device-level 0x807A vs 0x8123 mutual
-        // exclusion only bites when PID is present). When MAIRA isn't passing
-        // through, the map is absent and TF4ALL uses the USBPcap FFB tap
-        // exactly as before. Set false only to force the legacy USBPcap path
-        // and ignore MAIRA entirely.
-        public bool MairaFfbPassthrough { get; set; } = true;
-
         // Drive the wheel's rev lights while Telemetry Based FFB (Mode B) is
         // on. On by default: Mode B means the game's own FFB is quiet on the
         // HID++ pipe (tap-proven, fail-closed in the gate), so the 0x807A
         // LED writes are safe. A toggle exists because Mode B will reach
         // games that drive the wheel's rev lights natively; there the user
-        // turns ours off. The iRacing (MAIRA passthrough) LED path is NOT
-        // gated by this: it is on whenever the passthrough is live, which
-        // is the equivalent safe condition.
+        // turns ours off. This is now the ONLY rim-LED gate: the second one
+        // rode an external iRacing FFB handoff that has been removed, and
+        // native iRacing telemetry FFB will bring its own gate when it lands.
         // (Replaces RpmLedsEnabled, retired 2026-08-01: one master switch
         // labeled "iRacing" silently gated the Mode B lights too, and a
         // stored false darkened the wheel with no visible cause.)
         public bool ModeBRevLightsEnabled { get; set; } = true;
+
+        // Per-car rev-light pattern picks: "{game}/{carId}" -> effect 1-9
+        // (1-4 built-in patterns, 2 = outside-in; 5-9 the wheel's custom
+        // slots), same key shape as CarFactsSelection. ABSENCE of a key =
+        // the wheelbase's own selection, which is the only "default" there
+        // is: a global tier existed for a few hours on dev (RevLightEffect,
+        // removed 2026-08-12) and was cut because the wheelbase's own
+        // selector already IS the every-car choice, and a second one only
+        // added a concept and a resolver for the pickers to disagree over.
+        // We only ever SELECT a pattern the wheel already stores (fn3 =
+        // SET_EFFECT); the wheel's own selection is snapshotted at arm and
+        // put back when the lights release, so nothing here is permanent on
+        // the wheel. A preference, not a CarFact: custom slots 5-9 name
+        // THIS user's wheelbase slots, which mean nothing on another user's
+        // wheel, so this never travels in presets or community data.
+        // Collection must default EMPTY (the settings loader appends).
+        // Legacy 0 values (from the removed tier's testing day) read as
+        // "wheelbase's selection" and are dropped on the next write.
+        public Dictionary<string, int> CarRevLightEffect { get; set; }
+            = new Dictionary<string, int>();
 
         // Drive the Dynamic OLED on the wheel's base (G PRO / RS50 only) while
         // Telemetry Based FFB (Mode B) is on. Same pipe and therefore the same
@@ -134,11 +142,10 @@ namespace TrueforceForAll.Plugin
         // alone for a personal best, the time over the delta otherwise.
         public bool OledLapResult { get; set; } = true;
 
-        // Retired unlock for the old rim-LED / MAIRA-passthrough settings
-        // section (access codes MAIRA / TEST). The section is permanently
-        // hidden since 2026-08-01: Marvin declined the passthrough, so the
-        // UI stays parked until a MAIRA fork revives it. The property stays
-        // so old settings files and backups deserialize cleanly.
+        // Retired unlock for the old rim-LED settings section. The section is
+        // permanently hidden since 2026-08-01 and the external FFB handoff it
+        // configured has been removed. The property stays only so old settings
+        // files and backups deserialize cleanly.
         public bool RpmLedUnlocked { get; set; } = false;
 
         // One-time latch for the iRacing "disable native Trueforce in app.ini"
@@ -617,6 +624,16 @@ namespace TrueforceForAll.Plugin
         // Forza titles included.
         public bool DashSpotterEnabled { get; set; } = true;
 
+        // TF4ALL Dash incident points: the running count under the speed on the
+        // Drive tab, a band across the top each time it moves, and the same
+        // announcement on the wheel base's OLED. iRacing only, because it is
+        // the only title that publishes a count; everywhere else the readout
+        // and the band simply never appear.
+        // On by default for the same reason the flag band is: it costs players
+        // of every other game nothing, and an incident you did not notice is
+        // the one that ends your race.
+        public bool DashIncidentsEnabled { get; set; } = true;
+
         // TF4ALL Dash idle mode: a full-screen card over whatever tab is open
         // once the car has been sitting still, showing an ambient animation,
         // the driver's name and number, and the plugin's own status. Drawn as
@@ -923,6 +940,130 @@ namespace TrueforceForAll.Plugin
         public Dictionary<string, bool> ModeBGameEnabled { get; set; }
             = new Dictionary<string, bool>();
         public float ModeBSatGain   { get; set; } = 0.50f; // peak torque fraction; the G PRO default (owner 2026-08-01). RS50/G923 get their own via ApplyWheelDefaults.
+        // Strength for the iRacing RESHAPE path, deliberately its own field
+        // rather than sharing ModeBSatGain. That one is a peak-torque fraction
+        // for the synthesis model, defaults to 0.50 and is tuned per wheel; the
+        // reshape path is already normalized by the sim's own
+        // SteeringWheelMaxForceNm, so its honest default is 1.0, meaning
+        // "deliver exactly the torque iRacing asked for". Wheel-independent for
+        // the same reason: the driver's in-sim max force setting already
+        // encodes their wheel.
+        public float IRacingForceGain { get; set; } = 1.0f;
+
+        // Full scale in Nm: the torque at which the wheel is asked for
+        // everything it has. 0 means "ask iRacing", which is the default and is
+        // usually right, because iRacing's own max-force setting is exactly this
+        // number and the driver already tuned it.
+        //
+        // An override exists because relying on it silently is confusing: that
+        // setting lives inside a sim whose force feedback the user has just been
+        // told to switch off, so it looks like a dead knob controlling a live
+        // one. Anybody who would rather state their wheel's rating here and
+        // forget iRacing's menu can, and anybody whose iRacing value is nonsense
+        // is no longer stuck with it.
+        public float IRacingMaxForceNmOverride { get; set; } = 0.0f;
+
+        // Where full scale comes from, which decides whether cars keep their
+        // relative weight. The mechanism is one line of arithmetic:
+        //
+        //     force = torque / divisor
+        //
+        // A divisor that VARIES PER CAR and equals that car's own peak makes
+        // every car arrive at full force at its own limit: 10/10 and 20/20 both
+        // reach 1, so the cars are flattened BY DEFINITION. A divisor that is
+        // the SAME for every car preserves the ratio: 10/D against 20/D is still
+        // 2:1, so a heavy car really does push harder.
+        //
+        // Note this depends only on whether the divisor varies, NOT on where it
+        // came from. A per-car number flattens whether it was learned or read
+        // out of iRacing, which is easy to get backwards when naming these.
+        //
+        //   0 = Follow iRacing. Inherit its per-car Max force. The OUTCOME is
+        //       whatever the driver configured there: iRacing's auto force mode
+        //       sets each car to its own peak and therefore flattens, while one
+        //       value set across the board keeps cars apart. Default because it
+        //       respects tuning that already exists rather than overriding it.
+        //   1 = Measure each car. Our own learned peak per car. Always flattens,
+        //       which is the point: nothing clips, nothing feels dead, and
+        //       hopping between classes needs no retuning.
+        //   2 = One value for every car (IRacingMaxForceNmOverride). The only
+        //       mode that GUARANTEES cars stay different, because it is the only
+        //       one whose divisor is constant.
+        public int IRacingMaxForceMode { get; set; } = 0;
+
+        // Keep a separate Max force per car, the way iRacing itself does.
+        //
+        // This single switch is what decides whether cars keep their relative
+        // weight, and it decides it for the reason the arithmetic above gives:
+        //   OFF, one shared number is the divisor for everything, so a car that
+        //        makes twice the torque pushes twice as hard. Set it from your
+        //        HEAVIEST car and nothing clips anywhere, while lighter cars sit
+        //        honestly below it.
+        //   ON,  each car gets its own, so every car reaches full force at its
+        //        own limit. Nothing clips, nothing feels weak, and nothing is
+        //        distinguishable either.
+        // Off by default: keeping cars distinct is the behaviour people expect
+        // when they have not asked for anything, and flattening is the opinion.
+        public bool IRacingMaxForcePerCar { get; set; } = false;
+
+        // Per-car Max force in Nm, keyed by iRacing CarPath. Written by the Auto
+        // button, one car at a time, exactly like iRacing's own. Empty default
+        // matters: the settings loader APPENDS onto collections rather than
+        // replacing them, so a non-empty initializer would accumulate.
+        public Dictionary<string, float> IRacingMaxForceByCar { get; set; }
+            = new Dictionary<string, float>();
+        // Use iRacing's 360 Hz sub-tick torque as SLOPE, projecting the newest
+        // value forward between frames instead of holding it.
+        //
+        // This is not the earlier interpolation, which replayed the six samples
+        // from oldest to newest and so ran a full frame behind. That is pure
+        // phase lag inside a loop that closes through the sim (wheel position
+        // in, steering torque out), and it made the wheel oscillate at a
+        // standstill with the swings growing. Projecting forward instead is
+        // phase LEAD, which settles such a loop rather than upsetting it, and
+        // it still uses all six samples: they supply the trend.
+        //
+        // Bounded on purpose (never more than one frame ahead, never more than
+        // 15 percent of full scale away from the measured value), because an
+        // unbounded lead term is its own instability.
+        public bool IRacingUse360Hz { get; set; } = true;
+
+        // Which of the two ways of turning iRacing's 360 Hz torque into a 1 kHz
+        // stream is in use. Both render all six sub-samples; they differ in what
+        // they do about the fact that those samples describe the frame that just
+        // ENDED, so replaying them faithfully is inherently a frame behind.
+        //
+        //   0 = Lead.   Fit a line to the six, send that line projected forward
+        //               (so the part that pushes against your hands is current),
+        //               and replay only the leftover detail late. Nothing
+        //               loop-critical is delayed. Risk: a sharp hit has energy
+        //               in both parts, so splitting it can smear the strike.
+        //   1 = Replay. Play the six out in order through a Hermite curve,
+        //               keeping each event whole, then pull the whole thing
+        //               forward using the WHEEL's own velocity.
+        //               That predictor input is measured locally with no
+        //               telemetry delay, which makes it a better basis for
+        //               cancelling lag than extrapolating the laggy signal from
+        //               itself. Risk: prediction gain needs tuning per wheel.
+        //
+        // Kept as a user choice rather than a decision baked in blind: they are
+        // different trades, not better and worse, and the wheel is the judge.
+        public int IRacingForceMode { get; set; } = 0;
+
+        // How far to TRUST the learned prediction. Not a tuning step: the whole
+        // point of learning the correction is that the user should not have to
+        // find a number. 1.0 means "use what it worked out", which is the
+        // correct default for a value derived from this car at this speed.
+        //
+        // It stays adjustable as an escape hatch, not as a dial to hunt with.
+        // Prediction can feel nervous to some drivers even when it is accurate,
+        // and 0 turns it off entirely, leaving a faithful but slightly late
+        // replay. Anyone who finds themselves changing this per car should tell
+        // us, because that would mean the learning is not doing its job.
+        //
+        // (Shipped briefly at 0.5, which was incoherent: halving a value the
+        // predictor derived is just a hand-tuned gain wearing a disguise.)
+        public float IRacingPredictGain { get; set; } = 1.0f;
         public float ModeBRiseGamma { get; set; } = 0.80f;   // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
         public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit

@@ -73,11 +73,33 @@ namespace TrueforceForAll.Core
         /// braking-loop gain (issue #38: fresh cars oscillate more). Starting at
         /// 1.2 centers the estimate; the learner still converges to the car's
         /// real peak, and it errs LIGHT (never heavy) on a fresh low-grip car.</summary>
-        public double NominalPeak { get; set; } = 1.2;
+        public double NominalPeak
+        {
+            get { return _nominalPeak; }
+            set
+            {
+                _nominalPeak = value;
+                // Setting the nominal also moves the fresh-car starting point,
+                // because Peak means "the nominal until something is learned".
+                // A second instance pointed at a different domain (the auto
+                // strength learner, whose nominal is 0.90 in intrinsic force
+                // units) otherwise kept the GRIP domain's 1.2 as both its
+                // starting estimate and its spike-clamp reference, and only the
+                // 45 s fall constant dragged it down. That biased the early
+                // scale light on every car until the estimate caught up.
+                if (QualifyingSec <= 0.0) _peak = value;
+            }
+        }
+        private double _nominalPeak = 1.2;
 
         /// <summary>Learned ceiling of the grip metric. Starts at the nominal
         /// and is only trusted via <see cref="EffectivePeak"/>.</summary>
-        public double Peak { get; private set; } = 1.2;
+        public double Peak
+        {
+            get { return _peak; }
+            private set { _peak = value; }
+        }
+        private double _peak = 1.2;
 
         /// <summary>Accumulated near-limit seconds (drives confidence).</summary>
         public double QualifyingSec { get; private set; }

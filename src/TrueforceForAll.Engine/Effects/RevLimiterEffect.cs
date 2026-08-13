@@ -113,6 +113,22 @@ namespace TrueforceForAll.Plugin.Effects
         // Current forward gear (1..N); 0 = neutral / reverse / unknown -> default.
         private int _currentGear;
 
+        /// <summary>Stay silent in the car's TOP gear. This effect is a SHIFT
+        /// CUE, not a limiter simulation (see the Name comment above): it fires
+        /// at the redline start, a little below the actual cutoff. In top gear
+        /// there is nothing to shift into, so the cue has no action behind it,
+        /// and on a long straight it buzzes continuously for as long as the car
+        /// is near the limit. Requires a KNOWN gear count; when the source does
+        /// not publish one this does nothing at all.</summary>
+        public bool SuppressInTopGear { get; set; } = true;
+
+        /// <summary>Forward gear count from the telemetry source, or null when
+        /// unknown. Set per frame from <see cref="TelemetryFrame.ForwardGearCount"/>.
+        /// Deliberately never inferred from the highest gear observed: that
+        /// reads 5th as top until the driver first uses 6th, silencing the cue
+        /// exactly when it matters most.</summary>
+        public int? ForwardGearCount { get; set; }
+
         private const double SampleRate = 4000.0;
         private const int HoldMs = 80;   // post-disengage decay window
         private static readonly long HoldStopwatchTicks =
@@ -169,6 +185,7 @@ namespace TrueforceForAll.Plugin.Effects
         {
             if (IsTesting) return;
             _currentGear = ParseForwardGear(f.Gear);
+            if (f.ForwardGearCount.HasValue) ForwardGearCount = f.ForwardGearCount;
             UpdateEngagement(f.Rpms, f.RedlineRpm, f.MaxRpm);
         }
 
@@ -308,8 +325,18 @@ namespace TrueforceForAll.Plugin.Effects
             int? effectiveRedline = ResolveEffectiveRedline(redlineRpm, maxRpm);
             EffectiveRedlineRpm = effectiveRedline;
 
+            // Top gear: nothing to shift into, so the cue has no action behind
+            // it. Computed AFTER the redline resolution above so the settings
+            // panel still shows the live derived redline, and applied through
+            // the same hold/decay path below so the buzz fades out rather than
+            // being chopped. Needs a real gear count (>= 2 so a single-speed
+            // car cannot silence itself permanently); unknown means no opinion.
+            bool topGearMuted = SuppressInTopGear
+                && ForwardGearCount.HasValue && ForwardGearCount.Value >= 2
+                && _currentGear >= ForwardGearCount.Value;
+
             bool engaged = false;
-            if (rpm >= MinEngineRpm)
+            if (rpm >= MinEngineRpm && !topGearMuted)
             {
                 if (effectiveRedline.HasValue && effectiveRedline.Value > MinEngineRpm)
                 {

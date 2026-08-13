@@ -4,7 +4,7 @@
 // shares the wheel's single HID++ command processor with the game's HID++ FFB
 // (page 0x8123), so driving LEDs while a sim outputs FFB starves the force
 // (see project_led_ffb_contention_model). That's why production LEDs are gated
-// to iRacing + MAIRA-passthrough only.
+// to sessions where the game's own FFB is proven quiet.
 //
 // guivdh/forza-wheel-leds drives G29/G920/G923 rev LEDs with the LEGACY Logitech
 // "set RPM LEDs" output report  ->  00 F8 12 <byte> 00 00 00 00  <-  on the wheel's

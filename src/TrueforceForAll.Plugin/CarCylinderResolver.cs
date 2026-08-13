@@ -172,6 +172,33 @@ namespace TrueforceForAll.Plugin
 
         private static Result ResolveInternal(string gameName, string carId)
         {
+            // iRacing: shipped firing-pattern seed, keyed by the sim's own
+            // CarPath. Checked first because BuiltinCarCylinders is built from
+            // chassis heuristics over other games' id formats and has nothing
+            // to say about iRacing keys, so there is no conflict to arbitrate.
+            //
+            // This is still only the FLOOR. The caller consults CarFacts first,
+            // so a user pin or a community consensus already outranks whatever
+            // lands here; nothing about that precedence lives in this method.
+            //
+            // Cylinders here are the seed's own. When the sim publishes
+            // DriverCarEngCylinderCount it flows in through the telemetry frame
+            // and is authoritative; this value only has to be right enough to
+            // pick the same layout back out of LayoutFromLegacy.
+            if (string.Equals(gameName, "IRacing", StringComparison.Ordinal)
+                && IRacingEngineSeed.TryGet(carId, out var seed))
+            {
+                return new Result
+                {
+                    Cylinders          = seed.Cylinders,
+                    IsElectric         = seed.IsElectric,
+                    Source             = "baked",
+                    EngineConfig       = seed.Config,
+                    EngineConfigSource = "baked",
+                    DisplayName        = seed.DisplayName,
+                };
+            }
+
             if (BuiltinCarCylinders.TryGet(gameName, carId, out var spec))
             {
                 bool hasBakedConfig = spec.EngineConfig != EngineConfig.Auto;

@@ -1,4 +1,4 @@
-﻿# Generates the "TF4ALL Dash" DashStudio dashboard (.djson + .metadata).
+# Generates the "TF4ALL Dash" DashStudio dashboard (.djson + .metadata).
 # Item schemas mirror shipped dashes (RSC - Toggle Switch / MobileDash):
 # TextItem / RectangleItem for visuals, transparent ButtonItem tap zones with
 # TriggerAction = "TrueforcePlugin.<DashAction>". All formulas use the JS
@@ -1091,7 +1091,34 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         Text = BindJS 'Text' ('var m=1*$prop("' + $P + '.MaxRpm");var s=""+($prop("' + $P + '.RedlineSource")||"");' +
                               'var t=m>0?("MAX "+m):"";if(s!=""&&s!="none")t+=(t!=""?"   ":"")+s.toUpperCase();return t')
     }
-    $t.Bindings['Visible'] = BindJS 'Visible' $vis; $items.Add($t)
+    # The provenance line steps aside in iRacing so the auto-force row can have
+    # the last band. Redline still shows above it; what is lost here is only
+    # where the number came from, and that is still on the Car facts tab.
+    $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis 'CarFacts' ('!$prop("' + $P + '.IRacingAutoShow")')); $items.Add($t)
+    # Auto max force. Greyed while the car's peak is still climbing, lit once it
+    # has settled, so a driver can see WHEN pressing is worth anything instead of
+    # pressing at random and calibrating off an out-lap.
+    $mfVis = KeyVis 'CarFacts' ('$prop("' + $P + '.IRacingAutoShow")')
+    $r = New-Btn "d$slot-cf-mf-bg" $ix ($iy + 160) $iw 30 4
+    $r.Bindings['Visible'] = BindJS 'Visible' $mfVis; $items.Add($r)
+    $t = New-Text "d$slot-cf-mf-t" ($ix + 10) ($iy + 160) ($iw - 20) 30 13 '' $script:GRAY 0 @{
+        Text = BindJS 'Text' (
+            'var rdy=$prop("' + $P + '.IRacingAutoReady");var n=1*$prop("' + $P + '.IRacingAutoNm");' +
+            'if(rdy)return "SET MAX FORCE  "+(n>0?n.toFixed(1):"--")+" NM";' +
+            'var c=1*$prop("' + $P + '.IRacingAutoConfidence");if(isNaN(c))c=0;' +
+            'return "LEARNING CAR  "+Math.round(c*100)+"%"')
+        TextColor = BindJS 'TextColor' (
+            'return $prop("' + $P + '.IRacingAutoReady")?"' + $script:GREEN + '":"' + $script:GRAY + '"')
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $mfVis; $items.Add($t)
+    # The force in use, right-aligned on the same row, so pressing has a visible
+    # before and after rather than being an act of faith.
+    $t = New-Text "d$slot-cf-mf-cur" ($ix + 10) ($iy + 160) ($iw - 20) 30 12 '' $script:MUTED 2 @{
+        Text = BindJS 'Text' ('var v=1*$prop("' + $P + '.IRacingMaxForceNm");return v>0?("NOW "+v.toFixed(1)):""')
+    }
+    $t.Bindings['Visible'] = BindJS 'Visible' $mfVis; $items.Add($t)
+    $b = New-Button "d$slot-cf-mf-tap" $ix ($iy + 160) $iw 30 'IRacingAutoMaxForce'
+    $b.Bindings['Visible'] = BindJS 'Visible' $mfVis; $items.Add($b)
 
     # ---------------- GAINS (ours) -----------------------------------
     # Shaped like the Home tab rather than a list of rows: a caption, the
@@ -2504,14 +2531,114 @@ function IdleCard([string]$P) {
     $items
 }
 
+# Is a flag band on screen right now? Factored out because TWO bands want
+# the top of the dash and only one of them can have it: the incident band
+# drops below this one rather than landing on top of it, and it can only
+# know to do that if it asks the same question the flag band answers.
+function FlagUpJs([string]$P) {
+    $F = 'DataCorePlugin.GameData.NewData.Flag_'
+    '$prop("' + $P + '.FlagsOn") && (' +
+    '$prop("' + $F + 'Yellow")||$prop("' + $F + 'Blue")||$prop("' + $F + 'Black")' +
+    '||$prop("' + $F + 'White")||$prop("' + $F + 'Checkered")' +
+    '||$prop("' + $F + 'Orange")||$prop("' + $F + 'Green"))'
+}
+
+# Incident points, announced (Dash.IncidentFlash): iRacing is the only title
+# that publishes a count, and this is the only place the SIZE of what just
+# happened is ever shown. iRacing's own message is gone in a second and the
+# running total never says whether it went up by one or by four, which is the
+# difference between a wheel over a kerb and a race you are about to lose.
+#
+# Same band the flags use, in the same place, because that is where this dash
+# has already taught you to look when it has something urgent to say. It moves
+# down under a flag rather than covering it: a yellow you cannot see because
+# an incident is sitting on it is exactly the wrong trade.
+#
+# Colors are MEANING, so no theme repaints them: amber for the incident, red
+# once the total has reached the limit that ends your session.
+function IncidentBand([string]$P) {
+    $inc   = '(1*$prop("' + $P + '.Incidents"))'
+    $lim   = '(1*$prop("' + $P + '.IncidentLimit"))'
+    $vis   = 'return (""+$prop("' + $P + '.IncidentFlash"))!=""'
+    # 14 is the flag band's own slot; 66 is directly beneath it. This band
+    # stays at the top ON PURPOSE: it is the announcement of what just
+    # happened, and the top is where this dash has already taught you to look
+    # for something urgent. The running COUNT is a different element (dr-inc,
+    # in the gear column) and lives down there with the other glance numbers.
+    $incTop = 14
+    $topJs  = 'return (' + (FlagUpJs $P) + ')?66:14'
+    # VIOLET, not amber. The old amber was #F2E8A33D against the yellow flag's
+    # #F2E8C33D: one channel apart, indistinguishable at a glance, so an
+    # incident read as a yellow flag. Incidents are not a track condition and
+    # must not borrow a flag's colour.
+    #
+    # No flag can ever use this hue, which is the property that has to hold:
+    #   yellow #F2E8C33D   blue #F23D7FE8   black #F21A1A1A
+    #   green  #F23DC77A   white/chequered #F2E8EAEE
+    # Violet is outside all of them and outside the amber/orange the meatball
+    # implies. Keep it that way if this is ever retuned.
+    #
+    # Three states, driven by how close the TOTAL is to ending your session,
+    # not by the size of the hit that just landed:
+    #   green   you are fine. Zero, or comfortably under the limit, or a race
+    #           mode with no limit at all (L is 0), which can never go bad and
+    #           so never stops being green.
+    #   violet  past halfway to the limit. Worth knowing about.
+    #   red     at or past the limit. No longer a warning, so it stops looking
+    #           like one.
+    $colJs = 'var n=' + $inc + ';var L=' + $lim + ';' +
+             'if(!(n>=0)||L<=0)return "#F237D67A";' +
+             'var r=n/L;' +
+             'if(r>=1)return "#F2E5484D";' +
+             'if(r>=0.5)return "#F2B388FF";' +
+             'return "#F237D67A"'
+    # Text follows the band: dark on the bright green, white on the two dark
+    # bands. Same rule the flag bar already uses for its dark colours.
+    $txtJs = 'var n=' + $inc + ';var L=' + $lim + ';' +
+             'if(!(n>=0)||L<=0)return "#FF101216";' +
+             'var r=n/L;' +
+             'return (r>=0.5)?"' + $script:WHITE + '":"#FF101216"'
+
+    $out = [System.Collections.Generic.List[object]]::new()
+    # Static fallback is the green resting state, so a frame rendered before the
+    # binding evaluates never flashes a colour that means something worse.
+    $bg = New-Rect 'inc-bg' 0 $incTop 800 48 '#F237D67A' @{
+        BackgroundColor = BindJS 'BackgroundColor' $colJs
+        Top             = BindJS 'Top' $topJs
+    } 0
+    $bg.Bindings['Visible'] = BindJS 'Visible' $vis
+    $out.Add($bg)
+
+    # What it just cost, on the left, in the size the number deserves.
+    $d = New-Text 'inc-d' 40 $incTop 220 48 30 '' '#FF101216' 0 @{
+        Text      = BindJS 'Text' ('return ""+$prop("' + $P + '.IncidentFlash")')
+        TextColor = BindJS 'TextColor' $txtJs
+        Top       = BindJS 'Top' $topJs
+    } 'Bold'
+    $d.Bindings['Visible'] = BindJS 'Visible' $vis
+    $out.Add($d)
+
+    # Where that leaves you, on the right. The word carries the meaning so the
+    # numbers can stay numbers, and the limit rides along because a total on
+    # its own does not say how much room is left.
+    $t = New-Text 'inc-t' 300 $incTop 460 48 24 '' '#FF101216' 2 @{
+        Text = BindJS 'Text' (
+            'var n=' + $inc + ';if(!(n>=0))return "";' +
+            'var L=' + $lim + ';' +
+            'return "TOTAL  "+n+"x"+(L>0?" / "+L+"x":"")')
+        TextColor = BindJS 'TextColor' $txtJs
+        Top       = BindJS 'Top' $topJs
+    } 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $vis
+    $out.Add($t)
+    $out
+}
+
 function FlagBar([string]$P) {
     $F = 'DataCorePlugin.GameData.NewData.Flag_'
     # Orange is the meatball and Green the restart; both were missing, so
     # two of the seven flags a game can raise went unreported entirely.
-    $any = '$prop("' + $P + '.FlagsOn") && (' +
-           '$prop("' + $F + 'Yellow")||$prop("' + $F + 'Blue")||$prop("' + $F + 'Black")' +
-           '||$prop("' + $F + 'White")||$prop("' + $F + 'Checkered")' +
-           '||$prop("' + $F + 'Orange")||$prop("' + $F + 'Green"))'
+    $any = FlagUpJs $P
     $vis = 'return ' + $any
     # Color follows the flag, checkered reads as white.
     # The meatball is a BLACK flag with an orange disc, so it takes the
@@ -2825,6 +2952,7 @@ TabBar $P | ForEach-Object { $s1.Add($_) }
 RevStrip $P | ForEach-Object { $s1.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s1.Add($_) }
 FlagBar $P | ForEach-Object { $s1.Add($_) }
+IncidentBand $P | ForEach-Object { $s1.Add($_) }
 IdleCard $P | ForEach-Object { $s1.Add($_) }
 ReadoutPill $P | ForEach-Object { $s1.Add($_) }
 ToastBar $P | ForEach-Object { $s1.Add($_) }
@@ -2874,7 +3002,44 @@ $s2.Add((New-Button 'cf-rl-up' 608 240 160 72 'DashRedlineUp'))
 $s2.Add((New-Text 'cf-info' 32 348 736 28 16 '' $MUTED 0 @{
     Text = BindJS 'Text' ('var m=1*$prop("' + $P + '.MaxRpm");var s=""+($prop("' + $P + '.RedlineSource")||"");var t=m>0?("MAX RPM  "+m):"";if(s!=""&&s!="none"){t+=(t!=""?"      ":"")+"REDLINE SOURCE  "+s}return t')
 }))
-$s2.Add((New-Text 'cf-note' 32 414 736 26 14 'Edits save to this car and apply instantly. Sharing follows your community settings.' $GRAY 0))
+$s2.Add((New-Text 'cf-note' 32 414 736 26 14 'Edits save to this car and apply instantly. Sharing follows your community settings.' $GRAY 0 @{
+    Visible = BindJS 'Visible' ('return !$prop("' + $P + '.IRacingAutoShow")')
+}))
+
+# ---- iRacing: max force, with the auto button ----
+# Sits where the note line does, and only in iRacing. Calibration belongs next
+# to the car it calibrates: the number is a fact about THIS car, and the moment
+# to set it is the end of a clean lap, when alt-tabbing to a settings window is
+# the one thing a driver cannot do.
+$mfVis = 'return $prop("' + $P + '.IRacingAutoShow")'
+$mf = New-Card 'cf-mf-panel' 16 378 768 58
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Text 'cf-mf-label' 32 384 300 18 13 'MAX FORCE' $MUTED 0
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Text 'cf-mf-value' 32 402 300 28 20 '' $WHITE 0 @{
+    Text = BindJS 'Text' ('var v=1*$prop("' + $P + '.IRacingMaxForceNm");return v>0?(v.toFixed(1)+" Nm"):"--"')
+} 'Bold'
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+# Left of the tile: whether tapping is worth anything yet, in words, so the
+# tile itself can stay short.
+$mf = New-Text 'cf-mf-hint' 296 394 240 26 12 '' $GRAY 2 @{
+    Text = BindJS 'Text' (
+        'if($prop("' + $P + '.IRacingAutoReady"))return "READY AFTER A CLEAN LAP";' +
+        'var c=1*$prop("' + $P + '.IRacingAutoConfidence");if(isNaN(c))c=0;' +
+        'return "LEARNING THIS CAR  "+Math.round(c*100)+"%"')
+}
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Btn 'cf-mf-bg' 552 388 216 38 4
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Text 'cf-mf-t' 552 388 216 38 15 '' $GRAY 1 @{
+    Text = BindJS 'Text' (
+        'var rdy=$prop("' + $P + '.IRacingAutoReady");var n=1*$prop("' + $P + '.IRacingAutoNm");' +
+        'return rdy&&n>0?("AUTO  "+n.toFixed(1)+" NM"):"AUTO"')
+    TextColor = BindJS 'TextColor' ('return $prop("' + $P + '.IRacingAutoReady")?"' + $GREEN + '":"' + $GRAY + '"')
+} 'Bold'
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Button 'cf-mf-btn' 552 388 216 38 'IRacingAutoMaxForce'
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 
 # ---- overlay: engine layout picker ----
 $layouts = @(
@@ -2936,6 +3101,7 @@ TabBar $P | ForEach-Object { $s2.Add($_) }
 # ---- overlay: shared keypad (redline entry opens it via DashRedlineOpen) ----
 KeypadOverlay $P | ForEach-Object { $s2.Add($_) }
 FlagBar $P | ForEach-Object { $s2.Add($_) }
+IncidentBand $P | ForEach-Object { $s2.Add($_) }
 IdleCard $P | ForEach-Object { $s2.Add($_) }
 ReadoutPill $P | ForEach-Object { $s2.Add($_) }
 ToastBar $P | ForEach-Object { $s2.Add($_) }
@@ -3075,6 +3241,7 @@ $s3.Add((OnOverlay (New-Rect 'ss-cancel-bg' 220 372 360 44 $TILE) 'savescope'))
 $s3.Add((OnOverlay (New-Text 'ss-cancel-t' 220 372 360 44 15 'CANCEL' $RED 1 $null 'Bold') 'savescope'))
 $s3.Add((OnOverlay (New-Button 'ss-cancel' 220 372 360 44 'DashTuneSaveCancel') 'savescope'))
 FlagBar $P | ForEach-Object { $s3.Add($_) }
+IncidentBand $P | ForEach-Object { $s3.Add($_) }
 IdleCard $P | ForEach-Object { $s3.Add($_) }
 ReadoutPill $P | ForEach-Object { $s3.Add($_) }
 ToastBar $P | ForEach-Object { $s3.Add($_) }
@@ -3112,6 +3279,7 @@ TabBar $P | ForEach-Object { $s4.Add($_) }
 RevStrip $P | ForEach-Object { $s4.Add($_) }
 PresetOverlay $P | ForEach-Object { $s4.Add($_) }
 FlagBar $P | ForEach-Object { $s4.Add($_) }
+IncidentBand $P | ForEach-Object { $s4.Add($_) }
 IdleCard $P | ForEach-Object { $s4.Add($_) }
 ReadoutPill $P | ForEach-Object { $s4.Add($_) }
 ToastBar $P | ForEach-Object { $s4.Add($_) }
@@ -3218,6 +3386,7 @@ $s5.Add((New-Text 'sc-hint' 16 428 768 16 12 'Scrolls left, about 2.5 seconds of
 
 TabBar $P | ForEach-Object { $s5.Add($_) }
 FlagBar $P | ForEach-Object { $s5.Add($_) }
+IncidentBand $P | ForEach-Object { $s5.Add($_) }
 IdleCard $P | ForEach-Object { $s5.Add($_) }
 ReadoutPill $P | ForEach-Object { $s5.Add($_) }
 ToastBar $P | ForEach-Object { $s5.Add($_) }
@@ -3369,6 +3538,7 @@ TabBar $P | ForEach-Object { $s6.Add($_) }
 RevStrip $P | ForEach-Object { $s6.Add($_) }
 KeypadOverlay $P | ForEach-Object { $s6.Add($_) }
 FlagBar $P | ForEach-Object { $s6.Add($_) }
+IncidentBand $P | ForEach-Object { $s6.Add($_) }
 IdleCard $P | ForEach-Object { $s6.Add($_) }
 ReadoutPill $P | ForEach-Object { $s6.Add($_) }
 ToastBar $P | ForEach-Object { $s6.Add($_) }
@@ -3480,6 +3650,44 @@ $spd = New-Text 'dr-speed' 300 268 200 40 26 '' $MUTED 1 @{
 } 'Bold'
 $s7.Add($spd)
 
+# Incident points, under the speed. iRacing only: everywhere else the count
+# reads -1 and this line is not drawn at all, so no other title loses a pixel
+# to it. Sits in the gear column with the revs, the delta and the speed for
+# the same reason they do, which is that it is one of the handful of numbers
+# worth a glance mid-corner.
+#
+# The limit rides with the total because the total alone does not say
+# anything: 5x is a quiet race in one session and a disqualification in the
+# next. An unlimited session prints the count on its own rather than a
+# meaningless denominator.
+#
+# Colored by how much ROOM IS LEFT, not by the count. Green while you are
+# fine, and a race mode with no limit stays green forever because it can
+# never run out. Violet once the allowance is going, red once it is nearly
+# gone. A meaning color, so no theme repaints it.
+#
+# NOT amber. This used to be #FFE8A33D, which is one channel away from the
+# yellow flag band's #F2E8C33D, so a healthy incident count read as a yellow
+# flag at a glance. Nothing here may borrow a flag colour:
+#   yellow #F2E8C33D  blue #F23D7FE8  black #F21A1A1A
+#   green  #F23DC77A  white/chequered #F2E8EAEE
+# The green below is the dash's own $GREEN, which is a different green from
+# the flag's and only ever appears attached to an "Nx" number, never as a
+# full-width band, so the two do not read alike.
+$incJs = 'var n=1*$prop("' + $P + '.Incidents");var L=1*$prop("' + $P + '.IncidentLimit");'
+$inc = New-Text 'dr-inc' 300 306 200 26 17 '' $GREEN 1 @{
+    Text = BindJS 'Text' ($incJs +
+        'if(!(n>=0))return "";return n+"x"+(L>0?" / "+L+"x":"")')
+    TextColor = BindJS 'TextColor' ($incJs +
+        'if(!(n>=0))return "' + $MUTED + '";' +
+        'if(!(L>0))return "' + $GREEN + '";' +
+        'var f=n/L;if(f>=0.9)return "' + $RED + '";' +
+        'if(f>=0.5)return "#FFB388FF";return "' + $GREEN + '"')
+    Top  = BindJS 'Top'  ('return ' + $twoRows + '?306:381')
+} 'Bold'
+$inc.Bindings['Visible'] = BindJS 'Visible' ($incJs + 'return n>=0')
+$s7.Add($inc)
+
 # Pedals around the gear (Dash.DrivePedals): thin throttle and brake
 # bars either side of it with steering underneath, using space the gear
 # column has spare. Brake left, throttle right, matching a pedal box.
@@ -3549,6 +3757,7 @@ KeypadOverlay $P | ForEach-Object { $s7.Add($_) }
 EngineLayoutOverlay $P | ForEach-Object { $s7.Add($_) }
 PresetOverlay $P | ForEach-Object { $s7.Add($_) }
 FlagBar $P | ForEach-Object { $s7.Add($_) }
+IncidentBand $P | ForEach-Object { $s7.Add($_) }
 IdleCard $P | ForEach-Object { $s7.Add($_) }
 ReadoutPill $P | ForEach-Object { $s7.Add($_) }
 ToastBar $P | ForEach-Object { $s7.Add($_) }
@@ -4251,6 +4460,15 @@ $ovFacts['cf-car']       = @{ Text = $pvCar }
 $ovFacts['cf-eng-value'] = @{ Text = 'Inline 4  (community)' }
 $ovFacts['cf-rl-value']  = @{ Text = '7200 rpm' }
 $ovFacts['cf-info']      = @{ Text = 'MAX RPM  7500      REDLINE SOURCE  community' }
+# The sample car is an iRacing one, so the preview shows the iRacing state:
+# max force with its auto button, in the lit state that says pressing is worth
+# something. The general-case note line is what it displaces.
+$ovFacts['cf-mf-panel'] = @{ Show = $true }
+$ovFacts['cf-mf-label'] = @{ Show = $true }
+$ovFacts['cf-mf-value'] = @{ Show = $true; Text = '11.2 Nm' }
+$ovFacts['cf-mf-hint']  = @{ Show = $true; Text = 'READY AFTER A CLEAN LAP' }
+$ovFacts['cf-mf-bg']    = @{ Show = $true }
+$ovFacts['cf-mf-t']     = @{ Show = $true; Text = 'AUTO  12.6 NM'; TextColor = $GREEN }
 
 $ovFx = PreviewChrome 78 3
 $pvGains = @{

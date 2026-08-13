@@ -45,7 +45,19 @@ namespace TrueforceForAll.Plugin
         public static readonly HashSet<string> Portable = new HashSet<string>(StringComparer.Ordinal)
         {
             // Feature toggles the user opted into.
-            "PluginEnabled", "MairaFfbPassthrough", "ModeBRevLightsEnabled", "ShowFeedbackBox",
+            "PluginEnabled", "ModeBRevLightsEnabled", "CarRevLightEffect", "ShowFeedbackBox",
+            // iRacing reshape strength. Travels: it is normalized against the
+            // sim's own max force, so it carries no wheel-specific meaning.
+            "IRacingForceGain", "IRacingUse360Hz",
+            "IRacingForceMode", "IRacingPredictGain",
+            // Wheel full-scale in Nm. Travels with the other feel settings: it
+            // describes the WHEEL, and the wheel goes to the second PC with the
+            // driver, same reasoning as the rev-light and OLED preferences.
+            "IRacingMaxForceNmOverride", "IRacingMaxForceMode",
+            // Per-car force scale. Travels for the same reason CarGripCalibration
+            // does: it costs seat time per car to rebuild, and it describes the
+            // cars rather than this PC.
+            "IRacingMaxForcePerCar", "IRacingMaxForceByCar",
             "ShowAchievementCelebrations",
             // Has ever backed the project: a fact about the person, not the machine,
             // so it travels and a supporter is never re-asked on a second PC.
@@ -72,7 +84,7 @@ namespace TrueforceForAll.Plugin
             // time to rebuild, and it is about the games, not this PC.
             "DashDriveSeen", "DashDriveDrivenSec",
             "DashRevStripCentered", "DashDrivePedals",
-            "DashSpotterEnabled",
+            "DashSpotterEnabled", "DashIncidentsEnabled",
             "DashIdleEnabled", "DashIdleDelaySeconds", "DashIdleStyle",
             "DashIdleDriverName", "DashIdleNumber", "DashIdleColor", "DashIdleNameAbove", "DashIdleFont", "DashTheme",
             "DashTabOrder", "DashTabsDisabled",

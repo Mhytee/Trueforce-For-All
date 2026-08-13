@@ -602,7 +602,7 @@ namespace TrueforceForAll.Plugin
             // Chassis dynamics (mod v0.2.3+): world-frame angular velocity.
             // For an upright vehicle world Y IS body yaw, so no quaternion
             // math is needed for the two consumers: yaw rate itself, and
-            // lateral acceleration approximated as v * yawRate (the MAIRA
+            // lateral acceleration approximated as v * yawRate (the
             // no-tire-data lesson), which feeds the cornering-weight scale.
             var avy = o.Value<double?>("avy");
             if (avy.HasValue && !double.IsNaN(avy.Value))

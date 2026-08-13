@@ -1224,6 +1224,25 @@
                                             Padding="10,2" Margin="0,2,0,0" Click="CarFactsAddGear_Click"/>
                                 </StackPanel>
                             </Expander>
+                            <!-- Rev-light pattern: the wheel's ONE selection,
+                                 same picker as the Wheel lights section, plus
+                                 the per-car remember controls. Items built in
+                                 code (RefreshCarRevLightRow). -->
+                            <Grid x:Name="CarRevLightRow" Margin="0,6,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Rev lights" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" x:Name="CarRevLightCombo" Width="230"
+                                          SelectionChanged="CarRevLight_Changed"/>
+                                <Button Grid.Column="2" x:Name="CarRevLightRememberBtn" Content="Remember for this car"
+                                        Margin="8,0,0,0" Padding="10,2" VerticalAlignment="Center"
+                                        Click="RevLightRemember_Click"/>
+                                <TextBlock Grid.Column="3" x:Name="CarRevLightRememberStatus" VerticalAlignment="Center"
+                                           Margin="10,0,0,0" FontSize="11" Opacity="0.7" Visibility="Collapsed"><Run x:Name="CarRevLightRememberRun"/> · <Hyperlink Click="RevLightForget_Click">Forget</Hyperlink></TextBlock>
+                            </Grid>
+                            <TextBlock x:Name="CarRevLightRowHelp" Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
+                                       Text="Picking sets the wheelbase's selection immediately and it stays. Remember re-applies it whenever this car loads, e.g. to mirror the real car's light layout."/>
                             </StackPanel>
                         </StackPanel>
                     </Expander>
@@ -1407,166 +1426,6 @@
                  collapsed by default so they don't crowd the top of the Effects
                  tab. Holds the parked-car "stationary spring" and FFB spike
                  reduction. -->
-            <Expander x:Name="FfbTweaksExpander" IsExpanded="False" Margin="0,12,0,4">
-                <Expander.Header>
-                    <TextBlock Text="FFB tweaks" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
-                </Expander.Header>
-                <StackPanel Margin="0,10,0,0">
-
-                <!-- FFB pass-through: how the game's own force feedback is
-                     mirrored to the wheel - output scale, smoothing, and sign. -->
-                <Expander IsExpanded="False" Margin="0,0,0,4">
-                    <Expander.Header>
-                        <TextBlock Text="FFB pass-through" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </Expander.Header>
-                    <StackPanel x:Name="FfbPassthroughControls" Margin="0,8,0,0">
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="FFB scale:" Style="{StaticResource LabelText}"/>
-                            <Slider     Grid.Column="1" x:Name="FfbScaleSlider"
-                                        Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
-                                        TickFrequency="0.25" ValueChanged="FfbScaleSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="2" x:Name="FfbScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="FFB smooth (ms):" Style="{StaticResource LabelText}"
-                                       ToolTip="Smooths the game's force feedback before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = no smoothing (tightest, the default)."/>
-                            <Slider     Grid.Column="1" x:Name="FfbSmoothSlider"
-                                        Minimum="0" Maximum="10" SmallChange="0.5" LargeChange="1"
-                                        TickFrequency="1" ValueChanged="FfbSmoothSlider_ValueChanged" VerticalAlignment="Center"
-                                        ToolTip="Smooths the game's force feedback before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = no smoothing (tightest, the default)."/>
-                            <TextBox Grid.Column="2" x:Name="FfbSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.0"/>
-                        </Grid>
-                        <CheckBox x:Name="FfbInvertCheck" Content="Invert FFB sign (uncheck if forces feel reversed)"
-                                  Margin="0,2,0,0" VerticalAlignment="Center"
-                                  Checked="FfbInvert_Changed" Unchecked="FfbInvert_Changed"
-                                  ToolTip="Flips the direction of the game's force feedback sent to the wheel. On by default. If your wheel pushes the wrong way (e.g. forces feel reversed in RaceRoom), uncheck this."/>
-                        <!-- Save/Revert for the FFB pass-through trio (scale/smooth/
-                             invert). Tag="Master" so the existing EffectKind.Master
-                             save/revert handlers apply unchanged. Shown only when
-                             these values drift from the active preset. -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                            <Button x:Name="MasterRevertBtn" Content="↶" Tag="Master" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                            <Button x:Name="MasterSaveBtn"   Content="Save…" Tag="Master" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Expander>
-
-                <!-- Stationary spring: synthesizes a parked-car centering
-                     force the game itself doesn't send (a stationary tire has
-                     ~0 self-aligning torque). Deficit-fill + speed-fade, so it
-                     can't fight the game's FFB. Uses the game's reported
-                     steering whenever it provides one (AC / Forza), and falls
-                     back to the wheel's physical position (WheelSteeringReader)
-                     for any game that doesn't report steering via telemetry, so
-                     it works in any game; always off for iRacing (MAIRA already
-                     weights it). Forza's steering is coarse so the consumer
-                     smooths it. -->
-                <Expander IsExpanded="False" Margin="0,0,0,4">
-                    <Expander.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Stationary spring" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            <Button x:Name="StationarySpringRevertBtn" Content="↶" Tag="StationarySpring" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                            <Button x:Name="StationarySpringSaveBtn"   Content="Save…" Tag="StationarySpring" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                        </StackPanel>
-                    </Expander.Header>
-                    <StackPanel Margin="0,8,0,0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <CheckBox x:Name="StationarySpringCheck"
-                                      Content="Stationary spring (adds parked-car wheel weight)"
-                                      VerticalAlignment="Center"
-                                      Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It works in any game, and is ignored for iRacing (MAIRA already weights the wheel)."/>
-                            <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
-                                       Text="not used in Forza"
-                                       ToolTip="The spring conflicted with Forza's force feedback across pause and matchmaking transitions and could pull the wheel to its rotational stop. It is bypassed for Forza so the wheel stays free across those transitions; your tuning still applies to other games."/>
-                        </StackPanel>
-                        <StackPanel x:Name="StationarySpringSliders">
-                            <Grid Margin="0,0,0,4">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Spring strength:" Style="{StaticResource LabelText}"
-                                           ToolTip="How much centering weight to add when fully parked, as a fraction of full FFB. Start low; a strong spring can snap the wheel to center hard."/>
-                                <Slider     Grid.Column="1" x:Name="StationarySpringStrengthSlider"
-                                            Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.25"
-                                            TickFrequency="0.25" ValueChanged="StationarySpringStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="2" x:Name="StationarySpringStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
-                            </Grid>
-                            <Grid Margin="0,0,0,4">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Fade-out (km/h):" Style="{StaticResource LabelText}"
-                                           ToolTip="The spring is at full strength when stopped and fades to nothing by this speed. Keep it low so it's gone before real cornering forces build."/>
-                                <Slider     Grid.Column="1" x:Name="StationarySpringCutoffSlider"
-                                            Minimum="2" Maximum="30" SmallChange="1" LargeChange="5"
-                                            TickFrequency="2" ValueChanged="StationarySpringCutoffSlider_ValueChanged" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="2" x:Name="StationarySpringCutoffText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="12"/>
-                            </Grid>
-                        </StackPanel>
-                    </StackPanel>
-                </Expander>
-
-                <!-- FFB spike reduction. Save/Revert live in the expander header. -->
-                <Expander IsExpanded="False" Margin="0,0,0,4">
-                    <Expander.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="FFB spike reduction" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            <Button x:Name="SpikeReductionRevertBtn" Content="↶" Tag="SpikeReduction" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                            <Button x:Name="SpikeReductionSaveBtn"   Content="Save…" Tag="SpikeReduction" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                        </StackPanel>
-                    </Expander.Header>
-                    <StackPanel Margin="0,8,0,0">
-                        <CheckBox x:Name="SpikeTamingEnabledCheck" Content="FFB spike reduction (recommended for Assetto Corsa)"
-                                  FontWeight="SemiBold" Margin="0,0,0,4"
-                                  Checked="SpikeTamingEnabled_Changed" Unchecked="SpikeTamingEnabled_Changed"/>
-                        <!-- Spike reduction has two mutually exclusive methods: exactly
-                             one runs when the box above is on, neither when it's off.
-                             The selector and tuning stay readable even when it's off so
-                             the method can be set any time. The active method's controls
-                             show; the other method's are hidden (no graying). The label,
-                             help text and description swap by method in code
-                             (UpdateSpikeModeUi). The shared limit slider is one setting
-                             (FfbSpikeMaxLsbPerMs) read as LSB/ms in slew or an LSB
-                             threshold in transient. "Cap softness" is transient-only so
-                             it only appears under Transient. -->
-                        <StackPanel x:Name="SpikeTamingBody" Margin="0,4,0,0">
-                            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                                       Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
-                            <TextBlock Text="Method:" Style="{StaticResource LabelText}" Margin="0,2,0,4"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                <RadioButton x:Name="SpikeModeTransientRadio" GroupName="SpikeMode"
-                                             Content="Transient detector" VerticalAlignment="Center"
-                                             Checked="SpikeMode_Changed"/>
-                                <RadioButton x:Name="SpikeModeSlewRadio" GroupName="SpikeMode"
-                                             Content="Slew-rate limiter (iRacing-style)" VerticalAlignment="Center"
-                                             Margin="18,0,0,0" Checked="SpikeMode_Changed"/>
-                            </StackPanel>
-                            <TextBlock x:Name="SpikeModeDescription" Style="{StaticResource HelpText}" Margin="0,0,0,8"/>
-                            <Grid Margin="0,0,0,2">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" x:Name="FfbSpikeLimitLabel" Text="Slew rate:" Style="{StaticResource LabelText}"/>
-                                <Slider     Grid.Column="1" x:Name="FfbSpikeLimitSlider"
-                                            Minimum="0" Maximum="30000" SmallChange="500" LargeChange="2000"
-                                            TickFrequency="2500" ValueChanged="FfbSpikeLimitSlider_ValueChanged" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="2" x:Name="FfbSpikeLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="2061"/>
-                            </Grid>
-                            <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,8" x:Name="FfbSpikeLimitHelp"/>
-                            <StackPanel x:Name="SpikeCapSoftnessRow">
-                                <Grid Margin="0,0,0,2">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Cap softness:" Style="{StaticResource LabelText}"/>
-                                    <Slider     Grid.Column="1" x:Name="FfbPeakLimitSlider"
-                                                Minimum="0" Maximum="20000" SmallChange="500" LargeChange="2000"
-                                                TickFrequency="2000" ValueChanged="FfbPeakLimitSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBox Grid.Column="2" x:Name="FfbPeakLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1562"/>
-                                </Grid>
-                                <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,0"
-                                           Text="How hard spikes above the threshold get compressed. Peak force during a big hit levels off near threshold plus this value. Transient method only."/>
-                            </StackPanel>
-                        </StackPanel>
-                    </StackPanel>
-                </Expander>
-                </StackPanel>
-            </Expander>
 
             <!-- Effects -->
             <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12"><TextBlock Text="Effects" Style="{StaticResource SectionHeaderText}"/></Border>
@@ -2789,7 +2648,7 @@
                     <StackPanel Margin="14,12,14,14">
 
             <Border Style="{StaticResource SectionHeaderBorder}">
-                <TextBlock Text="Telemetry Based FFB" Style="{StaticResource SectionHeaderText}"/>
+                <TextBlock x:Name="TeleFfbSectionHeader" Text="Telemetry Based FFB" Style="{StaticResource SectionHeaderText}"/>
             </Border>
 
             <!-- Standing offer to install the TF4ALL Enhanced Telemetry game mod.
@@ -2848,6 +2707,15 @@
                        Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
                        Text="The game is still sending its own force feedback, so two force streams are fighting and the wheel will feel jumpy or buzzy. In the game's wheel settings, set force feedback and vibration strength to 0 so this is the only force on the wheel."/>
 
+            <!-- Slip-starved fallback warning. The plugin latches
+                 ModeBSlipStarvedDetected when Mode B is armed but no tire-slip
+                 telemetry ever reaches it (typically Forza's Data Out points at
+                 SimHub's port, so the plugin's own UDP source has nothing to
+                 read); the game's tapped FFB is passed through meanwhile. -->
+            <TextBlock x:Name="ModeBSlipStarvedWarning" Visibility="Collapsed"
+                       Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
+                       Text="Telemetry Based FFB is on, but the game's tire telemetry is not reaching this plugin, so the game's own force feedback is passed through for now. Point Forza's Data Out directly at the plugin: IP 127.0.0.1 with the Forza UDP port from the Settings tab. If startup logged that the port is busy, pick a different port there first, then update the game to match, and turn on forwarding so SimHub still receives telemetry."/>
+
             <CheckBox x:Name="ModeBEnabledCheck" Content="Enable Telemetry Based FFB for this game"
                       Margin="0,4,0,2" Checked="ModeBEnabled_Changed" Unchecked="ModeBEnabled_Changed"/>
             <TextBlock x:Name="ModeBGameNote" Style="{StaticResource HelpText}" Margin="22,0,0,12"
@@ -2877,7 +2745,22 @@
 
             <CheckBox x:Name="ModeBAutoStrengthCheck" Margin="0,0,0,2" Content="Auto strength per car"
                       Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Levels cars out: learns how hard each car pushes the wheel, then scales it so every car lands at the heaviness your Strength slider sets. No more retuning per car; the trade is that cars stop feeling lighter or heavier than each other. Takes a few laps per car to settle."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,4" Text="Levels cars out: learns how hard each car pushes the wheel, then scales it so every car lands at the heaviness your Strength slider sets. No more retuning per car; the trade is that cars stop feeling lighter or heavier than each other. Takes a few laps per car to settle."/>
+            <!-- Live state for the learner. It has always decided a number per
+                 car and never shown it, which made "is this doing anything?"
+                 unanswerable without the BAUTOS console command. -->
+            <Grid Margin="20,0,0,8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="ModeBAutoStrengthStatus" VerticalAlignment="Center"
+                           FontSize="11" Opacity="0.75" TextWrapping="Wrap" Text=""/>
+                <!-- Width overrides EffectTestButton's 50, which is sized for
+                     the four-character "Test" labels every other user of that
+                     style carries; the template arranges the label INTO the
+                     border, so at 50 this reads "Re-lear". -->
+                <Button Grid.Column="1" x:Name="ModeBRelearnBtn" Content="Re-learn car" Margin="8,0,0,0" Width="86"
+                        Style="{StaticResource EffectTestButton}" Click="ModeBRelearnCar_Click"
+                        ToolTip="Forget what this car has learned and start again. Use it after a tune or a tire change makes the wheel feel wrong. This also clears the car's learned grip calibration, because the two share one saved slot."/>
+            </Grid>
 
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -2926,10 +2809,91 @@
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The smallest force your wheel actually plays here: lifts faint terrain hits, and light centering once the wheel is off dead-ahead, above the wheel's own friction. Raise it on a belt-driven wheel (G923) until faint bumps just move the wheel. A parked wheel stays limp, and damping is unaffected."/>
             </StackPanel>
 
+            <!-- iRacing essentials, in the same position and order as the other
+                 two families: Strength first, Damping directly under it. The
+                 Forza recipe below is hidden here because iRacing RESHAPES the
+                 sim's own steering torque rather than synthesizing force from
+                 slip, so the SAT model and everything feeding it never runs. -->
+            <StackPanel x:Name="IRacingTuningPanel" Visibility="Collapsed">
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Max force:" Style="{StaticResource LabelText}"/>
+                    <Slider     Grid.Column="1" x:Name="IRacingMaxNmSlider" Minimum="0" Maximum="40" SmallChange="0.5" LargeChange="1"
+                                TickFrequency="2" ValueChanged="IRacingMaxNm_ValueChanged" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock x:Name="IRacingMaxNmText" VerticalAlignment="Center" Text="Auto"/>
+                        <Button x:Name="IRacingAutoMaxForceBtn" Content="Auto" Margin="8,0,0,0"
+                                Style="{StaticResource EffectTestButton}" Click="IRacingAutoMaxForce_Click"
+                                ToolTip="Drive a clean lap, then press Auto. It sets Max force from the hardest this car pushed, plus a margin, and starts watching again from scratch. Had a spin or hit a wall? Just drive another clean lap and press it again. Same idea as iRacing's own auto button."/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock x:Name="IRacingAutoMaxForceStatus" Margin="140,0,0,6"
+                           FontSize="11" Opacity="0.75" Text="" Visibility="Collapsed"/>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"/>
+                    <Slider     Grid.Column="1" x:Name="IRacingGainSlider" Minimum="0.05" Maximum="3.0" SmallChange="0.05" LargeChange="0.1"
+                                TickFrequency="0.1" ValueChanged="IRacingGain_ValueChanged" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="2" x:Name="IRacingGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                </Grid>
+                <TextBlock x:Name="IRacingClipWarn" Margin="140,0,0,6" FontSize="11" TextWrapping="Wrap"
+                           Foreground="#FFE8A33D" Visibility="Collapsed"
+                           Text="Above this the strongest moments will clip: Auto leaves about 10 percent spare, and past that the top of big corners flattens off instead of building. Fine if you like it, but detail is lost where the car is working hardest."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="Your overall preference, and the only force control you should need day to day. One setting for every car: turn it up and everything gets stronger by the same amount, so there is nothing to re-tune when you switch cars. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
+
+                <!-- Everything below is expert surface. The panel had grown to
+                     seven controls when a driver needs two: Strength day to day,
+                     and Auto once per car. Burying the rest is not tidying, it is
+                     the difference between a tab someone can use and one they
+                     scroll past. -->
+                <Expander x:Name="IRacingAdvancedExpander" IsExpanded="False" Margin="0,6,0,4">
+                    <Expander.Header>
+                        <TextBlock Text="Advanced" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                <CheckBox x:Name="IRacingPerCarCheck" Content="Remember a separate Max force for each car"
+                          Margin="140,0,0,2" Checked="IRacingPerCar_Changed" Unchecked="IRacingPerCar_Changed"
+                          ToolTip="Off: one number for everything, so a heavy car really does push harder than a light one. On: each car gets its own, so every car feels about the same effort."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="162,0,0,8"
+                           Text="This is the switch that decides whether cars feel different. Off, one number scales everything, so set it from your HEAVIEST car and nothing will clip while lighter cars sit honestly below it. On, each car reaches full force at its own limit: nothing clips and nothing feels weak, but a Formula Vee and a GT3 end up feeling much alike."/>
+                <TextBlock x:Name="IRacingMaxNmHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="Max force is the car torque at which your wheel is giving everything it has, and it decides whether cars keep their relative weight. A DIFFERENT number per car makes every car reach full force at its own limit, so they all feel about the same effort. ONE number for every car keeps the difference: a heavy GT3 pushes harder than a light car, as it does in reality. Follow iRacing inherits whatever you set in its black box, which flattens them if you use iRacing's auto force and keeps them apart if you set one value there. Strength is your preference on top and is never changed for you."/>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Detail method:" Style="{StaticResource LabelText}"/>
+                    <ComboBox Grid.Column="1" x:Name="IRacingForceModeCombo" VerticalAlignment="Center"
+                              SelectionChanged="IRacingForceMode_Changed">
+                        <ComboBoxItem Content="Lead (detail split, nothing delayed)"/>
+                        <ComboBoxItem Content="Replay (whole events, wheel-predicted)"/>
+                    </ComboBox>
+                </Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="Two ways to turn iRacing's 360 Hz force into a smooth stream. Both use all six samples per frame. Lead sends the part that pushes your hands immediately and lets fine detail trail slightly. Replay plays each event out whole and uses your wheel's own movement to stay current. Drive both and keep the one you prefer; they are different trades, not better and worse."/>
+                <Grid Margin="0,0,0,2" x:Name="IRacingPredictRow">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Prediction:" Style="{StaticResource LabelText}"/>
+                    <Slider     Grid.Column="1" x:Name="IRacingPredictSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                TickFrequency="0.1" ValueChanged="IRacingPredict_ValueChanged" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="2" x:Name="IRacingPredictText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                </Grid>
+                <TextBlock x:Name="IRacingPredictHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="Replay only, and NOT something you need to tune. The plugin works out for itself how far ahead this car's force is heading, learning it fresh for every car you drive, so 1.00 means simply using what it found. Turn it down only if prediction feels nervous to you, or to 0 to switch it off and accept a slightly later force."/>
+                <CheckBox x:Name="IRacingSmoothCheck" Content="Use iRacing's 360 Hz detail"
+                          Margin="0,4,0,2" Checked="IRacingSmooth_Changed" Unchecked="IRacingSmooth_Changed"
+                          ToolTip="On by default. iRacing solves physics six times per frame and publishes all six; this uses them to follow the force between frames instead of holding the last value."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8"
+                           Text="Sharper, and it does NOT add delay: the extra samples are used to track where the force is heading, not to replay where it has been. Turn it off if the wheel ever feels nervous or busy at a standstill."/>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+
             <!-- Damping sits OUTSIDE the Forza-only panels: it is live in
                  spring mode too (the anti-ring half of rendering a spring),
-                 so it stays visible in Farming Simulator. The panel split
-                 around it keeps the Forza layout identical. -->
+                 so it stays visible in Farming Simulator. It is live in the
+                 iRacing reshape as well, and matters MORE there: that path is
+                 a closed loop through the sim, and damping is what settles it.
+                 The panel split around it keeps the Forza layout identical. -->
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Damping:" Style="{StaticResource LabelText}"/>
@@ -3173,33 +3137,224 @@
                 </StackPanel>
             </Expander>
 
+            </StackPanel><!-- ModeBForzaTuningPanel2 -->
+
             <!-- Restore the whole recipe to the shipped baseline. Handler confirms
                  first (discards custom tuning with no undo); leaves the per-game
-                 enable and each car's learned grip calibration alone. -->
+                 enable and each car's learned grip calibration alone.
+                 OUTSIDE the Forza block on purpose: that panel collapses in
+                 Farming Simulator, and FS's spring recipe is in ModeBRecipeFields
+                 like everything else, so the reset works there and FS players need
+                 it as much as Forza players do. -->
             <StackPanel Margin="0,14,0,0">
                 <Button x:Name="ModeBResetButton" Content="Reset FFB tuning to defaults" Padding="10,3"
                         HorizontalAlignment="Left" Click="ModeBReset_Click"
                         ToolTip="Put every Telemetry Based FFB slider and feel toggle back to your wheel's defaults."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="Restores your wheel's defaults. The G PRO, RS50, and G923 each get their own strength, and the G923 also gets its own damping. Your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings are kept."/>
+                           Text="Restores your wheel's defaults for the game you are in, and leaves the other one alone: resetting in Farming Simulator does not touch your Forza setup. The G PRO, RS50, and G923 each get their own strength; the G923 also gets its own damping, and its own floor and strength in Farming Simulator. Your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings are kept."/>
             </StackPanel>
-            </StackPanel><!-- ModeBForzaTuningPanel2 -->
 
             <!-- Wheel outputs rather than force tuning. Rev lights and the
                  OLED live on this tab because they ride the same HID++ channel
                  as game FFB, so they need Mode B in charge of the wheel; the
                  section sits last so the force tuning reads first. -->
+
+            <!-- Moved here from the Effects tab (owner call): scale, smoothing,
+                 sign, the stationary spring and spike reduction all describe how
+                 force REACHES THE WHEEL, which is what this tab is about. They
+                 were filed under Effects, where they sat beside things that make
+                 noise rather than things that shape steering force.
+
+                 Moved rather than duplicated on purpose: two copies of one
+                 setting is two places to disagree, and WPF cannot reparent a
+                 named control per game anyway. So every game finds them here
+                 now, not only iRacing. -->
+            <Expander x:Name="FfbTweaksExpander" IsExpanded="False" Margin="0,12,0,4">
+                <Expander.Header>
+                    <TextBlock Text="FFB tweaks" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+
+                <!-- FFB pass-through: how the game's own force feedback is
+                     mirrored to the wheel - output scale, smoothing, and sign. -->
+                <Expander IsExpanded="False" Margin="0,0,0,4">
+                    <Expander.Header>
+                        <TextBlock x:Name="FfbPassthroughHeader" Text="FFB pass-through" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </Expander.Header>
+                    <StackPanel x:Name="FfbPassthroughControls" Margin="0,8,0,0">
+                        <Grid Margin="0,0,0,4" x:Name="FfbScaleRow">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="FFB scale:" Style="{StaticResource LabelText}"/>
+                            <Slider     Grid.Column="1" x:Name="FfbScaleSlider"
+                                        Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
+                                        TickFrequency="0.25" ValueChanged="FfbScaleSlider_ValueChanged" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" x:Name="FfbScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="FFB smooth (ms):" Style="{StaticResource LabelText}"
+                                       ToolTip="Smooths the game's force feedback before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = no smoothing (tightest, the default)."/>
+                            <Slider     Grid.Column="1" x:Name="FfbSmoothSlider"
+                                        Minimum="0" Maximum="10" SmallChange="0.5" LargeChange="1"
+                                        TickFrequency="1" ValueChanged="FfbSmoothSlider_ValueChanged" VerticalAlignment="Center"
+                                        ToolTip="Smooths the game's force feedback before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = no smoothing (tightest, the default)."/>
+                            <TextBox Grid.Column="2" x:Name="FfbSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.0"/>
+                        </Grid>
+                        <CheckBox x:Name="FfbInvertCheck" Content="Invert FFB sign (uncheck if forces feel reversed)"
+                                  Margin="0,2,0,0" VerticalAlignment="Center"
+                                  Checked="FfbInvert_Changed" Unchecked="FfbInvert_Changed"
+                                  ToolTip="Flips the direction of the game's force feedback sent to the wheel. On by default. If your wheel pushes the wrong way (e.g. forces feel reversed in RaceRoom), uncheck this."/>
+                        <!-- Save/Revert for the FFB pass-through trio (scale/smooth/
+                             invert). Tag="Master" so the existing EffectKind.Master
+                             save/revert handlers apply unchanged. Shown only when
+                             these values drift from the active preset. -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                            <Button x:Name="MasterRevertBtn" Content="↶" Tag="Master" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="MasterSaveBtn"   Content="Save…" Tag="Master" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Stationary spring: synthesizes a parked-car centering
+                     force the game itself doesn't send (a stationary tire has
+                     ~0 self-aligning torque). Deficit-fill + speed-fade, so it
+                     can't fight the game's FFB. Uses the game's reported
+                     steering whenever it provides one (AC / Forza), and falls
+                     back to the wheel's physical position (WheelSteeringReader)
+                     for any game that doesn't report steering via telemetry, so
+                     it works in any game; always off for iRacing (the sim
+                     already weights it). Forza's steering is coarse so the consumer
+                     smooths it. -->
+                <Expander x:Name="StationarySpringExpander" IsExpanded="False" Margin="0,0,0,4">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Stationary spring" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button x:Name="StationarySpringRevertBtn" Content="↶" Tag="StationarySpring" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="StationarySpringSaveBtn"   Content="Save…" Tag="StationarySpring" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <CheckBox x:Name="StationarySpringCheck"
+                                      Content="Stationary spring (adds parked-car wheel weight)"
+                                      VerticalAlignment="Center"
+                                      Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
+                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It works in any game, and is ignored for iRacing (the sim already weights the wheel)."/>
+                            <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
+                                       Text="not used in Forza"
+                                       ToolTip="The spring conflicted with Forza's force feedback across pause and matchmaking transitions and could pull the wheel to its rotational stop. It is bypassed for Forza so the wheel stays free across those transitions; your tuning still applies to other games."/>
+                        </StackPanel>
+                        <StackPanel x:Name="StationarySpringSliders">
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Spring strength:" Style="{StaticResource LabelText}"
+                                           ToolTip="How much centering weight to add when fully parked, as a fraction of full FFB. Start low; a strong spring can snap the wheel to center hard."/>
+                                <Slider     Grid.Column="1" x:Name="StationarySpringStrengthSlider"
+                                            Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.25"
+                                            TickFrequency="0.25" ValueChanged="StationarySpringStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="2" x:Name="StationarySpringStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Fade-out (km/h):" Style="{StaticResource LabelText}"
+                                           ToolTip="The spring is at full strength when stopped and fades to nothing by this speed. Keep it low so it's gone before real cornering forces build."/>
+                                <Slider     Grid.Column="1" x:Name="StationarySpringCutoffSlider"
+                                            Minimum="2" Maximum="30" SmallChange="1" LargeChange="5"
+                                            TickFrequency="2" ValueChanged="StationarySpringCutoffSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="2" x:Name="StationarySpringCutoffText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="12"/>
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+
+                <!-- FFB spike reduction. Save/Revert live in the expander header. -->
+                <Expander IsExpanded="False" Margin="0,0,0,4">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="FFB spike reduction" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button x:Name="SpikeReductionRevertBtn" Content="↶" Tag="SpikeReduction" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                            <Button x:Name="SpikeReductionSaveBtn"   Content="Save…" Tag="SpikeReduction" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                        <CheckBox x:Name="SpikeTamingEnabledCheck" Content="FFB spike reduction (recommended for Assetto Corsa)"
+                                  FontWeight="SemiBold" Margin="0,0,0,4"
+                                  Checked="SpikeTamingEnabled_Changed" Unchecked="SpikeTamingEnabled_Changed"/>
+                        <!-- Spike reduction has two mutually exclusive methods: exactly
+                             one runs when the box above is on, neither when it's off.
+                             The selector and tuning stay readable even when it's off so
+                             the method can be set any time. The active method's controls
+                             show; the other method's are hidden (no graying). The label,
+                             help text and description swap by method in code
+                             (UpdateSpikeModeUi). The shared limit slider is one setting
+                             (FfbSpikeMaxLsbPerMs) read as LSB/ms in slew or an LSB
+                             threshold in transient. "Cap softness" is transient-only so
+                             it only appears under Transient. -->
+                        <StackPanel x:Name="SpikeTamingBody" Margin="0,4,0,0">
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                                       Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
+                            <TextBlock Text="Method:" Style="{StaticResource LabelText}" Margin="0,2,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <RadioButton x:Name="SpikeModeTransientRadio" GroupName="SpikeMode"
+                                             Content="Transient detector" VerticalAlignment="Center"
+                                             Checked="SpikeMode_Changed"/>
+                                <RadioButton x:Name="SpikeModeSlewRadio" GroupName="SpikeMode"
+                                             Content="Slew-rate limiter (iRacing-style)" VerticalAlignment="Center"
+                                             Margin="18,0,0,0" Checked="SpikeMode_Changed"/>
+                            </StackPanel>
+                            <TextBlock x:Name="SpikeModeDescription" Style="{StaticResource HelpText}" Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" x:Name="FfbSpikeLimitLabel" Text="Slew rate:" Style="{StaticResource LabelText}"/>
+                                <Slider     Grid.Column="1" x:Name="FfbSpikeLimitSlider"
+                                            Minimum="0" Maximum="30000" SmallChange="500" LargeChange="2000"
+                                            TickFrequency="2500" ValueChanged="FfbSpikeLimitSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="2" x:Name="FfbSpikeLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="2061"/>
+                            </Grid>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,8" x:Name="FfbSpikeLimitHelp"/>
+                            <StackPanel x:Name="SpikeCapSoftnessRow">
+                                <Grid Margin="0,0,0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Cap softness:" Style="{StaticResource LabelText}"/>
+                                    <Slider     Grid.Column="1" x:Name="FfbPeakLimitSlider"
+                                                Minimum="0" Maximum="20000" SmallChange="500" LargeChange="2000"
+                                                TickFrequency="2000" ValueChanged="FfbPeakLimitSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="2" x:Name="FfbPeakLimitText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1562"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HelpText}" Margin="140,4,0,0"
+                                           Text="How hard spikes above the threshold get compressed. Peak force during a big hit levels off near threshold plus this value. Transient method only."/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+                </StackPanel>
+            </Expander>
+
             <!-- Header text set in RefreshFromPlugin: "Wheel lights" on a
                  wheel with no screen (the OLED expander hides there too). -->
             <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12">
                 <TextBlock x:Name="WheelLightsHeaderText" Text="Wheel lights and screen" Style="{StaticResource SectionHeaderText}"/>
             </Border>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,10" TextWrapping="Wrap"
+            <TextBlock x:Name="WheelLightsNeedNote" Style="{StaticResource HelpText}" Margin="0,4,0,10" TextWrapping="Wrap"
                        Text="These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them. A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first."/>
             <CheckBox x:Name="ModeBRevLightsCheck" Content="Rev lights"
                       Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6"
                        Text="Your wheel's rev lights follow the engine: the strip fills as revs climb and flashes at the shift point. Turn this off if a game drives the wheel's lights itself."/>
+            <!-- Hidden on wheels whose strip has a fixed look (G923): a
+                 pattern picker there reads as a feature the owner is
+                 missing. Same principle as OledSection above. -->
+            <StackPanel x:Name="RevLightPatternRow" Orientation="Horizontal" Margin="22,0,0,4">
+                <TextBlock Text="Pattern:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                <ComboBox x:Name="RevLightEffectCombo" Width="230" Margin="8,0,0,0"
+                          SelectionChanged="RevLightEffect_Changed"/>
+                <Button x:Name="RevLightRememberBtn" Content="Remember for this car" Margin="8,0,0,0"
+                        Padding="10,2" VerticalAlignment="Center" Click="RevLightRemember_Click"/>
+                <TextBlock x:Name="RevLightRememberStatus" VerticalAlignment="Center" Margin="10,0,0,0"
+                           FontSize="11" Opacity="0.7" Visibility="Collapsed"><Run x:Name="RevLightRememberRun"/> · <Hyperlink Click="RevLightForget_Click">Forget</Hyperlink></TextBlock>
+            </StackPanel>
+            <TextBlock x:Name="RevLightPatternHelp" Style="{StaticResource HelpText}" Margin="22,0,0,12" TextWrapping="Wrap"
+                       Text="Picking a pattern sets the wheelbase's selection, exactly like using the wheel's own menu: it applies now and stays. Remember for this car is optional automation on top, re-applying the pattern whenever that car loads. Colors and direction come from the pattern itself (set in G HUB)."/>
             <!-- Wheel-base Dynamic OLED (HID++ feature 0x8130). Shares the rev
                  lights' HID++ pipe, so it shares their Mode B + tap-proven-quiet
                  gate and sits with them here. RefreshFromPlugin hides this
@@ -3582,6 +3737,12 @@
                             ToolTip="A bar down the edge of whichever tab is open while a car is beside you on that side."/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                             Text="SimHub works this out from the other cars in the session, so like the flags it only lights up in games that report car positions and simply never appears in the ones that do not."/>
+
+                            <CheckBox x:Name="RemoteDashIncidentsCheck" Content="Show incident points (iRacing)" Margin="0,8,0,0"
+                            Checked="RemoteDashIncidents_Changed" Unchecked="RemoteDashIncidents_Changed"
+                            ToolTip="Your incident count under the speed on the Drive tab, and a band across the top each time it moves."/>
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                            Text="Shows the points you have taken against the limit that ends your session, turning amber and then red as you run out of room. Each new incident announces what it cost across the top of the dash and on the wheel base screen, so you know whether it was a 1x or a 4x without waiting for the replay. iRacing is the only game that publishes a count, so nothing appears anywhere else."/>
                         </StackPanel>
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
@@ -4236,27 +4397,21 @@
                 </StackPanel>
             </Expander>
 
-            <!-- iRacing / MAIRA passthrough. PERMANENTLY HIDDEN since 2026-08-01:
-                 Marvin declined the passthrough PR, so the link this section
-                 configures will never ship in MAIRA proper. Kept (not deleted)
-                 because the MairaIpcSource listener stays armed and a MAIRA fork
-                 could revive the publisher side; iRacing rev lights are then on
-                 by default with nothing to configure. Rev lights for Telemetry
-                 Based FFB have their own toggle on the Telemetry FFB tab. -->
+            <!-- iRacing rev lights. PERMANENTLY HIDDEN since 2026-08-01: the
+                 external FFB handoff this section configured has been removed.
+                 The shell is kept (not deleted) for the LED Test button, which
+                 native iRacing telemetry FFB will want. Rev lights for
+                 Telemetry Based FFB have their own toggle on that tab. -->
             <Expander x:Name="RpmLedSection" IsExpanded="False" Visibility="Collapsed" Margin="0,0,0,8">
                 <Expander.Header>
                     <TextBlock Text="iRacing" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                        Text="In iRacing you disable native Trueforce, which also switches the wheel's rev lights off. A forked MAIRA with the 'Pass FFB through TF4ALL' publisher can hand the wheel to TF4ALL, which then drives the rev lights automatically. Click Test to check they light up."/>
+                        Text="In iRacing you disable native Trueforce, which also switches the wheel's rev lights off. Click Test to check the plugin can light them up."/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="RpmLedTest_Click"/>
                     </StackPanel>
-                    <CheckBox x:Name="MairaPassthroughCheck" Content="Auto-link with MAIRA"
-                              VerticalAlignment="Center" Margin="0,0,0,6"
-                              Checked="MairaPassthrough_Changed" Unchecked="MairaPassthrough_Changed"
-                              ToolTip="Leave on. If a MAIRA build with the 'Pass FFB through TF4ALL' toggle ever publishes, the two link up automatically. Off forces the USBPcap tap path and ignores MAIRA."/>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
@@ -4265,11 +4420,6 @@
                         <TextBlock Grid.Column="0" Text="LED status:" Style="{StaticResource LabelText}"/>
                         <TextBlock Grid.Column="1" x:Name="RpmLedStatusText" Text="(idle)" FontSize="11" Opacity="0.85"/>
                     </Grid>
-                    <TextBlock Margin="0,0,0,8" FontSize="12">
-                        <Hyperlink Foreground="#FF4DA3FF" Click="GetMaira_Click">
-                            <Run Text="Get MAIRA Refactored (recommended for iRacing)"/>
-                        </Hyperlink>
-                    </TextBlock>
                 </StackPanel>
             </Expander> <!-- /RpmLedSection (iRacing) -->
 
@@ -4302,7 +4452,7 @@
             </StackPanel>
 
                     <!-- Tester access code box. Type HELP for the catalog.
-                     (The old MAIRA / TEST unlock is retired; that section
+                     (The old TEST unlock is retired; that section
                      is permanently hidden above.) -->
                 <StackPanel Orientation="Horizontal" Margin="0,18,0,2">
                     <TextBlock Text="Access code:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>

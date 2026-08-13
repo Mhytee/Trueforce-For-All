@@ -58,6 +58,13 @@
       <Link>TF4ALLTelemetry_FS25.zip</Link>
       <LogicalName>TrueforceForAll.Plugin.TF4ALLTelemetry_FS25.zip</LogicalName>
     </EmbeddedResource>
+    <!-- iRacing firing patterns. Static reference data, so it is embedded
+         rather than written to PluginsData: no installer step and no folder
+         that can go stale or half-written. See IRacingEngineSeed. -->
+    <EmbeddedResource Include="..\..\builtins\iracing-engine-layouts.json">
+      <Link>iracing-engine-layouts.json</Link>
+      <LogicalName>TrueforceForAll.Plugin.iracing-engine-layouts.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- SimHub provides these at runtime; don't copy them to the output dir. -->

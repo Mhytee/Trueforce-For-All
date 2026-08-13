@@ -607,6 +607,34 @@ namespace TrueforceForAll.Plugin
                     if (SpringStrengthText != null)
                         SpringStrengthText.Text = SpringStrengthSlider.Value.ToString("F2");
                 }
+                if (IRacingPerCarCheck != null)
+                    IRacingPerCarCheck.IsChecked = _plugin.Settings?.IRacingMaxForcePerCar == true;
+                UpdateIRacingClipWarning();
+                if (IRacingMaxNmSlider != null)
+                {
+                    IRacingMaxNmSlider.Value = _plugin.Settings?.IRacingMaxForceNmOverride ?? 0.0;
+                    UpdateIRacingMaxNmText();
+                }
+                if (IRacingGainSlider != null)
+                {
+                    IRacingGainSlider.Value = _plugin.Settings?.IRacingForceGain ?? 1.0;
+                    if (IRacingGainText != null)
+                        IRacingGainText.Text = IRacingGainSlider.Value.ToString("F2");
+                }
+                if (IRacingSmoothCheck != null)
+                    IRacingSmoothCheck.IsChecked = _plugin.Settings?.IRacingUse360Hz == true;
+                if (IRacingForceModeCombo != null)
+                {
+                    int m = _plugin.Settings?.IRacingForceMode ?? 0;
+                    IRacingForceModeCombo.SelectedIndex = (m == 1) ? 1 : 0;
+                }
+                if (IRacingPredictSlider != null)
+                {
+                    IRacingPredictSlider.Value = _plugin.Settings?.IRacingPredictGain ?? 1.0;
+                    if (IRacingPredictText != null)
+                        IRacingPredictText.Text = IRacingPredictSlider.Value.ToString("F2");
+                }
+                UpdateIRacingPredictVisibility();
                 if (SpringMinForceSlider != null)
                 {
                     SpringMinForceSlider.Value = _plugin.Settings?.SpringModeMinForce ?? 0.05;
@@ -721,12 +749,75 @@ namespace TrueforceForAll.Plugin
                     // Forza while the tab IS relevant to this game.
                     bool springGame = !string.IsNullOrEmpty(mbGame)
                         && mbGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
+                    // iRacing RESHAPES the sim's own steering torque instead of
+                    // synthesizing force from slip, so the entire Forza recipe
+                    // below (SAT gain, peak utilisation, drop floor, grip
+                    // learner, lockup gate, reversal softening, phase lead,
+                    // centering) feeds a model that never runs there. Roughly
+                    // thirty controls that cannot do anything, and a dead knob
+                    // reads as broken. Same rule the spring games already use,
+                    // extended from a two-way split to a three-way one.
+                    bool reshapeGame = _plugin.ActiveGameIsReshapeGame;
+                    // Neither synthesis-only panel applies to spring OR reshape.
+                    bool hideForzaRecipe = springGame || reshapeGame;
                     if (ModeBForzaTuningPanel != null)
-                        ModeBForzaTuningPanel.Visibility = springGame
+                        ModeBForzaTuningPanel.Visibility = hideForzaRecipe
                             ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     if (ModeBForzaTuningPanel2 != null)
-                        ModeBForzaTuningPanel2.Visibility = springGame
+                        ModeBForzaTuningPanel2.Visibility = hideForzaRecipe
                             ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    // The iRacing controls, which are the only force tunables
+                    // that DO anything there. Damping is deliberately not in
+                    // here: it sits between the two Forza panels precisely so it
+                    // survives them being hidden, and the velocity damper runs
+                    // on all three pipelines.
+                    if (IRacingTuningPanel != null)
+                        IRacingTuningPanel.Visibility = reshapeGame
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+                    // The tapped-path corrections are switched off under the
+                    // iRacing reshape (the device skips them), so the two
+                    // controls that drive them are genuinely dead there and
+                    // hide. Smoothing stays: it is applied further down the
+                    // device chain and still shapes the force.
+                    //
+                    // The whole group is also renamed, because "pass-through" is
+                    // the wrong word for a mode that passes nothing through: it
+                    // reshapes the sim's force and authors what reaches the wheel.
+                    var deadInReshape = reshapeGame
+                        ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    if (FfbScaleRow    != null) FfbScaleRow.Visibility    = deadInReshape;
+                    if (FfbInvertCheck != null) FfbInvertCheck.Visibility = deadInReshape;
+                    // The stationary spring is hard-skipped for iRacing in
+                    // ApplyStationarySpring, and now that this group shares the
+                    // tab it would be a dead section sitting next to live ones.
+                    // iRacing's own torque already weights a parked car, which is
+                    // the whole job the spring exists to do elsewhere.
+                    if (StationarySpringExpander != null)
+                        StationarySpringExpander.Visibility = deadInReshape;
+                    if (FfbPassthroughHeader != null)
+                        FfbPassthroughHeader.Text = reshapeGame ? "Wheel output" : "FFB pass-through";
+
+                    // Tab name. "Telemetry FFB" is wrong for iRacing, where the
+                    // force is not built FROM telemetry but is the sim's own
+                    // force reshaped. Plain "FFB" was wrong too, just
+                    // differently: this tab also owns the rev lights and the
+                    // wheel screen, so naming it after one of the three
+                    // undersells the other two.
+                    //
+                    // The parenthesised list follows the HARDWARE. Only the
+                    // G PRO, RS50 and the G923 Xbox have a base screen, and
+                    // advertising OLED to someone whose wheel has none is a
+                    // promise the tab cannot keep: they would open it looking
+                    // for a section that is (correctly) hidden. Same source of
+                    // truth the OLED section itself uses, so the two can never
+                    // disagree.
+                    if (TelemetryFfbTab != null)
+                    {
+                        TelemetryFfbTab.Header = reshapeGame
+                            ? (_plugin.WheelHasOledScreen ? "Wheel (FFB, LED, OLED)" : "Wheel (FFB, LED)")
+                            : "Telemetry FFB";
+                    }
                     // Spring-mode enhancements show ONLY in spring games; in
                     // Forza the composer has its own kick layer and these
                     // controls would be dead weight there.
@@ -789,7 +880,25 @@ namespace TrueforceForAll.Plugin
                         // unreachable; the quads stay for Axle slip's
                         // braking gate and the rev-locked pulse.
                         ShowEffect(TractionExpander,     !springGame);
-                        ShowEffect(LockupJudderExpander, !springGame);
+                        // iRacing: Lockup judder is not merely unfed, it is not
+                        // FEEDABLE. It needs a signed slip ratio and per-wheel
+                        // rotation speed, and iRacing publishes neither, so there
+                        // is no honest source and no prospect of one. Hidden
+                        // rather than shown doing nothing.
+                        //
+                        // Traction loss STAYS: it falls back to a heuristic on
+                        // RPM, throttle, speed, yaw rate and lateral g, all of
+                        // which iRacing provides, so the voice really does work
+                        // there. Only its TC-intervention confidence boost is
+                        // dead, since iRacing publishes the driver's TC SETTING
+                        // (TractionControlSetting/Switch) but never a flag saying
+                        // it is currently cutting in.
+                        ShowEffect(LockupJudderExpander, !springGame && !reshapeGame);
+                        // Axle slip needs front/rear grip rollups, which need
+                        // per-tire slip. iRacing has none, so this would have to
+                        // be a bicycle-model ESTIMATE rather than a measurement.
+                        // Hidden until that exists, if it ever does.
+                        ShowEffect(AxleSlipExpander,     !reshapeGame);
                         // Airborne IS driven in FS (all-wheels-off from the
                         // mod's per-wheel contact flags), so it stays
                         // visible everywhere.
@@ -898,6 +1007,15 @@ namespace TrueforceForAll.Plugin
                               "change the feel while SimHub runs; leaving it on just keeps native " +
                               "FFB as a fallback when SimHub is closed. Also works in Forza " +
                               "Motorsport (2023) and Forza Horizon 4, 5, and 6."
+                            : reshapeGame
+                            ? "The plugin takes force feedback over from iRacing rather than inventing " +
+                              "its own. iRacing works out what the car's steering is doing; you stop it " +
+                              "driving the wheel directly, and the plugin reads those same forces and " +
+                              "delivers them over Trueforce instead. The car still feels like the car, " +
+                              "and your rev lights and wheel screen work again, because nothing is " +
+                              "fighting over the wheel any more. Two switches make the handover: turn " +
+                              "iRacing's force feedback OFF in its options (do not just set its strength " +
+                              "to 0, the plugin reads that number), and set loadTrueForceAPI=0 in app.ini."
                             : "The wheel's steering force is built from telemetry instead of the game's " +
                               "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
                               "Set the game's force feedback and vibration to 0 so this is the only " +
@@ -911,6 +1029,36 @@ namespace TrueforceForAll.Plugin
                     // explains why and the per-game Enable box greys out.
                     ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                     ModeBEnabledCheck.IsEnabled = mbSupported;
+                    // "Telemetry Based FFB" is a promise we do not keep in
+                    // iRacing. Everywhere else the force IS built from telemetry:
+                    // a slip model invents it and the game contributes nothing.
+                    // In iRacing we take the sim's OWN steering force and deliver
+                    // it through Trueforce, which is a different thing entirely,
+                    // and this is the master switch someone reads first.
+                    // "Send iRacing's own force feedback to the wheel" was
+                    // accurate and still confusing, because the setup tells the
+                    // user to TURN OFF iRacing's force feedback, so the two read
+                    // as contradicting each other.
+                    //
+                    // They do not: what gets switched off is iRacing's own OUTPUT
+                    // path to the wheel, and what we send is the steering force
+                    // the car is generating, read from telemetry and delivered
+                    // over Trueforce. Same physics, different route. Framing it
+                    // as a HANDOVER makes the disable step read as part of the
+                    // feature instead of an argument with it.
+                    ModeBEnabledCheck.Content = reshapeGame
+                        ? "Take over force feedback for iRacing"
+                        : "Enable Telemetry Based FFB for this game";
+                    // Same correction wherever the phrase is user-facing. A
+                    // heading and a checkbox that disagree about what the feature
+                    // IS are worse than either being wrong alone.
+                    if (TeleFfbSectionHeader != null)
+                        TeleFfbSectionHeader.Text = reshapeGame
+                            ? "Force feedback" : "Telemetry Based FFB";
+                    if (WheelLightsNeedNote != null)
+                        WheelLightsNeedNote.Text = reshapeGame
+                            ? "These need the force feedback above switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; taking the force over ourselves frees them. That is why iRacing needs its own force feedback turned off, and why the lights and screen come back once it is."
+                            : "These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them. A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first.";
                     if (ModeBUnsupportedBadge != null)
                         ModeBUnsupportedBadge.Visibility = mbSupported || springGame
                             ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
@@ -926,7 +1074,17 @@ namespace TrueforceForAll.Plugin
                         }
                         else if (mbSupported)
                         {
-                            string note = $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
+                            // iRacing takes the OPPOSITE instruction, and getting
+                            // this wrong breaks it silently. The reshape divides
+                            // the sim's torque by its own SteeringWheelMaxForceNm,
+                            // so a user who sets in-sim force to 0 zeroes our
+                            // divisor, trips the maxNm guard and gets no force at
+                            // all with nothing on screen to explain why. What it
+                            // needs is force feedback DISABLED, with max force
+                            // left wherever they like it.
+                            string note = reshapeGame
+                                ? "Applies to iRacing. Turn iRacing's own force feedback OFF (do not set its strength to 0, the plugin reads that number), and set loadTrueForceAPI=0 in app.ini."
+                                : $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
                             if (mbGame == "FM8")
                                 note += " Forza Motorsport has native Trueforce, so also enable the plugin for it at the top of this panel.";
                             ModeBGameNote.Text = note;
@@ -989,6 +1147,10 @@ namespace TrueforceForAll.Plugin
                     ModeBContentionWarning.Visibility = _plugin.ModeBContentionDetected
                         ? Visibility.Visible
                         : Visibility.Collapsed;
+                if (ModeBSlipStarvedWarning != null)
+                    ModeBSlipStarvedWarning.Visibility = _plugin.ModeBSlipStarvedDetected
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
 
                 // Performance section
                 var perf = _plugin.Settings?.Performance;
@@ -1030,8 +1192,6 @@ namespace TrueforceForAll.Plugin
                 CaptureExeOverrideBox.Text = _plugin.ActiveCaptureExeOverride ?? "";
 
                 // Rim rev/shift LEDs (hidden iRacing section + Mode B toggle)
-                if (MairaPassthroughCheck != null)
-                    MairaPassthroughCheck.IsChecked = _plugin.Settings?.MairaFfbPassthrough == true;
                 if (RpmLedStatusText != null)
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
                 if (ModeBRevLightsCheck != null)
@@ -1067,6 +1227,7 @@ namespace TrueforceForAll.Plugin
                     OledGreetingBox.Text = _plugin.Settings?.OledGreetingText ?? "HELLO WORLD";
                 if (OledStatusText != null)
                     OledStatusText.Text = _plugin.OledStatus;
+                RefreshRevLightPicker();
                 RefreshOledEditor();
 
                 // Forza section
@@ -1652,6 +1813,8 @@ namespace TrueforceForAll.Plugin
             RefreshRedlineGuessBadge();
 
             RefreshCarFactsPanel();
+            RefreshIRacingAutoReadiness();
+            RefreshModeBAutoStrengthReadiness();
 
             var src = _plugin?.AudioCapture;
             if (src != null)
@@ -1685,11 +1848,10 @@ namespace TrueforceForAll.Plugin
                 UpdateUdpSectionVisibility();
                 if (RpmLedSection != null && RpmLedSection.Visibility != System.Windows.Visibility.Collapsed)
                 {
-                    // Permanently hidden (2026-08-01): Marvin declined the MAIRA
-                    // passthrough PR, so the section describes a link that will
-                    // never go live. The IPC listener stays armed (a MAIRA fork
-                    // could still publish), and iRacing lights are on by default
-                    // whenever that happens; there is nothing left to configure.
+                    // Permanently hidden (2026-08-01): the external FFB handoff
+                    // this section configured has been removed, so there is
+                    // nothing left to configure. The shell survives only for
+                    // the LED Test button.
                     RpmLedSection.Visibility = System.Windows.Visibility.Collapsed;
                 }
 
@@ -1722,6 +1884,17 @@ namespace TrueforceForAll.Plugin
                         : System.Windows.Visibility.Collapsed;
                     if (ModeBContentionWarning.Visibility != want)
                         ModeBContentionWarning.Visibility = want;
+                }
+
+                // Slip-starved fallback banner (same tab, same cadence): Mode B
+                // armed with no slip telemetry, game FFB passed through.
+                if (ModeBSlipStarvedWarning != null)
+                {
+                    var want = _plugin.ModeBSlipStarvedDetected
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
+                    if (ModeBSlipStarvedWarning.Visibility != want)
+                        ModeBSlipStarvedWarning.Visibility = want;
                 }
 
                 // Header update controls. When an update is available, the
@@ -4879,9 +5052,15 @@ namespace TrueforceForAll.Plugin
         private void ModeBReset_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
+            // Named by the family the active game actually uses: the reset only
+            // touches that one, so a confirm saying "all" would be a lie in
+            // either direction (an FS reset leaves Forza alone and vice versa).
+            bool spring = TrueforcePlugin.IsSpringModeGame(_plugin.ActiveGame);
+            string which = spring ? "Farming Simulator" : "Forza";
+            string other = spring ? "Forza" : "Farming Simulator";
             bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
                 "Reset Telemetry Based FFB",
-                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings are kept.",
+                "Reset the " + which + " tuning to the defaults?\n\nThis puts every slider and feel-feature toggle on this tab back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your " + other + " setup is left alone, and so are your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings.",
                 DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
             if (ok != true) return;
             _plugin.ResetModeBTuningToDefaults();
@@ -5792,6 +5971,301 @@ namespace TrueforceForAll.Plugin
             _plugin.PersistSettings();
         }
 
+        // iRacing's OWN strength (IRacingForceGain), separate from the Forza
+        // ModeBSatGain for the same reason the spring has its own: the paths
+        // are different pipelines. This one multiplies the sim's already
+        // normalized torque, so 1.00 means "exactly what iRacing asked for",
+        // where the Forza gain is a peak-torque fraction defaulting to 0.50.
+        // Read live by ComputeIRacingForce; no apply call needed.
+        private void IRacingGain_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingGainSlider == null) return;
+            _plugin.Settings.IRacingForceGain = (float)IRacingGainSlider.Value;
+            if (IRacingGainText != null)
+                IRacingGainText.Text = IRacingGainSlider.Value.ToString("F2");
+            UpdateIRacingClipWarning();
+            _plugin.PersistSettings();
+        }
+
+        // A/B between the two ways of rendering the sub-tick detail. Live: the
+        // 1 kHz force path reads the setting every pass, so the wheel changes
+        // character under your hands without a restart, which is the only way
+        // to compare them honestly.
+        private void IRacingForceMode_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingForceModeCombo == null) return;
+            int mode = IRacingForceModeCombo.SelectedIndex;
+            if (mode < 0) mode = 0;
+            _plugin.Settings.IRacingForceMode = mode;
+            _plugin.PersistSettings();
+            UpdateIRacingPredictVisibility();
+        }
+
+        // 0 means Auto, which is the left end of the slider, so the readout says
+        // "Auto" rather than "0.0" and nobody reads it as "no force".
+        private void IRacingMaxNm_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingMaxNmSlider == null) return;
+            double v = IRacingMaxNmSlider.Value;
+            if (v < 0.5) v = 0.0;
+            _plugin.Settings.IRacingMaxForceNmOverride = (float)v;
+            UpdateIRacingMaxNmText();
+            _plugin.PersistSettings();
+        }
+
+        // Predictive clip warning, shown at the moment of adjustment. The dash
+        // already reports clipping as it HAPPENS; this is the other half, telling
+        // you before you drive that the setting you just chose cannot fit.
+        //
+        // Uses the real observed peak against the real divisor where possible,
+        // rather than assuming Max force came from Auto. Someone who typed a
+        // deliberately high Max force is not clipping at Strength 1.2 and should
+        // not be told they are. With no peak yet (a fresh car, or straight after
+        // an Auto press reset the observer) it falls back to Auto's own 10
+        // percent margin, which is the honest assumption when Auto set the value.
+        private void UpdateIRacingClipWarning()
+        {
+            if (IRacingClipWarn == null || _plugin == null) return;
+            double strength = _plugin.Settings?.IRacingForceGain ?? 1.0;
+            double peak = _plugin.IRacingObservedPeakNm;
+            double maxF = _plugin.IRacingEffectiveMaxForceNm;
+
+            double predicted = (peak > 0.5 && maxF > 0.5)
+                ? peak * strength / maxF
+                : strength / 1.10;
+
+            IRacingClipWarn.Visibility = predicted > 1.0
+                ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void IRacingPerCar_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingPerCarCheck == null) return;
+            _plugin.Settings.IRacingMaxForcePerCar = IRacingPerCarCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            UpdateIRacingMaxNmText();
+        }
+
+        // One shot, exactly like iRacing's own auto button: drive, press, keep a
+        // number you can see. Not a mode that keeps adjusting underneath you.
+        private void IRacingAutoMaxForce_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            // Refuses before the peak has settled, for the same reason the dash
+            // button greys out: pressing on an out-lap calibrates against a force
+            // the car has not produced yet, and everything afterwards is too
+            // strong with nothing on screen to say why.
+            if (!_plugin.IRacingPeakSettled)
+            {
+                if (IRacingAutoMaxForceStatus != null)
+                {
+                    IRacingAutoMaxForceStatus.Text = _plugin.IRacingObservedPeakNm <= 0.5
+                        ? "Drive a lap first, then press this."
+                        : "Still learning what this car pushes. Keep driving; this lights up when the reading has held steady.";
+                    IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+                }
+                return;
+            }
+            double applied = _plugin.ApplyIRacingAutoMaxForce();
+            if (IRacingAutoMaxForceStatus != null)
+            {
+                IRacingAutoMaxForceStatus.Text = applied > 0.5
+                    ? "Set to " + applied.ToString("F1") + " Nm. Watching again from now, so a clean lap plus another press redoes it."
+                    : "Drive a lap first, then press this.";
+                IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+            }
+            _irAutoReadyShown = null;   // force the readiness line to redraw
+            RefreshFromPlugin();
+        }
+
+        // Mode B auto strength: the same "say what you know" treatment the
+        // iRacing panel got. This learner is continuous rather than one-shot, so
+        // there is no button to light; what a user needs instead is whether it
+        // has enough seat time on this car for its number to mean anything, and
+        // what that number currently is.
+        private string _mbAutoStrengthShown;
+        // The click message holds the line for a few seconds. Without this the
+        // 16 ms tick recomputes a learner string, finds it different from what
+        // the click just wrote, and stamps over the acknowledgement inside one
+        // frame, which reads as a dead button.
+        private int _mbAutoStrengthHoldUntilMs;
+
+        private void RefreshModeBAutoStrengthReadiness()
+        {
+            if (ModeBAutoStrengthStatus == null || _plugin == null) return;
+            if (ModeBForzaTuningPanel == null
+                || ModeBForzaTuningPanel.Visibility != Visibility.Visible) return;
+            if (_mbAutoStrengthHoldUntilMs != 0)
+            {
+                if (Environment.TickCount - _mbAutoStrengthHoldUntilMs < 0) return;
+                _mbAutoStrengthHoldUntilMs = 0;
+            }
+
+            string text;
+            double conf = _plugin.ModeBStrengthConfidence;
+            double scale = _plugin.ModeBAutoStrengthScale;
+            bool on = _plugin.Settings?.ModeBAutoStrength == true;
+            if (!_plugin.ModeBEnabledForActiveGame)
+            {
+                text = "";
+            }
+            else if (!on)
+            {
+                // The learner keeps running with the box unticked (so ticking it
+                // later applies everything learned so far), but nothing is being
+                // applied, and saying "applying x1.00" under an unticked box
+                // would claim the opposite.
+                text = conf >= 1.0
+                    ? "This car is learned. Tick the box to apply it."
+                    : "Off. It still learns in the background, so ticking it later applies what it has.";
+            }
+            else if (conf <= 0.0)
+            {
+                text = "Nothing learned for this car yet. Drive it near the limit for a minute.";
+            }
+            else if (conf < 1.0)
+            {
+                text = "Learning this car: " + ((int)Math.Round(conf * 100.0)) + " percent."
+                     + " Applying x" + scale.ToString("0.00") + " so far.";
+            }
+            else
+            {
+                text = "Learned. Applying x" + scale.ToString("0.00") + " to this car.";
+                // A peak pinned to its own sanity ceiling is not a result about
+                // the car, it is the learner running out of range, and every car
+                // that gets there lands on the same scale. Say so rather than
+                // presenting the floor as a measurement.
+                if (_plugin.ModeBStrengthRailed)
+                    text += "  (At the limit of what it can measure, so this is the"
+                          + " smallest scale it will apply.)";
+                else if (_plugin.ModeBGripConfidence < 1.0)
+                    text += "  (Grip calibration is still settling underneath it.)";
+            }
+
+            if (text == _mbAutoStrengthShown) return;
+            _mbAutoStrengthShown = text;
+            ModeBAutoStrengthStatus.Text = text;
+        }
+
+        // Shares RESETGRIP's path: one saved slot holds this car's grip peak and
+        // its force peak, so there is no honest way to clear one and keep the
+        // other, and the copy says as much.
+        private void ModeBRelearnCar_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string status = _plugin.RequestGripCalReset();
+            if (ModeBAutoStrengthStatus != null)
+            {
+                ModeBAutoStrengthStatus.Text = status;
+                _mbAutoStrengthShown = status;
+                _mbAutoStrengthHoldUntilMs = Environment.TickCount + 6000;
+                if (_mbAutoStrengthHoldUntilMs == 0) _mbAutoStrengthHoldUntilMs = 1;
+            }
+        }
+
+        // Greys the Auto button until the car's peak has stopped climbing, and
+        // says how far along that is. Ticked rather than event-driven because
+        // readiness is a function of elapsed time, not of anything the user does,
+        // and the whole point is that it arrives while they are looking away.
+        // Only touches the UI when the displayed state actually changes.
+        private bool? _irAutoReadyShown;
+        private int _irAutoPctShown = -1;
+
+        private void RefreshIRacingAutoReadiness()
+        {
+            if (IRacingAutoMaxForceBtn == null || _plugin == null) return;
+            if (IRacingTuningPanel == null || IRacingTuningPanel.Visibility != Visibility.Visible) return;
+
+            bool ready = _plugin.IRacingPeakSettled;
+            int pct = (int)Math.Round(_plugin.IRacingPeakConfidence * 100.0);
+            if (_irAutoReadyShown == ready && _irAutoPctShown == pct) return;
+            bool wasReady = _irAutoReadyShown == true;
+            _irAutoReadyShown = ready;
+            _irAutoPctShown = pct;
+
+            IRacingAutoMaxForceBtn.Opacity = ready ? 1.0 : 0.45;
+            if (IRacingAutoMaxForceStatus == null) return;
+            // A press leaves its own confirmation on this line; don't stamp over
+            // it until the state moves on from where the press left it.
+            if (ready)
+            {
+                if (!wasReady)
+                {
+                    IRacingAutoMaxForceStatus.Text = "Ready. Finish a clean lap, then press Auto.";
+                    IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+                }
+            }
+            else if (pct > 0)
+            {
+                IRacingAutoMaxForceStatus.Text = "Learning what this car pushes: " + pct + " percent.";
+                IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+            }
+        }
+
+        private void UpdateIRacingMaxNmText()
+        {
+            if (IRacingMaxNmText == null) return;
+            var st = _plugin?.Settings;
+            double shown = 0.0;
+            string src = "";
+            if (st != null && st.IRacingMaxForcePerCar && st.IRacingMaxForceByCar != null
+                && !string.IsNullOrEmpty(_plugin.ActiveCarId)
+                && st.IRacingMaxForceByCar.TryGetValue(_plugin.ActiveCarId, out float pc) && pc > 0.5f)
+            {
+                shown = pc; src = " (this car)";
+            }
+            else if (st != null && st.IRacingMaxForceNmOverride > 0.5f)
+            {
+                shown = st.IRacingMaxForceNmOverride;
+            }
+
+            if (shown > 0.5)
+            {
+                IRacingMaxNmText.Text = shown.ToString("F1") + src;
+                return;
+            }
+            // Nothing set: we fall back to whatever iRacing itself is using, so
+            // say so and show the number. A bare "Auto" would leave the user
+            // unable to tell a working fallback from a broken one.
+            double live = _plugin?.IRacingLiveMaxForceNm ?? 0.0;
+            IRacingMaxNmText.Text = live > 0.5
+                ? "iRacing (" + live.ToString("F1") + ")"
+                : "iRacing";
+        }
+
+        private void IRacingPredict_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingPredictSlider == null) return;
+            _plugin.Settings.IRacingPredictGain = (float)IRacingPredictSlider.Value;
+            if (IRacingPredictText != null)
+                IRacingPredictText.Text = IRacingPredictSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        // Prediction only means anything in Replay mode: it exists to cancel a
+        // lag that Lead mode never incurs. Hiding it in Lead keeps the panel
+        // honest rather than offering a knob that does nothing.
+        private void UpdateIRacingPredictVisibility()
+        {
+            bool replay = _plugin?.Settings?.IRacingForceMode == 1;
+            var want = replay ? Visibility.Visible : Visibility.Collapsed;
+            if (IRacingPredictRow  != null) IRacingPredictRow.Visibility  = want;
+            if (IRacingPredictHelp != null) IRacingPredictHelp.Visibility = want;
+        }
+
+        private void IRacingSmooth_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingSmoothCheck == null) return;
+            _plugin.Settings.IRacingUse360Hz = IRacingSmoothCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
         // FS's OWN min-force floor (SpringModeMinForce), separate from the
         // Forza one: force characters differ per game (owner call
         // 2026-08-09). Read live by the spring/kick paths; no apply needed.
@@ -5998,11 +6472,6 @@ namespace TrueforceForAll.Plugin
         // remove it. Linked from the Community toggle and the Account tab.
         internal const string PrivacyPolicyUrl = "https://github.com/Mhytee/Trueforce-For-All/blob/beta/PRIVACY.md";
         private void PrivacyPolicy_Click(object sender, RoutedEventArgs e) => OpenUrl(PrivacyPolicyUrl);
-
-        // Reciprocal funnel: TF4ALL points iRacing users at MAIRA, whose
-        // "Pass FFB through TF4ALL" toggle is the supported full-feature path.
-        private const string MairaRefactoredUrl = "https://github.com/mherbold/MarvinsAIRARefactored/releases/latest";
-        private void GetMaira_Click(object sender, RoutedEventArgs e) => OpenUrl(MairaRefactoredUrl);
 
         private static void OpenUrl(string url)
         {
@@ -7167,6 +7636,8 @@ namespace TrueforceForAll.Plugin
                 }
                 if (RemoteDashSpotterCheck != null)
                     RemoteDashSpotterCheck.IsChecked = _plugin.Settings?.DashSpotterEnabled != false;
+                if (RemoteDashIncidentsCheck != null)
+                    RemoteDashIncidentsCheck.IsChecked = _plugin.Settings?.DashIncidentsEnabled != false;
                 if (RemoteDashIdleCheck != null)
                     RemoteDashIdleCheck.IsChecked = _plugin.Settings?.DashIdleEnabled != false;
                 if (RemoteDashIdleDelayBox != null)
@@ -7246,6 +7717,13 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.DashSpotterEnabled = RemoteDashSpotterCheck?.IsChecked == true;
+            PersistIdle();
+        }
+
+        private void RemoteDashIncidents_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIncidentsEnabled = RemoteDashIncidentsCheck?.IsChecked == true;
             PersistIdle();
         }
 
@@ -10277,12 +10755,20 @@ namespace TrueforceForAll.Plugin
         private string _lastGameForIracingNotice;
         private bool _iracingNoticeShowing;
         private const string IracingTrueforceNoticeBody =
-            "Disable iRacing's built-in Trueforce to use the plugin with iRacing:\n\n" +
+            "The plugin can take force feedback over from iRacing: iRacing still works out what the\n" +
+            "car is doing, it just stops driving the wheel itself, and the plugin delivers those same\n" +
+            "forces over Trueforce. That is what frees your rev lights and wheel screen.\n\n" +
+            "Two switches hand it over, and they are in different places.\n\n" +
             "1. Fully close iRacing.\n" +
             "2. Open app.ini in your iRacing documents folder (usually Documents\\iRacing).\n" +
-            "3. Change loadTrueForceAPI=1 to loadTrueForceAPI=0, then save.\n" +
-            "4. Relaunch iRacing.\n\n" +
-            "Until then, iRacing keeps the wheel and the plugin's effects won't come through.";
+            "3. Change loadTrueForceAPI=1 to loadTrueForceAPI=0, then save. This releases the\n" +
+            "   Trueforce connection the plugin needs.\n" +
+            "4. Relaunch iRacing and turn its own force feedback OFF in the in-sim options.\n" +
+            "   Do NOT just set the strength to 0: the plugin reads that number to know what\n" +
+            "   full force means for your car, so leave it wherever you like it.\n" +
+            "5. In the plugin, enable it for iRacing, then tick Telemetry Based FFB on that tab.\n\n" +
+            "The plugin then plays iRacing's own steering force through the wheel, and your rev\n" +
+            "lights and wheel screen come back with it. Miss either switch and it stays silent.";
 
         private void MaybeShowIracingTrueforceNotice()
         {
@@ -10755,6 +11241,8 @@ namespace TrueforceForAll.Plugin
             var s = _plugin.GetActiveCarFactsSummary();
             if (!s.HasCar) return;
 
+            RefreshCarRevLightRow();
+
             string carNameText = s.CarName ?? "";
             // The raw car id ("Car_242") is the display fallback for unnamed
             // cars, not a name: show the box empty instead so typing a real
@@ -10766,6 +11254,22 @@ namespace TrueforceForAll.Plugin
             {
                 _lastCarFactsNameText = carNameText;
                 CarFactsNameBox.Text = carNameText;
+            }
+            // Pre-fill from the SIM when nothing is saved yet. iRacing publishes
+            // the official car name (CarScreenName), so there is no reason to
+            // make the user type what the game already told us.
+            //
+            // Deliberately does NOT touch _lastCarFactsNameText: that tracks the
+            // SAVED name, and moving it here would make the pre-filled text look
+            // already-saved, hiding the Save button and quietly ensuring the
+            // name is never stored or shared. Leaving it alone means the button
+            // appears, so accepting the sim's name is one click.
+            if (CarFactsNameBox != null && !CarFactsNameBox.IsKeyboardFocusWithin
+                && string.IsNullOrEmpty((CarFactsNameBox.Text ?? "").Trim())
+                && string.IsNullOrEmpty(carNameText))
+            {
+                string simName = _plugin.ActiveSimCarName;
+                if (!string.IsNullOrEmpty(simName)) CarFactsNameBox.Text = simName;
             }
             // Recompute the Save button here too: setting the box above to an
             // unchanged string raises no TextChanged, so a just-saved name would
@@ -11617,7 +12121,7 @@ namespace TrueforceForAll.Plugin
         // Forza's per-tire data, so it is always on for Forza (see
         // SwapTelemetrySource). Only the port / bind / forwarding are tunable.
 
-        // ---------- Tester access code (unlocks the rim-LED / MAIRA section) ----------
+        // ---------- Tester access code (unlocks the rim-LED section) ----------
 
         private void AccessCode_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
@@ -11726,13 +12230,14 @@ namespace TrueforceForAll.Plugin
             "OLEDDIAG       Ask the wheel for its own OLED layout table, log it, then show a lettered ruler that maps each layout's field boundaries. How this wheel's layouts were decoded.\n" +
             "OLEDMS <ms>    How often the wheel's OLED may be redrawn, in milliseconds (20-1000; default 100 = 10 per second). Lower is smoother and uses more of the wheel's shared command channel. Type OLEDMS with no number to read the current value. Persists.\n" +
             "OLEDANY        Run the wheel's OLED screen regardless of Telemetry Based FFB, to find out whether writing the screen really does cut a game's own force feedback the way the rev lights do (never tested for the screen; the restriction is inherited). EXPECT THE FORCE TO DROP OUT. Persists. Toggle.\n" +
-            "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
+            "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Also clears that car's learned auto strength, which shares the same saved slot. Use after a tune or tire change that leaves the old calibration feeling off. Same as the Re-learn car button on the Telemetry Based FFB tab.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
             "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
             "TOAST          Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
             "SHOWALL        Reveal hidden/secret achievements (OG, Founding Supporter) in the tracker even when unearned, for testing. Reopen the tracker after toggling. Persists. Toggle.\n" +
             "WARNEMAIL      Email yourself the backup-deletion warning, cycling 6mo -> 3mo -> 1mo -> 1wk -> 1day each use. Preview only; never changes your real data or timer.\n" +
-            "LAPSED         Preview the lapsed cloud-backup look in the Account tab (note + orange 'Data removal in: X'), cycling 400d -> 180d -> 30d -> 7d -> 1d -> off. Display only; uploads stay off, nothing changed.";
+            "LAPSED         Preview the lapsed cloud-backup look in the Account tab (note + orange 'Data removal in: X'), cycling 400d -> 180d -> 30d -> 7d -> 1d -> off. Display only; uploads stay off, nothing changed.\n" +
+            "IRRAW          Throwaway iRacing probe (delete after use): logs whether SimHub's raw data object reaches us live per tick, whether SteeringWheelTorque carries force while iRacing's own force feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST array is reachable. One arming dump plus one '[TF4ALL] IRRAW' line every 5 s in SimHub.txt. Toggle.";
 
         private void CommitAccessCode()
         {
@@ -12230,7 +12735,7 @@ namespace TrueforceForAll.Plugin
             // the wheel's gamepad/DirectInput collection (off the HID++ FFB pipe).
             // Confirms on hardware whether the legacy LED command lights the strip
             // AND coexists with live FFB -- a non-contending LED path we could use
-            // in every game, not just iRacing+MAIRA. Toggle: type it again to stop
+            // in every game, not just iRacing. Toggle: type it again to stop
             // (LEDs off). See LegacyLedF8Channel + project_led_ffb_contention_model.
             {
                 var f8parts = code.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
@@ -12492,6 +12997,24 @@ namespace TrueforceForAll.Plugin
                 string traceStatus = _plugin.ToggleFfbTrace();
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = traceStatus;
+                return;
+            }
+
+            // THROWAWAY DIAGNOSTIC SPIKE. Answers, from SimHub.txt on a live
+            // rig, whether SimHub's raw iRacing object reaches a third-party
+            // plugin per tick, whether SteeringWheelTorque carries force while
+            // iRacing's own force feedback is disabled, and whether the 360 Hz
+            // SteeringWheelTorque_ST array is reachable through the telemetry
+            // object's dictionary base. Delete with the probe in
+            // TrueforcePlugin.DebugToggleIracingRawProbe.
+            if (code.Equals("IRRAW", StringComparison.OrdinalIgnoreCase))
+            {
+                bool irRawOn = _plugin.DebugToggleIracingRawProbe();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = irRawOn
+                        ? "iRacing raw-telemetry probe armed. Get on track and drive: it writes one arming dump plus one '[TF4ALL] IRRAW' line every 5 seconds to SimHub.txt. Drive about 30 s with iRacing's own force feedback DISABLED, then about 30 s with it enabled, then type IRRAW again to stop."
+                        : "iRacing raw-telemetry probe stopped. Look for '[TF4ALL] IRRAW' lines in SimHub.txt.";
                 return;
             }
 
@@ -12769,12 +13292,11 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            if (code.Equals("MAIRA", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("TEST", StringComparison.OrdinalIgnoreCase))
+            if (code.Equals("TEST", StringComparison.OrdinalIgnoreCase))
             {
-                // Retired 2026-08-01: the iRacing/MAIRA section is permanently
-                // hidden (passthrough declined). Answer instead of silently
-                // ignoring a code that used to work.
+                // Retired 2026-08-01: the iRacing section is permanently
+                // hidden (the external FFB handoff it configured is gone).
+                // Answer instead of silently ignoring a code that used to work.
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "The iRacing section is retired. Rev lights now have a toggle on the Telemetry FFB tab.";
@@ -12843,6 +13365,231 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.ModeBRevLightsEnabled = ModeBRevLightsCheck.IsChecked == true;
             _plugin.PersistSettings();
             if (!_plugin.Settings.ModeBRevLightsEnabled) _plugin.TurnOffRpmLeds();
+        }
+
+        // Labels for effects 1-9 (index = effect number; [0] unused). The
+        // wheel stores the patterns; picking one sets the wheel's single
+        // selector, exactly like the base's own menu. The 1-4 direction
+        // names are INFERRED from mescon's 9.4.1 direction table
+        // (1=inside-out, 2=outside-in, 3=L->R, 4=R->L); effect 2 =
+        // outside-in is confirmed on hardware and matches that table, the
+        // other three are eyeball-checkable in seconds via the pick preview.
+        private static readonly string[] RevLightEffectLabels =
+        {
+            "(unused)",
+            "Inside-out (built-in 1)", "Outside-in (built-in 2)",
+            "Left to right (built-in 3)", "Right to left (built-in 4)",
+            "Custom slot 1", "Custom slot 2", "Custom slot 3",
+            "Custom slot 4", "Custom slot 5",
+        };
+
+        // Fill a pattern combo with effects 1-9 (Tag = effect number).
+        private void FillPatternCombo(ComboBox combo, System.Windows.Input.MouseButtonEventHandler onItemClick)
+        {
+            for (int i = 1; i < RevLightEffectLabels.Length; i++)
+            {
+                var it = new ComboBoxItem { Content = RevLightEffectLabels[i], Tag = i };
+                // Re-picking the SELECTED item raises no SelectionChanged;
+                // the click handler replays the preview for that case.
+                it.PreviewMouseLeftButtonUp += onItemClick;
+                combo.Items.Add(it);
+            }
+        }
+
+        /// <summary>Sync one pattern combo to the wheel's known selection.
+        /// Both pickers show the same thing: where the wheel actually is
+        /// (empty until the channel has read it once).</summary>
+        private void SyncPatternCombo(ComboBox combo)
+        {
+            int v = _plugin.GetWheelPatternSelection();
+            combo.SelectedIndex = (v >= 1 && v <= 9) ? v - 1 : -1;
+        }
+
+        /// <summary>Sync a row's Remember button + status line to the active
+        /// car and the pattern the row's combo is showing (the combo, not
+        /// the channel, so the state is right in the instant after a pick,
+        /// before the background write lands).</summary>
+        private void SyncRememberControls(ComboBox combo, System.Windows.Controls.Button btn,
+            TextBlock status, System.Windows.Documents.Run run)
+        {
+            bool hasCar = !string.IsNullOrEmpty(_plugin.ActiveCarId);
+            int sel = (combo?.SelectedItem as ComboBoxItem)?.Tag is int t ? t : 0;
+            int? rem = hasCar ? _plugin.GetCarRememberedPattern() : null;
+            if (btn != null)
+            {
+                btn.IsEnabled = hasCar && sel >= 1 && sel <= 9 && rem != sel;
+                btn.Content = (rem.HasValue && rem.Value == sel)
+                    ? "Remembered" : "Remember for this car";
+                btn.ToolTip = hasCar
+                    ? "Optional: re-apply this pattern whenever this car loads. "
+                      + "Your pick is already on the wheel either way."
+                    : "Needs an active car. Your pick is already on the wheel either way.";
+            }
+            if (status != null)
+            {
+                bool show = rem.HasValue && rem.Value >= 1 && rem.Value <= 9;
+                status.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                if (show && run != null)
+                    run.Text = $"Remembered: {RevLightEffectLabels[rem.Value]}";
+            }
+        }
+
+        /// <summary>Sync the Wheel-lights row (combo + remember controls).
+        /// A blank combo means the wheel's selection has never been read;
+        /// kick a background channel open (safe-gated in the plugin) and
+        /// poll briefly so the value fills in by itself instead of waiting
+        /// for a game or the Test button to open the channel.</summary>
+        private void RefreshRevLightPicker()
+        {
+            if (RevLightEffectCombo == null || _plugin?.Settings == null) return;
+            // Fixed-look strips (G923) get no picker at all; a pattern
+            // selector there reads as a feature the owner is missing.
+            bool selectable = _plugin.WheelHasSelectableLightPattern;
+            if (RevLightPatternRow != null)
+                RevLightPatternRow.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (RevLightPatternHelp != null)
+                RevLightPatternHelp.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (!selectable) return;
+            if (RevLightEffectCombo.IsDropDownOpen) return;
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (RevLightEffectCombo.Items.Count == 0)
+                    FillPatternCombo(RevLightEffectCombo, RevLightItem_Clicked);
+                SyncPatternCombo(RevLightEffectCombo);
+                SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
+                    RevLightRememberStatus, RevLightRememberRun);
+            }
+            finally { _suppressEvents = prev; }
+
+            if (_plugin.GetWheelPatternSelection() <= 0) KickPatternRead();
+        }
+
+        // One-shot read-back poll: the channel open runs in the background
+        // and there is no callback path from it to this panel, so poll a few
+        // times and stop the moment the selection is known (or give up
+        // quietly; blank remains the honest state for an absent wheel).
+        private System.Windows.Threading.DispatcherTimer _revReadPoll;
+        private int _revReadPollTicks;
+
+        private void KickPatternRead()
+        {
+            _plugin.EnsureWheelPatternRead();
+            if (_revReadPoll != null) return;
+            _revReadPollTicks = 0;
+            _revReadPoll = new System.Windows.Threading.DispatcherTimer
+            { Interval = TimeSpan.FromMilliseconds(700) };
+            _revReadPoll.Tick += (s, a) =>
+            {
+                bool known = _plugin?.GetWheelPatternSelection() > 0;
+                if (known || ++_revReadPollTicks > 15)
+                {
+                    _revReadPoll.Stop();
+                    _revReadPoll = null;
+                    if (known)
+                    {
+                        RefreshRevLightPicker();
+                        RefreshCarRevLightRow();
+                    }
+                }
+            };
+            _revReadPoll.Start();
+        }
+
+        /// <summary>Sync the Car facts row: the SAME nine items and the SAME
+        /// value as the Wheel-lights picker (two remotes for the wheel's one
+        /// selector), plus this row's remember controls. Left alone while
+        /// the dropdown is open so the poll that drives RefreshCarFactsPanel
+        /// cannot yank a menu out from under the user's cursor.</summary>
+        private void RefreshCarRevLightRow()
+        {
+            if (CarRevLightCombo == null || _plugin?.Settings == null) return;
+            bool selectable = _plugin.WheelHasSelectableLightPattern;
+            if (CarRevLightRow != null)
+                CarRevLightRow.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (CarRevLightRowHelp != null)
+                CarRevLightRowHelp.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (!selectable) return;
+            if (CarRevLightCombo.IsDropDownOpen) return;
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (CarRevLightCombo.Items.Count == 0)
+                    FillPatternCombo(CarRevLightCombo, CarRevLightItem_Clicked);
+                SyncPatternCombo(CarRevLightCombo);
+                SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
+                    CarRevLightRememberStatus, CarRevLightRememberRun);
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        private void CarRevLight_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var picked = CarRevLightCombo.SelectedItem as ComboBoxItem;
+            if (!(picked?.Tag is int v)) return;
+            _plugin.PickRevLightPattern(v);
+            RefreshRevLightPicker();   // the other remote for the same selector
+            SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
+                CarRevLightRememberStatus, CarRevLightRememberRun);
+            _plugin.PreviewRevLightPattern();
+        }
+
+        private void CarRevLightItem_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (!ReferenceEquals(CarRevLightCombo.SelectedItem, sender)) return;
+            _plugin.PreviewRevLightPattern();
+        }
+
+        private void RevLightItem_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            // Only the re-pick of the CURRENT item: a real change raises
+            // SelectionChanged and the changed-handler previews it.
+            if (!ReferenceEquals(RevLightEffectCombo.SelectedItem, sender)) return;
+            _plugin.PreviewRevLightPattern();
+        }
+
+        /// <summary>Shared by both rows' Remember buttons: store the pattern
+        /// the row's combo currently shows for the active car.</summary>
+        private void RevLightRemember_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin?.Settings == null) return;
+            var combo = ReferenceEquals(sender, CarRevLightRememberBtn)
+                ? CarRevLightCombo : RevLightEffectCombo;
+            if (!((combo?.SelectedItem as ComboBoxItem)?.Tag is int v) || v < 1) return;
+            _plugin.RememberPatternForActiveCar(v);
+            RefreshRevLightPicker();
+            RefreshCarRevLightRow();
+        }
+
+        /// <summary>Shared by both rows' Forget links. Deliberately leaves
+        /// the wheel's current selection alone: removing automation must
+        /// not yank the lights.</summary>
+        private void RevLightForget_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin?.Settings == null) return;
+            _plugin.ForgetPatternForActiveCar();
+            RefreshRevLightPicker();
+            RefreshCarRevLightRow();
+        }
+
+        private void RevLightEffect_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var picked = RevLightEffectCombo.SelectedItem as ComboBoxItem;
+            if (!(picked?.Tag is int v)) return;
+            // Sets the wheelbase's selection, exactly like the base's own
+            // menu (staged with a log line while a game's own FFB holds the
+            // pipe). Then one preview cycle wherever that is safe.
+            _plugin.PickRevLightPattern(v);
+            RefreshCarRevLightRow();
+            SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
+                RevLightRememberStatus, RevLightRememberRun);
+            _plugin.PreviewRevLightPattern();
         }
 
         // ---- Wheel-base Dynamic OLED (experimental) ----------------------
@@ -13146,18 +13893,6 @@ namespace TrueforceForAll.Plugin
                 else if (++idleTicks > 4) t.Stop();   // ~1s after it ends
             };
             t.Start();
-        }
-
-        private void MairaPassthrough_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.MairaFfbPassthrough = MairaPassthroughCheck.IsChecked == true;
-            _plugin.PersistSettings();
-            // Takes effect on next device (re)start; surface that to the user.
-            if (RpmLedStatusText != null)
-                RpmLedStatusText.Text = "MAIRA auto-link "
-                    + (_plugin.Settings.MairaFfbPassthrough ? "ON" : "OFF")
-                    + " (restart plugin to apply)";
         }
 
         private void RpmLedTest_Click(object sender, RoutedEventArgs e)

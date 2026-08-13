@@ -186,7 +186,6 @@ namespace TrueforceForAll.Plugin
         // game reports none (Forza pause / pre-race countdown). See
         // WheelSteeringReader and ApplyStationarySpring.
         private WheelSteeringReader _steeringReader;
-        private MairaIpcSource _mairaIpc;
 
         // Farming Simulator enhanced source (TF4ALL Enhanced Telemetry game mod pipe).
         // Lifecycle mirrors _forzaUdp: created on the FS game swap, kept
@@ -1095,7 +1094,24 @@ namespace TrueforceForAll.Plugin
             // Spring mode (FS): the same bound buttons drive the FS Strength
             // slider, the one that actually shapes force there; nudging the
             // hidden Forza strength would be a silent no-op on the wheel.
-            if (_forceModeB == 2) { NudgeSpringStrength(delta); return; }
+            if (_forceMode == ForceModeSpring) { NudgeSpringStrength(delta); return; }
+            // iRacing reshape: same reasoning as spring mode. IRacingForceGain
+            // is the knob that shapes force there, so nudging the synthesis
+            // strength would be a silent no-op on the wheel.
+            if (_forceMode == ForceModeIRacing)
+            {
+                const float irLo = 0.05f, irHi = 3.0f;
+                float irCur = Settings.IRacingForceGain;
+                float irNext = irCur + delta;
+                if (irNext < irLo) irNext = irLo; else if (irNext > irHi) irNext = irHi;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] NudgeModeBStrength (iRacing) delta={delta:+0.00;-0.00;0.00} "
+                    + $"cur={irCur:F2} -> next={irNext:F2}"
+                    + (Math.Abs(irNext - irCur) < 0.0001f ? " (no-op, already at limit)" : ""));
+                Settings.IRacingForceGain = irNext;
+                ScheduleSettingsFlush();
+                return;
+            }
             const float lo = 0.05f, hi = 1.5f;
             float cur = Settings.ModeBSatGain;
             float next = cur + delta;
@@ -1374,7 +1390,7 @@ namespace TrueforceForAll.Plugin
         // substitutes the evaluated force and applies the Mode B velocity
         // damper (a spring on a physical wheel with no damping is an
         // oscillator; the firmware damps its own rendering, so we must damp
-        // ours). Riding _forceModeB also inherits the Mode B contracts for
+        // ours). Riding _forceMode also inherits the Mode B contracts for
         // free: rev-light/OLED gating, GameFfbExpected suppression, and the
         // StopStreamOnPause exemption.
         //
@@ -1398,7 +1414,13 @@ namespace TrueforceForAll.Plugin
             // capture + a misleading "no FFB, quit G HUB" warning two
             // minutes into a session (2026-08-08 log). Asserted every pass
             // so a recreated tap (self-heal restart) re-learns it.
-            if (tap != null) tap.SyntheticFfbActive = _forceModeB == 2;
+            if (tap != null) tap.SyntheticFfbActive = _forceMode == ForceModeSpring;
+            // The iRacing reshape authors its own sign and takes its strength
+            // from its own control, so the tapped-path corrections are switched
+            // off under it. Asserted every pass rather than on mode change, so a
+            // device re-attach cannot leave the flag behind.
+            var devTf = _device;
+            if (devTf != null) devTf.FfbBypassTapCorrections = _forceMode == ForceModeIRacing;
             // Farming Simulator arms by GAME, not by bus dynamics: on every
             // wheel we have traced, FS streams no force values at all (G923:
             // parametric springs; G PRO: a constant heartbeat that only
@@ -1408,7 +1430,7 @@ namespace TrueforceForAll.Plugin
             bool fsGame = _activeGame != null
                 && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
 
-            if (_forceModeB == 2)
+            if (_forceMode == ForceModeSpring)
             {
                 bool scalar = !fsGame && tap != null && tap.TryGetFreshFfbTarget(2000).HasValue;
                 // FS spring rendering never touches the tap (synthetic model
@@ -1421,7 +1443,7 @@ namespace TrueforceForAll.Plugin
                 bool tapGone = (tap == null || !tap.IsRunning) && !fsGame;
                 if (!toggleOn || tapGone || scalar)
                 {
-                    _forceModeB = 0;
+                    _forceMode = ForceModeOff;
                     _springArmCandidateSinceTicks = 0;
                     // Anything the tap captured while armed was IGNORED (the
                     // spring path replaces the target), so it must not be
@@ -1436,7 +1458,7 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            if (_forceModeB != 0) { _springArmCandidateSinceTicks = 0; return; }
+            if (_forceMode != ForceModeOff) { _springArmCandidateSinceTicks = 0; return; }
             bool springOnlyBus = tap != null && tap.IsRunning
                 && tap.AnyClassicSpringPlaying
                 && !tap.TryGetFreshFfbTarget(2000).HasValue;
@@ -1454,7 +1476,7 @@ namespace TrueforceForAll.Plugin
             _springArmCandidateSinceTicks = 0;
             _springRamp = 0f;
             _springRampPrevTicks = 0;
-            _forceModeB = 2;
+            _forceMode = ForceModeSpring;
             SimHub.Logging.Current.Info(fsGame
                 ? "[TF4ALL] Spring mode armed for Farming Simulator: the plugin's steering model "
                   + "replaces the game's force feedback on every wheel, rendered at the wheel's "
@@ -2088,8 +2110,8 @@ namespace TrueforceForAll.Plugin
         // (FfbInvertSign / FfbScale / spike taming are applied downstream in
         // TrueforceDevice, so the spring rides through the same chain).
         // No-ops, returning the input unchanged, when: disabled; iRacing
-        // (MAIRA already produces real standstill weight, and iRacing is the
-        // sanctioned MAIRA exception); the tap is stale (null, keepalive,
+        // (the sim already produces real standstill weight); the tap is
+        // stale (null, keepalive,
         // stay out of native FFB's way); steering is stale or unavailable
         // (any non-AC source); or already above the cutoff speed.
         private short? ApplyStationarySpring(short? gameTarget)
@@ -3389,25 +3411,6 @@ namespace TrueforceForAll.Plugin
                 // The persisted picker exists because USBPcap's descriptor-cache
                 // can go stale for hot-plugged wheels, leaving auto-discovery
                 // unable to find a wheel that HID enumeration sees fine.
-                // MAIRA auto-link: TF4ALL always watches for MAIRA's shared
-                // memory. When the user flips MAIRA's "Pass FFB signal through
-                // TF4ALL" toggle, MAIRA starts publishing and stops sending PID
-                // to the wheel; we detect that and prefer the shared-memory FFB
-                // (and drive the LEDs), no separate TF4ALL toggle needed. When
-                // MAIRA isn't passing through, the map is absent and we fall
-                // back to the USBPcap FFB tap exactly as before. The legacy
-                // USBPcap path is always set up as that fallback.
-                bool mairaAutoLink = Settings == null || Settings.MairaFfbPassthrough;
-                if (mairaAutoLink)
-                {
-                    // MAIRA passes FFB only. LEDs are driven by TF4ALL's
-                    // normal SimHub telemetry path (DispatchFrame ->
-                    // RpmLedController), the accurate per-car implementation;
-                    // no PID on the HID++ pipe in this mode so it's safe.
-                    _mairaIpc = new MairaIpcSource(msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"));
-                }
-
-
                 var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
                 _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, Settings?.UsbPcapCmdPathOverride)
                 {
@@ -3443,17 +3446,6 @@ namespace TrueforceForAll.Plugin
                     // teardown is always a released wheel (the close-SimHub
                     // pull, 2026-08-08).
                     if (_shuttingDown) return null;
-
-                    // Prefer MAIRA shared-memory FFB when it's live (its toggle
-                    // is on and it's publishing). Scoped to the iRacing profile
-                    // only , MAIRA is an iRacing app, and we don't want a stale
-                    // map to hijack FFB in other games. No PID is on the HID++
-                    // pipe in this mode, so LEDs + FFB coexist.
-                    if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
-                    {
-                        var fromMaira = _mairaIpc?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
-                        if (fromMaira.HasValue) return fromMaira;
-                    }
 
                     // Pause release (issue #13). When the game is paused / in a
                     // menu, replaying the last captured force is wrong: the FFB
@@ -3533,7 +3525,7 @@ namespace TrueforceForAll.Plugin
                     // definition a misdecode (the G PRO's constant HID++
                     // heartbeat reads as a large constant force). Spring mode
                     // replaces the target while armed, but the misdecode used
-                    // to leak through every window where _forceModeB was
+                    // to leak through every window where _forceMode was
                     // still 0: the cold-start arming dwell, the 1 s+ after
                     // any disarm, and whole sessions with the spring toggle
                     // off (2026-08-08 review). Drop it at the source instead
@@ -4553,6 +4545,13 @@ namespace TrueforceForAll.Plugin
         {
             _shuttingDown = true;
 
+            // Stop the direct reader FIRST. It owns a background thread holding a
+            // view on the sim's shared memory, and it must not still be
+            // publishing latches into an instance that is being torn down.
+            try { StopIRacingDirect(); } catch { }
+            try { _irSdk?.Dispose(); } catch { }
+            _irSdk = null;
+
             // Restore the process GC latency mode if a game was still streaming.
             ExitStreamingGcMode();
 
@@ -4696,6 +4695,16 @@ namespace TrueforceForAll.Plugin
             // Radar dots and proximity, from this frame's opponents.
             try { DashUpdateRadar(data); } catch { /* display only, never fatal */ }
 
+            // THROWAWAY DIAGNOSTIC, armed only by the IRRAW access code. Off is
+            // one volatile bool read per tick and nothing else. See the IRRAW
+            // block near DebugToggleIracingRawProbe for what it answers and for
+            // the delete-me note. Remove this line with that block.
+            IrRawProbeTick(data);
+
+            // iRacing reshape: latch the sim's own steering torque for the
+            // 1 kHz FFB thread. Returns immediately unless that mode is armed.
+            IRacingTelemetryTick(data);
+
             // Continuous (telemetry-independent) tick: tell the FFB tap whether
             // force feedback should be flowing right now, from the active
             // source's session signal (Forza IsRaceOn, else a universal
@@ -4713,7 +4722,7 @@ namespace TrueforceForAll.Plugin
                 // off, synthesis owns the wheel), so an empty tap is correct
                 // and the "no game FFB reaching the plugin" escalation chain
                 // (broad capture retry + user-facing warning) must stay quiet.
-                _ffbTap.GameFfbExpected = _forceModeB == 0
+                _ffbTap.GameFfbExpected = _forceMode == ForceModeOff
                     && (_telemetrySource?.IsSessionActive ?? false);
                 if (_noFfbCaptureNotice != null && _ffbTap.MsSinceLastSample < 1000)
                     _noFfbCaptureNotice = null;
@@ -4781,18 +4790,22 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
+                    // (Pattern picks/remembered cars ride _rpmLeds; this
+                    // parked driver-path channel just drives levels.)
                     double rpm    = (double)data.NewData.Rpms;
                     double maxRpm = (double)data.NewData.MaxRpm;
                     if (maxRpm > 0)
                     {
-                        // Standard rev-light curve: ramp from 70%-100% RPM to 0-10 LEDs.
-                        // Below 70% no LEDs; at maxRpm all 10 lit.
+                        // Standard rev-light curve: ramp from 70%-100% RPM over
+                        // the wheel's own step count (fn0: 10 on G PRO/RS50,
+                        // 5 on a G923). Below 70% no LEDs; at maxRpm all lit.
                         double pct = rpm / maxRpm;
+                        int steps = ledCh.StripLength;
                         int level = 0;
                         if (pct > 0.70)
                         {
-                            level = (int)Math.Round((pct - 0.70) * (WheelLedChannel.LedCount / 0.30));
-                            if (level > WheelLedChannel.LedCount) level = WheelLedChannel.LedCount;
+                            level = (int)Math.Round((pct - 0.70) * (steps / 0.30));
+                            if (level > steps) level = steps;
                         }
                         ledCh.SetLevel(level);
                     }
@@ -4841,7 +4854,10 @@ namespace TrueforceForAll.Plugin
             // sends nothing. Spring mode (2) is the OPPOSITE contract, the
             // game's spring traffic is our input, and any scalar there is a
             // misdecode (FS G PRO heartbeat), so warning on it is noise.
-            if (_forceModeB == 1 && _ffbTap != null)
+            // Suppressed while the slip-starved fallback is latched: in that
+            // state the game's FFB is deliberately passed through, so "set the
+            // game's FFB to 0" would zero the only force the wheel has left.
+            if (_forceMode == ForceModeModeB && _ffbTap != null && !ModeBSlipStarvedDetected)
             {
                 bool gameWriting = _ffbTap.TryGetFreshFfbTarget(250).HasValue;
                 long nowC = Stopwatch.GetTimestamp();
@@ -4868,6 +4884,15 @@ namespace TrueforceForAll.Plugin
                 _contentionSinceTicks = 0;
                 _contentionWarned = false;
                 ModeBContentionDetected = false;
+                // The slip-starved latch clears on genuine disarm only. While
+                // Mode B stays armed this branch also runs BECAUSE the latch
+                // suppresses the watchdog above, and clearing it here would
+                // re-arm the wrong warning on the next tick.
+                if (_forceMode != ForceModeModeB)
+                {
+                    _slipStarvedWarned = false;
+                    ModeBSlipStarvedDetected = false;
+                }
             }
 
             // First time we see telemetry for a real game in a session
@@ -4925,20 +4950,24 @@ namespace TrueforceForAll.Plugin
                 // = synthesized force; everything else = the normal pass-
                 // through path). The contention watchdog latch resets here
                 // explicitly: a capable-to-capable game switch keeps
-                // _forceModeB == 1, so the clean-engage reset inside
+                // _forceMode == ForceModeModeB, so the clean-engage reset inside
                 // ApplyModeBFromSettings would not run, and a warning latched
                 // on the previous game would suppress (and misattribute) the
                 // new game's verdict.
                 _contentionWarned = false;
                 _contentionSinceTicks = 0;
                 ModeBContentionDetected = false;
+                // Same reasoning for the slip-starved latch: each game's
+                // telemetry setup deserves its own verdict.
+                _slipStarvedWarned = false;
+                ModeBSlipStarvedDetected = false;
                 // Spring mode is armed against ONE game's bus picture; a game
                 // switch invalidates it (and must not suppress the new game's
                 // GameFfbExpected escalation while stale-armed). The arming
                 // machine re-arms within ~1 s if the new game springs too.
-                if (_forceModeB == 2)
+                if (_forceMode == ForceModeSpring)
                 {
-                    _forceModeB = 0;
+                    _forceMode = ForceModeOff;
                     _springArmCandidateSinceTicks = 0;
                     // Same stale-capture hygiene as the arming machine's
                     // disarm: pass-through resumes and must find nothing.
@@ -5039,6 +5068,11 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info(
                         "[TF4ALL] Game capability refresh failed: " + ex.Message);
                 }
+                // A count belongs to the session that produced it. Leaving one
+                // behind would print an iRacing incident total over a Forza
+                // session and, worse, measure the next iRacing session's first
+                // reading against it.
+                IRacingIncidentsReset();
             }
 
             // Watch what this game reports, so the picker learns which boxes
@@ -5372,6 +5406,10 @@ namespace TrueforceForAll.Plugin
             System.Threading.Interlocked.Exchange(ref _lastFrameTicks, Stopwatch.GetTimestamp());
             _telemetryStalled = false;
 
+            // Fill the fields SimHub's generic reader leaves null for iRacing,
+            // before Caps is computed and before any effect sees the frame.
+            ApplyIRacingOverlay(ref frame);
+
             // Frame enrichment (SimHub-cache overlay for enhanced sources +
             // universal collision derivation) moved to the Engine's
             // FrameEnricher in phase 0c so the replay harness runs the exact
@@ -5425,6 +5463,13 @@ namespace TrueforceForAll.Plugin
             // actually reports it (AC), so the spring stays disengaged on
             // sources that don't (the freshness check in the provider).
             _lastSpeedKmh = (float)frame.SpeedKmh;
+            // RESETGRIP is consumed here rather than inside the learning block:
+            // it must land in EVERY mode and on every source. The learning block
+            // needs tire quads and Mode B, so leaving the consumption in there
+            // meant a reset typed while in spring or iRacing mode sat queued and
+            // then fired on whatever car was loaded the next time Mode B ran,
+            // wiping a calibration the user never asked to lose.
+            ConsumeGripCalResetRequest();
             // Mode B synthesis inputs: longitudinal accel for the weight-
             // transfer term, and the front-pair combined slip as the grip
             // utilization source. Written here (telemetry thread), read on
@@ -5457,30 +5502,18 @@ namespace TrueforceForAll.Plugin
 
                 // Grip auto-cal input: the grip-peak learner watches the raw
                 // front channel (it runs its own spike pre-filter). Learning
-                // happens whenever Mode B is live; _mbAutoCalOn only gates
-                // whether the cached divisor leaves 1.0.
-                if (_forceModeB != 0)
+                // happens only while Mode B SYNTHESIS is live; _mbAutoCalOn only
+                // gates whether the cached divisor leaves 1.0.
+                //
+                // ModeB and not "any mode but off": Farming Simulator runs spring
+                // mode, and the FS source publishes tire quads once the newer mod
+                // is installed, so this block used to learn a grip calibration
+                // from tractor telemetry that nothing in spring mode reads back.
+                // It wrote a per-car slot, flushed it, carried it into backups,
+                // and logged "auto-cal converged" for a game where the number is
+                // never applied.
+                if (_forceMode == ForceModeModeB)
                 {
-                    // RESETGRIP: consumed here, not where it's queued, because
-                    // the learner and the calibration dict are owned by this
-                    // thread (see RequestGripCalReset).
-                    if (_gripCalResetRequested)
-                    {
-                        _gripCalResetRequested = false;
-                        // Remove bumps the dictionary version too: same lock as
-                        // FlushGripCal, or a concurrent serialize throws.
-                        if (!string.IsNullOrEmpty(_gripCalKey))
-                            lock (_carFactsLock) { Settings?.CarGripCalibration?.Remove(_gripCalKey); }
-                        _gripCal.Reset();
-                        _strengthCal.Reset();   // the removed slot carried the force peak too
-                        _mbAutoStrengthScale = 1f;
-                        _mbCalPeak = _mbAutoCalOn ? (float)_gripCal.EffectivePeak : 1f;
-                        _calConvergedLogged = false;
-                        _autoStrengthAnnounced = false;   // re-announce once it re-learns
-                        ScheduleSettingsFlush();
-                        SimHub.Logging.Current.Info(
-                            $"[TF4ALL] Grip auto-cal reset for '{_gripCalKey}' (RESETGRIP): peak back to {_gripCal.EffectivePeak:0.000}, confidence 0; re-learning (auto strength included).");
-                    }
                     long nowCal = Stopwatch.GetTimestamp();
                     double dtMsCal = _calPrevTicks == 0
                         ? 16.7
@@ -5526,6 +5559,13 @@ namespace TrueforceForAll.Plugin
                             + $"({(_mbAutoCalOn ? "applied" : "learned, auto-cal off")})");
                     }
                 }
+                else
+                {
+                    // Not learning: forget when we last ticked, so the first
+                    // frame back in Mode B measures one frame rather than the
+                    // whole excursion through another mode.
+                    _calPrevTicks = 0;
+                }
 
                 // Road-kick input: one-wheel bump kick from the FL/FR travel
                 // difference rate. Ticked here (telemetry thread) at frame
@@ -5554,11 +5594,11 @@ namespace TrueforceForAll.Plugin
                 _lastFrontSlipRatio = 0f;   // no signed slip on a scalar source: gate stays open
                 _lastFrontSlipRatioAbs = 0f; // friction circle: full lateral share
             }
-            // Axle rollups for the dash friction circle: composed above on
-            // quad sources, carried natively on Farming Simulator frames
-            // (which have rollups but no slip quads, so the branch above
-            // never runs for them). A source with one axle reports it for
-            // both rather than losing the box.
+            // Axle rollups for the dash friction circle: composed above on quad
+            // sources, carried natively otherwise. Farming Simulator is both,
+            // depending on the mod: the newer one publishes all four wheels and
+            // takes the quad branch, the older one carries only the rollups. A
+            // source with one axle reports it for both rather than losing the box.
             if (frame.FrontGrip01.HasValue || frame.RearGrip01.HasValue)
             {
                 _dashSlipFront   = (float)(frame.FrontGrip01 ?? frame.RearGrip01).Value;
@@ -5758,8 +5798,6 @@ namespace TrueforceForAll.Plugin
             // the same rule: LED writes are only SAFE when no game PID is on
             // the wheel's HID++ pipe (an LED write against live PID stalls
             // FFB ~1.5 s at the firmware).
-            //   1. iRacing + MAIRA passthrough live (MAIRA publishes force to
-            //      shared memory, PID suppressed).
             //   2. Telemetry based FFB (Mode B) on a G PRO: the game is
             //      configured to send nothing and we render force on ep3, so
             //      the HID++ pipe is free. Verified LIVE via the FFB tap
@@ -5773,15 +5811,6 @@ namespace TrueforceForAll.Plugin
             //      documented protocol, pending on-wheel confirmation.
             if (_rpmLeds != null)
             {
-                // iRacing lights ride the MAIRA passthrough and are ON BY
-                // DEFAULT with no user toggle: passthrough live = no PID on
-                // the HID++ pipe = LED writes are safe, and the passthrough
-                // itself is the deliberate opt-in. (Dormant until a MAIRA
-                // fork ships the publisher side; Marvin declined the PR.)
-                bool mairaLive = _mairaIpc != null && _mairaIpc.IsOpen;
-                bool iracingGate = string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
-                            && mairaLive;
-
                 // Wheel LED family by chassis. HID++ 0x807A level channel (10-level
                 // bar, WheelLedChannel via _rpmLeds): G PRO + RS50 AND the G923 Xbox
                 // (C26D/C26E), which drives the same 0x807A feature, just over its
@@ -5817,20 +5846,43 @@ namespace TrueforceForAll.Plugin
                 // paused RPM (flashing if you paused near the redline, since
                 // the latch stays set). Mirrors the force pause-release.
                 bool sessionActive = _telemetrySource?.IsSessionActive ?? false;
-                // The one safety condition both HID++ surfaces share: Mode B
-                // armed, the game's FFB tap-proven quiet, session live.
-                bool hidppFree = _forceModeB != 0 && gameFfbQuiet && sessionActive;
+                // iRacing states it outright, so there is nothing to infer. That
+                // matters twice. With the sim's own force feedback off there is
+                // no ep0 traffic left to capture, so the tap probe would fail
+                // closed and the lights could never come on at all. And it means
+                // the rev lights and the screen stop depending on a USB kernel
+                // sniffer running during an online race. Still fails closed: no
+                // telemetry frame yet means not proven.
+                bool ffbQuietProven;
+                if (_forceMode == ForceModeIRacing)
+                {
+                    var irFfbFrame = _irFrame;
+                    ffbQuietProven = irFfbFrame != null && !irFfbFrame.GameFfbOn;
+                }
+                else
+                {
+                    ffbQuietProven = gameFfbQuiet;
+                }
+                // The one safety condition both HID++ surfaces share: a force
+                // mode armed, the game's FFB proven quiet, session live.
+                bool hidppFree = _forceMode != ForceModeOff && ffbQuietProven && sessionActive;
                 bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
                 // EXPERIMENTAL wheel-base OLED. Same pipe, same rule, its own
-                // opt-in (default off). Not gated on iracingGate: the MAIRA
-                // passthrough path is proven for the rev lights only.
-                // OLEDANY lifts the gate on purpose, to find out whether a
-                // screen write really does disturb a game's own HID++ force.
+                // opt-in (default off). OLEDANY lifts the gate on purpose, to
+                // find out whether a screen write really does disturb a game's
+                // own HID++ force.
                 bool modeBOled = (Settings?.ModeBOledEnabled ?? false)
                             && (hidppFree || (Settings?.OledIgnoreModeBGate ?? false));
                 // Latched for the settings panel, which needs to know whether a
                 // preview is safe to draw and runs on another thread.
                 _oledHidppFree = hidppFree;
+                // The quiet term alone, for one-shot user actions (the rev
+                // pattern picker). hidppFree bundles "force mode armed" and
+                // "session live", which gate CONTINUOUS driving of the
+                // surfaces; a single user-initiated write only needs the pipe
+                // itself force-free, and demanding the rest made picks look
+                // dead from the garage and the menus.
+                _ffbQuietNow = ffbQuietProven;
 
                 double pct     = frame.RpmPercent;
                 bool   redline = frame.RedlineReached;
@@ -5887,13 +5939,28 @@ namespace TrueforceForAll.Plugin
                 if (levelWheel)
                 {
                     // G PRO / RS50 / G923 Xbox: HID++ 0x807A level channel
-                    // (iRacing+MAIRA or Mode B). Any wheel whose firmware does not
-                    // answer 0x807A simply never resolves the channel and the LEDs
-                    // stay dark (no harm).
+                    // Any wheel whose firmware does not answer 0x807A simply
+                    // never resolves the channel and the LEDs stay dark (no harm).
                     try
                     {
+                        // Car-load edge: a car with a remembered pattern sets
+                        // the wheel to it ONCE when it becomes active, so a
+                        // manual pick mid-session still sticks until the next
+                        // remembered car arrives. Not a per-frame push: the
+                        // wheel's selection is a real selector, not a state
+                        // we continuously enforce.
+                        string carKey = (!string.IsNullOrEmpty(_activeGame) && !string.IsNullOrEmpty(_activeCarId))
+                            ? _activeGame + "/" + _activeCarId : null;
+                        if (carKey != null && carKey != _revCarKeyApplied)
+                        {
+                            _revCarKeyApplied = carKey;
+                            if (Settings?.CarRevLightEffect != null
+                                && Settings.CarRevLightEffect.TryGetValue(carKey, out int remembered)
+                                && remembered > 0)
+                                _rpmLeds.ApplyRemembered(remembered, ffbQuietProven);
+                        }
                         _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
-                                         redline, iracingGate || modeBLeds);
+                                         redline, modeBLeds);
                     }
                     catch (Exception ex)
                     {
@@ -5902,9 +5969,8 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (g923Wheel)
                 {
-                    // G923 PS (C266): legacy F8-12 rev bar, 5 LEDs. Mode B only for
-                    // now (the iRacing+MAIRA path stays on the level channel). The
-                    // G923 Xbox is NOT here; it takes the HID++ 0x807A path above.
+                    // G923 PS (C266): legacy F8-12 rev bar, 5 LEDs. The G923 Xbox
+                    // is NOT here; it takes the HID++ 0x807A path above.
                     DriveG923Leds(pct, redline, modeBLeds);
                 }
 
@@ -5932,6 +5998,10 @@ namespace TrueforceForAll.Plugin
                             // never have reported.
                             DeltaSupported = GameReportsLapDelta,
                             GameFfbContending = ModeBContentionDetected,
+                            // Empty in every game but iRacing, and empty there
+                            // too until the count actually moves.
+                            IncidentFlash = Settings?.DashIncidentsEnabled == false
+                                ? "" : IRacingIncidentFlashShort,
                             Position   = _shPosition,
                             CurrentLap = _shCurrentLap,
                             TotalLaps  = _shTotalLaps,
@@ -6195,7 +6265,19 @@ namespace TrueforceForAll.Plugin
         // utilization, with a stall ramp so telemetry loss decays the force
         // instead of holding it. Toggle: "MODEB 1" / "MODEB 0" access code;
         // tuning: BSAT / BPEAK / BFLOOR / BFULL / BSPD / BSIGN.
-        private volatile int _forceModeB;
+        // Which pipeline currently AUTHORS wheel torque. Anything non-zero
+        // means "the plugin is the sole writer": that is the contract the
+        // rev-light / OLED gate, GameFfbExpected suppression, the tap's
+        // send-activity probe and the spring-arming lockout all read, and it
+        // must hold for every mode added here. Only the stages that are
+        // specific to one pipeline test a particular value.
+        // Kept a plain int (not an enum) because the 1 kHz FFB thread reads it
+        // every pass and volatile int is the cheapest correct read.
+        private const int ForceModeOff     = 0;   // game FFB passes through
+        private const int ForceModeModeB   = 1;   // Forza: force SYNTHESIZED from slip telemetry
+        private const int ForceModeSpring  = 2;   // Farming Sim: classic PID spring rendered at the wheel
+        private const int ForceModeIRacing = 3;   // iRacing: the sim's OWN torque reshaped, not synthesized
+        private volatile int _forceMode;
         private readonly SatForceModel _satModel = new SatForceModel { DropFloor = 0.50 };   // pre-Init placeholder; ApplyModeBFromSettings owns the live value
         private float _pModeBSign    = 1f;     // BSIGN: flips SAT direction if Forza's slip sign is inverted vs the wheel
         private float _pModeBPeakU   = 1.0f;   // BPEAK: combined-slip value treated as the grip limit (u = combined / peak)
@@ -6326,15 +6408,22 @@ namespace TrueforceForAll.Plugin
             {
                 var g = _activeGame;
                 return !string.IsNullOrEmpty(g)
-                    && IsModeBCapableGame(g)
+                    && IsTelemetryFfbCapableGame(g)
                     && Settings?.ModeBGameEnabled != null
                     && Settings.ModeBGameEnabled.TryGetValue(g, out bool v) && v;
             }
         }
 
-        /// <summary>True if the active game supports Mode B at all (drives
-        /// whether the tab's toggle is enabled). Empty in menus.</summary>
-        public bool ActiveGameSupportsModeB => IsModeBCapableGame(_activeGame);
+        /// <summary>True if the active game supports Telemetry Based FFB at all
+        /// (drives whether the tab's toggle is enabled). Empty in menus.
+        /// Covers both pipelines: Forza synthesis and iRacing reshape.</summary>
+        public bool ActiveGameSupportsModeB => IsTelemetryFfbCapableGame(_activeGame);
+
+        /// <summary>True while the active game's Telemetry Based FFB is the
+        /// iRacing reshape rather than Forza synthesis. Surfaces that show
+        /// tuning controls use this to hide the slip-model sliders, which do
+        /// nothing on the reshape path.</summary>
+        public bool ActiveGameIsReshapeGame => IsIRacingReshapeGame(_activeGame);
 
         /// <summary>True while a spring-mode game (Farming Simulator) is the
         /// active game. Deliberately not folded into ActiveGameSupportsModeB:
@@ -6350,7 +6439,7 @@ namespace TrueforceForAll.Plugin
         public void SetModeBEnabledForActiveGame(bool on)
         {
             var g = _activeGame;
-            if (Settings == null || string.IsNullOrEmpty(g) || !IsModeBCapableGame(g)) return;
+            if (Settings == null || string.IsNullOrEmpty(g) || !IsTelemetryFfbCapableGame(g)) return;
             if (Settings.ModeBGameEnabled == null)
                 Settings.ModeBGameEnabled = new System.Collections.Generic.Dictionary<string, bool>();
             Settings.ModeBGameEnabled[g] = on;
@@ -6387,7 +6476,11 @@ namespace TrueforceForAll.Plugin
                             : s.ModeBMinForce > 0.5f ? 0.5f : s.ModeBMinForce;
 
             bool want = ModeBEnabledForActiveGame;
-            if (want && _forceModeB != 1)
+            // Which pipeline the opt-in arms. iRacing reshapes the sim's own
+            // torque; every other capable game synthesizes from slip.
+            int wantMode = IsIRacingReshapeGame(_activeGame)
+                         ? ForceModeIRacing : ForceModeModeB;
+            if (want && _forceMode != wantMode)
             {
                 // Clean engage: ramp from zero, EMAs seeded from current state.
                 // Contention watchdog re-arms so a fixed in-game FFB setting
@@ -6396,14 +6489,23 @@ namespace TrueforceForAll.Plugin
                 _contentionWarned = false;
                 _contentionSinceTicks = 0;
                 ModeBContentionDetected = false;
+                // Slip-starved latch re-arms too: a fixed Data Out port gets
+                // a fresh verdict on the next engage.
+                _slipStarvedWarned = false;
+                ModeBSlipStarvedDetected = false;
                 _crashDuck.Reset();
                 SeedModeBEngageState();
+                // The reshape path rides its own ramp, seeded here so engaging
+                // fades force in instead of stepping to full torque.
+                _irRamp = 0f;
+                _irPrevTicks = 0;
             }
-            // Preserve an armed spring mode (2): this method runs on every
-            // settings apply (slider drags included), and clobbering 2 -> 0
-            // here would blip the force out until the arming machine re-arms
-            // a second later. Game switches disarm explicitly instead.
-            _forceModeB = want ? 1 : (_forceModeB == 2 ? 2 : 0);
+            // Preserve an armed spring mode: this method runs on every settings
+            // apply (slider drags included), and clobbering it to off here would
+            // blip the force out until the arming machine re-arms a second
+            // later. Game switches disarm explicitly instead.
+            _forceMode = want ? wantMode
+                       : (_forceMode == ForceModeSpring ? ForceModeSpring : ForceModeOff);
 
             if (save) PersistSettings();
         }
@@ -6474,6 +6576,37 @@ namespace TrueforceForAll.Plugin
         };
         private volatile float _mbAutoStrengthScale = 1f;  // telemetry writes, FFB reads
         private volatile float _mbForceRawPeak;            // FFB writes (decaying max), telemetry reads
+
+        /// <summary>The scale auto strength is currently applying (1.0 = none).
+        /// Read-only view for the panel: this feature decided a number for the
+        /// car and, until now, said so exactly once in a dash toast.</summary>
+        public double ModeBAutoStrengthScale { get { return _mbAutoStrengthScale; } }
+
+        /// <summary>0 to 1, how much near-limit seat time the strength learner
+        /// has on this car variant. Below 1 the scale is faded toward 1.0, so a
+        /// number shown without this reads as more settled than it is.</summary>
+        public double ModeBStrengthConfidence { get { return _strengthCal.Confidence; } }
+
+        /// <summary>The intrinsic force ceiling learned for this car variant, in
+        /// the same units as AutoStrengthTarget. Exposed alongside the scale
+        /// because the two together are what make a reading diagnosable: a peak
+        /// sitting exactly on PeakMax means the learner railed rather than
+        /// converged.</summary>
+        public double ModeBStrengthPeak { get { return _strengthCal.Peak; } }
+
+        /// <summary>True when the learned peak is against its own sanity ceiling.
+        /// The scale is then pinned at its minimum for every car that gets there,
+        /// which is a measurement problem, not a per-car result.</summary>
+        public bool ModeBStrengthRailed
+        {
+            get { return _strengthCal.Peak >= _strengthCal.PeakMax - 1e-6; }
+        }
+
+        /// <summary>Grip auto-cal confidence for the active variant, 0 to 1. The
+        /// strength scale is normalized by this learner's output, so a strength
+        /// number read before this one settles is measured against a moving
+        /// denominator.</summary>
+        public double ModeBGripConfidence { get { return _gripCal.Confidence; } }
         // Braking-grip radius source (issue #38 follow-up): when the
         // ModeBLongitudinalGripLearn toggle is on, the friction-circle / gate
         // radius follows each car's grip-cal learned peak (times _pModeBGripTrim)
@@ -6501,14 +6634,24 @@ namespace TrueforceForAll.Plugin
         private volatile int _shLastLapMs, _shBestLapMs;
         private int _oledPrevLastLapMs;           // lap-completion edge detector
         private volatile bool _oledHidppFree;     // last computed gate, for the settings panel
+        private volatile bool _ffbQuietNow;       // just the FFB-quiet term, for one-shot writes
+        private string _revCarKeyApplied;         // last car whose remembered pattern was applied
         private volatile float _shBrake01, _shClutch01, _shHandbrake01;
 
         // RESETGRIP access code. The learner and the calibration dict are
         // owned by the telemetry thread (Tick / LoadGripCal / FlushGripCal),
         // and double writes are not atomic on 32-bit SimHub, so the UI thread
-        // only raises this flag; the Mode B tick path consumes it. A variant
-        // swap clears it (a queued reset for a car you left is stale).
+        // only raises this flag; the telemetry frame path consumes it.
         private volatile bool _gripCalResetRequested;
+
+        // WHICH car the queued reset is for, captured at request time. The
+        // request names a key back to the user ("reset queued for 'X'"), and
+        // that promise has to survive the gap until a telemetry frame consumes
+        // it: _gripCalKey only advances inside LoadGripCal, which runs late in
+        // the frame and only while the session is live, so parked in a pit box
+        // it can still name the PREVIOUS car for a long time. Consuming against
+        // whatever is current would wipe a calibration the user never named.
+        private volatile string _gripCalResetKey;
 
         /// <summary>Queue a RESETGRIP wipe of the active variant's learned
         /// grip calibration (peak + confidence): the stored slot is removed
@@ -6519,8 +6662,59 @@ namespace TrueforceForAll.Plugin
             string key = _gripCalKey;
             if (string.IsNullOrEmpty(key))
                 return "No car variant loaded yet. Drive with Telemetry Based FFB active, then run RESETGRIP.";
+            _gripCalResetKey = key;
             _gripCalResetRequested = true;
-            return $"Grip auto-cal reset queued for '{key}' (auto strength included); applies on the next Telemetry Based FFB tick, then re-learns as you corner.";
+            // Only synthesis re-learns. Spring mode and iRacing reshape never
+            // tick the learners, so promising a re-learn there would have the
+            // user driving laps waiting for a convergence that cannot happen.
+            string tail = _forceMode == ForceModeModeB
+                ? "applies on the next telemetry frame, then re-learns as you corner."
+                : "applies on the next telemetry frame. It re-learns only in games running Telemetry Based FFB synthesis, not in spring or iRacing mode.";
+            return $"Grip auto-cal reset queued for '{key}' (auto strength included); {tail}";
+        }
+
+        /// <summary>Consume a queued RESETGRIP. Called from the telemetry thread
+        /// on every frame, in every force mode: the learner and the calibration
+        /// dictionary are owned by that thread (see RequestGripCalReset), but the
+        /// reset itself must not wait for Mode B to be the live mode, or it lands
+        /// on whichever car happens to be loaded when Mode B next runs.</summary>
+        private void ConsumeGripCalResetRequest()
+        {
+            if (!_gripCalResetRequested) return;
+            _gripCalResetRequested = false;
+            string target = _gripCalResetKey;
+            _gripCalResetKey = null;
+            if (string.IsNullOrEmpty(target)) return;
+            // Remove bumps the dictionary version too: same lock as
+            // FlushGripCal, or a concurrent serialize throws.
+            lock (_carFactsLock) { Settings?.CarGripCalibration?.Remove(target); }
+            ScheduleSettingsFlush();
+
+            // The LIVE learners only get reset when they are the ones the user
+            // named. If the car moved on between the request and this frame, the
+            // stored slot is still the right thing to delete (that is what the
+            // status line promised) but the in-flight learning belongs to a
+            // different car and must not be thrown away with it.
+            bool live = string.Equals(target, _gripCalKey, StringComparison.Ordinal);
+            if (!live)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Grip auto-cal reset for '{target}' (RESETGRIP): stored calibration removed. "
+                    + "The car changed before it applied, so the car now loaded keeps what it has learned.");
+                return;
+            }
+            _gripCal.Reset();
+            _strengthCal.Reset();   // the removed slot carried the force peak too
+            _mbAutoStrengthScale = 1f;
+            _mbForceRawPeak = 0f;   // the old car's decaying peak is not evidence about this one
+            _mbCalPeak = _mbAutoCalOn ? (float)_gripCal.EffectivePeak : 1f;
+            _calConvergedLogged = false;
+            _autoStrengthAnnounced = false;   // re-announce once it re-learns
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Grip auto-cal reset for '{target}' (RESETGRIP): peak back to {_gripCal.EffectivePeak:0.000}, confidence 0"
+                + (_forceMode == ForceModeModeB
+                    ? "; re-learning (auto strength included)."
+                    : "; it re-learns once you drive a game running Telemetry Based FFB synthesis."));
         }
 
         // Mode B contention watchdog state (see DataUpdate). Warned resets on
@@ -6530,6 +6724,58 @@ namespace TrueforceForAll.Plugin
         /// <summary>True once sustained game FFB was detected during Mode B
         /// (diagnostic surface for the settings UI).</summary>
         public bool ModeBContentionDetected { get; private set; }
+
+        // Mode B slip-starved fallback state. Latched on the FFB thread the
+        // first time Mode B sits armed past the dwell with no slip telemetry
+        // to synthesize from (MaybeReshapeFfb passes the game's tapped force
+        // through meanwhile). Cleared on recovery, disarm, and game change.
+        // Plain bools like the contention latch: cross-thread races are
+        // benign (one extra or lost tick of a diagnostic banner).
+        private long _mbArmedTicks;      // stamped on every clean engage
+        private bool _slipStarvedWarned;
+        private const double ModeBSlipStarvedAfterMs = 3000.0;
+        /// <summary>True while Mode B is armed but slip telemetry is absent,
+        /// so the game's tapped FFB is passed through (diagnostic surface for
+        /// the settings UI banner).</summary>
+        public bool ModeBSlipStarvedDetected { get; private set; }
+
+        /// <summary>FFB thread. Called from MaybeReshapeFfb whenever Mode B is
+        /// armed but has no slip telemetry to synthesize from. Latches the
+        /// diagnostic flag and logs one actionable warning per arming, after
+        /// an engage dwell so a normal engage (the first slip frame lands a
+        /// tick or two behind the arm) can never false-positive.</summary>
+        private void NoteModeBSlipStarved()
+        {
+            if (_slipStarvedWarned) return;
+            long armed = _mbArmedTicks;
+            if (armed == 0
+                || (Stopwatch.GetTimestamp() - armed) * 1000.0 / Stopwatch.Frequency
+                    < ModeBSlipStarvedAfterMs) return;
+            _slipStarvedWarned = true;
+            ModeBSlipStarvedDetected = true;
+            int forzaPort = Settings?.Forza?.Port ?? 5300;
+            SimHub.Logging.Current.Warn(
+                "[TF4ALL] Mode B FALLBACK: no tire-slip telemetry is reaching the plugin, "
+                + "so there is nothing to synthesize steering force from; the game's own force "
+                + "feedback (if the game is sending any) is passed through instead. Telemetry "
+                + "Based FFB needs Forza's telemetry sent DIRECTLY to this plugin: in the game's "
+                + $"Data Out settings use IP 127.0.0.1 and port {forzaPort}. If the log shows that "
+                + "port failed to bind at startup (another app holds it), first change the Forza "
+                + "UDP port in Trueforce's Settings tab to a free one, then point the game at it, "
+                + "and enable forwarding there so SimHub keeps receiving telemetry.");
+        }
+
+        /// <summary>FFB thread. Clears the slip-starved latch once synthesis is
+        /// genuinely running again (ramp above zero, so a transient ramp-out
+        /// zero cannot flicker the banner).</summary>
+        private void NoteModeBSlipRecovered()
+        {
+            if (!_slipStarvedWarned || _mbRamp <= 0f) return;
+            _slipStarvedWarned = false;
+            ModeBSlipStarvedDetected = false;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Mode B slip telemetry restored; synthesized FFB is active again.");
+        }
 
         /// <summary>Snapshot the loaded learner into the settings dict.
         /// Cheap (no disk I/O) — callers decide when settings actually save.</summary>
@@ -6579,7 +6825,11 @@ namespace TrueforceForAll.Plugin
             if (key == _gripCalKey) return;
             FlushGripCal();
             _gripCalKey = key;
-            _gripCalResetRequested = false;   // queued reset was for the old variant
+            // A queued reset is NOT dropped here any more. It carries the key it
+            // was raised against, so it still finds the car the user named even
+            // though FlushGripCal just wrote that car's calibration back out one
+            // line above. Dropping it here meant a reset typed just before a car
+            // change was silently undone by the flush it raced.
             CarGripCal saved = null;
             if (key != null) Settings?.CarGripCalibration?.TryGetValue(key, out saved);
             if (saved != null) _gripCal.Restore(saved.Peak, saved.QualifyingSec);
@@ -6910,48 +7160,84 @@ namespace TrueforceForAll.Plugin
         /// untouched. Applies live and persists. Defaults are read from a
         /// fresh TrueforceSettings so this can never drift from the model's
         /// initializers.</summary>
+        /// <summary>Restore the shipped tuning for the family the ACTIVE GAME
+        /// uses, and only that family. Farming Simulator drives the SpringMode*
+        /// recipe, the Forza titles drive the ModeB* one, and the two never
+        /// share a field, so resetting in FS must leave a Forza setup exactly
+        /// as its owner left it (owner call 2026-08-10). With no game running
+        /// the Forza family is the one on screen, so that is what resets.</summary>
         public void ResetModeBTuningToDefaults()
         {
             var s = Settings;
             if (s == null) return;
+            // The wheel's shipped baseline for BOTH families, built on a scratch
+            // instance: ApplyWheelDefaults writes Forza AND spring values (a G923
+            // gets its own damping and its own FS floor and strength), so running
+            // it against the live settings would clobber the family we are meant
+            // to leave alone.
             var d = new TrueforceSettings();
-            s.ModeBSatGain     = d.ModeBSatGain;
-            s.ModeBRiseGamma   = d.ModeBRiseGamma;
-            s.ModeBPeakUtil    = d.ModeBPeakUtil;
-            s.ModeBDropFloor   = d.ModeBDropFloor;
-            s.ModeBEmaMs       = d.ModeBEmaMs;
-            s.ModeBSign        = d.ModeBSign;
-            s.ModeBDamper      = d.ModeBDamper;
-            s.ModeBCenter      = d.ModeBCenter;
-            s.ModeBLatGain     = d.ModeBLatGain;
-            s.ModeBDirSoft     = d.ModeBDirSoft;
-            s.ModeBLockupRecoverMs = d.ModeBLockupRecoverMs;
-            s.ModeBLockupPoint     = d.ModeBLockupPoint;
-            s.ModeBMinForce        = d.ModeBMinForce;
-            s.ModeBCompressor         = d.ModeBCompressor;
-            s.ModeBSuspensionLoad     = d.ModeBSuspensionLoad;
-            s.ModeBEarlyTorquePeak    = d.ModeBEarlyTorquePeak;
-            s.ModeBRoadKick           = d.ModeBRoadKick;
-            s.ModeBRoadKickGain       = d.ModeBRoadKickGain;
-            s.ModeBReversalDamp       = d.ModeBReversalDamp;
-            s.ModeBReversalDampGain   = d.ModeBReversalDampGain;
-            s.ModeBPhaseLead          = d.ModeBPhaseLead;
-            s.ModeBPhaseLeadMs        = d.ModeBPhaseLeadMs;
-            s.ModeBCenterPd           = d.ModeBCenterPd;
-            s.ModeBCenterLeadMs       = d.ModeBCenterLeadMs;
-            s.ModeBGripAutoCal        = d.ModeBGripAutoCal;
-            s.ModeBAutoStrength       = d.ModeBAutoStrength;
-            s.ModeBFrictionCircle     = d.ModeBFrictionCircle;
-            s.ModeBLongitudinalGripLearn = d.ModeBLongitudinalGripLearn;
-            s.ModeBGripTrim              = d.ModeBGripTrim;
-            s.ModeBLateralDemand         = d.ModeBLateralDemand;
-            // The coded factory values are the G PRO defaults; layer the
-            // detected wheel's own defaults on top so Reset lands on this
-            // wheel's shipped starting point.
-            ApplyWheelDefaults(s, s.LastUsedWheel);
+            ApplyWheelDefaults(d, s.LastUsedWheel);
+
+            if (IsSpringModeGame(_activeGame))
+            {
+                s.SpringModeStrength             = d.SpringModeStrength;
+                s.SpringModeMinForce             = d.SpringModeMinForce;
+                s.SpringModeCenterGain           = d.SpringModeCenterGain;
+                s.SpringModeCenterFirmness       = d.SpringModeCenterFirmness;
+                s.SpringModeSpeedEffect          = d.SpringModeSpeedEffect;
+                s.SpringModeTerrainEnabled       = d.SpringModeTerrainEnabled;
+                s.SpringModeTerrainGain          = d.SpringModeTerrainGain;
+                s.SpringModeDragEnabled          = d.SpringModeDragEnabled;
+                s.SpringModeDragGain             = d.SpringModeDragGain;
+                s.SpringModeDragStrainFraction   = d.SpringModeDragStrainFraction;
+                s.SpringModeChassisWeightEnabled = d.SpringModeChassisWeightEnabled;
+                s.SpringModeChassisWeightGain    = d.SpringModeChassisWeightGain;
+            }
+            else
+            {
+                s.ModeBSatGain     = d.ModeBSatGain;
+                s.ModeBRiseGamma   = d.ModeBRiseGamma;
+                s.ModeBPeakUtil    = d.ModeBPeakUtil;
+                s.ModeBDropFloor   = d.ModeBDropFloor;
+                s.ModeBEmaMs       = d.ModeBEmaMs;
+                s.ModeBSign        = d.ModeBSign;
+                s.ModeBDamper      = d.ModeBDamper;
+                s.ModeBCenter      = d.ModeBCenter;
+                s.ModeBLatGain     = d.ModeBLatGain;
+                s.ModeBDirSoft     = d.ModeBDirSoft;
+                s.ModeBLockupRecoverMs = d.ModeBLockupRecoverMs;
+                s.ModeBLockupPoint     = d.ModeBLockupPoint;
+                s.ModeBMinForce        = d.ModeBMinForce;
+                s.ModeBCompressor         = d.ModeBCompressor;
+                s.ModeBSuspensionLoad     = d.ModeBSuspensionLoad;
+                s.ModeBEarlyTorquePeak    = d.ModeBEarlyTorquePeak;
+                s.ModeBRoadKick           = d.ModeBRoadKick;
+                s.ModeBRoadKickGain       = d.ModeBRoadKickGain;
+                s.ModeBReversalDamp       = d.ModeBReversalDamp;
+                s.ModeBReversalDampGain   = d.ModeBReversalDampGain;
+                s.ModeBPhaseLead          = d.ModeBPhaseLead;
+                s.ModeBPhaseLeadMs        = d.ModeBPhaseLeadMs;
+                s.ModeBCenterPd           = d.ModeBCenterPd;
+                s.ModeBCenterLeadMs       = d.ModeBCenterLeadMs;
+                s.ModeBGripAutoCal        = d.ModeBGripAutoCal;
+                s.ModeBAutoStrength       = d.ModeBAutoStrength;
+                s.ModeBFrictionCircle     = d.ModeBFrictionCircle;
+                s.ModeBLongitudinalGripLearn = d.ModeBLongitudinalGripLearn;
+                s.ModeBGripTrim              = d.ModeBGripTrim;
+                s.ModeBLateralDemand         = d.ModeBLateralDemand;
+            }
             ApplyModeBFromSettings();
             ApplyModeBFeel();
             PersistSettings();
+        }
+
+        /// <summary>True while a Farming Simulator title is the active game, i.e.
+        /// while spring mode owns the force and the SpringMode* recipe is what the
+        /// Telemetry FFB tab is showing.</summary>
+        public static bool IsSpringModeGame(string game)
+        {
+            return !string.IsNullOrEmpty(game)
+                && game.StartsWith("FarmingSimulator", StringComparison.Ordinal);
         }
 
         /// <summary>Seed the FFB-thread Mode B smoothing state from the latest
@@ -6964,6 +7250,11 @@ namespace TrueforceForAll.Plugin
         {
             _mbRamp = 0f;
             _mbPrevTicks = 0;
+            // Arming timestamp for the slip-starved warning's engage dwell
+            // (NoteModeBSlipStarved): a normal engage sees its first slip
+            // frame within a tick or two, so only a feed that stays absent
+            // for ModeBSlipStarvedAfterMs past this point warns.
+            _mbArmedTicks = Stopwatch.GetTimestamp();
             _mbSlipEma = _lastFrontSlipAngle;
             _mbPrevSlipEma = _lastFrontSlipAngle;   // so the first reversal-rate sample is ~0, not a step
             _mbSlipRateEma = 0f;
@@ -6988,6 +7279,14 @@ namespace TrueforceForAll.Plugin
             double ageMs = (now - stamp) * 1000.0 / Stopwatch.Frequency;
             _mbRamp += ageMs > 150.0 ? (float)(-dtMs / 100.0) : (float)(dtMs / 250.0);
             if (_mbRamp < 0f) _mbRamp = 0f; else if (_mbRamp > 1f) _mbRamp = 1f;
+            // Slip feed dead past the dwell = the active source cannot provide
+            // slip at all (the 2026-08-13 RS50/FH6 report: Forza UDP bind lost
+            // to a port conflict, SimHub fallback carries no slip), not a menu
+            // blip. Null hands the decision to MaybeReshapeFfb, which passes
+            // the game's tapped force through instead of muting the wheel.
+            // Short stalls keep the ramp-out zero below; a real menu is caught
+            // by the provider's pause release long before this dwell elapses.
+            if (ageMs > ModeBSlipStarvedAfterMs) return null;
             if (_mbRamp <= 0f) return 0;
 
             // Smooth the INPUTS, not the force (the validated reshape
@@ -7216,10 +7515,1639 @@ namespace TrueforceForAll.Plugin
             return (short)v;
         }
 
+        // ---------- iRacing: reshape the sim's own steering torque ----------
+        // iRacing solves steering-column torque in its own physics and publishes
+        // it, so there is nothing to synthesize here. What we add is delivery:
+        // the sim's 360 Hz sub-tick torque, upsampled onto our 1 kHz ep3 stream
+        // and put through the same stability chain every other mode uses.
+        //
+        // Everything below is name-based reflection against SimHub's raw iRacing
+        // object. No compile-time reference is taken on iRacingSDK.dll or
+        // ICarsReader.dll: SimHub ships both and can rename or drop either, and
+        // a hard reference would take the whole plugin down with it. If any
+        // lookup fails the mode simply never arms.
+
+        // One immutable snapshot per SimHub tick. Published by a single volatile
+        // reference swap so the 1 kHz FFB thread can never see a torn pairing of
+        // samples, scale and timestamp.
+        private sealed class IRacingTorqueFrame
+        {
+            public float[] Sub;        // sub-tick torque, oldest first, Nm
+            public float   Latest;     // the per-frame scalar, Nm
+            public float   MaxNm;      // SteeringWheelMaxForceNm, the sim's own full-scale
+            public bool    GameFfbOn;  // SteeringFFBEnabled: the sim is driving the wheel itself
+            public long    Ticks;      // Stopwatch timestamp at arrival
+        }
+        private volatile IRacingTorqueFrame _irFrame;
+        private float _irRamp;
+        private long  _irPrevTicks;
+
+        // Telemetry iRacing publishes that SimHub's generic reader drops on the
+        // floor. SimHubTelemetrySource fills 20 fields and leaves steering,
+        // surface feel and collision null, which is why most of our texture
+        // effects are silent in iRacing. These come off the SAME raw object the
+        // force reshape already reads, so it costs one extra pass per tick.
+        //
+        // Deliberately NOT setting HasTireQuads: iRacing publishes no per-tire
+        // slip angle, slip ratio or wheel rotation speed, and claiming the quads
+        // are valid would make CtmComposer derive grip from zeros.
+        private sealed class IRacingOverlay
+        {
+            public double? SteerAngleRad;
+            public double? Heave;          // m/s^2, peak-abs across the 360 Hz sub-tick
+            public double? Sway;
+            public double? Surge;
+            public double? SurfaceRumble;  // 0..1-ish, from the sim's per-tire rumble pitch
+            public bool?   OnRumbleStrip;  // PlayerTrackSurfaceMaterial in the irsdk rumble range
+            public double? CollisionMag;
+            // Signed accelerations in m/s^2, from the 360 Hz sub-tick arrays,
+            // matching TelemetryFrame's documented units and sign conventions.
+            // Heave is GRAVITY-REMOVED here, the way SimHub already delivers it,
+            // so the two are interchangeable and nothing downstream re-tunes.
+            public double? HeaveHp;        // signed peak of the bump content
+            public double? SwayMean;
+            public double? SurgeMean;
+            // Yaw rate in deg/s from the 360 Hz array. Traction loss runs on a
+            // heuristic in iRacing (no per-tire slip exists there), and yaw rate
+            // is one of its main inputs, so feeding it the sub-tick value makes
+            // the one slip voice iRacing CAN have noticeably quicker to react.
+            // Consumers take its absolute value, so the sign convention between
+            // iRacing and SimHub does not have to be reconciled here.
+            public double? YawRateDeg;
+            public long    Ticks;
+        }
+        private volatile IRacingOverlay _irOverlay;
+
+        // Car identity and engine truth, from iRacing's SESSION INFO rather than
+        // its per-tick telemetry. iRacing publishes all of it, so none of this
+        // needs a car database, community consensus or user entry.
+        private sealed class IRacingCarInfo
+        {
+            public string CarPath;        // already our CarFacts key format, e.g. "mx5 mx52016"
+            public string ScreenName;     // e.g. "Mazda MX-5 Cup"
+            public int?   Cylinders;      // DriverCarEngCylinderCount
+            public int?   RedlineRpm;     // DriverCarRedLine
+            public int?   ForwardGears;   // DriverCarGearNumForward
+        }
+        private volatile IRacingCarInfo _irCarInfo;
+
+        // Direct reader. When it is connected the whole latch below is driven
+        // from ITS thread at the sim's own cadence, and the SimHub path stops
+        // running entirely: staying on DataUpdate would keep us behind exactly
+        // the hop this exists to remove.
+        private IRacingSdkReader _irSdk;
+        private volatile bool _irSdkLive;
+        private long _irSdkLastAttemptTicks;
+
+        /// <summary>True while iRacing telemetry is coming straight from the
+        /// sim's shared memory rather than by way of SimHub. Surfaced so the
+        /// settings panel can say which path is live, because "enhanced" versus
+        /// "fallback" changes what a support log means.</summary>
+        // Watches the sim's full-scale figure and logs when it MOVES. This
+        // settles a question we cannot answer by reading code: does iRacing's
+        // own auto force mode still work while its force feedback is switched
+        // off, and does trimming a car heavier or lighter still land here?
+        //
+        // If this value changes as cars change, or when the driver adjusts a
+        // car's strength in the sim, then Auto is inheriting live per-car tuning
+        // and is the right default. If it never moves, Auto is inheriting one
+        // frozen number and users who rely on iRacing's auto mode need our own
+        // override instead. SteeringWheelPeakForceNm is logged alongside it
+        // because -1 is a sentinel whose meaning ("auto mode off" versus "auto
+        // mode cannot measure with FFB off") we have assumed rather than proven.
+        private double _irLastLoggedMaxNm = -1.0;
+
+        // Learned peak torque for this car, in Nm. A RATCHET with a slow lerp
+        // rather than a plain maximum: it climbs toward real peaks but no single
+        // sample can define the whole scale, so one kerb strike or one spin does
+        // not permanently shrink every other force.
+        //
+        // Learned ONLY while genuinely racing: on track, on a racing surface.
+        // Kerbs, grass, gravel and the pit lane all produce torque that has
+        // nothing to do with how hard the car pushes in a corner, and letting
+        // them in is how an auto-calibration ends up scaled by its own noise.
+        // The surface channels it needs are ones we already read for kerb
+        // detection.
+        private float _irPeakNm;
+        private string _irPeakCarId;
+        // When the peak last GREW meaningfully. A peak that has stopped climbing
+        // is the only honest signal that we have seen what this car can do, and
+        // it is what tells the driver when pressing Auto is worth anything.
+        // Without it they are guessing, and pressing too early sets Max force
+        // from an out-lap, which quietly makes everything too strong.
+        private long _irPeakGrowthTicks;
+        // Racing-surface time accumulated for this car. Guards the case where a
+        // peak "settles" simply because the car has been parked: no growth for
+        // 20 seconds means nothing if only 3 of those were spent driving.
+        private double _irPeakRacingMs;
+
+        private const double IRacingPeakSettleMs   = 15000.0;   // no growth for this long
+        private const double IRacingPeakMinDriveMs = 30000.0;   // and at least this much racing
+
+        /// <summary>True once the observed peak has stopped climbing for a while
+        /// AND enough racing has actually happened. The Auto button uses this to
+        /// show whether it is worth pressing yet.</summary>
+        public bool IRacingPeakSettled
+        {
+            get
+            {
+                if (_irPeakNm <= 0.05f || _irPeakGrowthTicks == 0) return false;
+                if (_irPeakRacingMs < IRacingPeakMinDriveMs) return false;
+                double sinceMs = (Stopwatch.GetTimestamp() - _irPeakGrowthTicks)
+                                 * 1000.0 / Stopwatch.Frequency;
+                return sinceMs >= IRacingPeakSettleMs;
+            }
+        }
+
+        /// <summary>0 to 1, how far along the settling is. Drives a dash button's
+        /// appearance so the driver can watch it come up to readiness rather than
+        /// poll a boolean that flips with no warning.</summary>
+        public double IRacingPeakConfidence
+        {
+            get
+            {
+                if (_irPeakNm <= 0.05f || _irPeakGrowthTicks == 0) return 0.0;
+                double drive = _irPeakRacingMs / IRacingPeakMinDriveMs;
+                if (drive > 1.0) drive = 1.0;
+                double sinceMs = (Stopwatch.GetTimestamp() - _irPeakGrowthTicks)
+                                 * 1000.0 / Stopwatch.Frequency;
+                double quiet = sinceMs / IRacingPeakSettleMs;
+                if (quiet > 1.0) quiet = 1.0;
+                // The lower of the two: both conditions must hold, so readiness
+                // is governed by whichever is further behind.
+                return drive < quiet ? drive : quiet;
+            }
+        }
+
+        /// <summary>Apply the learned peak as Max force, once, the way iRacing's
+        /// own auto button does: drive a lap or two, press it, keep a number you
+        /// can see and edit. Deliberately NOT continuous. A scale that keeps
+        /// drifting under you as the car does something slightly bigger than
+        /// before is the kind of wrong that is almost impossible to diagnose by
+        /// feel, because everything simply gets quieter and nothing announces it.
+        ///
+        /// Writes the per-car slot when cars are kept separate, otherwise the
+        /// shared one, so the button always sets whatever is actually in use.
+        /// Returns the value written, or 0 if there is nothing learned yet.</summary>
+        public double ApplyIRacingAutoMaxForce()
+        {
+            double learned = IRacingLearnedMaxNm;
+            if (learned <= 0.5 || Settings == null) return 0.0;
+            if (Settings.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId))
+            {
+                if (Settings.IRacingMaxForceByCar == null)
+                    Settings.IRacingMaxForceByCar = new Dictionary<string, float>();
+                Settings.IRacingMaxForceByCar[_activeCarId] = (float)learned;
+            }
+            else
+            {
+                Settings.IRacingMaxForceNmOverride = (float)learned;
+            }
+            PersistSettings();
+
+            // APPLY AND RESET, the way iRacing's own auto button does it. Every
+            // press then means the same thing: "the hardest this car pushed
+            // SINCE I LAST PRESSED THIS".
+            //
+            // This is what makes a bad reading self-correcting without any decay
+            // logic. A spin, a wall or a heavy save inflates the peak and would
+            // otherwise poison the number for the rest of the session; instead
+            // the driver does a clean lap and presses again, and the previous
+            // mess is simply not in the window any more. Decay would be the
+            // plugin GUESSING when a reading went stale. This lets the person
+            // who knows whether the lap was clean decide.
+            _irPeakNm = 0f;
+            _irPeakCarId = _activeCarId;
+            // The readiness clocks restart with the observer. Carrying them over
+            // would light the button again after a few quiet seconds, on a window
+            // that has seen almost no driving, which is exactly the reading the
+            // settle test exists to refuse.
+            _irPeakGrowthTicks = 0;
+            _irPeakRacingMs = 0.0;
+            _irPeakLastTicks = 0;
+
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] iRacing Max force auto-set to "
+                + learned.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                + " Nm" + (Settings.IRacingMaxForcePerCar ? " for " + (_activeCarId ?? "?") : " (all cars)")
+                + ". Peak observer reset: drive a clean lap and press again to redo it.");
+            return learned;
+        }
+
+        /// <summary>Peak this car has actually produced, plus a margin, in Nm.
+        /// The number a "learn from driving" control would adopt. 0 until enough
+        /// racing has happened to mean anything.</summary>
+        public double IRacingLearnedMaxNm
+        {
+            get { return _irPeakNm > 0.05f ? _irPeakNm * 1.10 : 0.0; }
+        }
+
+        /// <summary>Feed the peak learner. Surface gating is the caller's job so
+        /// this stays a pure ratchet.</summary>
+        private void LearnIRacingPeak(double absTorqueNm, bool racingSurface)
+        {
+            if (!racingSurface || absTorqueNm <= 0.0 || absTorqueNm > 200.0) return;
+            // A car change resets it: the previous car's ceiling says nothing
+            // about this one, which is the entire reason this is per-car.
+            string car = _activeCarId;
+            if (!string.Equals(car, _irPeakCarId, StringComparison.Ordinal))
+            {
+                _irPeakCarId = car;
+                _irPeakNm = 0f;
+                _irPeakGrowthTicks = 0;
+                _irPeakRacingMs = 0.0;
+            }
+
+            long nowP = Stopwatch.GetTimestamp();
+            if (_irPeakLastTicks != 0)
+            {
+                double dt = (nowP - _irPeakLastTicks) * 1000.0 / Stopwatch.Frequency;
+                // Clamped so a pause, an alt-tab or a stall cannot credit
+                // minutes of "racing" that never happened.
+                if (dt > 0.0 && dt < 250.0) _irPeakRacingMs += dt;
+            }
+            _irPeakLastTicks = nowP;
+
+            float before = _irPeakNm;
+            float lerped = _irPeakNm + (float)(absTorqueNm - _irPeakNm) * 0.01f;
+            if (lerped > _irPeakNm) _irPeakNm = lerped;
+            if (absTorqueNm > _irPeakNm && _irPeakNm <= 0.05f) _irPeakNm = (float)absTorqueNm;
+
+            // Only MEANINGFUL growth counts as unsettled. The lerp creeps upward
+            // by tiny amounts almost every sample, so any growth at all would
+            // mean it never settles and the button never lights.
+            if (before <= 0.05f || _irPeakNm > before * 1.005f)
+                _irPeakGrowthTicks = nowP;
+        }
+        private long _irPeakLastTicks;
+
+        private void MaybeLogIRacingFullScale(double maxNm, double peakNm)
+        {
+            if (maxNm <= 0.0) return;
+            if (_irLastLoggedMaxNm > 0.0 && Math.Abs(maxNm - _irLastLoggedMaxNm) < 0.1) return;
+            double prev = _irLastLoggedMaxNm;
+            _irLastLoggedMaxNm = maxNm;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] iRacing full scale: SteeringWheelMaxForceNm="
+                + maxNm.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                + (prev > 0.0 ? " (was " + prev.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + ")" : " (first)")
+                + " peakForceNm=" + peakNm.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                + " car=" + (_activeCarId ?? "?"));
+        }
+
+        /// <summary>Full scale in Nm as the sim currently reports it, so the
+        /// panel can show what Auto resolved to. An auto setting that displays
+        /// nothing is indistinguishable from one that is broken.</summary>
+        public double IRacingLiveMaxForceNm
+        {
+            get { var fr = _irFrame; return fr != null ? fr.MaxNm : 0.0; }
+        }
+
+        /// <summary>The raw observed peak for this car in Nm, WITHOUT the Auto
+        /// margin. Zero until enough racing has happened, including right after
+        /// an Auto press, which resets the observer on purpose.</summary>
+        public double IRacingObservedPeakNm { get { return _irPeakNm > 0.05f ? _irPeakNm : 0.0; } }
+
+        /// <summary>The divisor actually in use, resolved the same way the force
+        /// path resolves it. The panel needs this to predict clipping honestly
+        /// rather than assuming Max force came from Auto.</summary>
+        public double IRacingEffectiveMaxForceNm
+        {
+            get
+            {
+                var s = Settings;
+                if (s != null)
+                {
+                    float perCar;
+                    if (s.IRacingMaxForcePerCar && s.IRacingMaxForceByCar != null
+                        && !string.IsNullOrEmpty(_activeCarId)
+                        && s.IRacingMaxForceByCar.TryGetValue(_activeCarId, out perCar)
+                        && perCar > 0.5f)
+                        return perCar;
+                    if (s.IRacingMaxForceNmOverride > 0.5f) return s.IRacingMaxForceNmOverride;
+                }
+                var fr = _irFrame;
+                return fr != null ? fr.MaxNm : 0.0;
+            }
+        }
+
+        public bool IRacingDirectActive { get { return _irSdkLive; } }
+        public long IRacingDirectTicks { get { var r = _irSdk; return r != null ? r.TicksSeen : 0; } }
+        public long IRacingDirectMissed { get { var r = _irSdk; return r != null ? r.TicksMissed : 0; } }
+
+        /// <summary>Try to attach the direct reader, at most once a second so a
+        /// closed sim does not turn into a retry storm. Mirrors the promote half
+        /// of EvaluateForzaTelemetryFallback.</summary>
+        private void MaybeStartIRacingDirect()
+        {
+            if (!IsIRacingReshapeGame(_activeGame)) { StopIRacingDirect(); return; }
+            if (_irSdk != null && _irSdkLive) return;
+
+            long now = Stopwatch.GetTimestamp();
+            if (_irSdkLastAttemptTicks != 0
+                && (now - _irSdkLastAttemptTicks) < Stopwatch.Frequency) return;
+            _irSdkLastAttemptTicks = now;
+
+            if (_irSdk == null)
+            {
+                _irSdk = new IRacingSdkReader
+                {
+                    Logger = msg => SimHub.Logging.Current.Info("[TF4ALL] " + msg),
+                };
+                _irSdk.OnTick = IRacingDirectTick;
+            }
+            if (_irSdk.Start())
+            {
+                _irSdkLive = true;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] iRacing telemetry: DIRECT (shared memory). SimHub's copy is now the fallback only.");
+            }
+        }
+
+        private void StopIRacingDirect()
+        {
+            if (_irSdk == null) return;
+            bool was = _irSdkLive;
+            _irSdkLive = false;
+            try { _irSdk.Stop(); } catch { }
+            if (was)
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] iRacing telemetry: direct reader stopped, back to SimHub's copy.");
+        }
+
+        /// <summary>Called on the reader's own thread, once per sim tick. Builds
+        /// exactly the same latches the SimHub path builds, from the same
+        /// channels, so everything downstream is unaware of which route is live.</summary>
+        private void IRacingDirectTick()
+        {
+            var r = _irSdk;
+            if (r == null || !_irSdkLive) return;
+            try
+            {
+                byte[] frame;
+                Dictionary<string, IRacingSdkReader.VarDef> vars;
+                if (!r.TryGetSnapshot(out frame, out vars)) return;
+
+                // Demote the moment the sim disconnects rather than waiting for
+                // the force path to notice a stale latch.
+                if (!r.IsConnected) { _irSdkLive = false; return; }
+
+                double torque, maxNm;
+                if (!SdkScalar(frame, vars, "SteeringWheelTorque", out torque)) return;
+                if (!SdkScalar(frame, vars, "SteeringWheelMaxForceNm", out maxNm)) return;
+                if (!(maxNm > 0.01)) return;
+
+                double ffbOnD;
+                bool ffbOn = SdkScalar(frame, vars, "SteeringFFBEnabled", out ffbOnD) && ffbOnD != 0.0;
+
+                float[] sub = SdkArray(frame, vars, "SteeringWheelTorque_ST");
+                if (sub != null && sub.Length < IRacingSubSamples) sub = null;
+
+                _irFrame = new IRacingTorqueFrame
+                {
+                    Sub = sub,
+                    Latest = (float)torque,
+                    MaxNm = (float)maxNm,
+                    GameFfbOn = ffbOn,
+                    Ticks = Stopwatch.GetTimestamp(),
+                };
+
+                double peakNm;
+                if (!SdkScalar(frame, vars, "SteeringWheelPeakForceNm", out peakNm)) peakNm = -1.0;
+                MaybeLogIRacingFullScale(maxNm, peakNm);
+
+                BuildIRacingOverlayFromSdk(frame, vars, maxNm);
+                MaybeParseIRacingSessionYaml(r);
+            }
+            catch { /* never let the reader thread die on one bad tick */ }
+        }
+
+        private static bool SdkScalar(byte[] frame, Dictionary<string, IRacingSdkReader.VarDef> vars,
+                                      string name, out double value)
+        {
+            value = 0.0;
+            IRacingSdkReader.VarDef v;
+            if (vars == null || !vars.TryGetValue(name, out v)) return false;
+            return IRacingSdkReader.TryReadDouble(frame, v, 0, out value);
+        }
+
+        private static float[] SdkArray(byte[] frame, Dictionary<string, IRacingSdkReader.VarDef> vars, string name)
+        {
+            IRacingSdkReader.VarDef v;
+            if (vars == null || !vars.TryGetValue(name, out v)) return null;
+            return IRacingSdkReader.TryReadArray(frame, v);
+        }
+
+        /// <summary>The same overlay the SimHub path builds, from the same
+        /// channels and the same derivations, just resolved out of the direct
+        /// snapshot. Downstream must not be able to tell which route produced it.
+        /// </summary>
+        private void BuildIRacingOverlayFromSdk(byte[] frame,
+                                                Dictionary<string, IRacingSdkReader.VarDef> vars,
+                                                double maxNm)
+        {
+            float[] vertArr = SdkArray(frame, vars, "VertAccel_ST");
+            float[] latArr  = SdkArray(frame, vars, "LatAccel_ST");
+            float[] longArr = SdkArray(frame, vars, "LongAccel_ST");
+
+            double? swayMean  = IRacingSubMean(latArr);
+            double? surgeMean = IRacingSubMean(longArr);
+            double? heaveHp   = TrackGravityAndPeak(vertArr);
+
+            // Collision: horizontal axes only, since VertAccel carries gravity.
+            // Normalised exactly as FrameEnricher does, because a raw magnitude
+            // clamps every hit to full amplitude.
+            double impact = 0.0;
+            double? p;
+            p = SubPeakOf(latArr);  if (p.HasValue && p.Value > impact) impact = p.Value;
+            p = SubPeakOf(longArr); if (p.HasValue && p.Value > impact) impact = p.Value;
+            double? collision = null;
+            if (impact > 49.0) collision = (impact - 49.0) * 0.02;
+
+            // Surface texture from the sim's own per-tire rumble pitch.
+            double rumbleSum = 0.0; int rumbleN = 0;
+            string[] rk = { "TireLF_RumblePitch", "TireRF_RumblePitch", "TireLR_RumblePitch", "TireRR_RumblePitch" };
+            for (int i = 0; i < rk.Length; i++)
+            {
+                double d;
+                if (!SdkScalar(frame, vars, rk[i], out d) || d <= 0.0) continue;
+                rumbleSum += d; rumbleN++;
+            }
+            double? surfaceRumble = null;
+            if (rumbleN > 0)
+            {
+                double rr = (rumbleSum / rumbleN) / 100.0;
+                surfaceRumble = rr > 1.0 ? 1.0 : rr;
+            }
+
+            // Kerbs, from irsdk_TrkSurf: rumble strips are 11 to 14.
+            bool? onRumble = null;
+            double matD;
+            bool racingSurface = false;
+            if (SdkScalar(frame, vars, "PlayerTrackSurfaceMaterial", out matD))
+            {
+                int mat = (int)Math.Round(matD);
+                if (mat >= 0) onRumble = mat >= 11 && mat <= 14;
+                // Asphalt (1-4), concrete (5-6) and racing dirt (7-8) are the
+                // surfaces a lap is actually driven on. Paint, kerbs, grass,
+                // gravel and sand are all excluded, because torque generated
+                // there says nothing about how hard this car pushes in a corner.
+                racingSurface = mat >= 1 && mat <= 8;
+            }
+            // And only while genuinely on track: the pit lane and the garage
+            // would otherwise contribute their own nonsense.
+            double trkLoc;
+            if (racingSurface && SdkScalar(frame, vars, "PlayerTrackSurface", out trkLoc))
+                racingSurface = (int)Math.Round(trkLoc) == 3;   // irsdk_OnTrack
+            else if (racingSurface) racingSurface = false;
+
+            double peakTorque;
+            if (racingSurface && SdkScalar(frame, vars, "SteeringWheelTorque", out peakTorque))
+                LearnIRacingPeak(Math.Abs(peakTorque), true);
+
+            // Steering, normalised to roughly [-1,1] by the car's own lock.
+            double? steerNorm = null;
+            double sr, smax;
+            if (SdkScalar(frame, vars, "SteeringWheelAngle", out sr)
+                && SdkScalar(frame, vars, "SteeringWheelAngleMax", out smax) && smax > 0.01)
+            {
+                double n = sr / smax;
+                if (n > 1.5) n = 1.5; else if (n < -1.5) n = -1.5;
+                steerNorm = n;
+            }
+
+            _irOverlay = new IRacingOverlay
+            {
+                SteerAngleRad = steerNorm,
+                Heave = SubPeakOf(vertArr),
+                Sway = SubPeakOf(latArr),
+                Surge = SubPeakOf(longArr),
+                SurfaceRumble = surfaceRumble,
+                OnRumbleStrip = onRumble,
+                CollisionMag = collision,
+                HeaveHp = heaveHp,
+                SwayMean = swayMean,
+                SurgeMean = surgeMean,
+                YawRateDeg = YawRateDegFrom(SdkArray(frame, vars, "YawRate_ST")),
+                Ticks = Stopwatch.GetTimestamp(),
+            };
+        }
+
+        /// <summary>Mean of the 360 Hz yaw-rate array, converted from the
+        /// radians per second iRacing publishes to the degrees per second
+        /// TelemetryFrame documents.</summary>
+        private static double? YawRateDegFrom(float[] arr)
+        {
+            double? m = IRacingSubMean(arr);
+            return m.HasValue ? (double?)(m.Value * (180.0 / Math.PI)) : null;
+        }
+
+        private static double? SubPeakOf(float[] arr)
+        {
+            if (arr == null || arr.Length == 0) return null;
+            double peak = 0.0;
+            for (int i = 0; i < arr.Length; i++)
+            {
+                double a = arr[i] < 0 ? -arr[i] : arr[i];
+                if (a > peak) peak = a;
+            }
+            return peak;
+        }
+
+        /// <summary>Gravity-tracked vertical bump content. Shared by both routes
+        /// so the reference, the freeze band and the seeding behave identically
+        /// whichever one is live.</summary>
+        private double? TrackGravityAndPeak(float[] vertArr)
+        {
+            if (vertArr == null || vertArr.Length == 0) return null;
+            double vMean = 0.0;
+            for (int i = 0; i < vertArr.Length; i++) vMean += vertArr[i];
+            vMean /= vertArr.Length;
+
+            long nowG = Stopwatch.GetTimestamp();
+            bool stale = _irGBaseTicks != 0
+                && (nowG - _irGBaseTicks) * 1000.0 / Stopwatch.Frequency > 250.0;
+            if (!_irGBaseSeeded || stale) { _irGBase = vMean; _irGBaseSeeded = true; }
+            _irGBaseTicks = nowG;
+            if (_irGBase < 4.0 || _irGBase > 20.0) _irGBase = 9.81;
+
+            double dev = vMean - _irGBase;
+            if (dev < 5.0 && dev > -5.0) _irGBase += (vMean - _irGBase) * 0.02;
+
+            double best = 0.0;
+            for (int i = 0; i < vertArr.Length; i++)
+            {
+                double hp = vertArr[i] - _irGBase;
+                if (Math.Abs(hp) > Math.Abs(best)) best = hp;
+            }
+            return best;
+        }
+
+        private void MaybeParseIRacingSessionYaml(IRacingSdkReader r)
+        {
+            string yaml = r.SessionYaml;
+            if (yaml == null || ReferenceEquals(yaml, _irLastSessionYaml)) return;
+            _irLastSessionYaml = yaml;
+            var parsed = ParseIRacingSessionInfo(yaml);
+            if (parsed == null) return;
+            _irCarInfo = parsed;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] iRacing car: " + (parsed.ScreenName ?? "?")
+                + " path=" + (parsed.CarPath ?? "?")
+                + " cylinders=" + (parsed.Cylinders.HasValue ? parsed.Cylinders.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "?")
+                + " redline=" + (parsed.RedlineRpm.HasValue ? parsed.RedlineRpm.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "?")
+                + " forwardGears=" + (parsed.ForwardGears.HasValue ? parsed.ForwardGears.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "?")
+                + " [direct]");
+        }
+
+        /// <summary>The car's official name straight from the sim, when the sim
+        /// tells us. iRacing publishes CarScreenName in its session info, so its
+        /// cars never need the user to type a name or wait for a community
+        /// consensus to form. Null for every game that does not publish one.</summary>
+        public string ActiveSimCarName
+        {
+            get
+            {
+                if (!IsIRacingReshapeGame(_activeGame)) return null;
+                var ci = _irCarInfo;
+                return ci != null && !string.IsNullOrEmpty(ci.ScreenName) ? ci.ScreenName : null;
+            }
+        }
+        // Change detection by REFERENCE. Strings are immutable, so a republished
+        // session info is always a new object; comparing references costs
+        // nothing and re-parsing a 13 KB YAML every tick would be pure waste.
+        private string _irLastSessionYaml;
+
+        /// <summary>Pull car identity and engine data out of iRacing's session
+        /// YAML. Called only when the YAML object actually changes.</summary>
+        private static IRacingCarInfo ParseIRacingSessionInfo(string yaml)
+        {
+            if (string.IsNullOrEmpty(yaml)) return null;
+            var info = new IRacingCarInfo();
+            int driverIdx = -1;
+            // Two passes are not needed: DriverCarIdx appears in DriverInfo
+            // before the per-driver Drivers list, and the car fields we want
+            // from that list belong to the FIRST entry whose CarIdx matches.
+            int currentCarIdx = -1;
+            foreach (var line in yaml.Split('\n'))
+            {
+                string t = line.Trim();
+                int c = t.IndexOf(':');
+                if (c <= 0) continue;
+                string key = t.Substring(0, c).Trim();
+                string val = t.Substring(c + 1).Trim();
+                if (val.Length == 0) continue;
+                switch (key)
+                {
+                    case "DriverCarIdx":
+                        int di;
+                        if (int.TryParse(val, System.Globalization.NumberStyles.Integer,
+                                         System.Globalization.CultureInfo.InvariantCulture, out di)) driverIdx = di;
+                        break;
+                    case "DriverCarEngCylinderCount":
+                        info.Cylinders = ParseIRacingInt(val);
+                        break;
+                    case "DriverCarRedLine":
+                        info.RedlineRpm = ParseIRacingInt(val);
+                        break;
+                    case "DriverCarGearNumForward":
+                        info.ForwardGears = ParseIRacingInt(val);
+                        break;
+                    case "CarIdx":
+                        currentCarIdx = ParseIRacingInt(val) ?? -1;
+                        break;
+                    case "CarPath":
+                        // Only the player's own entry. A full grid repeats this
+                        // key once per driver, and the last one would win.
+                        if (info.CarPath == null && (currentCarIdx < 0 || currentCarIdx == driverIdx))
+                            info.CarPath = val;
+                        break;
+                    case "CarScreenName":
+                        if (info.ScreenName == null && (currentCarIdx < 0 || currentCarIdx == driverIdx))
+                            info.ScreenName = val;
+                        break;
+                }
+            }
+            return info;
+        }
+
+        private static int? ParseIRacingInt(string s)
+        {
+            double d;
+            if (double.TryParse(s, System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out d)
+                && !double.IsNaN(d) && !double.IsInfinity(d) && d > 0.0 && d < 100000.0)
+                return (int)Math.Round(d);
+            return null;
+        }
+
+        /// <summary>Peak absolute value across a 360 Hz sub-tick array, or null.
+        /// Peak rather than mean on purpose: these feed impact and texture
+        /// voices, and averaging six samples is exactly what smears a kerb strike
+        /// into nothing.</summary>
+        /// <summary>The raw sub-tick array, or null. Callers that need signs or
+        /// their own statistic use this rather than the peak helper.</summary>
+        private static float[] IRacingSubArray(IDictionary<string, object> dict, string key)
+        {
+            if (dict == null) return null;
+            object v;
+            try { if (!dict.TryGetValue(key, out v)) return null; }
+            catch { return null; }
+            var arr = v as float[];
+            if (arr == null || arr.Length == 0) return null;
+            for (int i = 0; i < arr.Length; i++)
+                if (float.IsNaN(arr[i]) || float.IsInfinity(arr[i])) return null;
+            return arr;
+        }
+
+        /// <summary>Signed mean across a sub-tick array. The right statistic for
+        /// a value whose SIGN carries meaning and whose steady level is what
+        /// downstream wants, as opposed to its biggest transient.</summary>
+        private static double? IRacingSubMean(float[] arr)
+        {
+            if (arr == null || arr.Length == 0) return null;
+            double s = 0.0;
+            for (int i = 0; i < arr.Length; i++) s += arr[i];
+            return s / arr.Length;
+        }
+
+        private static double? IRacingSubPeak(IDictionary<string, object> dict, string key)
+        {
+            if (dict == null) return null;
+            object v;
+            try { if (!dict.TryGetValue(key, out v)) return null; }
+            catch { return null; }
+            var arr = v as float[];
+            if (arr == null || arr.Length == 0) return null;
+            double peak = 0.0;
+            for (int i = 0; i < arr.Length; i++)
+            {
+                float s = arr[i];
+                if (float.IsNaN(s) || float.IsInfinity(s)) continue;
+                double a = s < 0 ? -s : s;
+                if (a > peak) peak = a;
+            }
+            return peak;
+        }
+        // Reflection cache, rebuilt only when the telemetry type changes. A null
+        // entry is NORMAL and means "read this one from the dictionary": only
+        // 217 of iRacing's 333 channels are generated as typed properties, and
+        // SteeringFFBEnabled is one of the ones that is not (proven by the IRRAW
+        // probe, which resolved it via [dict]). Never treat a null here as a
+        // failure, or the whole mode goes silent.
+        private Type _irTelTypeCached;
+        private System.Reflection.PropertyInfo _irPropTorque;
+        private System.Reflection.PropertyInfo _irPropMaxNm;
+        private System.Reflection.PropertyInfo _irPropFfbOn;
+
+        /// <summary>Read one named iRacing channel: generated typed property
+        /// first, then the dictionary the telemetry type inherits. Either route
+        /// is legitimate; which one answers depends on whether the SDK's
+        /// generator emitted that channel.</summary>
+        private static bool IRacingChannel(object tel, IDictionary<string, object> dict,
+                                           System.Reflection.PropertyInfo pi,
+                                           string name, out object value)
+        {
+            value = null;
+            if (pi != null)
+            {
+                try { value = pi.GetValue(tel, null); if (value != null) return true; }
+                catch { }
+            }
+            if (dict != null)
+            {
+                try { if (dict.TryGetValue(name, out value)) return value != null; }
+                catch { }
+            }
+            return false;
+        }
+        // Sub-tick samples per 60 Hz frame. iRacing solves physics at 360 Hz and
+        // bundles the intermediate samples into its _ST arrays (verified on the
+        // wheel 2026-08-10: six genuinely different values, not a padded scalar).
+        private const int IRacingSubSamples = 6;
+
+        // Gravity reference for VertAccel. iRacing's vertical acceleration
+        // INCLUDES gravity (about 9.81 at rest), and subtracting a fixed 9.81 is
+        // wrong the moment the car is on banking or over a crest, where the
+        // measured specific force genuinely changes. So track it slowly instead.
+        //
+        // This tracker is why the first attempt at 360 Hz accelerations shipped
+        // a bug: without it, raw VertAccel went straight into RoadBumps, whose
+        // gate saturates near 5.0, and the effect pegged permanently.
+        private double _irGBase;          // slow-moving gravity reference, m/s^2
+        private bool   _irGBaseSeeded;
+        private long   _irGBaseTicks;
+
+        // Replay-mode state. Owned exclusively by the 1 kHz FFB thread, so no
+        // locking: the telemetry thread only ever publishes _irFrame, and this
+        // side notices a new one by its timestamp.
+        //
+        // Eight slots because Hermite needs a sample either side of the pair it
+        // is interpolating between. A frame brings six, so the two newest of the
+        // previous frame are kept to give the first of the new six something to
+        // curve away from.
+        private readonly float[] _irRing = new float[8];
+        private bool  _irRingPrimed;
+        private long  _irRingFrameTicks;
+
+        // Learned lag cancellation for Replay mode. The replay is a CONSTANT one
+        // frame behind (it renders Sub[0] at frame arrival and Sub[5] a frame
+        // later), so what has to be predicted is exactly "how much will torque
+        // move over one frame", and that is what this learns.
+        //
+        // Regressors, all measured at the moment of prediction:
+        //   [0] wheel velocity, band-limited, read from the wheel's own HID
+        //       position. The key input: it has NO telemetry delay, so it is
+        //       fresh evidence about a stale signal. Self-aligning torque
+        //       opposes wheel motion, so the sign relationship is real physics
+        //       rather than a curve fit, but its STRENGTH varies by car and
+        //       speed, which is precisely what a fixed gain cannot track.
+        //   [1] the torque slope over the last frame, normalised. Carries
+        //       momentum: a force already climbing tends to keep climbing.
+        //   [2] constant, absorbing any steady bias.
+        // ONE FIT PER CAR. What the predictor learns is a property of the
+        // vehicle: its steering rack, caster, tyre and how hard it fights back.
+        // That does not change when you pause, visit the pits or sit in the
+        // garage, so a fit should follow the car rather than being thrown away
+        // on every gap in telemetry and re-earned a second at a time.
+        //
+        // Kept in memory only, deliberately. The fit also depends on the wheel's
+        // own inertia and friction and on the current force settings, so it is
+        // not a fact about the car that could be shared or restored onto another
+        // machine, and it re-converges in about a second anyway. Persisting it
+        // would risk applying a stale fit made under different settings, for
+        // almost no gain. See CarGripCalibration for the opposite case, where
+        // re-learning genuinely costs seat time and so does travel.
+        private readonly Dictionary<string, HorizonPredictor> _irRlsByCar =
+            new Dictionary<string, HorizonPredictor>(StringComparer.Ordinal);
+        private const int IRacingRlsMaxCars = 32;
+        private string _irRlsCarId;
+        private HorizonPredictor _irRls = NewIRacingPredictor();
+        private readonly double[] _irRlsX = new double[4];
+        // The correction for the frame currently being rendered, worked out once
+        // when the frame lands rather than 16 times while it plays.
+        private double _irPredCorrection;
+
+        /// <summary>Regressors: [1, torque, wheel velocity, frame slope], all
+        /// normalised by the car's full scale so a fit means the same thing on a
+        /// 26 Nm formula car and a 12 Nm road car.
+        ///
+        /// Including TORQUE ITSELF is what lets it learn mean reversion, which
+        /// self-aligning torque genuinely has: a loaded wheel tends back toward
+        /// centre, so where the force goes next depends partly on how big it
+        /// already is. A predictor built only on velocity and slope cannot
+        /// express that.
+        ///
+        /// Seeded at [0, 1, 0, 0], which reads as "it will be what it is now".
+        /// That is the correct thing to believe before any evidence, so the
+        /// first predictions are sensible rather than merely harmless.</summary>
+        private static HorizonPredictor NewIRacingPredictor()
+        {
+            return new HorizonPredictor(4, IRacingPredictHorizon, 0.995, 100.0,
+                                        new double[] { 0.0, 1.0, 0.0, 0.0 });
+        }
+
+        // One frame. The replay runs exactly one frame behind by construction.
+        // Worth revisiting only once the transport delay through SimHub has
+        // actually been measured, rather than guessed at.
+        private const int IRacingPredictHorizon = 1;
+        // Below this the fit is too green to act on, and a prediction from two
+        // samples is worse than none. 60 frames is about a second.
+        private const long IRacingRlsMinSamples = 60;
+
+        /// <summary>Latch iRacing's steering torque off SimHub's raw data object,
+        /// once per SimHub tick. Cheap and silent for every other game.</summary>
+        private void IRacingTelemetryTick(GameData data)
+        {
+            // Gated on the GAME, not the force mode: the telemetry overlay below
+            // feeds the texture effects, which run whether or not the reshape is
+            // armed. The force half still checks the mode before it publishes.
+            if (!IsIRacingReshapeGame(_activeGame)) { StopIRacingDirect(); return; }
+
+            // Prefer the sim's own memory. Attempted here rather than on a timer
+            // because DataUpdate is already the "iRacing is running" signal.
+            MaybeStartIRacingDirect();
+
+            // FALLBACK ONLY. While the direct reader is live it owns every latch
+            // below, on its own thread at the sim's cadence. Continuing to also
+            // build them here would re-impose the very hop the reader exists to
+            // remove, and would race two writers onto the same volatile fields.
+            if (_irSdkLive) return;
+            try
+            {
+                var nd = data != null ? data.NewData : null;
+                if (data == null || data.GameRunning != true || nd == null) return;
+                object raw = nd.GetRawDataObject();
+                if (raw == null) return;
+
+                // Session info: car identity and engine truth. Re-parsed only
+                // when iRacing republishes it. Strings are immutable, so a new
+                // session info is always a new object and a reference compare
+                // is both free and exact; the YAML is ~13 KB and parsing it 60
+                // times a second would be pure waste.
+                try
+                {
+                    const System.Reflection.BindingFlags PubI =
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+                    var sdProp = raw.GetType().GetProperty("SessionData", PubI);
+                    object sd = sdProp != null ? sdProp.GetValue(raw, null) : null;
+                    if (sd != null)
+                    {
+                        // Raw is a FIELD on iRacingSDK.SessionData, not a
+                        // property. Looking only for a property silently finds
+                        // nothing and falls back to the SDK's parsed subset,
+                        // which does not carry the engine data at all.
+                        string yaml = sd as string;
+                        if (yaml == null)
+                        {
+                            var rf = sd.GetType().GetField("Raw", PubI);
+                            if (rf != null && rf.FieldType == typeof(string)) yaml = rf.GetValue(sd) as string;
+                            if (yaml == null)
+                            {
+                                var rp = sd.GetType().GetProperty("Raw", PubI);
+                                if (rp != null && rp.PropertyType == typeof(string) && rp.CanRead)
+                                    yaml = rp.GetValue(sd, null) as string;
+                            }
+                        }
+                        if (yaml != null && !ReferenceEquals(yaml, _irLastSessionYaml))
+                        {
+                            _irLastSessionYaml = yaml;
+                            var parsed = ParseIRacingSessionInfo(yaml);
+                            if (parsed != null)
+                            {
+                                _irCarInfo = parsed;
+                                SimHub.Logging.Current.Info(
+                                    "[TF4ALL] iRacing car: " + (parsed.ScreenName ?? "?")
+                                    + " path=" + (parsed.CarPath ?? "?")
+                                    + " cylinders=" + (parsed.Cylinders.HasValue ? parsed.Cylinders.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "?")
+                                    + " redline=" + (parsed.RedlineRpm.HasValue ? parsed.RedlineRpm.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "?")
+                                    + " forwardGears=" + (parsed.ForwardGears.HasValue ? parsed.ForwardGears.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "?"));
+                            }
+                        }
+                    }
+                }
+                catch { /* session info is a bonus, never fatal */ }
+
+                object tel = raw;
+                var telProp = raw.GetType().GetProperty("Telemetry",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (telProp != null && telProp.CanRead && telProp.GetIndexParameters().Length == 0)
+                {
+                    object t = telProp.GetValue(raw, null);
+                    if (t != null) tel = t;
+                }
+
+                var telType = tel.GetType();
+                if (!ReferenceEquals(telType, _irTelTypeCached))
+                {
+                    const System.Reflection.BindingFlags Pub =
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+                    _irPropTorque = telType.GetProperty("SteeringWheelTorque", Pub);
+                    _irPropMaxNm  = telType.GetProperty("SteeringWheelMaxForceNm", Pub);
+                    _irPropFfbOn  = telType.GetProperty("SteeringFFBEnabled", Pub);
+                    _irTelTypeCached = telType;
+                }
+                var dict = tel as IDictionary<string, object>;
+
+                // ---- Overlay first, so it survives a bad force read ----
+                // Everything here is at 360 Hz where iRacing offers it, which is
+                // the difference between road texture you can feel and a 60 Hz
+                // staircase you cannot.
+                double? heave = IRacingSubPeak(dict, "VertAccel_ST");
+                double? sway  = IRacingSubPeak(dict, "LatAccel_ST");
+                double? surge = IRacingSubPeak(dict, "LongAccel_ST");
+
+                // ---- 360 Hz accelerations for the frame ----
+                // Separate derivations from the unsigned peaks above, because
+                // these serve a different purpose. Collision wants the biggest
+                // transient in the frame; the frame fields want the sim's own
+                // signed value at the documented units, since SIGN IS LOAD
+                // BEARING: surge feeds the Mode B load model as
+                // (1 - 0.35 * surge/9.81), so an always-positive surge makes
+                // braking read as acceleration.
+                var vertArr  = IRacingSubArray(dict, "VertAccel_ST");
+                var latArr   = IRacingSubArray(dict, "LatAccel_ST");
+                var longArr  = IRacingSubArray(dict, "LongAccel_ST");
+                double? swayMean  = IRacingSubMean(latArr);
+                double? surgeMean = IRacingSubMean(longArr);
+
+                double? heaveHp = null;
+                if (vertArr != null)
+                {
+                    double vMean = 0.0;
+                    for (int i = 0; i < vertArr.Length; i++) vMean += vertArr[i];
+                    vMean /= vertArr.Length;
+
+                    long nowG = Stopwatch.GetTimestamp();
+                    bool stale = _irGBaseTicks != 0
+                        && (nowG - _irGBaseTicks) * 1000.0 / Stopwatch.Frequency > 250.0;
+                    if (!_irGBaseSeeded || stale)
+                    {
+                        // Seed from the first real reading rather than from 0.
+                        // Starting at zero would emit the whole ~9.8 as bump
+                        // content and peg RoadBumps for seconds on every entry.
+                        _irGBase = vMean;
+                        _irGBaseSeeded = true;
+                    }
+                    _irGBaseTicks = nowG;
+
+                    // Sanity: a plausible specific-force magnitude only. Outside
+                    // this the reading is not gravity and must not become the
+                    // reference.
+                    if (_irGBase < 4.0 || _irGBase > 20.0) _irGBase = 9.81;
+
+                    // FREEZE BAND. Adapt only while the frame looks like steady
+                    // support. A landing, a kerb or a crash is a real signal, and
+                    // letting it drag the reference would quietly cancel exactly
+                    // the events we are trying to feel.
+                    double dev = vMean - _irGBase;
+                    if (dev < 5.0 && dev > -5.0)
+                        _irGBase += (vMean - _irGBase) * 0.02;   // ~0.8 s at 60 Hz
+
+                    // Signed peak of the bump content: the largest excursion in
+                    // the frame, sign preserved. Peak rather than mean because a
+                    // single sharp hit inside a frame is the whole point of
+                    // reading at 360 Hz, and a mean averages it away.
+                    double best = 0.0;
+                    for (int i = 0; i < vertArr.Length; i++)
+                    {
+                        double hp = vertArr[i] - _irGBase;
+                        if (Math.Abs(hp) > Math.Abs(best)) best = hp;
+                    }
+                    heaveHp = best;
+                }
+
+                // Surface texture. iRacing publishes its OWN per-tire road
+                // texture signal, TireXX_RumblePitch, which is a far better
+                // source than inferring coarseness from shock velocity: it is
+                // the sim's own answer rather than our threshold guess.
+                // Mean across the four corners, since a single wheel on a kerb
+                // should not read as the whole car on gravel.
+                double rumbleSum = 0.0; int rumbleN = 0;
+                string[] rumbleKeys = { "TireLF_RumblePitch", "TireRF_RumblePitch",
+                                        "TireLR_RumblePitch", "TireRR_RumblePitch" };
+                for (int i = 0; i < rumbleKeys.Length; i++)
+                {
+                    object rv;
+                    if (!IRacingChannel(tel, dict, null, rumbleKeys[i], out rv)) continue;
+                    try
+                    {
+                        double d = Convert.ToDouble(rv, System.Globalization.CultureInfo.InvariantCulture);
+                        if (double.IsNaN(d) || double.IsInfinity(d) || d <= 0.0) continue;
+                        rumbleSum += d; rumbleN++;
+                    }
+                    catch { }
+                }
+                double? surfaceRumble = null;
+                if (rumbleN > 0)
+                {
+                    // Scale is unconfirmed (it is a "pitch", so plausibly Hz).
+                    // Normalizing against a nominal 100 keeps it inside [0,1]
+                    // until a live capture says otherwise. Tune, do not guess
+                    // twice: this is exactly where the road-bumps regression
+                    // came from.
+                    double r = (rumbleSum / rumbleN) / 100.0;
+                    surfaceRumble = r > 1.0 ? 1.0 : r;
+                }
+
+                // Kerbs. PlayerTrackSurfaceMaterial is the sim's own surface
+                // classification, and your surface tour mapped it: 1 asphalt,
+                // 9 paint at the track edge, 12 rumble strip, 15 grass, 19 dirt.
+                // That matches irsdk_TrkSurf, where rumble strips are 11 to 14.
+                bool? onRumble = null;
+                object oMat;
+                if (IRacingChannel(tel, dict, null, "PlayerTrackSurfaceMaterial", out oMat))
+                {
+                    try
+                    {
+                        int mat = Convert.ToInt32(oMat, System.Globalization.CultureInfo.InvariantCulture);
+                        if (mat >= 0) onRumble = mat >= 11 && mat <= 14;
+                    }
+                    catch { }
+                }
+
+                // Collision. FrameEnricher's accel-spike fallback needs a single
+                // 60 Hz sample over its threshold, which a sub-tick peak will
+                // clear when the 60 Hz average never would.
+                // HORIZONTAL axes only: VertAccel carries gravity (about 9.81 at
+                // rest), so including it would bias every reading upward and let
+                // a hard kerb read as a crash.
+                // CollisionMagnitude is a NORMALIZED scale, not raw m/s^2:
+                // FrameEnricher emits (peak - 49.0) * 0.02 and CollisionEffect
+                // reads it against MinThreshold 0.20 with NormalizationScale 2.0.
+                // Match that exactly. Getting either half wrong is loud:
+                //   - a raw magnitude (26 to 40) clamps every hit to full
+                //     amplitude, so there is no dynamic range at all;
+                //   - a 25 m/s^2 bar is 2.5 g, which a GT3 clears in any fast
+                //     corner, so it fires a collision thud per corner entry;
+                //   - and because this stamp runs BEFORE FrameEnricher, a
+                //     non-null value suppresses the correct derivation.
+                // The sub-tick peak is still worth having: it catches impacts a
+                // 60 Hz sample averages away, which is why collision has been
+                // effectively silent for every SimHub-fallback game.
+                const double CollisionThresholdMps2 = 49.0;   // ~5 g, matches FrameEnricher
+                const double CollisionNormalizePerMps2 = 0.02;
+                double? collision = null;
+                double impact = 0.0;
+                if (sway.HasValue && sway.Value > impact) impact = sway.Value;
+                if (surge.HasValue && surge.Value > impact) impact = surge.Value;
+                if (impact > CollisionThresholdMps2)
+                    collision = (impact - CollisionThresholdMps2) * CollisionNormalizePerMps2;
+
+                // TelemetryFrame.SteeringAngle is NORMALIZED to roughly [-1, 1],
+                // not an angle. iRacing publishes radians, so it has to be
+                // divided by the car's own lock. Stamping raw radians would hand
+                // the stationary spring +/-7.85 on a 900 degree wheel.
+                object oSteer, oSteerMax;
+                double? steerNorm = null;
+                if (IRacingChannel(tel, dict, null, "SteeringWheelAngle", out oSteer)
+                    && IRacingChannel(tel, dict, null, "SteeringWheelAngleMax", out oSteerMax))
+                {
+                    try
+                    {
+                        double sr  = Convert.ToDouble(oSteer, System.Globalization.CultureInfo.InvariantCulture);
+                        double max = Convert.ToDouble(oSteerMax, System.Globalization.CultureInfo.InvariantCulture);
+                        if (!double.IsNaN(sr) && !double.IsInfinity(sr) && max > 0.01)
+                        {
+                            double n = sr / max;
+                            if (n > 1.5) n = 1.5; else if (n < -1.5) n = -1.5;
+                            steerNorm = n;
+                        }
+                    }
+                    catch { }
+                }
+
+                _irOverlay = new IRacingOverlay
+                {
+                    SteerAngleRad = steerNorm,
+                    Heave = heave,
+                    Sway = sway,
+                    Surge = surge,
+                    SurfaceRumble = surfaceRumble,
+                    OnRumbleStrip = onRumble,
+                    CollisionMag = collision,
+                    HeaveHp = heaveHp,
+                    SwayMean = swayMean,
+                    SurgeMean = surgeMean,
+                    YawRateDeg = YawRateDegFrom(IRacingSubArray(dict, "YawRate_ST")),
+                    Ticks = Stopwatch.GetTimestamp(),
+                };
+
+                // Incident points ride the same raw sample. Read BEFORE the
+                // force gate below: the count is dash data and has nothing to
+                // do with whether we are authoring force, so it has to keep
+                // working for someone running iRacing's own FFB.
+                IRacingIncidentsTick(raw, tel, dict);
+
+                // ---- Force half. Only published while the reshape is armed. ----
+                if (_forceMode != ForceModeIRacing) return;
+
+                object oTorque, oMaxNm, oFfbOn;
+                if (!IRacingChannel(tel, dict, _irPropTorque, "SteeringWheelTorque", out oTorque)) return;
+                if (!IRacingChannel(tel, dict, _irPropMaxNm, "SteeringWheelMaxForceNm", out oMaxNm)) return;
+
+                float latest, maxNm;
+                try
+                {
+                    latest = Convert.ToSingle(oTorque, System.Globalization.CultureInfo.InvariantCulture);
+                    maxNm  = Convert.ToSingle(oMaxNm, System.Globalization.CultureInfo.InvariantCulture);
+                }
+                catch { return; }
+                // A zero or negative full-scale would divide the force to
+                // nonsense. Bail rather than guess a wheel rating.
+                if (!(maxNm > 0.01f) || float.IsNaN(latest) || float.IsInfinity(latest)) return;
+
+                // Not a typed property on the shipped SDK, so this MUST go
+                // through the dictionary fallback. Defaulting it to false on a
+                // failed read would silently disable conflict detection.
+                // Same full-scale watch on the SimHub fallback route, so the
+                // question gets answered whichever path happens to be live.
+                object oPeak; double peakNmS = -1.0;
+                if (IRacingChannel(tel, dict, null, "SteeringWheelPeakForceNm", out oPeak))
+                {
+                    try { peakNmS = Convert.ToDouble(oPeak, System.Globalization.CultureInfo.InvariantCulture); }
+                    catch { peakNmS = -1.0; }
+                }
+                MaybeLogIRacingFullScale(maxNm, peakNmS);
+
+                bool ffbOn = false;
+                if (IRacingChannel(tel, dict, _irPropFfbOn, "SteeringFFBEnabled", out oFfbOn))
+                {
+                    try { ffbOn = Convert.ToBoolean(oFfbOn); }
+                    catch { ffbOn = false; }
+                }
+
+                // The 360 Hz array is dictionary-only: it is not among the
+                // generated typed properties. Absent is survivable, we just run
+                // on the 60 Hz scalar instead.
+                float[] sub = null;
+                if (dict != null)
+                {
+                    object stVal;
+                    if (dict.TryGetValue("SteeringWheelTorque_ST", out stVal))
+                    {
+                        var stArr = stVal as float[];
+                        if (stArr != null && stArr.Length >= IRacingSubSamples)
+                        {
+                            sub = new float[IRacingSubSamples];
+                            bool ok = true;
+                            for (int i = 0; i < IRacingSubSamples; i++)
+                            {
+                                float v = stArr[i];
+                                if (float.IsNaN(v) || float.IsInfinity(v)) { ok = false; break; }
+                                sub[i] = v;
+                            }
+                            if (!ok) sub = null;
+                        }
+                    }
+                }
+
+                var prev = _irFrame;
+                _irFrame = new IRacingTorqueFrame
+                {
+                    Sub = sub,
+                    Latest = latest,
+                    MaxNm = maxNm,
+                    GameFfbOn = ffbOn,
+                    Ticks = Stopwatch.GetTimestamp(),
+                };
+
+                // One line on the first good frame, then only when the sim's own
+                // FFB flips. Enough to tell "never latched" from "latched but
+                // suppressed" without tailing a log at 60 Hz.
+                if (prev == null || prev.GameFfbOn != ffbOn)
+                {
+                    var dsrc = _telemetrySource;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] iRacing FFB: torque=" + latest.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                        + "Nm maxForce=" + maxNm.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                        + "Nm subTick=" + (sub != null ? "yes(360Hz)" : "no(60Hz only)")
+                        + " simFfbOn=" + ffbOn
+                        + " sessionActive=" + (dsrc != null ? dsrc.IsSessionActive.ToString() : "n/a")
+                        + " measuredHz=" + (dsrc != null ? dsrc.MeasuredHz.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) : "n/a")
+                        + (ffbOn ? " -> SUPPRESSED, turn iRacing's own force feedback off" : " -> authoring force"));
+                }
+            }
+            catch
+            {
+                // Never throw into SimHub's data pump. A failed read just leaves
+                // the previous frame to go stale, which ramps the force down.
+            }
+        }
+
+        /// <summary>Stamp iRacing's richer channels onto a frame SimHub's generic
+        /// reader built. Only fills what the source left NULL, so it can never
+        /// fight a value SimHub did provide. No-op for every other game.</summary>
+        private void ApplyIRacingOverlay(ref TelemetryFrame frame)
+        {
+            var o = _irOverlay;
+            if (o == null) return;
+            // Same staleness rule as the force path: a frozen overlay would keep
+            // a stale kerb or impact alive after the sim stopped publishing.
+            if ((Stopwatch.GetTimestamp() - o.Ticks) * 1000.0 / Stopwatch.Frequency > 250.0) return;
+
+            if (!frame.SteeringAngle.HasValue && o.SteerAngleRad.HasValue)
+                frame.SteeringAngle = o.SteerAngleRad;
+
+            // Car truth from the session info. iRacing publishes all of this, so
+            // for this game none of it needs a car database, a community
+            // consensus or a user entry.
+            var ci = _irCarInfo;
+            if (ci != null)
+            {
+                // Forward gear count. Lets the redline buzz stay quiet in top
+                // gear, where it is a shift cue with nothing to shift into.
+                if (!frame.ForwardGearCount.HasValue && ci.ForwardGears.HasValue)
+                    frame.ForwardGearCount = ci.ForwardGears;
+                // The sim's own redline beats our 0.85 x MaxRpm guess outright.
+                if (frame.RedlineRpm <= 0 && ci.RedlineRpm.HasValue)
+                    frame.RedlineRpm = ci.RedlineRpm.Value;
+                if (!frame.NumCylinders.HasValue && ci.Cylinders.HasValue && ci.Cylinders.Value > 0)
+                    frame.NumCylinders = ci.Cylinders.Value;
+            }
+
+            // 360 Hz accelerations, now that both hazards that broke the first
+            // attempt are handled rather than assumed away:
+            //   1. UNITS are settled. Measured on the wheel, SimHub's sway and
+            //      the SDK's LatAccel are identical to five figures, so both are
+            //      m/s^2 and no conversion belongs here. The earlier worry that
+            //      SimHub reported G was simply wrong.
+            //   2. GRAVITY is removed by the tracked reference, not a constant.
+            //      SimHub already delivers heave gravity-free (its value equals
+            //      SDK VertAccel minus 9.81), so these are interchangeable and
+            //      nothing downstream needs retuning.
+            // What this buys: a bump that lives entirely inside one 60 Hz frame
+            // now reaches the wheel instead of being averaged out of existence.
+            if (o.HeaveHp.HasValue)   frame.AccelerationHeave = o.HeaveHp;
+            if (o.SwayMean.HasValue)  frame.AccelerationSway  = o.SwayMean;
+            if (o.SurgeMean.HasValue) frame.AccelerationSurge = o.SurgeMean;
+            if (o.YawRateDeg.HasValue) frame.YawRateDegPerSec = o.YawRateDeg;
+
+            if (!frame.SurfaceRumble.HasValue && o.SurfaceRumble.HasValue)
+                frame.SurfaceRumble = o.SurfaceRumble;
+
+            // Revives KerbThumpEffect: EventDeriver only raises RumbleStripStart
+            // when this has a value, and SimHub's reader never sets it.
+            if (!frame.OnRumbleStrip.HasValue && o.OnRumbleStrip.HasValue)
+                frame.OnRumbleStrip = o.OnRumbleStrip;
+
+            if (!frame.CollisionMagnitude.HasValue && o.CollisionMag.HasValue)
+                frame.CollisionMagnitude = o.CollisionMag;
+        }
+
+        /// <summary>Compose the iRacing reshape force. Returns null when there is
+        /// nothing to author (no frame yet, telemetry stale, or the sim's own FFB
+        /// is on), which leaves the wheel free rather than holding a stale pull.
+        /// </summary>
+        private short? ComputeIRacingForce()
+        {
+            var f = _irFrame;
+            if (f == null) return null;
+
+            long now = Stopwatch.GetTimestamp();
+            double ageMs = (now - f.Ticks) * 1000.0 / Stopwatch.Frequency;
+
+            // The sim is driving the wheel itself. Two writers on one wheel is
+            // the worst first impression this feature can make, so refuse rather
+            // than fight. Authoritative, unlike the tap-based heuristic the Forza
+            // watchdog has to use.
+            if (f.GameFfbOn)
+            {
+                _irRamp = 0f; _irPrevTicks = 0;
+                _irRingPrimed = false;
+                return null;
+            }
+
+            // Follow the car. Read once here rather than reacting to a car-change
+            // event, so this stays entirely on the FFB thread: a string reference
+            // read is atomic, and a swap arriving a millisecond late is harmless.
+            string irCar = _activeCarId;
+            if (!string.Equals(irCar, _irRlsCarId, StringComparison.Ordinal))
+            {
+                _irRlsCarId = irCar;
+                _irRingPrimed = false;
+                HorizonPredictor forCar;
+                if (string.IsNullOrEmpty(irCar))
+                {
+                    forCar = NewIRacingPredictor();
+                }
+                else if (!_irRlsByCar.TryGetValue(irCar, out forCar) || forCar == null)
+                {
+                    // Bounded so a long multi-class session cannot grow this
+                    // without limit. Clearing wholesale rather than evicting one
+                    // entry is fine: it costs a second of re-learning, once.
+                    if (_irRlsByCar.Count >= IRacingRlsMaxCars) _irRlsByCar.Clear();
+                    forCar = NewIRacingPredictor();
+                    _irRlsByCar[irCar] = forCar;
+                }
+                _irRls = forCar;
+            }
+
+            // Telemetry stopped (pause, menu, replay, sim closed). Decay instead
+            // of holding: the wheel latches the last cur once the stream stops,
+            // so a held value is a held pull on a parked car.
+            if (ageMs > 250.0)
+            {
+                _irRamp = 0f; _irPrevTicks = 0;
+                // Drop the TIMING state, which is now meaningless, but keep the
+                // FIT: a gap means paused, in the pits or in the garage, and the
+                // car's steering physics did not change while you sat there.
+                // Only a car change invalidates the fit, and that is handled by
+                // swapping fits rather than by wiping one.
+                _irRingPrimed = false;
+                return null;
+            }
+
+            // Play the 360 Hz sub-tick samples out across the frame they cover,
+            // linearly interpolated onto whatever instant this 1 kHz pass lands
+            // on. That is what turns a 60 Hz staircase into something the wheel
+            // can render smoothly. With no array, or with the user on the 60 Hz
+            // feed, we simply hold the per-frame scalar.
+            // LATENCY IS THE ENEMY HERE, not resolution. Unlike Mode B, this
+            // path is a CLOSED LOOP through the sim: wheel position is an input
+            // to iRacing, iRacing solves steering torque from it, we render that
+            // torque, the wheel moves, and round it goes. Add enough phase lag
+            // to a loop with this much gain and it does not just feel soft, it
+            // oscillates and the swings grow.
+            //
+            // The sub-tick array is the six physics steps of the frame that just
+            // happened, so [5] is the CURRENT state and equals the scalar
+            // exactly (verified on the wheel). Playing [0] through [5] out over
+            // the NEXT frame therefore starts a full frame behind and never
+            // catches up: about 16.7 ms of pure delay bought nothing but
+            // smoothing. Default is now the newest value, zero added lag.
+            //
+            // The interpolation is kept behind the toggle for anyone who wants
+            // the smoother feel and can afford the delay, but it is off by
+            // default and labelled as what it costs.
+            var irCfg = Settings;
+            bool use360 = irCfg != null && irCfg.IRacingUse360Hz;
+            bool replayMode = irCfg != null && irCfg.IRacingForceMode == 1;
+            float torque;
+            if (f.Sub != null && use360 && replayMode)
+            {
+                // ---- REPLAY ----
+                // Play the six sub-samples out in order, through a Hermite
+                // curve, at the rate the sim produced them. Every sample is
+                // rendered at its correct relative moment and each event stays
+                // WHOLE, which is the advantage over splitting the signal: a
+                // kerb strike arrives as one strike rather than as a slow part
+                // now and a sharp part later.
+                //
+                // The cost is that a replay is behind by construction. That is
+                // paid for below with a predictor driven by the WHEEL's own
+                // velocity, which is read locally from HID and carries no
+                // telemetry delay at all. Predicting a laggy signal from a
+                // fresh one beats extrapolating it from itself.
+                const double FrameMs = 1000.0 / 60.0;
+
+                if (f.Ticks != _irRingFrameTicks)
+                {
+                    // New frame: the two newest samples age into the head of the
+                    // ring so the first of the incoming six has curve context.
+                    if (_irRingPrimed)
+                    {
+                        _irRing[0] = _irRing[6];
+                        _irRing[1] = _irRing[7];
+                    }
+                    else
+                    {
+                        _irRing[0] = f.Sub[0];
+                        _irRing[1] = f.Sub[0];
+                        _irRingPrimed = true;
+                    }
+                    for (int i = 0; i < IRacingSubSamples; i++) _irRing[2 + i] = f.Sub[i];
+                    _irRingFrameTicks = f.Ticks;
+
+                    // ---- Learn and predict, once per frame ----
+                    // Step does both halves: the entry queued a horizon ago is
+                    // now checkable against the value that just arrived, and the
+                    // current inputs go in to be judged later. Queuing is the
+                    // whole point, because at the moment a prediction is made the
+                    // truth it should be judged against has not happened yet.
+                    double yNorm = f.Sub[IRacingSubSamples - 1] / f.MaxNm;
+                    _irRlsX[0] = 1.0;
+                    _irRlsX[1] = yNorm;
+                    _irRlsX[2] = _mbDamperVelLp;
+                    _irRlsX[3] = (f.Sub[IRacingSubSamples - 1] - f.Sub[0]) / f.MaxNm;
+
+                    double predNorm = _irRls.Step(_irRlsX, yNorm);
+                    // The correction is how far ahead of NOW the prediction sits,
+                    // not the prediction itself: the replay already renders the
+                    // measured values, and this only supplies what they are
+                    // missing by being a frame old.
+                    _irPredCorrection = (_irRls.Samples >= IRacingRlsMinSamples)
+                        ? (predNorm - yNorm) : 0.0;
+                }
+
+                // Advance through the new samples at the sim's own 360 Hz.
+                double pos = 2.0 + (ageMs / FrameMs) * (IRacingSubSamples - 1);
+                if (pos < 1.0) pos = 1.0;
+                else if (pos > 6.0) pos = 6.0;   // leave room for the +1 neighbour
+                int k = (int)pos;
+                if (k < 1) k = 1; else if (k > 6) k = 6;
+                double t = pos - k;
+
+                double hm0 = _irRing[k - 1], hm1 = _irRing[k], hm2 = _irRing[k + 1];
+                double hm3 = (k + 2 <= 7) ? _irRing[k + 2] : _irRing[k + 1];
+                // Catmull-Rom form of Hermite: tangents from the neighbours, so
+                // the curve passes through every sample instead of smoothing it
+                // away, which is the whole point of rendering the detail.
+                double t2 = t * t, t3 = t2 * t;
+                double replayed =
+                    0.5 * ((2.0 * hm1)
+                         + (-hm0 + hm2) * t
+                         + (2.0 * hm0 - 5.0 * hm1 + 4.0 * hm2 - hm3) * t2
+                         + (-hm0 + 3.0 * hm1 - 3.0 * hm2 + hm3) * t3);
+
+                // LEARNED lag cancellation. The replay is a constant one frame
+                // behind, so the correction is one frame's worth of predicted
+                // movement: exactly what the fit above was trained to produce.
+                //
+                // Defaults to 1.0: use what the predictor worked out. It stays
+                // adjustable as an escape hatch for anyone who dislikes the feel
+                // of prediction, NOT as a number to hunt for. Needing to change
+                // it per car would mean the learning had failed.
+                double predBlend = irCfg != null ? irCfg.IRacingPredictGain : 0.0;
+                if (predBlend > 0.0 && _irPredCorrection != 0.0)
+                {
+                    double lead = _irPredCorrection * predBlend * f.MaxNm;
+                    // Final clamp. Even a fit that has gone wrong cannot put a
+                    // large force on the wheel, which is the third of the three
+                    // defences described on RlsPredictor.
+                    double cap = f.MaxNm * 0.15;
+                    if (lead > cap) lead = cap; else if (lead < -cap) lead = -cap;
+                    replayed += lead;
+                }
+
+                torque = (float)replayed;
+            }
+            else if (f.Sub != null && use360)
+            {
+                // Use the sub-tick data as SLOPE, not as a replay.
+                //
+                // The six samples describe the frame that just ended, so [5] is
+                // "now" and [0] is 16.7 ms ago. Playing them forward from [0] is
+                // the one use of them that guarantees a frame of lag, which in a
+                // loop that closes through the sim is what makes the wheel
+                // oscillate. But the same six samples also say which way torque
+                // is MOVING, and extrapolating along that is phase LEAD, which
+                // is what settles a laggy loop rather than upsetting it.
+                //
+                // So: start at the newest value (zero lag) and project forward
+                // by however long it has been since the frame landed.
+                const double FrameMs = 1000.0 / 60.0;
+
+                // Slope by LEAST SQUARES over all six samples, not a difference
+                // between two of them. A two-point difference is the noisiest
+                // slope estimate available, and this term is multiplied by time
+                // and added to the force, so its noise lands straight on the
+                // wheel. The regression uses every sample and is far steadier
+                // for the same responsiveness.
+                //
+                // Samples are evenly spaced across the frame, so with indices
+                // 0..5 the mean index is 2.5 and sum((i-2.5)^2) is 17.5, both
+                // constants. That reduces the fit to one pass and no division
+                // beyond the fixed denominator.
+                double sxy = 0.0;
+                for (int i = 0; i < IRacingSubSamples; i++)
+                    sxy += (i - 2.5) * f.Sub[i];
+                double slopePerIndex = sxy / 17.5;
+                double stepMs = FrameMs / (IRacingSubSamples - 1);
+                double slopePerMs = slopePerIndex / stepMs;
+
+                // Never project further than one frame. Past that the next frame
+                // is overdue and extrapolation is guessing, so it holds instead.
+                double leadMs = ageMs;
+                if (leadMs < 0.0) leadMs = 0.0;
+                else if (leadMs > FrameMs) leadMs = FrameMs;
+
+                double projected = f.Sub[IRacingSubSamples - 1] + slopePerMs * leadMs;
+
+                // Clamp how far the projection may stray from the measured
+                // value. Extrapolation amplifies noise, and an unbounded lead
+                // term is its own instability; a bounded one is a stabiliser.
+                // The bound is a fraction of the car's full scale, so it means
+                // the same thing on a 26 Nm formula car and a 12 Nm road car.
+                double maxDev = f.MaxNm * 0.15;
+                double baseNm = f.Sub[IRacingSubSamples - 1];
+                if (projected > baseNm + maxDev) projected = baseNm + maxDev;
+                else if (projected < baseNm - maxDev) projected = baseNm - maxDev;
+
+                // RESIDUAL INJECTION: the actual mid-frame shape, not just its
+                // slope. Everything above uses the six samples only through one
+                // number, so a spike at sample 2 that is gone by sample 5 gets
+                // averaged out of existence and never reaches the wheel.
+                //
+                // The fix falls out of the fit already computed. Subtract the
+                // fitted line from each sample and what is left is the detail
+                // the line could not describe. Those residuals are ZERO-MEAN by
+                // construction, so replaying them carries no DC: it cannot
+                // shift the force, cannot close the loop, and therefore cannot
+                // drive the oscillation. Only the line had to be current.
+                //
+                // So the line is rendered with LEAD (current, loop-critical)
+                // and the residuals are replayed with a frame of DELAY (texture,
+                // phase-insensitive). A kerb 16 ms late is imperceptible; a
+                // centering force 16 ms late is what made the wheel walk.
+                double mean = 0.0;
+                for (int i = 0; i < IRacingSubSamples; i++) mean += f.Sub[i];
+                mean /= IRacingSubSamples;
+
+                double playPos = (leadMs / FrameMs) * (IRacingSubSamples - 1);
+                if (playPos < 0.0) playPos = 0.0;
+                else if (playPos > IRacingSubSamples - 1) playPos = IRacingSubSamples - 1;
+                int pi = (int)playPos;
+                if (pi > IRacingSubSamples - 2) pi = IRacingSubSamples - 2;
+                double pf = playPos - pi;
+
+                double r0 = f.Sub[pi]     - (mean + slopePerIndex * (pi     - 2.5));
+                double r1 = f.Sub[pi + 1] - (mean + slopePerIndex * (pi + 1 - 2.5));
+                double residual = r0 + (r1 - r0) * pf;
+
+                // Bounded like the lead, for the same reason: a bad frame must
+                // not be able to throw the wheel.
+                if (residual > maxDev) residual = maxDev;
+                else if (residual < -maxDev) residual = -maxDev;
+
+                torque = (float)(projected + residual);
+            }
+            else
+            {
+                // Newest value, zero added lag. f.Latest is the per-frame scalar,
+                // which the wheel confirmed equals Sub[5] exactly.
+                torque = f.Latest;
+            }
+
+            // Full scale: the user's own figure when they gave one, otherwise the
+            // sim's. iRacing's max-force setting IS this number and the driver
+            // already tuned it, so inheriting it beats asking twice. But it lives
+            // in a menu belonging to a force-feedback system they have just been
+            // told to switch off, which makes it an invisible dependency, so the
+            // override exists for anyone who would rather say it here.
+            // The divisor, and therefore everything about how cars relate to each
+            // other. Order: this car's own value if we keep them per car, then
+            // the shared value, then iRacing's own figure as the fallback so a
+            // driver who has set nothing still gets something sane.
+            double fullScaleNm = f.MaxNm;
+            var irScale = Settings;
+            if (irScale != null)
+            {
+                float perCar;
+                if (irScale.IRacingMaxForcePerCar
+                    && irScale.IRacingMaxForceByCar != null
+                    && !string.IsNullOrEmpty(_activeCarId)
+                    && irScale.IRacingMaxForceByCar.TryGetValue(_activeCarId, out perCar)
+                    && perCar > 0.5f)
+                {
+                    fullScaleNm = perCar;
+                }
+                else if (irScale.IRacingMaxForceNmOverride > 0.5f)
+                {
+                    fullScaleNm = irScale.IRacingMaxForceNmOverride;
+                }
+            }
+            if (!(fullScaleNm > 0.01)) return null;
+            double f01 = torque / fullScaleNm;
+
+            // Strength. Its OWN field, not ModeBSatGain: that one is a
+            // peak-torque fraction for the synthesis model and defaults to 0.50,
+            // which would deliver half the torque iRacing asked for before
+            // FfbScale even applies. Default here is 1.0, meaning "exactly what
+            // the sim asked for".
+            double gain = irCfg != null ? irCfg.IRacingForceGain : 1.0;
+            if (gain < 0.0) gain = 0.0; else if (gain > 3.0) gain = 3.0;
+            f01 *= gain;
+
+            if (f01 > 1.0) f01 = 1.0; else if (f01 < -1.0) f01 = -1.0;
+
+            // Engage ramp, same contract as the synthesis path: fade in over
+            // ~300 ms so arming never steps the wheel to full torque.
+            double dtMs = _irPrevTicks == 0 ? 1.0 : (now - _irPrevTicks) * 1000.0 / Stopwatch.Frequency;
+            if (dtMs < 0.05) dtMs = 0.05; else if (dtMs > 50.0) dtMs = 50.0;
+            _irPrevTicks = now;
+            if (_irRamp < 1f)
+            {
+                _irRamp += (float)(dtMs / 300.0);
+                if (_irRamp > 1f) _irRamp = 1f;
+            }
+
+            // Author the FINAL sign here rather than borrowing the device's
+            // tapped-path inversion. Same result on the wheel, but the sign now
+            // lives in the path that owns it: a user cannot break iRacing by
+            // flipping a toggle that exists to reconcile a capture we do not do,
+            // and nobody has to know that this number gets negated later.
+            double v = -f01 * _irRamp * 32767.0;
+            if (v > short.MaxValue) v = short.MaxValue;
+            else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
         private short? MaybeReshapeFfb(short? target)
         {
-            bool springMode = _forceModeB == 2;
-            bool modeB = _forceModeB != 0;
+            bool springMode = _forceMode == ForceModeSpring;
+            bool reshapeMode = _forceMode == ForceModeIRacing;
+            bool modeB = _forceMode != ForceModeOff;
             if (springMode)
             {
                 // Spring mode: the force IS the game's own spring, evaluated
@@ -7228,12 +9156,37 @@ namespace TrueforceForAll.Plugin
                 // active to catch residual wheel motion.
                 target = ComputeSpringModeForce();
             }
+            else if (reshapeMode)
+            {
+                // iRacing: the target is the sim's OWN steering torque, not a
+                // synthesis. The stability stages below still apply, since they
+                // are wheel-side conditioning rather than model conditioning.
+                target = ComputeIRacingForce();
+            }
             else if (modeB)
             {
                 // Mode B: the game-derived target is REPLACED by synthesis.
                 // Centering and the damper below still apply; they're
                 // wheel-side stability, not game-force conditioning.
-                target = ComputeModeBForce();
+                var synth = ComputeModeBForce();
+                if (!synth.HasValue)
+                {
+                    // Slip-starved (never fed, or dead past the dwell): the
+                    // synthesizer has nothing to work with, so replacing the
+                    // target would mute the wheel entirely (the 2026-08-13
+                    // RS50/FH6 report: Forza's Data Out pointed at SimHub's
+                    // port, slip never arrives, the game's real FFB was
+                    // discarded, wheel totally dead). Pass the tapped game
+                    // force through instead, exactly like Mode B off, and
+                    // tell the user how to feed the plugin. The stability
+                    // tail is skipped: its terms are ramp-gated to zero in
+                    // this state anyway, and they belong to synthesis, not
+                    // to the game's own force.
+                    NoteModeBSlipStarved();
+                    return target;
+                }
+                NoteModeBSlipRecovered();
+                target = synth;
             }
             else
             {
@@ -7288,8 +9241,16 @@ namespace TrueforceForAll.Plugin
             // and drops the centering fight entirely: the game's spring IS
             // the centering, adding ours would double-center. The damper
             // stays; it is the anti-ring half of rendering a spring.
-            float ramp = springMode ? _springRamp : _mbRamp;
-            float centerGain = springMode ? 0f
+            // Each mode owns its own engage ramp: _mbRamp is slip-sample-driven
+            // and neither a spring game nor iRacing ever feeds it.
+            float ramp = springMode ? _springRamp
+                       : reshapeMode ? _irRamp
+                       : _mbRamp;
+            // Centering is dropped for both non-synthesis modes, for the same
+            // reason: the force already carries its own centering (the game's
+            // spring, or iRacing's solved self-aligning torque), so adding ours
+            // would double-center and fight the driver.
+            float centerGain = (springMode || reshapeMode) ? 0f
                 : _pModeBCenterGain * _mbRamp
                 * (float)Math.Min(_lastSpeedKmh / Math.Max(1.0, _satModel.SpeedFullKmh), 1.0);
             // Velocity damper gain, computed early because the physical-state
@@ -7464,13 +9425,13 @@ namespace TrueforceForAll.Plugin
             {
                 case "MODEB":
                     bool modeBOn = value >= 0.5f;
-                    if (modeBOn && _forceModeB == 0)
+                    if (modeBOn && _forceMode == ForceModeOff)
                         SeedModeBEngageState();   // clean engage: ramp from zero, EMAs from live state
-                    _forceModeB = modeBOn ? 1 : 0;
+                    _forceMode = modeBOn ? ForceModeModeB : ForceModeOff;
                     // Persist as the active game's per-game opt-in so the tab
                     // toggle and this dev override stay consistent (when a
                     // supported game is active). Off unsupported games / menus
-                    // this is a raw _forceModeB override only.
+                    // this is a raw _forceMode override only.
                     if (Settings != null && !string.IsNullOrEmpty(_activeGame)
                         && IsModeBCapableGame(_activeGame))
                     {
@@ -7656,6 +9617,108 @@ namespace TrueforceForAll.Plugin
         /// gate-off path, so callers must invoke this explicitly.</summary>
         public void TurnOffRpmLeds() => _rpmLeds?.ForceOff();
 
+        /// <summary>The wheel's pattern selection as last read or written
+        /// (0 = not seen yet). What both settings pickers display.</summary>
+        public int GetWheelPatternSelection() => _rpmLeds?.KnownSelection ?? 0;
+
+        /// <summary>Called by the settings pickers when they render with no
+        /// known selection: open the LED channel in the background so the
+        /// wheel's actual selection gets read (resolve seeds it via fn2) and
+        /// the combo fills in, instead of sitting blank until a game or the
+        /// Test button happens to open the channel. The probe writes HID++
+        /// queries, so it obeys the same pipe-safety rule as every other
+        /// one-shot: never while a game's own force feedback is live.</summary>
+        public void EnsureWheelPatternRead()
+        {
+            if (_rpmLeds == null || _rpmLeds.KnownSelection > 0) return;
+            if (!NoTelemetryArriving() && !_ffbQuietNow) return;
+            _rpmLeds.OpenInBackground();
+        }
+
+        /// <summary>The active car's remembered pattern, or null when the
+        /// car has none (or no car is active).</summary>
+        public int? GetCarRememberedPattern()
+        {
+            var s = Settings;
+            if (s?.CarRevLightEffect == null) return null;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return null;
+            return s.CarRevLightEffect.TryGetValue(_activeGame + "/" + _activeCarId, out int v) && v > 0
+                ? v : (int?)null;
+        }
+
+        /// <summary>Remember a pattern for the active car: re-applied
+        /// whenever this car loads. Optional automation only; the pick is
+        /// already on the wheel. False when no car is active.</summary>
+        public bool RememberPatternForActiveCar(int effect)
+        {
+            if (effect < 1 || effect > 9) return false;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            var s = Settings;
+            if (s == null) return false;
+            if (s.CarRevLightEffect == null)
+                s.CarRevLightEffect = new Dictionary<string, int>();
+            s.CarRevLightEffect[_activeGame + "/" + _activeCarId] = effect;
+            try { PersistSettingsCore(); } catch { }
+            return true;
+        }
+
+        /// <summary>Forget the active car's remembered pattern. The wheel's
+        /// CURRENT selection is deliberately untouched: removing automation
+        /// must not yank the lights.</summary>
+        public bool ForgetPatternForActiveCar()
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            var s = Settings;
+            if (s?.CarRevLightEffect == null) return false;
+            if (!s.CarRevLightEffect.Remove(_activeGame + "/" + _activeCarId)) return false;
+            try { PersistSettingsCore(); } catch { }
+            return true;
+        }
+
+        /// <summary>The dropdown action: set the wheel's pattern selection,
+        /// exactly like using the base's own menu. Applies IMMEDIATELY, even
+        /// while a game sends its own force feedback: a person clicking this
+        /// dialog is not also mid-corner, so the momentary force interruption
+        /// a switch causes there is one they chose, and gating it made a
+        /// parked pattern change in a native-FFB game impossible. The
+        /// AUTOMATED car-load apply keeps its safety gate, because that one
+        /// really can fire mid-drive. Lands on a background task (a cold
+        /// channel open can take seconds). Whether the firmware keeps the
+        /// selection across a power cycle is untested; the base's own menu
+        /// shows it either way.</summary>
+        public void PickRevLightPattern(int effect)
+        {
+            if (_rpmLeds == null || effect < 1 || effect > 9) return;
+            _rpmLeds.StagePattern(effect);   // arm applies it even if the live write loses
+            Task.Run(() =>
+            {
+                try
+                {
+                    if (!_rpmLeds.SelectPatternNow(effect))
+                        SimHub.Logging.Current.Info(
+                            "[RPM-LED] could not set the wheel selection (see log)");
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Error("[TF4ALL] pattern pick error", ex);
+                }
+            });
+        }
+
+        /// <summary>One-cycle rev sweep so a pattern pick is visible the
+        /// moment it is made. Skipped only while the lights are actively
+        /// running, since the live bar is already rendering the new pattern.
+        /// User-initiated like the pick itself, so it is NOT gated on the
+        /// game's force feedback: the person clicking is parked or out of
+        /// the car, and the old gate made parked pattern browsing in a
+        /// native-FFB game impossible.</summary>
+        public void PreviewRevLightPattern()
+        {
+            if (_rpmLeds == null) return;
+            if (_rpmLeds.IsDriving) return;
+            _rpmLeds.PreviewPattern();
+        }
+
         public string RpmLedStatus => _rpmLeds?.Status ?? "(n/a)";
         public bool RpmLedIsTesting => _rpmLeds?.IsTesting ?? false;
 
@@ -7693,6 +9756,15 @@ namespace TrueforceForAll.Plugin
         /// all, so its owners should never be offered the settings for one.
         /// False with no wheel detected: there is nothing to configure.</summary>
         public bool WheelHasOledScreen =>
+            _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268 || _hidWheelPid == 0xC276;
+
+        /// <summary>True on the wheels whose rev-light pattern is selectable
+        /// (built-in sweeps + custom LIGHTSYNC slots): the G PRO and RS50.
+        /// A G923's strip lights a fixed look, so offering it a pattern
+        /// picker would read as a feature its owner is missing. Same PID set
+        /// as the screen today, but a separate property because the two are
+        /// different capabilities that happen to coincide.</summary>
+        public bool WheelHasSelectableLightPattern =>
             _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268 || _hidWheelPid == 0xC276;
 
         public string OledStatus => _oledDash?.Status ?? "(n/a)";
@@ -8142,12 +10214,6 @@ namespace TrueforceForAll.Plugin
         public bool IsGameRunning  => !string.IsNullOrEmpty(_currentGameName);
         public bool IsForzaRunning => IsForzaGameName(_currentGameName);
 
-        /// <summary>True when the rim rev-LED + MAIRA section should be
-        /// visible. iRacing-only: that is the sole game where the LEDs
-        /// (and the MAIRA passthrough that makes them safe) apply.</summary>
-        public bool ShouldShowRpmLedSection =>
-            string.Equals(_activeGame, "IRacing", StringComparison.Ordinal);
-
         /// <summary>True when the active game's telemetry includes ABS
         /// pump activity. Forza's Data Out wire format (FH4/FH5/FH6) does
         /// not surface this, and neither does SimHub's universal reader
@@ -8279,6 +10345,30 @@ namespace TrueforceForAll.Plugin
                 || game == "FH4"
                 || game == "FH5"
                 || game == "FH6";
+        }
+
+        /// <summary>True for games whose Telemetry Based FFB is a RESHAPE of the
+        /// sim's own steering torque rather than a synthesis from slip.
+        /// iRacing only, and deliberately NOT in IsModeBCapableGame: that list
+        /// arms the SAT model, which needs per-tire slip angle and combined
+        /// slip. iRacing publishes neither (verified 2026-08-10: none of its
+        /// 333 telemetry channels carry tire slip or load), so the SAT path
+        /// would compute a zero direction and render nothing. What it DOES
+        /// publish is SteeringWheelTorque in Nm, already solved by its own
+        /// physics, plus a 360 Hz sub-tick array of the same. Reshaping that is
+        /// strictly better than guessing at a model.</summary>
+        private static bool IsIRacingReshapeGame(string game)
+        {
+            return string.Equals(game, "IRacing", StringComparison.Ordinal);
+        }
+
+        /// <summary>True if a game offers Telemetry Based FFB by ANY pipeline.
+        /// The per-game opt-in, the tab toggle and the arming logic all key off
+        /// this; which pipeline actually runs is decided in
+        /// ApplyModeBFromSettings.</summary>
+        private static bool IsTelemetryFfbCapableGame(string game)
+        {
+            return IsModeBCapableGame(game) || IsIRacingReshapeGame(game);
         }
 
         /// <summary>Pick the right ITelemetrySource for <paramref name="game"/>
@@ -12795,9 +14885,27 @@ namespace TrueforceForAll.Plugin
                 && bundle != null
                 && !string.IsNullOrWhiteSpace(bundle.CarName))
                 return bundle.CarName.Trim();
+            // The SIM's own official name, when the sim tells us. iRacing
+            // publishes CarScreenName in its session info, so its cars should
+            // never show blank and should never need the user to type a name
+            // the game already knows. Below a stored fact on purpose: an
+            // explicit user or community name is a deliberate correction and
+            // outranks even the game.
+            if (string.Equals(game, _activeGame, StringComparison.Ordinal)
+                && string.Equals(carId, _activeCarId, StringComparison.Ordinal))
+            {
+                string simName = ActiveSimCarName;
+                if (!string.IsNullOrWhiteSpace(simName)) return simName.Trim();
+            }
             if (BuiltinCarCylinders.TryGetDisplayName(game, carId, out var catalogName)
                 && !string.IsNullOrWhiteSpace(catalogName))
                 return catalogName.Trim();
+            // Shipped seed. Carries names for games the baked catalog does not
+            // cover (iRacing today), and unlike the sim name it is available
+            // with the game closed, which is when tuning usually happens.
+            if (CarCylinderResolver.TryResolve(game, carId, out var seedSpec)
+                && !string.IsNullOrWhiteSpace(seedSpec?.DisplayName))
+                return seedSpec.DisplayName.Trim();
             // AC only, and last: the name AC's own car picker shows, read out
             // of the car's ui_car.json. The baked table carries no AC display
             // names (the folder ids were assumed descriptive, which holds for
@@ -23989,15 +26097,12 @@ namespace TrueforceForAll.Plugin
         {
             // _fsPipeSource is deliberately NOT disposed here: this method
             // runs on every wheel recovery cycle, and the FS source's
-            // lifecycle is the GAME session, not the device (it is only
-            // recreated on a game switch, unlike _mairaIpc which device init
-            // recreates). Disposing it here killed the pipe server on the
-            // first wheel hiccup and, with _fsPipeSource null, also disabled
-            // the SimHub fallback evaluator (hit live, 2026-08-07). It is
-            // torn down on leaving FS (SwapTelemetrySourceLocked) and at
-            // plugin End.
-            try { _mairaIpc?.Dispose(); } catch { }
-            _mairaIpc = null;
+            // lifecycle is the GAME session, not the device (unlike the tap
+            // and the steering reader below, which device init recreates).
+            // Disposing it here killed the pipe server on the first wheel
+            // hiccup and, with _fsPipeSource null, also disabled the SimHub
+            // fallback evaluator (hit live, 2026-08-07). It is torn down on
+            // leaving FS (SwapTelemetrySourceLocked) and at plugin End.
             try { _ffbTap?.Dispose(); } catch { }
             _ffbTap = null;
             try { _steeringReader?.Dispose(); } catch { }
@@ -24186,7 +26291,7 @@ namespace TrueforceForAll.Plugin
             bool canGate = Settings != null && Settings.StopStreamOnPause
                            && Settings.PluginEnabled && _device != null
                            && src != null && !string.IsNullOrEmpty(_activeGame)
-                           && _forceModeB == 0
+                           && _forceMode == ForceModeOff
                            && !_activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
             if (!canGate)
             {
@@ -24301,6 +26406,557 @@ namespace TrueforceForAll.Plugin
             return on;
         }
 
+        // THROWAWAY DIAGNOSTIC SPIKE (IRRAW access code). DELETE THIS WHOLE
+        // BLOCK, plus the IrRawProbeTick call in DataUpdate, the IRRAW handler
+        // in SettingsControl.ExecuteAccessCode and its TestCodeCatalog line,
+        // once the three questions below are answered on the owner's rig.
+        //
+        // Q1 Does StatusDataBase.GetRawDataObject() hand a third-party plugin a
+        //    live, per-tick-populated iRacing object (expected runtime type
+        //    IRacingReader.DataSampleEx, with a .Telemetry of type
+        //    iRacingSDK.Telemetry)?
+        // Q2 Does SteeringWheelTorque carry non-zero values while iRacing's own
+        //    in-sim force feedback is DISABLED?
+        // Q3 Is the 360 Hz sub-tick array SteeringWheelTorque_ST reachable?
+        //    iRacingSDK.Telemetry derives from Dictionary of string to object,
+        //    but _ST is not among its typed properties, so the only way in is
+        //    the dictionary.
+        //
+        // No hard assembly reference is taken on iRacingSDK.dll or
+        // ICarsReader.dll: SimHub can rename or drop either at any time and a
+        // compile-time reference would take the whole plugin down with it.
+        // Everything here is name-based reflection plus one cast to the BCL
+        // interface IDictionary of string to object, which the SDK's Telemetry
+        // type inherits from its Dictionary base and which costs us nothing.
+        // Every path is wrapped so a missing member logs a line instead of
+        // throwing into SimHub's data pump.
+        //
+        // Rate: one full dump on arming, then one line every 5 s. Disarmed the
+        // per-tick cost is a single volatile bool read; armed it is one int
+        // increment. Nothing allocates or logs on a normal tick.
+        private volatile bool _irRawProbeArmed;
+        private bool _irRawProbeFullPending;
+        private long _irRawProbeNextTicks;
+        private int  _irRawProbeSamples;
+        // SimHub DataUpdate ticks since arming. Printed alongside the sim's own
+        // SessionTime so Q1 is answerable from the log: if SessionTime advances
+        // about 5.0 while this advances about 300, the object is repopulated
+        // every tick. A frozen SessionTime against a climbing tick count means
+        // the raw object is stale.
+        private int  _irRawProbeHostTicks;
+        private const double IrRawProbePeriodSec = 5.0;
+        // Surface state is watched EVERY tick, not on the 5 s cadence: a kerb
+        // strike lasts a fraction of a second, so a periodic sample would miss
+        // every one of them. Logging on CHANGE is what maps the enum values.
+        private string _irRawLastSurface;
+
+        /// <summary>IRRAW access code: arm/disarm the throwaway iRacing raw
+        /// telemetry probe. Returns the new armed state. Not persisted.</summary>
+        public bool DebugToggleIracingRawProbe()
+        {
+            _irRawProbeArmed = !_irRawProbeArmed;
+            _irRawProbeFullPending = _irRawProbeArmed;
+            _irRawProbeNextTicks   = 0;
+            _irRawProbeSamples     = 0;
+            _irRawProbeHostTicks   = 0;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] IRRAW iRacing raw-telemetry probe "
+                + (_irRawProbeArmed ? "ARMED. Get on track, then toggle iRacing's own force feedback off and on." : "OFF."));
+            return _irRawProbeArmed;
+        }
+
+        // Called from DataUpdate on every SimHub tick.
+        private void IrRawProbeTick(GameData data)
+        {
+            // Cheapest possible early-out, and the shipped state.
+            if (!_irRawProbeArmed) return;
+            _irRawProbeHostTicks++;
+
+            // Surface watch runs on EVERY tick, ahead of the periodic gate. Drive
+            // over a kerb, a gravel trap and the grass: each transition logs one
+            // line, and those lines are the enum mapping we need for curb thump.
+            try
+            {
+                var ndS = data != null ? data.NewData : null;
+                if (ndS != null && data.GameRunning == true)
+                {
+                    object rawS = ndS.GetRawDataObject();
+                    if (rawS != null)
+                    {
+                        object telS = rawS;
+                        var tp = rawS.GetType().GetProperty("Telemetry",
+                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                        if (tp != null && tp.CanRead && tp.GetIndexParameters().Length == 0)
+                        {
+                            object t2 = tp.GetValue(rawS, null);
+                            if (t2 != null) telS = t2;
+                        }
+                        var dS = telS as IDictionary<string, object>;
+                        string surf = "mat=" + IrRawRead(telS, dS, "PlayerTrackSurfaceMaterial")
+                                    + " surf=" + IrRawRead(telS, dS, "PlayerTrackSurface");
+                        if (!string.Equals(surf, _irRawLastSurface, StringComparison.Ordinal))
+                        {
+                            _irRawLastSurface = surf;
+                            SimHub.Logging.Current.Info(
+                                "[TF4ALL] IRRAW surface CHANGE " + surf
+                                + " speed=" + IrRawRead(telS, dS, "Speed")
+                                + " hostTicks=" + _irRawProbeHostTicks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        }
+                    }
+                }
+            }
+            catch { /* throwaway probe, never disturb the data pump */ }
+
+            bool full = _irRawProbeFullPending;
+            long now  = Stopwatch.GetTimestamp();
+            if (!full && now < _irRawProbeNextTicks) return;
+            _irRawProbeNextTicks = now + (long)(Stopwatch.Frequency * IrRawProbePeriodSec);
+            _irRawProbeFullPending = false;
+
+            try
+            {
+                var nd = data != null ? data.NewData : null;
+                if (data == null || data.GameRunning != true || nd == null)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] IRRAW no running game or no NewData this tick (hostTicks="
+                        + _irRawProbeHostTicks.ToString(System.Globalization.CultureInfo.InvariantCulture) + ").");
+                    // Re-arm the full dump so the first real in-car tick still
+                    // produces one.
+                    _irRawProbeFullPending = full;
+                    return;
+                }
+
+                object raw = null;
+                string rawErr = null;
+                try { raw = nd.GetRawDataObject(); }
+                catch (Exception ex) { rawErr = ex.GetType().Name + ": " + ex.Message; }
+
+                if (raw == null)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] IRRAW Q1=NO game=" + (data.GameName ?? "?")
+                        + " GetRawDataObject() returned null"
+                        + (rawErr != null ? " and threw " + rawErr : " with no exception")
+                        + ". Q2 and Q3 cannot be answered from this path.");
+                    return;
+                }
+
+                var rawType = raw.GetType();
+
+                // The SDK's per-tick telemetry lives on a .Telemetry property of
+                // the raw sample. Resolved by NAME so a renamed assembly still
+                // works; if there is no such property we fall back to treating
+                // the raw object itself as the telemetry surface.
+                object tel = raw;
+                string telSource = "raw object itself (no .Telemetry property)";
+                try
+                {
+                    var telProp = rawType.GetProperty("Telemetry",
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (telProp != null && telProp.CanRead && telProp.GetIndexParameters().Length == 0)
+                    {
+                        object t = telProp.GetValue(raw, null);
+                        if (t != null) { tel = t; telSource = "raw.Telemetry"; }
+                        else telSource = "raw.Telemetry was null";
+                    }
+                }
+                catch (Exception ex) { telSource = "raw.Telemetry threw " + ex.GetType().Name; }
+
+                var telType = tel.GetType();
+
+                // Q3's route in. iRacingSDK.Telemetry derives from
+                // Dictionary of string to object, and that base type lives in
+                // mscorlib, so this cast reaches the raw variable bag without
+                // referencing the SDK at all.
+                var dict = tel as IDictionary<string, object>;
+
+                string stDesc;
+                if (dict == null)
+                {
+                    stDesc = "UNREACHABLE (telemetry object is not IDictionary<string,object>)";
+                }
+                else
+                {
+                    object stVal = null;
+                    bool   stFound = false;
+                    string stErr = null;
+                    try { stFound = dict.TryGetValue("SteeringWheelTorque_ST", out stVal); }
+                    catch (Exception ex) { stErr = ex.GetType().Name + ": " + ex.Message; }
+                    if (stErr != null)      stDesc = "THREW " + stErr;
+                    else if (!stFound)      stDesc = "key absent";
+                    else                    stDesc = IrRawDescribeSubTick(stVal);
+                }
+
+                if (full)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] IRRAW arming dump: game=" + (data.GameName ?? "?")
+                        + " rawType=" + rawType.FullName
+                        + " rawAsm=" + rawType.Assembly.GetName().Name
+                        + " telFrom=" + telSource
+                        + " telType=" + telType.FullName
+                        + " telAsm=" + telType.Assembly.GetName().Name
+                        + " telBase=" + (telType.BaseType != null ? telType.BaseType.FullName : "null")
+                        + " isIDictionary=" + (dict != null ? "True" : "False")
+                        + " dictCount=" + (dict != null
+                            ? dict.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) : "n/a")
+                        + " typedPropsInclInherited=" + telType.GetProperties(
+                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance).Length
+                            .ToString(System.Globalization.CultureInfo.InvariantCulture) + ".");
+                    try
+                    {
+                        SimHub.Logging.Current.Info("[TF4ALL] IRRAW rawAsmPath=" + rawType.Assembly.Location);
+                    }
+                    catch { }
+
+                    IrRawDumpSessionInfo(raw);
+
+                    if (dict != null)
+                    {
+                        var stKeys    = new List<string>();
+                        var steerKeys = new List<string>();
+                        try
+                        {
+                            foreach (var k in dict.Keys)
+                            {
+                                if (string.IsNullOrEmpty(k)) continue;
+                                if (k.EndsWith("_ST", StringComparison.Ordinal)) stKeys.Add(k);
+                                if (k.IndexOf("Steer", StringComparison.OrdinalIgnoreCase) >= 0
+                                    || k.IndexOf("FFB", StringComparison.OrdinalIgnoreCase) >= 0
+                                    || k.IndexOf("Torque", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    steerKeys.Add(k);
+                            }
+                            stKeys.Sort(StringComparer.Ordinal);
+                            steerKeys.Sort(StringComparer.Ordinal);
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Info(
+                                "[TF4ALL] IRRAW key enumeration threw " + ex.GetType().Name + ": " + ex.Message);
+                        }
+                        SimHub.Logging.Current.Info("[TF4ALL] IRRAW keys ending in _ST ("
+                            + stKeys.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + "): "
+                            + (stKeys.Count > 0 ? string.Join(", ", stKeys.ToArray()) : "NONE"));
+                        SimHub.Logging.Current.Info("[TF4ALL] IRRAW steering/FFB/torque keys ("
+                            + steerKeys.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + "): "
+                            + (steerKeys.Count > 0 ? string.Join(", ", steerKeys.ToArray()) : "NONE"));
+
+                        // FULL key list, once. The earlier probe only printed two
+                        // filtered subsets, which is why questions like "is there
+                        // an LFE channel" stayed open. Dump everything and settle
+                        // what iRacing does and does not publish, permanently.
+                        try
+                        {
+                            var allKeys = new List<string>();
+                            foreach (var k in dict.Keys)
+                                if (!string.IsNullOrEmpty(k)) allKeys.Add(k);
+                            allKeys.Sort(StringComparer.Ordinal);
+                            SimHub.Logging.Current.Info("[TF4ALL] IRRAW ALL KEYS ("
+                                + allKeys.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + "):");
+                            const int PerLine = 12;
+                            for (int i = 0; i < allKeys.Count; i += PerLine)
+                            {
+                                int n = Math.Min(PerLine, allKeys.Count - i);
+                                SimHub.Logging.Current.Info("[TF4ALL] IRRAW keys["
+                                    + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + "] "
+                                    + string.Join(", ", allKeys.GetRange(i, n).ToArray()));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            SimHub.Logging.Current.Info(
+                                "[TF4ALL] IRRAW full key dump threw " + ex.GetType().Name + ": " + ex.Message);
+                        }
+                    }
+                }
+
+                // Q2 verdict on the line itself, so the log reads without
+                // arithmetic. Steering angle is printed too: a zero torque
+                // reading only means something if the wheel was being turned.
+                double torque;
+                bool haveTorque = IrRawTryDouble(tel, dict, "SteeringWheelTorque", out torque);
+                string q2 = !haveTorque ? "UNREADABLE"
+                          : (torque > 0.01 || torque < -0.01) ? "NONZERO" : "zero";
+
+                _irRawProbeSamples++;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] IRRAW #" + _irRawProbeSamples.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + " hostTicks=" + _irRawProbeHostTicks.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + " | Q1 rawType=" + rawType.FullName
+                    + " SessionTime=" + IrRawRead(tel, dict, "SessionTime")
+                    + " SessionTick=" + IrRawRead(tel, dict, "SessionTick")
+                    + " Speed="       + IrRawRead(tel, dict, "Speed")
+                    + " | Q2=" + q2
+                    + " SteeringFFBEnabled="       + IrRawRead(tel, dict, "SteeringFFBEnabled")
+                    + " SteeringWheelTorque="      + IrRawRead(tel, dict, "SteeringWheelTorque")
+                    + " SteeringWheelPctTorque="   + IrRawRead(tel, dict, "SteeringWheelPctTorque")
+                    + " SteeringWheelPeakForceNm=" + IrRawRead(tel, dict, "SteeringWheelPeakForceNm")
+                    + " SteeringWheelAngle="       + IrRawRead(tel, dict, "SteeringWheelAngle")
+                    + " SteeringWheelAngleMax="    + IrRawRead(tel, dict, "SteeringWheelAngleMax")
+                    + " SteeringWheelMaxForceNm="  + IrRawRead(tel, dict, "SteeringWheelMaxForceNm")
+                    + " | surface mat="            + IrRawRead(tel, dict, "PlayerTrackSurfaceMaterial")
+                    + " surf="                     + IrRawRead(tel, dict, "PlayerTrackSurface")
+                    + " | shockVelLF="             + IrRawRead(tel, dict, "LFshockVel")
+                    // Scale for these is unconfirmed. Log them so the [0,1]
+                    // normalization can be tuned from real values rather than
+                    // guessed at a second time.
+                    + " rumblePitchLF="            + IrRawRead(tel, dict, "TireLF_RumblePitch")
+                    + " rumblePitchRF="            + IrRawRead(tel, dict, "TireRF_RumblePitch")
+                    + " absActive="                + IrRawRead(tel, dict, "BrakeABSactive")
+                    // UNIT SETTLER. TelemetryFrame documents m/s^2, but
+                    // SimHubTelemetrySource passes StatusDataBase's values
+                    // through unconverted. Printing both side by side answers
+                    // whether SimHub reports G (ratio ~9.8) or m/s^2 (ratio ~1),
+                    // which decides whether every SimHub-fallback game has been
+                    // feeding the effects a signal an order of magnitude small.
+                    + " | UNITS simhubHeave=" + IrRawNum(nd.AccelerationHeave)
+                    + " sdkVertAccel="        + IrRawRead(tel, dict, "VertAccel")
+                    + " simhubSway="          + IrRawNum(nd.AccelerationSway)
+                    + " sdkLatAccel="         + IrRawRead(tel, dict, "LatAccel")
+                    + " | Q3 SteeringWheelTorque_ST=" + stDesc + ".");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn(
+                    "[TF4ALL] IRRAW probe error: " + ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
+        // Look one named telemetry value up with no compile-time knowledge of
+        // the SDK: the generated typed property first (there are a couple of
+        // hundred of them), then the dictionary key, which is the only route to
+        // anything the generator skipped. src reports which route answered, or
+        // why neither did.
+        private static bool IrRawValue(object tel, IDictionary<string, object> dict,
+                                       string name, out object value, out string src)
+        {
+            value = null;
+            src   = "absent";
+            if (tel != null)
+            {
+                try
+                {
+                    var p = tel.GetType().GetProperty(name,
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (p != null && p.CanRead && p.GetIndexParameters().Length == 0)
+                    {
+                        value = p.GetValue(tel, null);
+                        src   = "prop";
+                        return true;
+                    }
+                }
+                catch (Exception ex) { src = "prop-threw:" + ex.GetType().Name; }
+            }
+            if (dict != null)
+            {
+                try
+                {
+                    object v;
+                    if (dict.TryGetValue(name, out v)) { value = v; src = "dict"; return true; }
+                }
+                catch (Exception ex) { src = "dict-threw:" + ex.GetType().Name; }
+            }
+            return false;
+        }
+
+        private static string IrRawNum(double? v)
+        {
+            return v.HasValue
+                ? v.Value.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)
+                : "null";
+        }
+
+        private static string IrRawRead(object tel, IDictionary<string, object> dict, string name)
+        {
+            object v;
+            string src;
+            if (!IrRawValue(tel, dict, name, out v, out src)) return src;
+            string text;
+            try { text = Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture); }
+            catch { text = "?"; }
+            return (text ?? "null") + "[" + src + "]";
+        }
+
+        private static bool IrRawTryDouble(object tel, IDictionary<string, object> dict,
+                                            string name, out double val)
+        {
+            val = 0.0;
+            object v;
+            string src;
+            if (!IrRawValue(tel, dict, name, out v, out src) || v == null) return false;
+            try { val = Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture); return true; }
+            catch { return false; }
+        }
+
+        // Car identity and engine data. iRacing puts these in the SESSION INFO
+        // YAML, not the per-tick telemetry, which is why the first probe never
+        // saw them. What we are looking for, in DriverInfo:
+        //   DriverCarEngCylinderCount  -> engine type, the piece CarFacts has to
+        //                                 guess for every other game
+        //   DriverCarRedLine / DriverCarSLShiftRPM / DriverCarIdleRPM
+        //   DriverCarGearNumForward
+        // and per-driver: CarScreenName / CarPath / CarID for the friendly name.
+        // If the cylinder count is really there, the whole "scrape every iRacing
+        // car and look up its engine" fallback is unnecessary.
+        private static readonly string[] IrRawSessionKeys = new string[]
+        {
+            "DriverCarEngCylinderCount", "DriverCarRedLine", "DriverCarIdleRPM",
+            "DriverCarSLFirstRPM", "DriverCarSLShiftRPM", "DriverCarSLLastRPM",
+            "DriverCarSLBlinkRPM", "DriverCarGearNumForward", "DriverCarVersion",
+            "DriverCarIdx", "CarScreenName", "CarScreenNameShort", "CarPath",
+            "CarID", "CarClassShortName", "CarClassID",
+        };
+
+        private static void IrRawDumpSessionInfo(object raw)
+        {
+            try
+            {
+                const System.Reflection.BindingFlags Pub =
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+                object sess = null;
+                string sessVia = "none";
+                foreach (var candidate in new string[] { "SessionData", "SessionInfo", "Session" })
+                {
+                    var p = raw.GetType().GetProperty(candidate, Pub);
+                    if (p != null && p.CanRead && p.GetIndexParameters().Length == 0)
+                    {
+                        object v = p.GetValue(raw, null);
+                        if (v != null) { sess = v; sessVia = candidate; break; }
+                    }
+                }
+                if (sess == null)
+                {
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] IRRAW session info: no SessionData/SessionInfo/Session property on "
+                        + raw.GetType().FullName + ". Car name and engine data cannot come from this route.");
+                    return;
+                }
+
+                SimHub.Logging.Current.Info("[TF4ALL] IRRAW session info via ." + sessVia
+                    + " type=" + sess.GetType().FullName);
+
+                // Case 1: it is the raw YAML text. Scan it for the keys we care
+                // about; iRacing indents them, so match on the trimmed key.
+                string yaml = sess as string;
+                if (yaml == null)
+                {
+                    // Raw is a FIELD on iRacingSDK.SessionData, not a property.
+                    // The first pass only looked for a property, so the YAML scan
+                    // never ran and we saw just the SDK's parsed subset. Same
+                    // class of miss as typed-property versus dictionary.
+                    string[] names = { "Raw", "Yaml", "Text", "YamlText" };
+                    for (int i = 0; i < names.Length && yaml == null; i++)
+                    {
+                        var p = sess.GetType().GetProperty(names[i], Pub);
+                        if (p != null && p.PropertyType == typeof(string) && p.CanRead)
+                        { yaml = p.GetValue(sess, null) as string; continue; }
+                        var fi = sess.GetType().GetField(names[i], Pub);
+                        if (fi != null && fi.FieldType == typeof(string))
+                            yaml = fi.GetValue(sess) as string;
+                    }
+                    if (yaml == null)
+                    {
+                        var fieldNames = new List<string>();
+                        foreach (var fi2 in sess.GetType().GetFields(Pub)) fieldNames.Add(fi2.Name + ":" + fi2.FieldType.Name);
+                        SimHub.Logging.Current.Info("[TF4ALL] IRRAW session fields: "
+                            + string.Join(", ", fieldNames.ToArray()));
+                    }
+                }
+                if (yaml != null)
+                {
+                    int hits = 0;
+                    foreach (var line in yaml.Split('\n'))
+                    {
+                        string t = line.Trim();
+                        int c = t.IndexOf(':');
+                        if (c <= 0) continue;
+                        string key = t.Substring(0, c).Trim();
+                        for (int i = 0; i < IrRawSessionKeys.Length; i++)
+                        {
+                            if (!string.Equals(key, IrRawSessionKeys[i], StringComparison.Ordinal)) continue;
+                            SimHub.Logging.Current.Info("[TF4ALL] IRRAW session   " + t);
+                            hits++;
+                            break;
+                        }
+                        if (hits > 60) break;   // a full grid repeats the per-driver keys
+                    }
+                    SimHub.Logging.Current.Info("[TF4ALL] IRRAW session info: YAML scan found "
+                        + hits.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + " matching keys (yamlLen="
+                        + yaml.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) + ").");
+                    return;
+                }
+
+                // Case 2: the SDK parsed it into objects. Walk DriverInfo's
+                // scalar properties, which is where the engine data lives.
+                var diProp = sess.GetType().GetProperty("DriverInfo", Pub);
+                object di = diProp != null ? diProp.GetValue(sess, null) : null;
+                if (di == null)
+                {
+                    var names = new List<string>();
+                    foreach (var p in sess.GetType().GetProperties(Pub)) names.Add(p.Name);
+                    names.Sort(StringComparer.Ordinal);
+                    SimHub.Logging.Current.Info("[TF4ALL] IRRAW session info: no DriverInfo. Top-level: "
+                        + string.Join(", ", names.ToArray()));
+                    return;
+                }
+                var sb = new System.Text.StringBuilder();
+                foreach (var p in di.GetType().GetProperties(Pub))
+                {
+                    if (p.GetIndexParameters().Length != 0 || !p.CanRead) continue;
+                    var pt = p.PropertyType;
+                    if (pt != typeof(string) && !pt.IsPrimitive && !pt.IsEnum) continue;
+                    object v = null;
+                    try { v = p.GetValue(di, null); } catch { }
+                    if (sb.Length > 0) sb.Append(' ');
+                    sb.Append(p.Name).Append('=').Append(Convert.ToString(v,
+                        System.Globalization.CultureInfo.InvariantCulture) ?? "null");
+                }
+                SimHub.Logging.Current.Info("[TF4ALL] IRRAW session DriverInfo: " + sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] IRRAW session info threw " + ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
+        // Render a sub-tick value as type, length and its elements. Printing the
+        // elements is the point: six DIFFERENT numbers means genuine 360 Hz
+        // sub-tick data, six copies of one number means the sim padded a single
+        // 60 Hz sample and the array buys us nothing.
+        private static string IrRawDescribeSubTick(object v)
+        {
+            if (v == null) return "present but null";
+            var arr = v as Array;
+            if (arr == null)
+            {
+                string scalar;
+                try { scalar = Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture); }
+                catch { scalar = "?"; }
+                return "present, NOT an array, type=" + v.GetType().FullName + ", value=" + scalar;
+            }
+            var sb = new System.Text.StringBuilder();
+            sb.Append("present, type=").Append(v.GetType().FullName)
+              .Append(", len=").Append(arr.Length.ToString(System.Globalization.CultureInfo.InvariantCulture))
+              .Append(", [");
+            int n = arr.Length < 8 ? arr.Length : 8;
+            for (int i = 0; i < n; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                object e = null;
+                try { e = arr.GetValue(i); } catch { }
+                string text;
+                try { text = Convert.ToString(e, System.Globalization.CultureInfo.InvariantCulture); }
+                catch { text = "?"; }
+                sb.Append(text ?? "null");
+            }
+            if (n < arr.Length) sb.Append(" ...");
+            sb.Append(']');
+            return sb.ToString();
+        }
+
         private void WireFfbTapCallbacks(UsbPcapFfbTap tap)
         {
             if (tap == null) return;
@@ -24333,7 +26989,7 @@ namespace TrueforceForAll.Plugin
             // FM8, 2026-07-05). Freezing the probe makes the delta read 0 →
             // watchdog inert; the moment Mode B disarms the count resumes
             // climbing and the watchdog (and a fresh tap) come right back.
-            tap.SetSendActivityProbe(() => _forceModeB != 0 ? 0 : (_device?.PacketsSent ?? 0));
+            tap.SetSendActivityProbe(() => _forceMode != ForceModeOff ? 0 : (_device?.PacketsSent ?? 0));
 
             // The tap healed a drifted address (same wheel identity, new USBPcap
             // location after a replug/re-enumeration). If the user has a manual

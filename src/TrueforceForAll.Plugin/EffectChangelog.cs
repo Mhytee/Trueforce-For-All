@@ -212,7 +212,7 @@ namespace TrueforceForAll.Plugin
                     new ChangelogEntry {
                         Group = "New features",
                         Headline = "Stationary spring (parked-car centering)",
-                        Description = "A gentle centering force so a stopped or crawling car has weight instead of going limp, fading out with speed and never fighting the game's own force feedback. On by default and works in any game (it reads the game's steering where available and the wheel's own position otherwise); ignored for iRacing, where MAIRA already weights the wheel.",
+                        Description = "A gentle centering force so a stopped or crawling car has weight instead of going limp, fading out with speed and never fighting the game's own force feedback. On by default and works in any game (it reads the game's steering where available and the wheel's own position otherwise); ignored for iRacing, where the sim already weights the wheel.",
                     },
                     new ChangelogEntry {
                         Group = "New features",
