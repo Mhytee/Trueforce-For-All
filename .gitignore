@@ -42,6 +42,8 @@ __*
 # distilled open-bug backlog. Local maintainer reference only, not public docs.
 /docs/archive/
 /docs/open-backlog.md
+# per-release test plans: working checklists, not repo material.
+/docs/testplan-*.md
 
 # Local agent orientation file (build/deploy gotchas, architecture map).
 # Per-developer, not a public doc.
