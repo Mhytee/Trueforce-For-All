@@ -98,6 +98,17 @@ namespace TrueforceForAll.Core
         private const int OFF_TC              = 204;
         private const int OFF_PIT_LIMITER_ON  = 248;
         private const int OFF_LOCAL_ANG_VEL_Y = 300;   // float, yaw rad/s
+        // finalFF, float at 308: the game's FINAL force-feedback output, the
+        // normalized signal AC is about to hand the wheel driver (+-1.0 =
+        // full device force; AC lets it exceed +-1 to signal clipping). It is
+        // POST every in-game gain, Kunos documents the same signal as "Last
+        // force feedback signal sent to the wheel", and the AC anti-clipping
+        // tool ecosystem works by adjusting in-game gain against it, so
+        // in-game FFB at gain 0 zeroes this field. Offset bracketed by
+        // neighbours this file already reads: localAngularVel[3] spans
+        // 296..307 (y component at 300 above). Read ONLY by the tap-free FFB
+        // latch below (ACFFB access code); telemetry effects never see it.
+        private const int OFF_FINAL_FF        = 308;
 
         // 1 kHz poll cadence, see header comment for rationale. Requires
         // timeBeginPeriod(1), set explicitly inside PollLoop, for Thread.Sleep
@@ -166,6 +177,40 @@ namespace TrueforceForAll.Core
         private TireQuad _prevSlip;
         private bool     _prevSlipValid;
 
+        // ---- Tap-free FFB latch (ACFFB access code) ----
+        // Re-injecting AC's own finalFF into the Trueforce stream substitutes
+        // for the USBPcap wire tap on this game: finalFF IS the force the
+        // wheel driver was about to receive, so nothing needs capturing off
+        // the bus (and none of the tap's admin / Secure Boot / capture-CPU
+        // baggage applies). In-game FFB must stay ON: finalFF is AC's
+        // post-gain output and gain 0 zeroes it.
+        //
+        // The latch only re-timestamps on a NEW packetId, so a paused AC
+        // freezes the timestamp and the value goes stale on its own; the
+        // consumer polls with a short max age instead of wiring the tap's
+        // ClearLastFfbTarget pause-hygiene sites (the tap needs those because
+        // FH6 keeps re-emitting frozen forces during pauses; AC's page
+        // freezing IS the pause signal here, issue #13 class).
+        //
+        // _ffbPacked layout mirrors UsbPcapFfbTap._packed: low 16 bits =
+        // int16 LSB bit pattern, high 48 bits = Stopwatch ticks masked to 48
+        // bits. Masking on store + logical shift on read + modular
+        // subtraction on age makes the freshness check wrap-safe (same
+        // rationale as the tap's TimestampMask).
+        private const long FfbTimestampMask = 0x0000_FFFF_FFFF_FFFFL;
+        private long _ffbPacked;
+        private readonly Stopwatch _ffbSw = Stopwatch.StartNew();
+        private volatile bool _ffbLatchEnabled;
+
+        /// <summary>Arms the finalFF latch (ACFFB access code). Off = the
+        /// poll loop never touches offset 308 and TryGetFreshFfbTarget always
+        /// returns null, so shipped behaviour is untouched.</summary>
+        public bool FfbLatchEnabled
+        {
+            get => _ffbLatchEnabled;
+            set => _ffbLatchEnabled = value;
+        }
+
         public Action<string> Logger { get; set; }
 
         /// <summary>Opens the AC physics page and starts the polling thread.
@@ -213,6 +258,9 @@ namespace TrueforceForAll.Core
             _seenWheelLoad = false;
             _prevAirborne  = false;
             _prevSlipValid = false;
+            // Drop the FFB latch so a fresh Start() can't hand the provider a
+            // force from the previous session.
+            Interlocked.Exchange(ref _ffbPacked, 0);
             Interlocked.Exchange(ref _running, 0);
         }
 
@@ -292,6 +340,10 @@ namespace TrueforceForAll.Core
                             if (pktId != _lastPacketId)
                             {
                                 _lastPacketId = pktId;
+                                // Latch finalFF BEFORE the frame dispatch so
+                                // the FFB value's freshness never trails the
+                                // effect pipeline's work for the same tick.
+                                if (_ffbLatchEnabled) LatchFfb();
                                 EmitFrame(ReadFrame());
                             }
                             consecutiveErrors = 0;
@@ -309,6 +361,10 @@ namespace TrueforceForAll.Core
                                 Log("AC shared memory unresponsive; will attempt reopen.");
                                 CleanupMmf();
                                 reopenPending = true;
+                                // Drop the FFB latch: a value read before the
+                                // page died must not survive into whatever
+                                // session the reopen finds.
+                                Interlocked.Exchange(ref _ffbPacked, 0);
                             }
                         }
                     }
@@ -331,6 +387,72 @@ namespace TrueforceForAll.Core
                 TimeEndPeriod(1);
             }
         }
+
+        // Reads finalFF and publishes it for the 1 kHz FFB provider. Runs on
+        // the poll thread only, and only on a new packetId with the latch
+        // armed, so a paused game (frozen packetId) stops re-timestamping and
+        // the value ages out on its own.
+        private void LatchFfb()
+        {
+            float finalFf = _physicsView.ReadSingle(OFF_FINAL_FF);
+            long now = _ffbSw.ElapsedTicks & FfbTimestampMask;
+            Interlocked.Exchange(ref _ffbPacked, PackFfb(FfbToLsb(finalFf), now));
+        }
+
+        /// <summary>The latest latched game force if it is no older than
+        /// <paramref name="maxAgeMs"/>, else null. Same contract, packing and
+        /// wrap-safe age math as UsbPcapFfbTap.TryGetFreshFfbTarget, so the
+        /// provider chain can consult either interchangeably. Callers should
+        /// use a SHORT window (~250 ms): a ~333 Hz source that has missed 80+
+        /// ticks is paused, closed, or gone.</summary>
+        public short? TryGetFreshFfbTarget(int maxAgeMs)
+        {
+            long packed = Interlocked.Read(ref _ffbPacked);
+            if (packed == 0) return null;
+
+            long now = _ffbSw.ElapsedTicks & FfbTimestampMask;
+            long maxAgeTicks = (Stopwatch.Frequency / 1000L) * maxAgeMs;
+            if (AgeTicks(packed, now) > maxAgeTicks) return null;
+
+            return UnpackFfbValue(packed);
+        }
+
+        /// <summary>Drop the latched force so TryGetFreshFfbTarget returns
+        /// null until a genuinely fresh physics tick latches a new one.</summary>
+        public void ClearLastFfbTarget()
+        {
+            Interlocked.Exchange(ref _ffbPacked, 0);
+        }
+
+        /// <summary>finalFF (normalized, +-1.0 = full device force; AC lets
+        /// it run past +-1 to signal clipping) to the signed int16 LSB scale
+        /// the FFB pipeline speaks, the same scale the wire tap decodes from
+        /// HID++ 0x8123, so downstream sign/scale/smoothing treatment is
+        /// identical for both sources. Clamps the clipping range to full
+        /// scale (+-32767, symmetric on purpose) and maps NaN to silence.</summary>
+        internal static short FfbToLsb(float finalFf)
+        {
+            if (float.IsNaN(finalFf)) return 0;
+            double scaled = Math.Round(finalFf * 32767.0);
+            if (scaled >  32767.0) return  32767;
+            if (scaled < -32767.0) return -32767;
+            return (short)scaled;
+        }
+
+        /// <summary>Low 16 bits = value bit pattern, high 48 = ticks (masked).
+        /// A packed value of 0 is the "nothing latched" sentinel; a genuine
+        /// zero-force latch at tick 0 colliding with it lasts one physics
+        /// frame and reads as "no data", which is the safe direction.</summary>
+        internal static long PackFfb(short value, long ticksMasked)
+            => (ticksMasked << 16) | (ushort)value;
+
+        internal static short UnpackFfbValue(long packed) => (short)(packed & 0xffff);
+
+        /// <summary>Wrap-safe age: modular subtraction in the 48-bit tick
+        /// space, so freshness survives the ~162-day QPC wrap (same scheme as
+        /// UsbPcapFfbTap; see its TimestampMask comment).</summary>
+        internal static long AgeTicks(long packed, long nowTicksMasked)
+            => (nowTicksMasked - (long)((ulong)packed >> 16)) & FfbTimestampMask;
 
         [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
         private static extern uint TimeBeginPeriod(uint uPeriod);

@@ -510,6 +510,13 @@ namespace TrueforceForAll.Plugin
         // without overriding a later user opt-out.
         public bool FeedbackBoxDefaultedOn { get; set; } = false;
 
+        // Show the per-gear redline editor in the Car facts panel. Default off:
+        // community data showed nobody shares per-gear values, so the editor is
+        // opt-in clutter control. UI-only; saved per-gear values keep applying
+        // to the wheel, and a variant that has them shows the editor regardless
+        // (see RebuildPerGearEditors) so stored data is never invisibly active.
+        public bool ShowPerGearRedlineEditor { get; set; } = false;
+
         // TF4ALL Remote dash: rev-strip fill direction. false = left to right;
         // true = outside-in (default), both ends lighting first and converging
         // on the center, which is what the wheel's own rev lights do and what
@@ -884,6 +891,15 @@ namespace TrueforceForAll.Plugin
         // until a tester confirms a given wheel/game. Global, not per-preset:
         // it's a capture-system behaviour, not a tuning.
         public bool   ExperimentalFfbCapture     { get; set; } = false;
+
+        // Tap-free AC force feedback (ACFFB access code): while driving
+        // Assetto Corsa, re-inject the game's own final FFB value (finalFF,
+        // read from AC's physics shared memory at 1 kHz) into the Trueforce
+        // stream instead of decoding the wire with the USBPcap tap. finalFF
+        // is AC's post-gain output signal, so in-game FFB must stay ON for
+        // it to carry force. Global, not per-preset: it selects a capture
+        // path, not a tuning. Off = shipped behaviour (pcap tap only).
+        public bool   AcShmFfbEnabled            { get; set; } = false;
 
         // EXPERIMENTAL: claim sole wheel ownership through the TFFA kernel
         // filter driver and route the game's intercepted HID++ FFB writes
