@@ -1,4 +1,4 @@
-# Generates the "TF4ALL Dash" DashStudio dashboard (.djson + .metadata).
+﻿# Generates the "TF4ALL Dash" DashStudio dashboard (.djson + .metadata).
 # Item schemas mirror shipped dashes (RSC - Toggle Switch / MobileDash):
 # TextItem / RectangleItem for visuals, transparent ButtonItem tap zones with
 # TriggerAction = "TrueforcePlugin.<DashAction>". All formulas use the JS
@@ -1094,7 +1094,8 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # The provenance line steps aside in iRacing so the auto-force row can have
     # the last band. Redline still shows above it; what is lost here is only
     # where the number came from, and that is still on the Car facts tab.
-    $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis 'CarFacts' ('!$prop("' + $P + '.IRacingAutoShow")')); $items.Add($t)
+    $t.Bindings['Visible'] = BindJS 'Visible' (KeyVis 'CarFacts' (
+        '!$prop("' + $P + '.IRacingAutoShow") && !$prop("' + $P + '.ModeBRelearnShow")')); $items.Add($t)
     # Auto max force. Greyed while the car's peak is still climbing, lit once it
     # has settled, so a driver can see WHEN pressing is worth anything instead of
     # pressing at random and calibrating off an out-lap.
@@ -1117,8 +1118,33 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
         Text = BindJS 'Text' ('var v=1*$prop("' + $P + '.IRacingMaxForceNm");return v>0?("NOW "+v.toFixed(1)):""')
     }
     $t.Bindings['Visible'] = BindJS 'Visible' $mfVis; $items.Add($t)
-    $b = New-Button "d$slot-cf-mf-tap" $ix ($iy + 160) $iw 30 'IRacingAutoMaxForce'
+    $b = New-Button "d$slot-cf-mf-tap" $ix ($iy + 160) $iw 30 'CalibrateCarForce'
     $b.Bindings['Visible'] = BindJS 'Visible' $mfVis; $items.Add($b)
+
+    # The synthesis side of the same band. Deliberately NOT the iRacing shape:
+    # that learner is one-shot and greys until the moment is right, this one runs
+    # continuously and there is no wrong moment, so the label always advertises
+    # the action and the state sits on the right instead of colouring the button.
+    $rlVis = KeyVis 'CarFacts' ('$prop("' + $P + '.ModeBRelearnShow")')
+    $r = New-Btn "d$slot-cf-rl-bg" $ix ($iy + 160) $iw 30 4
+    $r.Bindings['Visible'] = BindJS 'Visible' $rlVis; $items.Add($r)
+    $t = New-Text "d$slot-cf-rl-t" ($ix + 10) ($iy + 160) ($iw - 20) 30 13 'RE-LEARN CAR' $script:WHITE 0 $null 'Bold'
+    $t.Bindings['Visible'] = BindJS 'Visible' $rlVis; $items.Add($t)
+    # What it has learned so far, right-aligned on the same row: the percentage
+    # while it converges, then the scale it settled on. With auto strength off the
+    # learner still runs but nothing is applied, so claiming a scale there would
+    # be a lie; it reports that it is only watching.
+    $t = New-Text "d$slot-cf-rl-st" ($ix + 10) ($iy + 160) ($iw - 20) 30 12 '' $script:MUTED 2 @{
+        Text = BindJS 'Text' (
+            'var c=1*$prop("' + $P + '.ModeBStrengthConf");if(isNaN(c))c=0;' +
+            'if(c<1)return "LEARNING  "+Math.round(c*100)+"%";' +
+            'if(!$prop("' + $P + '.ModeBAutoStrengthOn"))return "LEARNED";' +
+            'var s=1*$prop("' + $P + '.ModeBStrengthScale");' +
+            'return s>0?("x"+s.toFixed(2)):"LEARNED"')
+    }
+    $t.Bindings['Visible'] = BindJS 'Visible' $rlVis; $items.Add($t)
+    $b = New-Button "d$slot-cf-rl-tap" $ix ($iy + 160) $iw 30 'CalibrateCarForce'
+    $b.Bindings['Visible'] = BindJS 'Visible' $rlVis; $items.Add($b)
 
     # ---------------- GAINS (ours) -----------------------------------
     # Shaped like the Home tab rather than a list of rows: a caption, the
@@ -1273,7 +1299,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # has to put it back: without it this is the one box whose header does
     # not look tappable.
     $ttHead.Bindings['Text'] = BindJS 'Text' ($tempUnitJs +
-        'return "TIRE TEMPS "+(uF?"°F":"°C")+"  ' + [char]0x25BE + '"')
+        'return "TIRE TEMPS "+(uF?"Â°F":"Â°C")+"  ' + [char]0x25BE + '"')
     $items.Add($ttHead)
     $tyreProps = @('TyreTemperatureFrontLeft', 'TyreTemperatureFrontRight', 'TyreTemperatureRearLeft', 'TyreTemperatureRearRight')
     $wearProps = @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight')
@@ -3003,7 +3029,8 @@ $s2.Add((New-Text 'cf-info' 32 348 736 28 16 '' $MUTED 0 @{
     Text = BindJS 'Text' ('var m=1*$prop("' + $P + '.MaxRpm");var s=""+($prop("' + $P + '.RedlineSource")||"");var t=m>0?("MAX RPM  "+m):"";if(s!=""&&s!="none"){t+=(t!=""?"      ":"")+"REDLINE SOURCE  "+s}return t')
 }))
 $s2.Add((New-Text 'cf-note' 32 414 736 26 14 'Edits save to this car and apply instantly. Sharing follows your community settings.' $GRAY 0 @{
-    Visible = BindJS 'Visible' ('return !$prop("' + $P + '.IRacingAutoShow")')
+    Visible = BindJS 'Visible' (
+        'return !$prop("' + $P + '.IRacingAutoShow") && !$prop("' + $P + '.ModeBRelearnShow")')
 }))
 
 # ---- iRacing: max force, with the auto button ----
@@ -3038,8 +3065,38 @@ $mf = New-Text 'cf-mf-t' 552 388 216 38 15 '' $GRAY 1 @{
     TextColor = BindJS 'TextColor' ('return $prop("' + $P + '.IRacingAutoReady")?"' + $GREEN + '":"' + $GRAY + '"')
 } 'Bold'
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
-$mf = New-Button 'cf-mf-btn' 552 388 216 38 'IRacingAutoMaxForce'
+$mf = New-Button 'cf-mf-btn' 552 388 216 38 'CalibrateCarForce'
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+
+# The synthesis side, in the same band. Same panel shape so the tab does not
+# reflow between games, but the tile never greys: this learner runs continuously,
+# so there is no moment to wait for, only a car that has changed under it.
+$rlVis = 'return $prop("' + $P + '.ModeBRelearnShow")'
+$rl = New-Card 'cf-rl-panel' 16 378 768 58
+$rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
+$rl = New-Text 'cf-rl-label' 32 384 300 18 13 'AUTO STRENGTH' $MUTED 0
+$rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
+$rl = New-Text 'cf-rl-value' 32 402 300 28 20 '' $WHITE 0 @{
+    Text = BindJS 'Text' (
+        'if(!$prop("' + $P + '.ModeBAutoStrengthOn"))return "OFF";' +
+        'var s=1*$prop("' + $P + '.ModeBStrengthScale");return s>0?("x"+s.toFixed(2)):"--"')
+} 'Bold'
+$rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
+# Left of the tile: how much of this car it has actually seen. With the feature
+# off the learner still runs, so the percentage is still the true answer to
+# "would ticking the box do anything yet".
+$rl = New-Text 'cf-rl-hint' 296 394 240 26 12 '' $GRAY 2 @{
+    Text = BindJS 'Text' (
+        'var c=1*$prop("' + $P + '.ModeBStrengthConf");if(isNaN(c))c=0;' +
+        'return c<1?("LEARNING THIS CAR  "+Math.round(c*100)+"%"):"LEARNED FROM YOUR DRIVING"')
+}
+$rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
+$rl = New-Btn 'cf-rl-bg' 552 388 216 38 4
+$rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
+$rl = New-Text 'cf-rl-t' 552 388 216 38 15 'RE-LEARN CAR' $WHITE 1 $null 'Bold'
+$rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
+$rl = New-Button 'cf-rl-btn' 552 388 216 38 'CalibrateCarForce'
+$rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
 
 # ---- overlay: engine layout picker ----
 $layouts = @(

@@ -1211,7 +1211,10 @@
                                  is the default (gear 0); rows here override specific gears,
                                  e.g. a lower 1st-gear limit. Rows are built in code by
                                  RebuildPerGearEditors. This is the ONLY per-gear editor
-                                 (the Redline buzz section's duplicate was retired). -->
+                                 (the Redline buzz section's duplicate was retired).
+                                 Hidden unless the Settings-tab ShowPerGearRedlineEditor
+                                 toggle is on OR the variant already has per-gear values
+                                 (so stored data is never invisibly active). -->
                             <Expander x:Name="CarFactsPerGearExpander" IsExpanded="False" Margin="0,6,0,0" Visibility="Collapsed">
                                 <Expander.Header>
                                     <TextBlock Text="Per-gear redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
@@ -1227,8 +1230,11 @@
                             <!-- Rev-light pattern: the wheel's ONE selection,
                                  same picker as the Wheel lights section, plus
                                  the per-car remember controls. Items built in
-                                 code (RefreshCarRevLightRow). -->
-                            <Grid x:Name="CarRevLightRow" Margin="0,6,0,2">
+                                 code (RefreshCarRevLightRow). The separator is
+                                 load-bearing: without it this row reads as a
+                                 child of the per-gear redlines expander above. -->
+                            <Separator x:Name="CarRevLightSeparator" Margin="0,10,0,8" Opacity="0.35"/>
+                            <Grid x:Name="CarRevLightRow" Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="64"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
@@ -1242,7 +1248,7 @@
                                            Margin="10,0,0,0" FontSize="11" Opacity="0.7" Visibility="Collapsed"><Run x:Name="CarRevLightRememberRun"/> · <Hyperlink Click="RevLightForget_Click">Forget</Hyperlink></TextBlock>
                             </Grid>
                             <TextBlock x:Name="CarRevLightRowHelp" Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
-                                       Text="Picking sets the wheelbase's selection immediately and it stays. Remember re-applies it whenever this car loads, e.g. to mirror the real car's light layout."/>
+                                       Text="Remember re-applies the pattern whenever this car loads, e.g. to mirror the real car's light layout."/>
                             </StackPanel>
                         </StackPanel>
                     </Expander>
@@ -2721,7 +2727,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap"
                            VerticalAlignment="Center"
-                           Text="Telemetry Based FFB is on, but the game's tire telemetry is not reaching this plugin, so the game's own force feedback is passed through for now. Point Forza's Data Out directly at the plugin: IP 127.0.0.1 with the Forza UDP port from the Settings tab. If SimHub or another app already uses that port, pick a different port there first, then update the game to match, and turn on forwarding so SimHub still receives telemetry."/>
+                           Text="Telemetry Based FFB is on, but the game's tire telemetry is not reaching this plugin, so the game's own force feedback is passed through for now. Give the plugin its own Forza UDP port in the Settings tab (one no other app listens on, SimHub included), point Forza's Data Out at IP 127.0.0.1 with that port, and turn on forwarding so SimHub still receives telemetry."/>
                 <Button Grid.Column="1" x:Name="ModeBSlipStarvedSetupButton" Content="Set up…"
                         Style="{StaticResource UpdateCtaButton}"
                         Width="90" Height="28" Margin="10,0,0,0" VerticalAlignment="Center"
@@ -2828,18 +2834,27 @@
                  sim's own steering torque rather than synthesizing force from
                  slip, so the SAT model and everything feeding it never runs. -->
             <StackPanel x:Name="IRacingTuningPanel" Visibility="Collapsed">
+                <!-- A number box, not a slider. Nobody drags to find a car's peak
+                     torque: this is set by Auto, or typed once. The slider also
+                     had to render "follow iRacing" (stored as 0) as hard-left,
+                     which read as zero force while the label beside it correctly
+                     said iRacing's number. iRacing's own box is the same shape. -->
                 <Grid Margin="0,0,0,2">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Max force:" Style="{StaticResource LabelText}"/>
-                    <Slider     Grid.Column="1" x:Name="IRacingMaxNmSlider" Minimum="0" Maximum="40" SmallChange="0.5" LargeChange="1"
-                                TickFrequency="2" ValueChanged="IRacingMaxNm_ValueChanged" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <TextBlock x:Name="IRacingMaxNmText" VerticalAlignment="Center" Text="Auto"/>
-                        <Button x:Name="IRacingAutoMaxForceBtn" Content="Auto" Margin="8,0,0,0"
-                                Style="{StaticResource EffectTestButton}" Click="IRacingAutoMaxForce_Click"
-                                ToolTip="Drive a clean lap, then press Auto. It sets Max force from the hardest this car pushed, plus a margin, and starts watching again from scratch. Had a spin or hit a wall? Just drive another clean lap and press it again. Same idea as iRacing's own auto button."/>
-                    </StackPanel>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Max force (Nm):" Style="{StaticResource LabelText}"/>
+                    <TextBox   Grid.Column="1" x:Name="IRacingMaxNmBox" VerticalAlignment="Center"
+                               LostFocus="IRacingMaxNm_LostFocus" KeyDown="IRacingMaxNm_KeyDown"/>
+                    <TextBlock Grid.Column="2" x:Name="IRacingMaxNmText" VerticalAlignment="Center"
+                               Margin="8,0,0,0" Opacity="0.75" FontSize="11" Text=""/>
+                    <!-- Width overrides EffectTestButton's 50, which is sized for
+                         its four-character "Test" labels. This one grows a number:
+                         "Use 23.8". -->
+                    <Button Grid.Column="3" x:Name="IRacingAutoMaxForceBtn" Content="Auto" Margin="8,0,0,0" Width="88" IsEnabled="False"
+                            Style="{StaticResource EffectTestButton}" Click="IRacingAutoMaxForce_Click"
+                            ToolTip="The number on this button is what the plugin has watched this car actually produce, plus a margin. Drive a clean lap, then press it to put that number in the box and start watching again from scratch. Had a spin or hit a wall? Drive another clean lap and press it again. It stays greyed until it has seen enough to be worth taking. Same idea as iRacing's own auto button."/>
                 </Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,6"
+                           Text="The force in Nm the real car would make. Drive a clean lap and press the button. This is not your wheel's Nm rating. It is the number that scales the car's true force to fit your wheel."/>
                 <TextBlock x:Name="IRacingAutoMaxForceStatus" Margin="140,0,0,6"
                            FontSize="11" Opacity="0.75" Text="" Visibility="Collapsed"/>
                 <Grid Margin="0,0,0,2">
@@ -2871,7 +2886,7 @@
                 <TextBlock Style="{StaticResource HelpText}" Margin="162,0,0,8"
                            Text="This is the switch that decides whether cars feel different. Off, one number scales everything, so set it from your HEAVIEST car and nothing will clip while lighter cars sit honestly below it. On, each car reaches full force at its own limit: nothing clips and nothing feels weak, but a Formula Vee and a GT3 end up feeling much alike."/>
                 <TextBlock x:Name="IRacingMaxNmHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Max force is the car torque at which your wheel is giving everything it has, and it decides whether cars keep their relative weight. A DIFFERENT number per car makes every car reach full force at its own limit, so they all feel about the same effort. ONE number for every car keeps the difference: a heavy GT3 pushes harder than a light car, as it does in reality. Follow iRacing inherits whatever you set in its black box, which flattens them if you use iRacing's auto force and keeps them apart if you set one value there. Strength is your preference on top and is never changed for you."/>
+                           Text="Max force is the force the real car makes, and it decides whether cars keep their relative weight. A DIFFERENT number per car makes every car reach full force at its own limit, so they all feel about the same effort. ONE number for every car keeps the difference: a heavy GT3 pushes harder than a light car, as it does in reality. Follow iRacing inherits whatever you set in its black box, which flattens them if you use iRacing's auto force and keeps them apart if you set one value there. Strength is your preference on top and is never changed for you."/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Detail method:" Style="{StaticResource LabelText}"/>
@@ -4178,11 +4193,12 @@
 
 
 
-            <!-- Widgets: optional SimHub home-screen tiles. A collapsible since it's an extra
-                 surface most users set once; currently just the gain tile. -->
+            <!-- Widgets & display: optional SimHub home-screen tiles plus in-plugin
+                 display preferences. A collapsible since it's an extra surface most
+                 users set once. -->
             <Expander x:Name="WidgetsExpander" IsExpanded="False" Margin="0,0,0,8">
                 <Expander.Header>
-                    <TextBlock Text="Widgets" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="Widgets &amp; display" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
                     <CheckBox x:Name="ShowFeedbackBoxCheck" Content="Show TF4ALL gain tile on SimHub's home screen"
@@ -4190,6 +4206,11 @@
                               ToolTip="Adds a TF4ALL master + audio gain box to SimHub's home 'Feedback' section, next to Motors and Wind, for quick access without opening this panel."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
                                Text="Quick master + audio gain control from SimHub's home screen. Turn off to remove the tile."/>
+                    <CheckBox x:Name="ShowPerGearRedlineEditorCheck" Content="Show per-gear redlines in the Car facts panel"
+                              Margin="0,8,0,2" Checked="ShowPerGearRedlineEditor_Changed" Unchecked="ShowPerGearRedlineEditor_Changed"
+                              ToolTip="Shows the per-gear redline editor in the Car facts panel, for cars where you shift at a different point in specific gears."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
+                               Text="Off by default to keep the Car facts panel small. Cars whose current engine already has per-gear redlines saved keep showing the editor, and saved values keep working either way."/>
                 </StackPanel>
             </Expander>
 

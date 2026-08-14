@@ -1732,6 +1732,16 @@ namespace TrueforceForAll.Plugin
             // an absent one.
             this.AttachDelegate("Dash.IRacingAutoShow",
                 () => IsIRacingReshapeGame(_activeGame) && ModeBEnabledForActiveGame ? 1 : 0);
+            // The synthesis side's equivalent row. Its learner is continuous, so
+            // unlike the iRacing one there is nothing to time and nothing to grey:
+            // what a driver needs here is what it has learned so far, and a way to
+            // throw it away when a tune or a tire change made it wrong.
+            this.AttachDelegate("Dash.ModeBRelearnShow",
+                () => !IsIRacingReshapeGame(_activeGame) && ModeBEnabledForActiveGame
+                      && _forceMode == ForceModeModeB ? 1 : 0);
+            this.AttachDelegate("Dash.ModeBStrengthConf",   () => ModeBStrengthConfidence);
+            this.AttachDelegate("Dash.ModeBStrengthScale",  () => ModeBAutoStrengthScale);
+            this.AttachDelegate("Dash.ModeBAutoStrengthOn", () => Settings?.ModeBAutoStrength == true ? 1 : 0);
             this.AttachDelegate("Dash.IRacingAutoReady",
                 () => IsIRacingReshapeGame(_activeGame) && IRacingPeakSettled ? 1 : 0);
             this.AttachDelegate("Dash.IRacingAutoConfidence",
@@ -2132,29 +2142,53 @@ namespace TrueforceForAll.Plugin
             // whose natural moment is ON TRACK, at the end of a clean lap, when
             // the peak is freshest. Making the driver alt-tab to press it is
             // asking them to lose the very data it depends on.
-            this.AddAction("IRacingAutoMaxForce", (a, b) =>
+            // ONE bind for "recalibrate this car's force to what you have seen",
+            // dispatched on the live mode. Both sides mean the same thing to the
+            // driver and neither is worth a second button on a wheel that has few.
+            //
+            // They are not symmetric underneath, and the toast has to carry that,
+            // because on a wheel button it is the entire feedback. iRacing ADOPTS
+            // a learned number: the apply half needs a human because nothing is
+            // applied continuously. Mode B DISCARDS one: its apply half is already
+            // automatic, so the only half left for a human is the reset. So the
+            // same press is constructive in one game and destructive in the other,
+            // and the message must say which happened rather than "done".
+            this.AddAction("CalibrateCarForce", (a, b) =>
             {
                 DashNoteActivity();
-                if (!IsIRacingReshapeGame(_activeGame))
+                if (IsIRacingReshapeGame(_activeGame))
                 {
-                    DashToast("AUTO MAX FORCE IS IRACING ONLY");
+                    // Refusing early is the point: pressing on an out-lap would
+                    // set Max force from a peak the car has not reached yet,
+                    // making everything too strong, and nothing would say why.
+                    if (!IRacingPeakSettled)
+                    {
+                        DashToast(IRacingObservedPeakNm <= 0.5
+                            ? "DRIVE A LAP FIRST"
+                            : "STILL LEARNING THIS CAR - KEEP DRIVING");
+                        return;
+                    }
+                    double applied = ApplyIRacingAutoMaxForce();
+                    DashToast(applied > 0.5
+                        ? "MAX FORCE SET TO " + applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " NM"
+                        : "NOTHING LEARNED YET");
+                    RaiseDashRemoteChanged();
                     return;
                 }
-                // Refusing early is the point: pressing on an out-lap would set
-                // Max force from a peak the car has not reached yet, making
-                // everything too strong, and nothing would say why.
-                if (!IRacingPeakSettled)
+                if (ModeBEnabledForActiveGame && _forceMode == ForceModeModeB)
                 {
-                    DashToast(IRacingObservedPeakNm <= 0.5
-                        ? "DRIVE A LAP FIRST"
-                        : "STILL LEARNING THIS CAR - KEEP DRIVING");
+                    string status = RequestGripCalReset();
+                    // The queue path answers "no car variant loaded yet" with a
+                    // sentence rather than a wipe, so it has to say which one.
+                    DashToast(status != null && status.StartsWith("No car", StringComparison.OrdinalIgnoreCase)
+                        ? "NO CAR LOADED YET - DRIVE FIRST"
+                        : "RE-LEARNING THIS CAR FROM SCRATCH");
+                    RaiseDashRemoteChanged();
                     return;
                 }
-                double applied = ApplyIRacingAutoMaxForce();
-                DashToast(applied > 0.5
-                    ? "MAX FORCE SET TO " + applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " NM"
-                    : "NOTHING LEARNED YET");
-                RaiseDashRemoteChanged();
+                DashToast(string.IsNullOrEmpty(_activeGame)
+                    ? "NO GAME RUNNING - START DRIVING FIRST"
+                    : "NOTHING TO CALIBRATE IN THIS GAME");
             });
 
             this.AddAction("DashModeBToggle", (a, b) =>

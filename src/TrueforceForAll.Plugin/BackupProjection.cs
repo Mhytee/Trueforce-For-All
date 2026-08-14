@@ -71,7 +71,7 @@ namespace TrueforceForAll.Plugin
             "OledGreetingEnabled", "OledGreetingText", "OledWriteIntervalMs",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
-            "MotdLevel", "ShowEffectsTabShareButtons",
+            "MotdLevel", "ShowEffectsTabShareButtons", "ShowPerGearRedlineEditor",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
             "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
             "DashDriveSlots", "DashDriveTwoRows", "DashFlagsEnabled",
@@ -92,6 +92,9 @@ namespace TrueforceForAll.Plugin
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
             "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate",
+            // Tap-free AC FFB toggle: a preference about how force is sourced,
+            // not a machine fact (shared memory exists wherever AC does).
+            "AcShmFfbEnabled",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",

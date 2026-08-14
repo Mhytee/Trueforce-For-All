@@ -477,6 +477,8 @@ namespace TrueforceForAll.Plugin
                 MasterGainStepText.Text    = _plugin.MasterGainStep.ToString("F2");
                 if (ShowFeedbackBoxCheck != null)
                     ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
+                if (ShowPerGearRedlineEditorCheck != null)
+                    ShowPerGearRedlineEditorCheck.IsChecked = _plugin.Settings?.ShowPerGearRedlineEditor == true;
                 if (CommunityEnabledCheck != null)
                     CommunityEnabledCheck.IsChecked = _plugin.Settings?.CommunityEnabled == true;
                 if (EffectsTabShareButtonsCheck != null)
@@ -610,11 +612,10 @@ namespace TrueforceForAll.Plugin
                 if (IRacingPerCarCheck != null)
                     IRacingPerCarCheck.IsChecked = _plugin.Settings?.IRacingMaxForcePerCar == true;
                 UpdateIRacingClipWarning();
-                if (IRacingMaxNmSlider != null)
-                {
-                    IRacingMaxNmSlider.Value = _plugin.Settings?.IRacingMaxForceNmOverride ?? 0.0;
-                    UpdateIRacingMaxNmText();
-                }
+                // Same targeting rule as the writes: show the number the force
+                // path is actually using for the active car. UpdateIRacingMaxNmText
+                // fills the box itself, so there is nothing to seed here.
+                UpdateIRacingMaxNmText();
                 if (IRacingGainSlider != null)
                 {
                     IRacingGainSlider.Value = _plugin.Settings?.IRacingForceGain ?? 1.0;
@@ -1968,6 +1969,21 @@ namespace TrueforceForAll.Plugin
                     var facts = _plugin.GetActiveCarFactsSummary();
                     string maxPart = facts.HasCar && facts.MaxRpm.HasValue
                         ? facts.MaxRpm.Value + " max RPM" : "";
+
+                    // Per-gear editor auto-show latch. The car/game latch below
+                    // misses VARIANT changes (telemetry disambiguating a
+                    // multi-variant car after load, a mid-session tune swap), so
+                    // without this a variant with saved per-gear redlines could
+                    // drive the buzz while the editor stays hidden. Skip while
+                    // the user is typing in a per-gear box so an in-progress
+                    // edit isn't destroyed; the next pass catches up.
+                    string perGearKey = (facts.ActiveVariantId ?? "") + "|" + facts.PerGearOverrideCount;
+                    if (perGearKey != _perGearShownKey
+                        && (CarFactsPerGearRows == null || !CarFactsPerGearRows.IsKeyboardFocusWithin))
+                    {
+                        _perGearShownKey = perGearKey;
+                        RebuildPerGearEditors();
+                    }
 
                     if (ep != null && userIsAuto && ep.AutoLayout is Effects.EngineLayout autoL)
                     {
@@ -6003,17 +6019,45 @@ namespace TrueforceForAll.Plugin
             UpdateIRacingPredictVisibility();
         }
 
-        // 0 means Auto, which is the left end of the slider, so the readout says
-        // "Auto" rather than "0.0" and nobody reads it as "no force".
-        private void IRacingMaxNm_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private void IRacingMaxNm_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) CommitIRacingMaxNm();
+        }
+
+        private void IRacingMaxNm_LostFocus(object sender, RoutedEventArgs e)
+        {
+            CommitIRacingMaxNm();
+        }
+
+        // An EMPTY box means "follow iRacing's own number", which is stored as 0.
+        // Typing 0 means the same thing rather than "no force": there is no car
+        // whose peak torque is zero, so the only sane reading of a 0 is the
+        // sentinel. Anything unparseable snaps back to what is really in use, so
+        // a typo cannot silently leave the wheel somewhere the box does not show.
+        private void CommitIRacingMaxNm()
         {
             if (_suppressEvents || _plugin == null || _plugin.Settings == null
-                || IRacingMaxNmSlider == null) return;
-            double v = IRacingMaxNmSlider.Value;
-            if (v < 0.5) v = 0.0;
-            _plugin.Settings.IRacingMaxForceNmOverride = (float)v;
+                || IRacingMaxNmBox == null) return;
+            string raw = IRacingMaxNmBox.Text?.Trim();
+            double v;
+            if (string.IsNullOrEmpty(raw)) v = 0.0;
+            else if (!double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                                      System.Globalization.CultureInfo.CurrentCulture, out v)
+                     && !double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                                         System.Globalization.CultureInfo.InvariantCulture, out v))
+            {
+                UpdateIRacingMaxNmText();   // unreadable: restore the live value
+                return;
+            }
+            if (v < 0.0) v = 0.0;
+            if (v > 200.0) v = 200.0;   // a sanity ceiling, not a wheel rating
+            // Writes whatever the force path is actually using (the active
+            // car's slot in per-car mode, else the shared override), so the
+            // iRacing-style nudge works: bump the number to make THIS car
+            // heavier or lighter without touching Strength.
+            _plugin.SetEditableMaxForceNm(v);
             UpdateIRacingMaxNmText();
-            _plugin.PersistSettings();
+            UpdateIRacingClipWarning();
         }
 
         // Predictive clip warning, shown at the moment of adjustment. The dash
@@ -6174,6 +6218,7 @@ namespace TrueforceForAll.Plugin
         // Only touches the UI when the displayed state actually changes.
         private bool? _irAutoReadyShown;
         private int _irAutoPctShown = -1;
+        private string _irAutoBtnShown;
 
         private void RefreshIRacingAutoReadiness()
         {
@@ -6182,11 +6227,27 @@ namespace TrueforceForAll.Plugin
 
             bool ready = _plugin.IRacingPeakSettled;
             int pct = (int)Math.Round(_plugin.IRacingPeakConfidence * 100.0);
-            if (_irAutoReadyShown == ready && _irAutoPctShown == pct) return;
+            double offer = _plugin.IRacingLearnedMaxNm;
+            // The button CARRIES the number it would write. Next to a text box, a
+            // button called "Set" reads as "commit what I typed" and would appear
+            // to clobber it; "Use 23.8" can only mean one thing, and it doubles
+            // as the readout of what the learner currently thinks, so there is no
+            // separate suggestion label to keep in sync.
+            string label = offer > 0.5
+                ? "Use " + offer.ToString("F1")
+                : "Auto";
+            if (_irAutoReadyShown == ready && _irAutoPctShown == pct && _irAutoBtnShown == label) return;
             bool wasReady = _irAutoReadyShown == true;
             _irAutoReadyShown = ready;
             _irAutoPctShown = pct;
+            _irAutoBtnShown = label;
 
+            IRacingAutoMaxForceBtn.Content = label;
+            // Genuinely disabled below settled, not just dimmed: a dim button that
+            // still works is a button that says "not yet" and then does it anyway,
+            // and taking the number early is exactly the mistake this greying is
+            // meant to prevent. Matches the wheel-button action, which refuses.
+            IRacingAutoMaxForceBtn.IsEnabled = ready;
             IRacingAutoMaxForceBtn.Opacity = ready ? 1.0 : 0.45;
             if (IRacingAutoMaxForceStatus == null) return;
             // A press leaves its own confirmation on this line; don't stamp over
@@ -6195,7 +6256,7 @@ namespace TrueforceForAll.Plugin
             {
                 if (!wasReady)
                 {
-                    IRacingAutoMaxForceStatus.Text = "Ready. Finish a clean lap, then press Auto.";
+                    IRacingAutoMaxForceStatus.Text = "Ready. Finish a clean lap, then take that number.";
                     IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
                 }
             }
@@ -6223,18 +6284,27 @@ namespace TrueforceForAll.Plugin
                 shown = st.IRacingMaxForceNmOverride;
             }
 
+            // The box carries the number and the label beside it carries where
+            // that number came from. Split this way an empty box is a readable
+            // state ("following iRacing, which says 18.5") instead of the old
+            // slider's hard-left zero, which read as no force at all.
             if (shown > 0.5)
             {
-                IRacingMaxNmText.Text = shown.ToString("F1") + src;
+                if (!IRacingMaxNmBox.IsFocused)
+                    IRacingMaxNmBox.Text = shown.ToString("F1");
+                IRacingMaxNmText.Text = string.IsNullOrEmpty(src)
+                    ? "for every car"
+                    : "for this car";
                 return;
             }
             // Nothing set: we fall back to whatever iRacing itself is using, so
             // say so and show the number. A bare "Auto" would leave the user
             // unable to tell a working fallback from a broken one.
+            if (!IRacingMaxNmBox.IsFocused) IRacingMaxNmBox.Text = "";
             double live = _plugin?.IRacingLiveMaxForceNm ?? 0.0;
             IRacingMaxNmText.Text = live > 0.5
-                ? "iRacing (" + live.ToString("F1") + ")"
-                : "iRacing";
+                ? "following iRacing, which says " + live.ToString("F1")
+                : "following iRacing";
         }
 
         private void IRacingPredict_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -7443,6 +7513,17 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.ShowEffectsTabShareButtons = EffectsTabShareButtonsCheck.IsChecked == true;
             _plugin.PersistSettings();
             UpdateHeaderShareButtons();
+        }
+
+        // UI toggle: show or hide the Car facts per-gear redline editor. Pure UI
+        // preference; saved per-gear values keep applying to the wheel, and a
+        // variant that has them auto-shows the editor (see RebuildPerGearEditors).
+        private void ShowPerGearRedlineEditor_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.ShowPerGearRedlineEditor = ShowPerGearRedlineEditorCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            RebuildPerGearEditors();
         }
 
         // MOTD level radio: All / Important / None. None is honored literally
@@ -11458,11 +11539,20 @@ namespace TrueforceForAll.Plugin
         // ---- Per-gear redline editor (Car Facts panel; the Rev Limiter
         // section's duplicate copy was retired with the centralization) ----
 
+        // Last (variant id | override count) the meter tick rebuilt the per-gear
+        // editor for; owned by the 4 Hz block in MeterTimer_Tick.
+        private string _perGearShownKey;
+
         private void RebuildPerGearEditors()
         {
             if (_plugin == null) return;
-            bool show = !string.IsNullOrEmpty(_plugin.ActiveCarId);
-            var list = show ? _plugin.GetActiveVariantPerGearRedlines() : null;
+            bool carDetected = !string.IsNullOrEmpty(_plugin.ActiveCarId);
+            var list = carDetected ? _plugin.GetActiveVariantPerGearRedlines() : null;
+            // Hidden by default: the editor shows only when the user opts in via
+            // the Settings toggle, or when this variant already carries per-gear
+            // values, so stored data is never in effect without visible UI.
+            bool show = carDetected && (_plugin.Settings?.ShowPerGearRedlineEditor == true
+                                        || (list != null && list.Count > 0));
             BuildPerGearRows(CarFactsPerGearRows, CarFactsPerGearExpander, list, show);
         }
 
@@ -12212,6 +12302,7 @@ namespace TrueforceForAll.Plugin
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
+            "ACFFB          Tap-free Assetto Corsa FFB: stream the game's own force value read from AC's shared memory (finalFF) instead of the USBPcap capture. Keep in-game FFB ON (gain 0 silences it). AC only; other games are untouched. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "NOLOCK         Issue #13 test: while the game is paused, fully leave Trueforce mode so the wheel reverts to the game's native FFB / auto-center instead of holding a force (stops the G923/FH6 full-lock). Persists. Toggle.\n" +
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
@@ -13093,6 +13184,21 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // Tap-free AC FFB: re-inject AC's shared-memory finalFF instead of
+            // the USBPcap wire capture. The shm value wins while fresh; the
+            // pcap tap (if present at all) remains the fallback. Persisted and
+            // applied to the live AC source immediately. Toggle.
+            if (code.Equals("ACFFB", StringComparison.OrdinalIgnoreCase))
+            {
+                bool on = _plugin.DebugToggleAcShmFfb();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "AC shared-memory FFB ON (persists). Drive in Assetto Corsa with in-game FFB ENABLED (gain above 0): the wheel force now comes from AC's finalFF, no USBPcap involved. If forces feel reversed or wrong in strength, note it; that calibration is exactly what this test decides. Type ACFFB again to turn off."
+                        : "AC shared-memory FFB OFF. Back to the USBPcap capture path.";
+                return;
+            }
+
             // Driver testing mode: route FFB through the TFFA kernel filter
             // driver (sole wheel ownership) instead of the USBPcap tap. Needs
             // the TFFA filter driver installed. The code both REVEALS the
@@ -13506,6 +13612,8 @@ namespace TrueforceForAll.Plugin
         {
             if (CarRevLightCombo == null || _plugin?.Settings == null) return;
             bool selectable = _plugin.WheelHasSelectableLightPattern;
+            if (CarRevLightSeparator != null)
+                CarRevLightSeparator.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
             if (CarRevLightRow != null)
                 CarRevLightRow.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
             if (CarRevLightRowHelp != null)

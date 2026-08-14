@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "3d6cad66-a7e2-4793-9378-a2d1e44013bf",
+    "Id":  "1c26df12-14dc-4dac-b0bc-984ca3fb9ed2",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "d970d02e-e01b-4bda-a788-48bb606c603a",
+                        "ScreenId":  "4796a020-5593-4451-9729-c7e37dcfb365",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14872,7 +14872,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "56cdaf97-3e8a-4bbe-816a-5af8e6a71be1",
+                        "ScreenId":  "a75f3f40-71c9-476e-a1df-cccdac491c74",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15828,7 +15828,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return !$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\")"
+                                                                                           "Expression":  "return !$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\") \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -16155,7 +16155,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.IRacingAutoMaxForce",
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -16175,6 +16175,336 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.IRacingAutoShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF4E5668",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "10,10,10,10",
+                                                              "RadiusTopLeft":  10,
+                                                              "RadiusTopRight":  10,
+                                                              "RadiusBottomLeft":  10,
+                                                              "RadiusBottomRight":  10,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.CardEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  58,
+                                          "Left":  16,
+                                          "Opacity":  100,
+                                          "Top":  378,
+                                          "Visible":  true,
+                                          "Width":  768,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF4E5668",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "cf-rl-panel",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Card\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  13,
+                                          "Text":  "AUTO STRENGTH",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  18,
+                                          "Left":  32,
+                                          "Opacity":  100,
+                                          "Top":  384,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "cf-rl-label",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  20,
+                                          "Text":  "",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  28,
+                                          "Left":  32,
+                                          "Opacity":  100,
+                                          "Top":  402,
+                                          "Visible":  true,
+                                          "Width":  300,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "cf-rl-value",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"OFF\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"--\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  12,
+                                          "Text":  "",
+                                          "TextColor":  "#FF6E6E6E",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  26,
+                                          "Left":  296,
+                                          "Opacity":  100,
+                                          "Top":  394,
+                                          "Visible":  true,
+                                          "Width":  240,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "cf-rl-hint",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;return c\u003c1?(\"LEARNING THIS CAR  \"+Math.round(c*100)+\"%\"):\"LEARNED FROM YOUR DRIVING\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Dim\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF1C1C20",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF3A4150",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.BtnEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  38,
+                                          "Left":  552,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  216,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF3A4150",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "cf-rl-bg",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Btn\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  15,
+                                          "Text":  "RE-LEARN CAR",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  1,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  38,
+                                          "Left":  552,
+                                          "Opacity":  100,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  216,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "cf-rl-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return $prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  38,
+                                          "Left":  552,
+                                          "Top":  388,
+                                          "Visible":  true,
+                                          "Width":  216,
+                                          "Name":  "cf-rl-btn",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -41765,7 +42095,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "77554836-27f0-477a-a3c7-0c20620e1a78",
+                        "ScreenId":  "dfa5e9d1-d17a-417c-9a1f-6fdb9497e5b5",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -66564,7 +66894,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "0f1e3a51-5164-434a-9820-57ee5c6f5c64",
+                        "ScreenId":  "212adcc3-6c50-41c9-ab12-6b3aaa9419b3",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -80371,7 +80701,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "610a07b4-f45d-420e-9c33-b91f75f6c716",
+                        "ScreenId":  "3c744ea2-5200-40bb-9933-7ab8b1b80b3c",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -100515,7 +100845,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "836da42c-e8ff-4f92-b010-aeefdfc037cb",
+                        "ScreenId":  "03025d5d-de92-4371-a490-716ad0572409",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -121835,7 +122165,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "47937c5c-9842-4bb5-a622-c4cc517a7b08",
+                        "ScreenId":  "1ac5b518-e156-4d65-9635-9d6441cf6b91",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -123746,7 +124076,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (!$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (!$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\") \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -123926,7 +124256,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.IRacingAutoMaxForce",
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -123946,6 +124276,189 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.IRacingAutoShow\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF1C1C20",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF3A4150",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.BtnEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  30,
+                                          "Left":  24,
+                                          "Opacity":  100,
+                                          "Top":  186,
+                                          "Visible":  true,
+                                          "Width":  254,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF3A4150",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-cf-rl-bg",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Btn\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  13,
+                                          "Text":  "RE-LEARN CAR",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  34,
+                                          "Opacity":  100,
+                                          "Top":  186,
+                                          "Visible":  true,
+                                          "Width":  234,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-cf-rl-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  12,
+                                          "Text":  "",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  34,
+                                          "Opacity":  100,
+                                          "Top":  186,
+                                          "Visible":  true,
+                                          "Width":  234,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d0-cf-rl-st",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;if(c\u003c1)return \"LEARNING  \"+Math.round(c*100)+\"%\";if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"LEARNED\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  24,
+                                          "Top":  186,
+                                          "Visible":  true,
+                                          "Width":  254,
+                                          "Name":  "d0-cf-rl-tap",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot0\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -138541,7 +139054,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (!$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 (!$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\") \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -138721,7 +139234,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.IRacingAutoMaxForce",
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -138741,6 +139254,189 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.IRacingAutoShow\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF1C1C20",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF3A4150",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.BtnEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  30,
+                                          "Left":  522,
+                                          "Opacity":  100,
+                                          "Top":  186,
+                                          "Visible":  true,
+                                          "Width":  254,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF3A4150",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-cf-rl-bg",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Btn\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  13,
+                                          "Text":  "RE-LEARN CAR",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  532,
+                                          "Opacity":  100,
+                                          "Top":  186,
+                                          "Visible":  true,
+                                          "Width":  234,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-cf-rl-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  12,
+                                          "Text":  "",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  532,
+                                          "Opacity":  100,
+                                          "Top":  186,
+                                          "Visible":  true,
+                                          "Width":  234,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d1-cf-rl-st",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;if(c\u003c1)return \"LEARNING  \"+Math.round(c*100)+\"%\";if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"LEARNED\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  522,
+                                          "Top":  186,
+                                          "Visible":  true,
+                                          "Width":  254,
+                                          "Name":  "d1-cf-rl-tap",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot1\"))==\"CarFacts\" \u0026\u0026 $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\") \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -153520,7 +154216,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"CarFacts\" \u0026\u0026 (!$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"CarFacts\" \u0026\u0026 (!$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\") \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -153732,7 +154428,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.IRacingAutoMaxForce",
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -153752,6 +154448,221 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.IRacingAutoShow\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?398:299.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF1C1C20",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF3A4150",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.BtnEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  30,
+                                          "Left":  24,
+                                          "Opacity":  100,
+                                          "Top":  398,
+                                          "Visible":  true,
+                                          "Width":  254,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF3A4150",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-cf-rl-bg",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Btn\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?398:299.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  13,
+                                          "Text":  "RE-LEARN CAR",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  34,
+                                          "Opacity":  100,
+                                          "Top":  398,
+                                          "Visible":  true,
+                                          "Width":  234,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-cf-rl-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?398:299.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  12,
+                                          "Text":  "",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  34,
+                                          "Opacity":  100,
+                                          "Top":  398,
+                                          "Visible":  true,
+                                          "Width":  234,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d2-cf-rl-st",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;if(c\u003c1)return \"LEARNING  \"+Math.round(c*100)+\"%\";if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"LEARNED\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?398:299.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  24,
+                                          "Top":  398,
+                                          "Visible":  true,
+                                          "Width":  254,
+                                          "Name":  "d2-cf-rl-tap",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot2\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -170869,7 +171780,7 @@
                                                            "Visible":  {
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
-                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"CarFacts\" \u0026\u0026 (!$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\"))"
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"CarFacts\" \u0026\u0026 (!$prop(\"TrueforcePlugin.Dash.IRacingAutoShow\") \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"
@@ -171081,7 +171992,7 @@
                                                                  "Shift":  false
                                                              },
                                           "SimulateKey":  false,
-                                          "TriggerAction":  "TrueforcePlugin.IRacingAutoMaxForce",
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
                                           "TriggerSimHubInputName":  "",
                                           "IsEnabled":  true,
                                           "PressedImage":  "None",
@@ -171101,6 +172012,221 @@
                                                                            "Formula":  {
                                                                                            "Interpreter":  1,
                                                                                            "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.IRacingAutoShow\")))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?398:299.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.RectangleItem, SimHub.Plugins",
+                                          "BackgroundColor":  "#FF1C1C20",
+                                          "BorderStyle":  {
+                                                              "BorderColor":  "#FF3A4150",
+                                                              "BorderTop":  1,
+                                                              "BorderBottom":  1,
+                                                              "BorderLeft":  1,
+                                                              "BorderRight":  1,
+                                                              "CornerRadius":  "4,4,4,4",
+                                                              "RadiusTopLeft":  4,
+                                                              "RadiusTopRight":  4,
+                                                              "RadiusBottomLeft":  4,
+                                                              "RadiusBottomRight":  4,
+                                                              "Bindings":  {
+                                                                               "BorderColor":  {
+                                                                                                   "Formula":  {
+                                                                                                                   "Interpreter":  1,
+                                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.BtnEdge\")"
+                                                                                                               },
+                                                                                                   "Mode":  2,
+                                                                                                   "TargetPropertyName":  "BorderColor"
+                                                                                               }
+                                                                           }
+                                                          },
+                                          "Height":  30,
+                                          "Left":  522,
+                                          "Opacity":  100,
+                                          "Top":  398,
+                                          "Visible":  true,
+                                          "Width":  254,
+                                          "BorderBottom":  1,
+                                          "BorderColor":  "#FF3A4150",
+                                          "BorderLeft":  1,
+                                          "BorderRight":  1,
+                                          "BorderTop":  1,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-cf-rl-bg",
+                                          "Bindings":  {
+                                                           "BackgroundColor":  {
+                                                                                   "Formula":  {
+                                                                                                   "Interpreter":  1,
+                                                                                                   "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Btn\")"
+                                                                                               },
+                                                                                   "Mode":  2,
+                                                                                   "TargetPropertyName":  "BackgroundColor"
+                                                                               },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?398:299.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Bold",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  13,
+                                          "Text":  "RE-LEARN CAR",
+                                          "TextColor":  "#FFF4F4F4",
+                                          "HorizontalAlignment":  0,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  532,
+                                          "Opacity":  100,
+                                          "Top":  398,
+                                          "Visible":  true,
+                                          "Width":  234,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-cf-rl-t",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?398:299.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Text\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+                                          "FontWeight":  "Normal",
+                                          "TextWrapping":  1,
+                                          "FontStyle":  "Normal",
+                                          "FontSize":  12,
+                                          "Text":  "",
+                                          "TextColor":  "#FFA0A0A0",
+                                          "HorizontalAlignment":  2,
+                                          "VerticalAlignment":  1,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  532,
+                                          "Opacity":  100,
+                                          "Top":  398,
+                                          "Visible":  true,
+                                          "Width":  234,
+                                          "Rotation":  0,
+                                          "RenderingSkip":  0,
+                                          "IsFreezed":  false,
+                                          "Name":  "d3-cf-rl-st",
+                                          "Bindings":  {
+                                                           "Text":  {
+                                                                        "Formula":  {
+                                                                                        "Interpreter":  1,
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;if(c\u003c1)return \"LEARNING  \"+Math.round(c*100)+\"%\";if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"LEARNED\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
+                                                                                    },
+                                                                        "Mode":  2,
+                                                                        "TargetPropertyName":  "Text"
+                                                                    },
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\"))"
+                                                                                       },
+                                                                           "Mode":  2,
+                                                                           "TargetPropertyName":  "Visible"
+                                                                       },
+                                                           "Top":  {
+                                                                       "Formula":  {
+                                                                                       "Interpreter":  1,
+                                                                                       "Expression":  "return $prop(\"TrueforcePlugin.Dash.Drive.TwoRows\")?398:299.5"
+                                                                                   },
+                                                                       "Mode":  2,
+                                                                       "TargetPropertyName":  "Top"
+                                                                   },
+                                                           "TextColor":  {
+                                                                             "Formula":  {
+                                                                                             "Interpreter":  1,
+                                                                                             "Expression":  "return \"\"+$prop(\"TrueforcePlugin.Dash.Theme.Muted\")"
+                                                                                         },
+                                                                             "Mode":  2,
+                                                                             "TargetPropertyName":  "TextColor"
+                                                                         }
+                                                       }
+                                      },
+                                      {
+                                          "$type":  "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.ButtonItem, SimHub.Plugins",
+                                          "SimulatedKey":  0,
+                                          "SimulatedKeyV2":  {
+                                                                 "Win":  false,
+                                                                 "Ctrl":  false,
+                                                                 "Alt":  false,
+                                                                 "Shift":  false
+                                                             },
+                                          "SimulateKey":  false,
+                                          "TriggerAction":  "TrueforcePlugin.CalibrateCarForce",
+                                          "TriggerSimHubInputName":  "",
+                                          "IsEnabled":  true,
+                                          "PressedImage":  "None",
+                                          "DisabledOpacity":  50,
+                                          "PressedOpacity":  60,
+                                          "Image":  "None",
+                                          "AutoSize":  false,
+                                          "BackgroundColor":  "#00FFFFFF",
+                                          "Height":  30,
+                                          "Left":  522,
+                                          "Top":  398,
+                                          "Visible":  true,
+                                          "Width":  254,
+                                          "Name":  "d3-cf-rl-tap",
+                                          "Bindings":  {
+                                                           "Visible":  {
+                                                                           "Formula":  {
+                                                                                           "Interpreter":  1,
+                                                                                           "Expression":  "return (\"\"+$prop(\"TrueforcePlugin.Dash.Overlay\"))==\"\" \u0026\u0026 !$prop(\"TrueforcePlugin.Dash.Idle.On\") \u0026\u0026 ((\"\"+$prop(\"TrueforcePlugin.Dash.Drive.Slot3\"))==\"CarFacts\" \u0026\u0026 ($prop(\"TrueforcePlugin.Dash.ModeBRelearnShow\")))"
                                                                                        },
                                                                            "Mode":  2,
                                                                            "TargetPropertyName":  "Visible"

@@ -3515,6 +3515,26 @@ namespace TrueforceForAll.Plugin
                         chosen = _driverChannel.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "driver";
                     }
+                    // Tap-free AC path (ACFFB access code): the game's own
+                    // finalFF read from AC's shared memory IS the force the
+                    // wheel driver was about to receive (post every in-game
+                    // gain), so it substitutes for the wire capture with no
+                    // USBPcap involved. In-game FFB must stay ON: gain 0
+                    // zeroes finalFF. Consulted before the pcap tap so a
+                    // machine that also has USBPcap running doesn't deliver
+                    // the same signal twice via two decoders. SHORT freshness
+                    // window on purpose: the latch only re-timestamps on new
+                    // physics packets, so a paused AC (frozen page) ages out
+                    // here within a quarter second instead of replaying a
+                    // held force for FfbTargetMaxAgeMs (the issue #13 class);
+                    // a ~333 Hz source that missed ~80 ticks is not driving.
+                    if (!chosen.HasValue && (Settings?.AcShmFfbEnabled ?? false))
+                    {
+                        const int acShmMaxAgeMs = 250;
+                        chosen = (_telemetrySource as AcSharedMemoryTelemetrySource)
+                            ?.TryGetFreshFfbTarget(acShmMaxAgeMs);
+                        if (chosen.HasValue) ffbSrc = "acshm";
+                    }
                     if (!chosen.HasValue)
                     {
                         chosen = _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
@@ -4722,7 +4742,12 @@ namespace TrueforceForAll.Plugin
                 // off, synthesis owns the wheel), so an empty tap is correct
                 // and the "no game FFB reaching the plugin" escalation chain
                 // (broad capture retry + user-facing warning) must stay quiet.
+                // Same for the tap-free AC path: while ACFFB is armed and
+                // finalFF is flowing, the user may not even have USBPcap
+                // installed, so an empty tap is the expected state, not a
+                // capture failure.
                 _ffbTap.GameFfbExpected = _forceMode == ForceModeOff
+                    && !AcShmFfbSupplying()
                     && (_telemetrySource?.IsSessionActive ?? false);
                 if (_noFfbCaptureNotice != null && _ffbTap.MsSinceLastSample < 1000)
                     _noFfbCaptureNotice = null;
@@ -4854,10 +4879,19 @@ namespace TrueforceForAll.Plugin
             // sends nothing. Spring mode (2) is the OPPOSITE contract, the
             // game's spring traffic is our input, and any scalar there is a
             // misdecode (FS G PRO heartbeat), so warning on it is noise.
-            // Suppressed while the slip-starved fallback is latched: in that
-            // state the game's FFB is deliberately passed through, so "set the
-            // game's FFB to 0" would zero the only force the wheel has left.
-            if (_forceMode == ForceModeModeB && _ffbTap != null && !ModeBSlipStarvedDetected)
+            // Suppressed while the slip feed is dead (never stamped, or stale
+            // past the starved dwell): in that state the game's FFB is (or is
+            // about to be) deliberately passed through, so "set the game's
+            // FFB to 0" would zero the only force the wheel has left. Keyed
+            // on the LIVE feed state, not the starved warn latch: the latch
+            // needs 250 ms of live driving to land, and the contention timer
+            // must never win that race (engaging Mode B from a pause menu
+            // gives contention a 3 s head start otherwise).
+            long slipStampC = System.Threading.Interlocked.Read(ref _lastSlipAngleTicks);
+            bool slipFeedDead = slipStampC == 0
+                || (Stopwatch.GetTimestamp() - slipStampC) * 1000.0 / Stopwatch.Frequency
+                    > ModeBSlipStarvedAfterMs;
+            if (_forceMode == ForceModeModeB && _ffbTap != null && !slipFeedDead)
             {
                 bool gameWriting = _ffbTap.TryGetFreshFfbTarget(250).HasValue;
                 long nowC = Stopwatch.GetTimestamp();
@@ -4877,21 +4911,27 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                // Mode B disarmed (or no tap to probe): clear the whole
-                // contention latch, not just the timer. Leaving the flag set
-                // kept the tab's warning banner up for the rest of the
-                // session after the user turned Mode B off.
+                // Timer always resets: a fresh contention verdict needs a
+                // fresh 3 s of sustained game writes once the watchdog is
+                // eligible again.
                 _contentionSinceTicks = 0;
-                _contentionWarned = false;
-                ModeBContentionDetected = false;
-                // The slip-starved latch clears on genuine disarm only. While
-                // Mode B stays armed this branch also runs BECAUSE the latch
-                // suppresses the watchdog above, and clearing it here would
-                // re-arm the wrong warning on the next tick.
+                // The LATCHES clear on genuine disarm only. While Mode B
+                // stays armed this branch also runs whenever the slip feed
+                // is dead (that suppression is what routes us here), and
+                // wiping a latched banner every tick would flap the UI: a
+                // contention verdict latched during a healthy phase may
+                // outlive a fast-travel halt, and the starved latch is what
+                // keeps the contention watchdog's wrong-advice suppressed.
+                // (Pre-existing behavior for the contention latch: cleared
+                // whenever Mode B is off, so the banner cannot outlive the
+                // user turning Mode B off.)
                 if (_forceMode != ForceModeModeB)
                 {
+                    _contentionWarned = false;
+                    ModeBContentionDetected = false;
                     _slipStarvedWarned = false;
                     ModeBSlipStarvedDetected = false;
+                    _starvedLiveTicks = 0;
                 }
             }
 
@@ -4958,9 +4998,12 @@ namespace TrueforceForAll.Plugin
                 _contentionSinceTicks = 0;
                 ModeBContentionDetected = false;
                 // Same reasoning for the slip-starved latch: each game's
-                // telemetry setup deserves its own verdict.
+                // telemetry setup deserves its own verdict, and a stale
+                // debounce count must not let the next game's first starved
+                // tick warn instantly.
                 _slipStarvedWarned = false;
                 ModeBSlipStarvedDetected = false;
+                _starvedLiveTicks = 0;
                 // Spring mode is armed against ONE game's bus picture; a game
                 // switch invalidates it (and must not suppress the new game's
                 // GameFfbExpected escalation while stale-armed). The arming
@@ -5342,6 +5385,16 @@ namespace TrueforceForAll.Plugin
                 _lastSimHubPitLimiterActive = nd.PitLimiterOn;
                 _lastSimHubDrsActive        = nd.DRSEnabled;
             }
+
+            // SimHub's own not-driving flags (paused / in menu / replay),
+            // for the slip-starved pass-through gate. The SimHub fallback
+            // source cannot see Forza's raceOn, and its physics proxy reads
+            // a replay or a frozen pause frame as a live session; these
+            // flags are the only pause/replay signal that exists on the
+            // fallback. Best effort: game readers that never set them leave
+            // this false, which is exactly the pre-flag behavior.
+            _gameNotDrivingState = data != null
+                && (data.GamePaused || data.GameInMenu || data.GameReplay);
 
             // Hand the GameData to the SimHub source. It builds a
             // TelemetryFrame and fires OnFrame → DispatchFrame, which is
@@ -5838,8 +5891,18 @@ namespace TrueforceForAll.Plugin
                 // and on the F8 wheel (C266) LED writes interleaving with
                 // classic FFB is native-game behavior (owner's ACC capture:
                 // ~13k f8 12 writes alongside slot traffic).
+                // Tap-free AC (ACFFB): a fresh finalFF latch PROVES the game
+                // is emitting force, so the bus cannot be quiet no matter
+                // what the tap sees (with the shm path supplying, the user
+                // has no reason to keep USBPcap healthy, so a blind-but-
+                // running tap gets likelier and its "no captures" must not
+                // read as silence). Owner-confirmed contention model
+                // (2026-08-14): ANY force values on the HID++ endpoint plus
+                // an LED/OLED write cuts FFB; our ep3 stream overriding the
+                // ep0 force does NOT make those writes safe.
                 bool gameFfbQuiet = ledTap != null && ledTap.IsRunning
-                            && !ledTap.TryGetFreshFfbTarget(2000).HasValue;
+                            && !ledTap.TryGetFreshFfbTarget(2000).HasValue
+                            && !AcShmFfbSupplying();
                 // Only while actively driving. On pause / menu / replay the
                 // session goes inactive: the Mode B force is already zeroed
                 // there, and without this the rev bar would freeze on the
@@ -6490,7 +6553,8 @@ namespace TrueforceForAll.Plugin
                 _contentionSinceTicks = 0;
                 ModeBContentionDetected = false;
                 // Slip-starved latch re-arms too: a fixed Data Out port gets
-                // a fresh verdict on the next engage.
+                // a fresh verdict on the next engage (SeedModeBEngageState
+                // below restarts the dwell and the debounce count).
                 _slipStarvedWarned = false;
                 ModeBSlipStarvedDetected = false;
                 _crashDuck.Reset();
@@ -6729,9 +6793,11 @@ namespace TrueforceForAll.Plugin
         // first time Mode B sits armed past the dwell with no slip telemetry
         // to synthesize from (MaybeReshapeFfb passes the game's tapped force
         // through meanwhile). Cleared on recovery, disarm, and game change.
-        // Plain bools like the contention latch: cross-thread races are
-        // benign (one extra or lost tick of a diagnostic banner).
-        private long _mbArmedTicks;      // stamped on every clean engage
+        // The bools and the int are plain like the contention latch:
+        // cross-thread races are benign (one extra or lost tick of a
+        // diagnostic banner). The 64-bit stamp goes through Interlocked
+        // (32-bit process; same rule as _lastSlipAngleTicks).
+        private long _mbArmedTicks;      // stamped on every clean engage (Interlocked)
         private bool _slipStarvedWarned;
         // Consecutive live starved pass-through ticks (FFB thread only).
         // Debounces the warning: the unpause race can land a handful of
@@ -6742,6 +6808,12 @@ namespace TrueforceForAll.Plugin
         private int _starvedLiveTicks;
         private const int StarvedWarnAfterTicks = 250;   // ~250 ms at the 1 kHz provider
         private const double ModeBSlipStarvedAfterMs = 3000.0;
+        // SimHub's own paused/menu/replay rollup, cached from DataUpdate for
+        // the FFB thread's pass-through gate. The fallback source cannot see
+        // Forza's raceOn; these flags are the only pause/replay signal that
+        // exists there. (GameData.Spectating is obsolete in the SDK and
+        // deliberately not included.)
+        private volatile bool _gameNotDrivingState;
         /// <summary>True while Mode B is armed but slip telemetry is absent,
         /// so the game's tapped FFB is passed through (diagnostic surface for
         /// the settings UI banner).</summary>
@@ -6749,30 +6821,37 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>FFB thread. Called from MaybeReshapeFfb whenever Mode B is
         /// armed but has no slip telemetry to synthesize from. Latches the
-        /// diagnostic flag and logs one actionable warning per arming, after
-        /// an engage dwell so a normal engage (the first slip frame lands a
-        /// tick or two behind the arm) can never false-positive.</summary>
+        /// diagnostic flag and logs one actionable warning per starvation
+        /// episode (a genuine recovery re-arms it), after an engage dwell
+        /// plus a consecutive-live-tick debounce so a normal engage or an
+        /// unpause race (the first slip frame lands a tick or two behind the
+        /// session flag) can never false-positive.</summary>
         private void NoteModeBSlipStarved()
         {
             if (_starvedLiveTicks < int.MaxValue) _starvedLiveTicks++;
             if (_slipStarvedWarned) return;
             if (_starvedLiveTicks < StarvedWarnAfterTicks) return;
-            long armed = _mbArmedTicks;
+            long armed = System.Threading.Interlocked.Read(ref _mbArmedTicks);
             if (armed == 0
                 || (Stopwatch.GetTimestamp() - armed) * 1000.0 / Stopwatch.Frequency
                     < ModeBSlipStarvedAfterMs) return;
             _slipStarvedWarned = true;
             ModeBSlipStarvedDetected = true;
-            int forzaPort = Settings?.Forza?.Port ?? 5300;
+            // A contention verdict latched during an earlier healthy phase is
+            // stale advice now (it says to zero the game's FFB, which is the
+            // only force the pass-through has): this diagnosis supersedes it.
+            // Cross-thread bool stores, same benign-race class as the rest of
+            // the latch state.
+            _contentionWarned = false;
+            ModeBContentionDetected = false;
             SimHub.Logging.Current.Warn(
                 "[TF4ALL] Mode B FALLBACK: no tire-slip telemetry is reaching the plugin, "
                 + "so there is nothing to synthesize steering force from; the game's own force "
                 + "feedback (if the game is sending any) is passed through instead. Telemetry "
-                + "Based FFB needs Forza's telemetry sent DIRECTLY to this plugin: in the game's "
-                + $"Data Out settings use IP 127.0.0.1 and port {forzaPort}. If SimHub or another "
-                + "app already uses that port, first change the Forza UDP port in the plugin's "
-                + "Settings tab to a free one, then point the game at it, and enable forwarding "
-                + "there so SimHub keeps receiving telemetry.");
+                + "Based FFB needs Forza's telemetry sent DIRECTLY to this plugin: give the "
+                + "plugin its own Forza UDP port in the Settings tab (one no other app listens "
+                + "on, SimHub included), point the game's Data Out at IP 127.0.0.1 with that "
+                + "port, and enable the plugin's forwarding so SimHub keeps receiving telemetry.");
         }
 
         /// <summary>FFB thread. Clears the slip-starved latch once synthesis is
@@ -7264,8 +7343,11 @@ namespace TrueforceForAll.Plugin
             // Arming timestamp for the slip-starved warning's engage dwell
             // (NoteModeBSlipStarved): a normal engage sees its first slip
             // frame within a tick or two, so only a feed that stays absent
-            // for ModeBSlipStarvedAfterMs past this point warns.
-            _mbArmedTicks = Stopwatch.GetTimestamp();
+            // for ModeBSlipStarvedAfterMs past this point warns. Interlocked
+            // like the other cross-thread tick stamps (32-bit process, torn
+            // 64-bit reads). The debounce counter restarts with the dwell.
+            System.Threading.Interlocked.Exchange(ref _mbArmedTicks, Stopwatch.GetTimestamp());
+            _starvedLiveTicks = 0;
             _mbSlipEma = _lastFrontSlipAngle;
             _mbPrevSlipEma = _lastFrontSlipAngle;   // so the first reversal-rate sample is ~0, not a step
             _mbSlipRateEma = 0f;
@@ -7747,6 +7829,49 @@ namespace TrueforceForAll.Plugin
             return learned;
         }
 
+        /// <summary>The Max force number the settings slider edits, resolved
+        /// by the SAME targeting rule as the Auto button: the active car's
+        /// slot when cars are kept separate and a car is active, else the
+        /// shared override. iRacing's own workflow is nudging the read
+        /// number to make a car heavier or lighter without touching the
+        /// Strength slider; before this the slider always wrote the shared
+        /// override, which the per-car slot shadows, so in per-car mode a
+        /// nudge silently did nothing for the car being driven.</summary>
+        public double GetEditableMaxForceNm()
+        {
+            var s = Settings;
+            if (s == null) return 0.0;
+            if (s.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId)
+                && s.IRacingMaxForceByCar != null
+                && s.IRacingMaxForceByCar.TryGetValue(_activeCarId, out float pc) && pc > 0.5f)
+                return pc;
+            return s.IRacingMaxForceNmOverride;
+        }
+
+        /// <summary>Write the panel's number to whatever the force path is
+        /// actually using (see <see cref="GetEditableMaxForceNm"/>). Values
+        /// under 0.5 clear the target back to "follow iRacing"; the panel shows
+        /// that state as an empty box rather than as a zero, because no car has
+        /// a peak torque of zero and a 0 in a Nm field reads as "no force".</summary>
+        public void SetEditableMaxForceNm(double v)
+        {
+            var s = Settings;
+            if (s == null) return;
+            bool clear = v < 0.5;
+            if (s.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId))
+            {
+                if (s.IRacingMaxForceByCar == null)
+                    s.IRacingMaxForceByCar = new Dictionary<string, float>();
+                if (clear) s.IRacingMaxForceByCar.Remove(_activeCarId);
+                else s.IRacingMaxForceByCar[_activeCarId] = (float)v;
+            }
+            else
+            {
+                s.IRacingMaxForceNmOverride = clear ? 0.0f : (float)v;
+            }
+            PersistSettings();
+        }
+
         /// <summary>Peak this car has actually produced, plus a margin, in Nm.
         /// The number a "learn from driving" control would adopt. 0 until enough
         /// racing has happened to mean anything.</summary>
@@ -7913,23 +8038,11 @@ namespace TrueforceForAll.Plugin
                 double ffbOnD;
                 bool ffbOn = SdkScalar(frame, vars, "SteeringFFBEnabled", out ffbOnD) && ffbOnD != 0.0;
 
-                float[] sub = SdkArray(frame, vars, "SteeringWheelTorque_ST");
-                if (sub != null && sub.Length < IRacingSubSamples) sub = null;
-
-                _irFrame = new IRacingTorqueFrame
-                {
-                    Sub = sub,
-                    Latest = (float)torque,
-                    MaxNm = (float)maxNm,
-                    GameFfbOn = ffbOn,
-                    Ticks = Stopwatch.GetTimestamp(),
-                };
-
+                // Dash halves first: these keep working with the driver OUT
+                // of the car (menu, replay, tow), where the force must not.
                 double peakNm;
                 if (!SdkScalar(frame, vars, "SteeringWheelPeakForceNm", out peakNm)) peakNm = -1.0;
                 MaybeLogIRacingFullScale(maxNm, peakNm);
-
-                BuildIRacingOverlayFromSdk(frame, vars, maxNm);
                 MaybeParseIRacingSessionYaml(r);
 
                 // Incident count rides the same snapshot. It HAS to be read
@@ -7944,6 +8057,39 @@ namespace TrueforceForAll.Plugin
                 {
                     if (inc >= 0.0) ConsumeIncidentCount((int)inc, "direct");
                 }
+
+                // Force half: ONLY while the driver is actually in the car.
+                // Out of the car (hold ESC to the menu, tow, replay) iRacing
+                // keeps publishing a steering torque for the PARKED car, and
+                // at standstill that torque follows the wheel's displacement
+                // instead of centering it, so reproducing it faithfully is a
+                // positive-feedback runaway to full lock (owner, 2026-08-13:
+                // wheel left of center pulled hard left until back in car).
+                // Drop the latch outright so the wheel goes light NOW instead
+                // of aging out a held force. The texture overlay and the peak
+                // learner are gated with it: neither means anything out of
+                // the car.
+                double onTrackD;
+                bool inCar = SdkScalar(frame, vars, "IsOnTrack", out onTrackD) && onTrackD != 0.0;
+                if (!inCar)
+                {
+                    _irFrame = null;
+                    return;
+                }
+
+                float[] sub = SdkArray(frame, vars, "SteeringWheelTorque_ST");
+                if (sub != null && sub.Length < IRacingSubSamples) sub = null;
+
+                _irFrame = new IRacingTorqueFrame
+                {
+                    Sub = sub,
+                    Latest = (float)torque,
+                    MaxNm = (float)maxNm,
+                    GameFfbOn = ffbOn,
+                    Ticks = Stopwatch.GetTimestamp(),
+                };
+
+                BuildIRacingOverlayFromSdk(frame, vars, maxNm);
             }
             catch { /* never let the reader thread die on one bad tick */ }
         }
@@ -8025,6 +8171,17 @@ namespace TrueforceForAll.Plugin
             double trkLoc;
             if (racingSurface && SdkScalar(frame, vars, "PlayerTrackSurface", out trkLoc))
                 racingSurface = (int)Math.Round(trkLoc) == 3;   // irsdk_OnTrack
+            else if (racingSurface) racingSurface = false;
+
+            // And only while actually MOVING. A car sitting still on the
+            // racing surface passes every location check above, but the
+            // readiness clock is a promise that DRIVING happened; it was
+            // observed climbing while parked on track (owner, 2026-08-13).
+            // ~18 km/h separates rolling from parked without excluding a
+            // slow corner.
+            double speedMs;
+            if (racingSurface && SdkScalar(frame, vars, "Speed", out speedMs))
+                racingSurface = speedMs > 5.0;
             else if (racingSurface) racingSurface = false;
 
             double peakTorque;
@@ -8708,6 +8865,25 @@ namespace TrueforceForAll.Plugin
                     catch { ffbOn = false; }
                 }
 
+                // ONLY while the driver is actually in the car, for the same
+                // reason as the direct route: out of the car iRacing keeps
+                // publishing a torque for the parked car that follows the
+                // wheel's displacement, and reproducing it is a runaway to
+                // full lock. Failed read counts as out-of-car: no force is
+                // safer than a runaway when the channel is unreadable.
+                bool inCar = false;
+                object oOnTrack;
+                if (IRacingChannel(tel, dict, null, "IsOnTrack", out oOnTrack))
+                {
+                    try { inCar = Convert.ToBoolean(oOnTrack); }
+                    catch { inCar = false; }
+                }
+                if (!inCar)
+                {
+                    _irFrame = null;
+                    return;
+                }
+
                 // The 360 Hz array is dictionary-only: it is not among the
                 // generated typed properties. Absent is survivable, we just run
                 // on the 60 Hz scalar instead.
@@ -9212,29 +9388,47 @@ namespace TrueforceForAll.Plugin
                     // tell the user how to feed the plugin.
                     //
                     // Pass through ONLY while the session is provably live:
-                    // fresh frames AND the physics proxy reads driving. FH6
-                    // re-emits the frozen pre-pause force through pauses,
-                    // results, fast travel, and load screens (the tap stays
-                    // "fresh" the whole time), and streaming that force at a
-                    // stationary wheel walks it to the rotational stop (the
-                    // issue #13 full-lock class). Everything not provably
-                    // live holds zero force, the same wire the pre-fix code
-                    // (and the provider's pause release) produced, so the
-                    // enhanced-source fast-travel halt keeps its exact
-                    // pre-fix behavior too.
+                    // fresh frames, the physics proxy reads driving, and
+                    // SimHub's own pause/menu/replay flags are all clear.
+                    // FH6 re-emits the frozen pre-pause force through
+                    // pauses, results, replays, fast travel, and load
+                    // screens (the tap stays "fresh" the whole time), and
+                    // streaming that force at a stationary wheel walks it to
+                    // the rotational stop (the issue #13 full-lock class).
+                    // The physics proxy alone cannot catch a replay or a
+                    // frozen pause frame (live-looking values), hence the
+                    // flag gate on top. Residual exposure: a not-driving
+                    // state the game reader does not flag, with frames still
+                    // flowing, matches what Mode B off already ships; and
+                    // when frames stop before any flag lands, the frozen
+                    // value can ride the freshness bound for up to 250 ms.
+                    //
+                    // Blocked arm wire: with a tapped force present, hold
+                    // ACTIVE zero so the frozen value cannot reach the wheel
+                    // (for the stale sub-case this is byte-identical to the
+                    // pre-fix ramp-out zero; for the never-fed sub-case the
+                    // pre-fix wire was a silent keepalive, and active zero
+                    // is the deliberate safer choice: wheel released, not
+                    // handed a frozen ep0 force). With NO tapped force stay
+                    // null/silent so tap-less setups (Secure Boot) keep
+                    // native ep0 FFB through frame hiccups instead of
+                    // getting muted. That matches the pre-fix wire for the
+                    // never-fed sub-case; the stale+no-tap sub-case flips
+                    // from the pre-fix mute to silent, which is the point.
                     //
                     // The stability tail is skipped in both arms: its terms
                     // are ramp-gated to zero in this state anyway, and they
                     // belong to synthesis, not to the game's own force.
                     var starvedSrc = _telemetrySource;
                     if (starvedSrc != null && starvedSrc.IsSessionActive
-                        && starvedSrc.MsSinceLastFrame <= 250.0)
+                        && starvedSrc.MsSinceLastFrame <= 250.0
+                        && !_gameNotDrivingState)
                     {
                         NoteModeBSlipStarved();
                         return target;
                     }
                     _starvedLiveTicks = 0;
-                    return (short?)0;
+                    return target.HasValue ? (short?)0 : null;
                 }
                 NoteModeBSlipRecovered();
                 target = synth;
@@ -10448,6 +10642,11 @@ namespace TrueforceForAll.Plugin
                 var ac = new AcSharedMemoryTelemetrySource
                 {
                     Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
+                    // Tap-free AC FFB (ACFFB access code): arm the finalFF
+                    // latch at construction so a session that starts with the
+                    // feature on never needs a toggle round-trip to begin
+                    // supplying force. SetAcShmFfb applies later changes live.
+                    FfbLatchEnabled = Settings?.AcShmFfbEnabled ?? false,
                 };
                 try
                 {
@@ -16891,6 +17090,8 @@ namespace TrueforceForAll.Plugin
             public bool HasUserRedline;         // the user pinned one for this variant
             public int? UserRedline;            // the exact pinned value (shown precisely, not the stale resolved one)
             public int? CommunityRedline;       // consensus for this variant (for "use community")
+            public string ActiveVariantId;      // stored variant the redline fields came from; null in the unresolved window
+            public int PerGearOverrideCount;    // per-gear overrides on that variant (drives the editor auto-show)
         }
 
         public CarFactsSummary GetActiveCarFactsSummary()
@@ -16958,6 +17159,8 @@ namespace TrueforceForAll.Plugin
             // default or any per-gear override.
             int perGearCount    = storedForRedline?.PerGearRedlines?.Count ?? 0;
             s.HasUserRedline    = userRl.HasValue || perGearCount > 0;
+            s.ActiveVariantId   = storedForRedline?.Id;
+            s.PerGearOverrideCount = perGearCount;
             s.CommunityRedline  = GetActiveVariantCommunityRedline();
             // A community value is USED from the first submission, but only
             // CLAIMED as "the community" once a second driver agrees; a lone
@@ -26276,6 +26479,43 @@ namespace TrueforceForAll.Plugin
             bool on = !(Settings?.ExperimentalFfbCapture ?? false);
             SetExperimentalFfbCapture(on);
             return on;
+        }
+
+        // ---------- Tap-free AC FFB (ACFFB access code) ----------
+
+        // Persists Settings.AcShmFfbEnabled and applies it to the live AC
+        // source immediately (the latch is otherwise armed at source
+        // construction on the next game swap). Turning it off also drops any
+        // latched force so the provider can't consume a final stale value.
+        public void SetAcShmFfb(bool on)
+        {
+            if (Settings != null) Settings.AcShmFfbEnabled = on;
+            PersistSettings();
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src != null)
+            {
+                src.FfbLatchEnabled = on;
+                if (!on) src.ClearLastFfbTarget();
+            }
+            SimHub.Logging.Current.Info($"[TF4ALL] AC shared-memory FFB {(on ? "ON" : "OFF")}.");
+        }
+
+        public bool DebugToggleAcShmFfb()
+        {
+            bool on = !(Settings?.AcShmFfbEnabled ?? false);
+            SetAcShmFfb(on);
+            return on;
+        }
+
+        // True while the tap-free AC path is armed AND recently delivering,
+        // used to keep the tap's no-FFB escalation quiet (it gates a warning,
+        // not the force itself, hence the more lenient window than the
+        // provider's 250 ms so momentary gaps don't flap the watchdog).
+        private bool AcShmFfbSupplying()
+        {
+            if (!(Settings?.AcShmFfbEnabled ?? false)) return false;
+            return (_telemetrySource as AcSharedMemoryTelemetrySource)
+                ?.TryGetFreshFfbTarget(1000).HasValue ?? false;
         }
 
         // ---------- Issue #13: stop the Trueforce stream while paused (test toggle) ----------
