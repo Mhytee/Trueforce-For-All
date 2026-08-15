@@ -2727,7 +2727,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap"
                            VerticalAlignment="Center"
-                           Text="Telemetry Based FFB is on, but the game's telemetry is not reaching this plugin. Set the game's telemetry to the plugin's port, then enable forwarding to SimHub."/>
+                           Text="Telemetry Based FFB is on, but the game's telemetry is not reaching this plugin. In the game's Data Out settings, send telemetry to the plugin's port, then enable forwarding to SimHub. Set up shows the steps."/>
                 <Button Grid.Column="1" x:Name="ModeBSlipStarvedSetupButton" Content="Set up…"
                         Style="{StaticResource UpdateCtaButton}"
                         Width="90" Height="28" Margin="10,0,0,0" VerticalAlignment="Center"
