@@ -4715,10 +4715,12 @@ namespace TrueforceForAll.Plugin
             // Radar dots and proximity, from this frame's opponents.
             try { DashUpdateRadar(data); } catch { /* display only, never fatal */ }
 
-            // THROWAWAY DIAGNOSTIC, armed only by the IRRAW access code. Off is
-            // one volatile bool read per tick and nothing else. See the IRRAW
-            // block near DebugToggleIracingRawProbe for what it answers and for
-            // the delete-me note. Remove this line with that block.
+            // SUPPORT TOOL, armed only by the IRRAW access code. Off is one
+            // volatile bool read per tick and nothing else. Kept deliberately
+            // (owner, 2026-08-14): the iRacing path reaches SimHub's SDK by
+            // reflection, and when a user's setup degrades it, "type IRRAW
+            // and send the log" answers remotely what their SimHub actually
+            // exposes. See the block near DebugToggleIracingRawProbe.
             IrRawProbeTick(data);
 
             // iRacing reshape: latch the sim's own steering torque for the
@@ -26697,10 +26699,16 @@ namespace TrueforceForAll.Plugin
             return on;
         }
 
-        // THROWAWAY DIAGNOSTIC SPIKE (IRRAW access code). DELETE THIS WHOLE
-        // BLOCK, plus the IrRawProbeTick call in DataUpdate, the IRRAW handler
-        // in SettingsControl.ExecuteAccessCode and its TestCodeCatalog line,
-        // once the three questions below are answered on the owner's rig.
+        // SUPPORT TOOL (IRRAW access code). Born as a throwaway bring-up spike
+        // whose three questions below ARE answered (the direct reader exists
+        // because of the answers); PROMOTED to a keeper on 2026-08-14, owner's
+        // call, because shipping the reflection-based iRacing path to a fleet
+        // of unknown SimHub builds gave it a second job the delete-me note
+        // never anticipated: when a user's iRacing integration misbehaves,
+        // "type IRRAW and send the log" dumps what THEIR SimHub actually
+        // exposes (property names, dictionary contents, freshness counters)
+        // with no debugger and no repro on our side. The original questions
+        // stay below because their methodology is the documentation.
         //
         // Q1 Does StatusDataBase.GetRawDataObject() hand a third-party plugin a
         //    live, per-tick-populated iRacing object (expected runtime type

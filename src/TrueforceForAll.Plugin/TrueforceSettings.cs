@@ -993,19 +993,9 @@ namespace TrueforceForAll.Plugin
         // Note this depends only on whether the divisor varies, NOT on where it
         // came from. A per-car number flattens whether it was learned or read
         // out of iRacing, which is easy to get backwards when naming these.
-        //
-        //   0 = Follow iRacing. Inherit its per-car Max force. The OUTCOME is
-        //       whatever the driver configured there: iRacing's auto force mode
-        //       sets each car to its own peak and therefore flattens, while one
-        //       value set across the board keeps cars apart. Default because it
-        //       respects tuning that already exists rather than overriding it.
-        //   1 = Measure each car. Our own learned peak per car. Always flattens,
-        //       which is the point: nothing clips, nothing feels dead, and
-        //       hopping between classes needs no retuning.
-        //   2 = One value for every car (IRacingMaxForceNmOverride). The only
-        //       mode that GUARANTEES cars stay different, because it is the only
-        //       one whose divisor is constant.
-        public int IRacingMaxForceMode { get; set; } = 0;
+        // (A planned mode-enum for this taxonomy was removed unread in 0.2.7;
+        // the per-car flag below plus the override above ARE the mechanism, and
+        // a stable-reference "relative" mode is a later-cycle design.)
 
         // Keep a separate Max force per car, the way iRacing itself does.
         //

@@ -53,7 +53,7 @@ namespace TrueforceForAll.Plugin
             // Wheel full-scale in Nm. Travels with the other feel settings: it
             // describes the WHEEL, and the wheel goes to the second PC with the
             // driver, same reasoning as the rev-light and OLED preferences.
-            "IRacingMaxForceNmOverride", "IRacingMaxForceMode",
+            "IRacingMaxForceNmOverride",
             // Per-car force scale. Travels for the same reason CarGripCalibration
             // does: it costs seat time per car to rebuild, and it describes the
             // cars rather than this PC.
