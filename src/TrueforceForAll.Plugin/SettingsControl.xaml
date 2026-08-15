@@ -3562,6 +3562,18 @@
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Rev pattern next" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.RevLightPatternNext"
+                                                 FriendlyName="TF4ALL: rev-light pattern next"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Rev pattern back" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.RevLightPatternPrev"
+                                                 FriendlyName="TF4ALL: rev-light pattern back"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Dash tab next" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.DashTabNext"
                                                  FriendlyName="TF4ALL: dash tab next"/>

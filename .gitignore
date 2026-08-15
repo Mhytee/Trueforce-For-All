@@ -46,6 +46,8 @@ __*
 /docs/testplan-*.md
 # in-progress design note for a later cycle; local until it lands as work.
 /docs/lovely-car-data-integration.md
+/docs/lightsync-slot-protocol.md
+/docs/lightsync-tab-design.md
 
 # Local agent orientation file (build/deploy gotchas, architecture map).
 # Per-developer, not a public doc.

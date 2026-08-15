@@ -1153,6 +1153,47 @@ namespace TrueforceForAll.Plugin
         /// <summary>Step the wheel screen through the ready-made arrangements
         /// and the custom one, wrapping at the end. Bound to a button this is
         /// the only way to change screens without leaving the car.</summary>
+        // Readout names for effects 1-9, indexed by effect number. The 1-4
+        // direction names mirror the settings picker's labels; the strip
+        // itself is the primary feedback, this is for the dash bar and the
+        // wheel screen.
+        private static readonly string[] RevPatternNames =
+        {
+            "", "INSIDE-OUT", "OUTSIDE-IN", "LEFT TO RIGHT", "RIGHT TO LEFT",
+            "CUSTOM 1", "CUSTOM 2", "CUSTOM 3", "CUSTOM 4", "CUSTOM 5",
+        };
+
+        /// <summary>Step the wheel's rev-light pattern from a bound control,
+        /// so a rim button switches patterns without leaving the wheel. Same
+        /// semantics as the dropdown pick: sets the wheelbase's selection,
+        /// exactly like the base's own menu. Mirrors CycleOledScreen.</summary>
+        public void CycleRevLightPattern(int direction)
+        {
+            if (_rpmLeds == null) return;
+            if (!WheelHasSelectableLightPattern)
+            {
+                // A bound button that silently does nothing reads as broken;
+                // say why instead (G923 strips have one fixed look).
+                DashReadout("REV PATTERN", "FIXED ON THIS WHEEL");
+                return;
+            }
+            int cur = _rpmLeds.KnownSelection;
+            int next;
+            if (cur < 1 || cur > 9) next = direction < 0 ? 9 : 1;   // never read yet: start at an end
+            else
+            {
+                next = cur + (direction < 0 ? -1 : 1);
+                if (next > 9) next = 1; else if (next < 1) next = 9;
+            }
+            PickRevLightPattern(next);
+            DashReadout("REV PATTERN", RevPatternNames[next]);
+            // Idle: one sweep shows the pick, same as the dropdown. Driving:
+            // the preview self-suppresses and the live bar is the feedback.
+            PreviewRevLightPattern();
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] rev-light pattern -> {next} ({RevPatternNames[next]})");
+        }
+
         public void CycleOledScreen(int direction)
         {
             if (Settings == null) return;
@@ -3231,6 +3272,14 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => CycleOledScreen(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("OledScreenPrev", GetType(),
                     (pm, a) => CycleOledScreen(-1), (pm, a) => { });
+                // Rev-light pattern from the rim, so switching does not mean
+                // reaching for a screen mid-drive. Same pick semantics as the
+                // settings dropdown: the wheelbase's selection changes and
+                // stays, exactly like using the base's own menu.
+                pluginManager.AddInputMapping("RevLightPatternNext", GetType(),
+                    (pm, a) => CycleRevLightPattern(+1), (pm, a) => { });
+                pluginManager.AddInputMapping("RevLightPatternPrev", GetType(),
+                    (pm, a) => CycleRevLightPattern(-1), (pm, a) => { });
                 pluginManager.AddInputMapping("DashTabNext", GetType(),
                     (pm, a) => CycleDashTab(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("DashTabPrev", GetType(),
