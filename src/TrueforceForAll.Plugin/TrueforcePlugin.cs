@@ -4980,9 +4980,21 @@ namespace TrueforceForAll.Plugin
                 {
                     _contentionWarned = false;
                     ModeBContentionDetected = false;
-                    _slipStarvedWarned = false;
-                    ModeBSlipStarvedDetected = false;
                     _starvedLiveTicks = 0;
+                    // The slip-starved verdict describes this game run's
+                    // telemetry ROUTING, and a pause does not change routing.
+                    // FH6 pauses on focus loss, which auto-disarms Mode B, so
+                    // clearing here made the banner vanish the moment the
+                    // user alt-tabbed to act on it (owner, 2026-08-14: the
+                    // banner could never be read). It survives until the game
+                    // goes away or the user turns the feature off; the
+                    // re-engage reset still runs on resume, so a fixed port
+                    // gets its fresh verdict on the next drive.
+                    if (_currentGameName == null || !ModeBEnabledForActiveGame)
+                    {
+                        _slipStarvedWarned = false;
+                        ModeBSlipStarvedDetected = false;
+                    }
                 }
             }
 
