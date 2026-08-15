@@ -3852,7 +3852,7 @@
                  entire body of the UDP telemetry expander. -->
             <StackPanel x:Name="ForzaSection">
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="In Forza Horizon 4/5/6, open Settings → HUD and Gameplay → UDP RACE TELEMETRY. Turn DATA OUT ON, set DATA OUT IP ADDRESS to 127.0.0.1, and set DATA OUT IP PORT to match this plugin's Port field below (5300 by default). That is the whole setup."/>
+                Text="In Forza Horizon 4/5/6, open Settings → HUD and Gameplay → UDP RACE TELEMETRY. Turn DATA OUT ON, set DATA OUT IP ADDRESS to 127.0.0.1, and set DATA OUT IP PORT to match this plugin's Port field below (5300 by default). Then enable Forward to SimHub below, so SimHub's own dashboards and devices keep receiving telemetry too."/>
             <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>
