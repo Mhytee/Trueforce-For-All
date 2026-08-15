@@ -859,7 +859,7 @@
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Grid.Column="1" x:Name="ForzaFallbackBannerText" Foreground="White"
                                FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
-                               Text="Force feedback is working, but the plugin is reading Forza's telemetry secondhand from SimHub, which carries less detail than Forza's own feed. Point Forza's Data Out at the plugin for more precise road texture and airborne feel."/>
+                               Text="Force feedback is working, but the plugin is reading Forza's telemetry secondhand from SimHub, which carries less detail than Forza's own feed. Point Forza's Data Out at the plugin for more precise road texture and airborne feel, and to use Telemetry Based FFB, which needs the direct feed."/>
                     <Button Grid.Column="2" x:Name="ForzaFallbackBannerButton" Content="Set up…"
                             Style="{StaticResource InfoBannerButton}"
                             Width="90" Height="28" Margin="10,0,0,0"
@@ -2727,7 +2727,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap"
                            VerticalAlignment="Center"
-                           Text="Telemetry Based FFB is on, but the game's tire telemetry is not reaching this plugin, so the game's own force feedback is passed through for now. Give the plugin its own Forza UDP port in the Settings tab (one no other app listens on, SimHub included), point Forza's Data Out at IP 127.0.0.1 with that port, and turn on forwarding so SimHub still receives telemetry."/>
+                           Text="Telemetry Based FFB is on, but the game's telemetry is not reaching this plugin. Set the game's telemetry to the plugin's port, then enable forwarding to SimHub."/>
                 <Button Grid.Column="1" x:Name="ModeBSlipStarvedSetupButton" Content="Set up…"
                         Style="{StaticResource UpdateCtaButton}"
                         Width="90" Height="28" Margin="10,0,0,0" VerticalAlignment="Center"
