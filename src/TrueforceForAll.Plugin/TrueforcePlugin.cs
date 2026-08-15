@@ -26698,6 +26698,7 @@ namespace TrueforceForAll.Plugin
                         if (Settings != null && Settings.PluginEnabled && _device != null)
                         {
                             _ffbTap?.ClearLastFfbTarget();
+                            _device.BeginResumeRamp();
                             _device.Resume();
                             _device.SendStartCommand();
                         }
@@ -26773,6 +26774,7 @@ namespace TrueforceForAll.Plugin
                 // SetPluginEnabled's own Resume.
                 if (Settings != null && Settings.PluginEnabled && _device != null)
                 {
+                    _device.BeginResumeRamp();
                     _device.Resume();
                     _device.SendStartCommand();
                     resumed = true;

@@ -482,6 +482,26 @@ namespace TrueforceForAll.Core
         public void Pause()  => _paused = true;
         public void Resume() => _paused = false;
 
+        // Resume ramp. After the stop-stream pause gate hands the wheel back
+        // to Trueforce mode, the first force target would otherwise arrive as
+        // a step from zero and snap the wheel hard (owner, FH6 pause resume,
+        // 2026-08-15). Armed at the resume; the clock starts at the FIRST
+        // real force target after it (the tap is kept cleared across the
+        // transition, so that target can lag the resume by a few hundred ms
+        // and a resume-stamped clock would eat the ramp).
+        private const int ResumeRampMs = 300;
+        private volatile bool _resumeRampArmed;
+        private long _resumeRampStartTicks;   // stream thread only once armed
+
+        /// <summary>Arm the resume ramp: the next force target fades in over
+        /// ResumeRampMs instead of stepping, so re-entering Trueforce mode
+        /// after a pause does not snap the wheel.</summary>
+        public void BeginResumeRamp()
+        {
+            _resumeRampStartTicks = 0;
+            _resumeRampArmed = true;
+        }
+
         /// <summary>True while sample emission is paused (Pause(), or a
         /// dispatched protocol Stop), or when a Stop is queued but not yet
         /// dispatched: StreamTick sets _paused from the command byte AFTER
@@ -805,6 +825,23 @@ namespace TrueforceForAll.Core
             if (_paused && !forceActive) return;
 
             short? ffbTargetMaybe = FfbTargetProvider?.Invoke();
+            // Resume ramp: fade the first post-resume force in instead of
+            // stepping to it (see BeginResumeRamp).
+            if (ffbTargetMaybe.HasValue)
+            {
+                if (_resumeRampArmed)
+                {
+                    _resumeRampArmed = false;
+                    _resumeRampStartTicks = Stopwatch.GetTimestamp();
+                }
+                if (_resumeRampStartTicks != 0)
+                {
+                    double rampMs = (Stopwatch.GetTimestamp() - _resumeRampStartTicks)
+                                    * 1000.0 / Stopwatch.Frequency;
+                    if (rampMs >= ResumeRampMs) _resumeRampStartTicks = 0;
+                    else ffbTargetMaybe = (short)(ffbTargetMaybe.Value * (rampMs / ResumeRampMs));
+                }
+            }
             _lastFfbTarget = ffbTargetMaybe ?? (short)0;
             bool sendActive = ffbTargetMaybe.HasValue || forceActive;
 
