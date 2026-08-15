@@ -1875,11 +1875,13 @@ namespace TrueforceForAll.Plugin
 
                 // Max force number box: dash / rim nudges change the value
                 // underneath this editable box, so re-fill it here at a gentle
-                // cadence. UpdateIRacingMaxNmText already refuses to stamp
-                // over a box the user is typing in (IsFocused guard).
-                if (++_maxNmSyncTick >= 30)
+                // cadence. Time-based, not tick-based: the meter timer asks
+                // for 16 ms but its real cadence sags under load (a 30-tick
+                // divider here took several seconds on the rig), so gate on
+                // the clock.
+                if ((DateTime.UtcNow - _maxNmLastFillUtc).TotalMilliseconds >= 400)
                 {
-                    _maxNmSyncTick = 0;
+                    _maxNmLastFillUtc = DateTime.UtcNow;
                     UpdateIRacingMaxNmText();
                     UpdateIRacingClipWarning();
                     // A nudge (dash / rim) that changed the value under the
@@ -6294,9 +6296,8 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Tick divider for the periodic number-box re-fill above (~0.5 s at
-        // the meter timer's rate).
-        private int _maxNmSyncTick;
+        // Clock gate for the periodic number-box re-fill above (400 ms).
+        private DateTime _maxNmLastFillUtc = DateTime.MinValue;
 
         // Editing detector for that re-fill. IsFocused alone is wrong for it:
         // WPF keyboard focus sticks to the box from one click until something
