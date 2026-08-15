@@ -1298,8 +1298,10 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     # Binding the text replaces the static title, caret included, so this
     # has to put it back: without it this is the one box whose header does
     # not look tappable.
+    # Degree sign via [char] like the caret below: a literal in this file
+    # has already shipped double-encoded once (the dash read "Â°C").
     $ttHead.Bindings['Text'] = BindJS 'Text' ($tempUnitJs +
-        'return "TIRE TEMPS "+(uF?"Â°F":"Â°C")+"  ' + [char]0x25BE + '"')
+        'return "TIRE TEMPS "+(uF?"' + [char]0x00B0 + 'F":"' + [char]0x00B0 + 'C")+"  ' + [char]0x25BE + '"')
     $items.Add($ttHead)
     $tyreProps = @('TyreTemperatureFrontLeft', 'TyreTemperatureFrontRight', 'TyreTemperatureRearLeft', 'TyreTemperatureRearRight')
     $wearProps = @('TyreWearFrontLeft', 'TyreWearFrontRight', 'TyreWearRearLeft', 'TyreWearRearRight')
@@ -3072,11 +3074,13 @@ $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 # reflow between games, but the tile never greys: this learner runs continuously,
 # so there is no moment to wait for, only a car that has changed under it.
 $rlVis = 'return $prop("' + $P + '.ModeBRelearnShow")'
-$rl = New-Card 'cf-rl-panel' 16 378 768 58
+# cf-as-*, NOT cf-rl-*: the redline editor above already owns cf-rl-* on
+# this screen, and duplicated item names make DashStudio edits ambiguous.
+$rl = New-Card 'cf-as-panel' 16 378 768 58
 $rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
-$rl = New-Text 'cf-rl-label' 32 384 300 18 13 'AUTO STRENGTH' $MUTED 0
+$rl = New-Text 'cf-as-label' 32 384 300 18 13 'AUTO STRENGTH' $MUTED 0
 $rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
-$rl = New-Text 'cf-rl-value' 32 402 300 28 20 '' $WHITE 0 @{
+$rl = New-Text 'cf-as-value' 32 402 300 28 20 '' $WHITE 0 @{
     Text = BindJS 'Text' (
         'if(!$prop("' + $P + '.ModeBAutoStrengthOn"))return "OFF";' +
         'var s=1*$prop("' + $P + '.ModeBStrengthScale");return s>0?("x"+s.toFixed(2)):"--"')
@@ -3085,17 +3089,17 @@ $rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
 # Left of the tile: how much of this car it has actually seen. With the feature
 # off the learner still runs, so the percentage is still the true answer to
 # "would ticking the box do anything yet".
-$rl = New-Text 'cf-rl-hint' 296 394 240 26 12 '' $GRAY 2 @{
+$rl = New-Text 'cf-as-hint' 296 394 240 26 12 '' $GRAY 2 @{
     Text = BindJS 'Text' (
         'var c=1*$prop("' + $P + '.ModeBStrengthConf");if(isNaN(c))c=0;' +
         'return c<1?("LEARNING THIS CAR  "+Math.round(c*100)+"%"):"LEARNED FROM YOUR DRIVING"')
 }
 $rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
-$rl = New-Btn 'cf-rl-bg' 552 388 216 38 4
+$rl = New-Btn 'cf-as-bg' 552 388 216 38 4
 $rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
-$rl = New-Text 'cf-rl-t' 552 388 216 38 15 'RE-LEARN CAR' $WHITE 1 $null 'Bold'
+$rl = New-Text 'cf-as-t' 552 388 216 38 15 'RE-LEARN CAR' $WHITE 1 $null 'Bold'
 $rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
-$rl = New-Button 'cf-rl-btn' 552 388 216 38 'CalibrateCarForce'
+$rl = New-Button 'cf-as-btn' 552 388 216 38 'CalibrateCarForce'
 $rl.Bindings['Visible'] = BindJS 'Visible' $rlVis; $s2.Add($rl)
 
 # ---- overlay: engine layout picker ----

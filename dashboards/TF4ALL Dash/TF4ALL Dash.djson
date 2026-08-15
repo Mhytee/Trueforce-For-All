@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "1c26df12-14dc-4dac-b0bc-984ca3fb9ed2",
+    "Id":  "75798079-249a-4656-bf3d-e47fb3387d05",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "4796a020-5593-4451-9729-c7e37dcfb365",
+                        "ScreenId":  "c3cc0c24-ce62-44d5-9e99-d1a4656cb177",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14872,7 +14872,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a75f3f40-71c9-476e-a1df-cccdac491c74",
+                        "ScreenId":  "a2c9a952-23a6-4c9f-b7ef-6b0c444a1649",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -16220,7 +16220,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "cf-rl-panel",
+                                          "Name":  "cf-as-panel",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -16260,7 +16260,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "cf-rl-label",
+                                          "Name":  "cf-as-label",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -16300,7 +16300,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "cf-rl-value",
+                                          "Name":  "cf-as-value",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -16348,7 +16348,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "cf-rl-hint",
+                                          "Name":  "cf-as-hint",
                                           "Bindings":  {
                                                            "Text":  {
                                                                         "Formula":  {
@@ -16415,7 +16415,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "cf-rl-bg",
+                                          "Name":  "cf-as-bg",
                                           "Bindings":  {
                                                            "BackgroundColor":  {
                                                                                    "Formula":  {
@@ -16455,7 +16455,7 @@
                                           "Rotation":  0,
                                           "RenderingSkip":  0,
                                           "IsFreezed":  false,
-                                          "Name":  "cf-rl-t",
+                                          "Name":  "cf-as-t",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -16499,7 +16499,7 @@
                                           "Top":  388,
                                           "Visible":  true,
                                           "Width":  216,
-                                          "Name":  "cf-rl-btn",
+                                          "Name":  "cf-as-btn",
                                           "Bindings":  {
                                                            "Visible":  {
                                                                            "Formula":  {
@@ -42095,7 +42095,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "dfa5e9d1-d17a-417c-9a1f-6fdb9497e5b5",
+                        "ScreenId":  "fa5d87b0-cfb3-4f70-9bbe-cb5b14e35985",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -66894,7 +66894,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "212adcc3-6c50-41c9-ab12-6b3aaa9419b3",
+                        "ScreenId":  "c022a0df-45fe-47fd-94ab-fd9bdd3b76f0",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -80701,7 +80701,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "3c744ea2-5200-40bb-9933-7ab8b1b80b3c",
+                        "ScreenId":  "7d55c739-cc09-469c-b156-af3dcf5027cb",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -100845,7 +100845,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "03025d5d-de92-4371-a490-716ad0572409",
+                        "ScreenId":  "c1403201-c843-459c-a2e5-d06723dcb307",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -122165,7 +122165,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "1ac5b518-e156-4d65-9635-9d6441cf6b91",
+                        "ScreenId":  "6890efcb-4c8d-4f89-b2c2-708ab13bdadb",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -126368,7 +126368,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"Â°F\":\"Â°C\")+\"  ▾\""
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -141346,7 +141346,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"Â°F\":\"Â°C\")+\"  ▾\""
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -156908,7 +156908,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"Â°F\":\"Â°C\")+\"  ▾\""
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -174472,7 +174472,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"Â°F\":\"Â°C\")+\"  ▾\""
+                                                                                        "Expression":  "var uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.TemperatureUnit\")||\"\");if(uu==\"\")uu=\"\"+($prop(\"DataCorePlugin.GameData.NewData.LocalTemperatureUnit\")||\"\");var uF=uu.toUpperCase().indexOf(\"F\")\u003e=0;return \"TIRE TEMPS \"+(uF?\"°F\":\"°C\")+\"  ▾\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
