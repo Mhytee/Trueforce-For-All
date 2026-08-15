@@ -1882,6 +1882,19 @@ namespace TrueforceForAll.Plugin
                     _maxNmSyncTick = 0;
                     UpdateIRacingMaxNmText();
                     UpdateIRacingClipWarning();
+                    // A nudge (dash / rim) that changed the value under the
+                    // "Set to X ..." press confirmation must move that number
+                    // too, or the line claims the wheel is somewhere it is not.
+                    double curNm = _plugin.GetEditableMaxForceNm();
+                    bool moved = _maxNmLastSeen >= 0 && Math.Abs(curNm - _maxNmLastSeen) > 0.05;
+                    _maxNmLastSeen = curNm;
+                    if (moved && curNm > 0.5 && IRacingAutoMaxForceStatus != null
+                        && IRacingAutoMaxForceStatus.Visibility == Visibility.Visible
+                        && IRacingAutoMaxForceStatus.Text.StartsWith("Set to "))
+                    {
+                        IRacingAutoMaxForceStatus.Text = "Set to " + curNm.ToString("F1")
+                            + " Nm. Watching again from now, so a clean lap plus another press redoes it.";
+                    }
                 }
 
                 // Mode B contention warning (Telemetry Based FFB tab). The
@@ -6032,6 +6045,9 @@ namespace TrueforceForAll.Plugin
 
         private void IRacingMaxNm_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
+            // Any keystroke marks the box actively edited, so the periodic
+            // re-fill backs off (see MaxNmBoxBeingEdited).
+            _maxNmLastTypedUtc = DateTime.UtcNow;
             if (e.Key == System.Windows.Input.Key.Enter) CommitIRacingMaxNm();
         }
 
@@ -6282,6 +6298,20 @@ namespace TrueforceForAll.Plugin
         // the meter timer's rate).
         private int _maxNmSyncTick;
 
+        // Editing detector for that re-fill. IsFocused alone is wrong for it:
+        // WPF keyboard focus sticks to the box from one click until something
+        // else takes it, so a box touched once was never re-filled again
+        // (owner, 2026-08-15: nudges only showed up after tab switches).
+        // "Being edited" = focused AND typed in within the last few seconds.
+        private DateTime _maxNmLastTypedUtc = DateTime.MinValue;
+        private bool MaxNmBoxBeingEdited =>
+            IRacingMaxNmBox != null && IRacingMaxNmBox.IsKeyboardFocused
+            && (DateTime.UtcNow - _maxNmLastTypedUtc).TotalSeconds < 5.0;
+
+        // Last externally-observed value, for moving the "Set to X" press
+        // confirmation when a nudge changes the number underneath it.
+        private double _maxNmLastSeen = -1.0;
+
         private void UpdateIRacingMaxNmText()
         {
             if (IRacingMaxNmText == null) return;
@@ -6305,7 +6335,7 @@ namespace TrueforceForAll.Plugin
             // slider's hard-left zero, which read as no force at all.
             if (shown > 0.5)
             {
-                if (!IRacingMaxNmBox.IsFocused)
+                if (!MaxNmBoxBeingEdited)
                     IRacingMaxNmBox.Text = shown.ToString("F1");
                 IRacingMaxNmText.Text = string.IsNullOrEmpty(src)
                     ? "for every car"
@@ -6315,7 +6345,7 @@ namespace TrueforceForAll.Plugin
             // Nothing set: we fall back to whatever iRacing itself is using, so
             // say so and show the number. A bare "Auto" would leave the user
             // unable to tell a working fallback from a broken one.
-            if (!IRacingMaxNmBox.IsFocused) IRacingMaxNmBox.Text = "";
+            if (!MaxNmBoxBeingEdited) IRacingMaxNmBox.Text = "";
             double live = _plugin?.IRacingLiveMaxForceNm ?? 0.0;
             IRacingMaxNmText.Text = live > 0.5
                 ? "following iRacing, which says " + live.ToString("F1")
