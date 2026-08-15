@@ -3303,6 +3303,14 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => NudgeIRacingMaxForce(+0.5), (pm, a) => { });
                 pluginManager.AddInputMapping("IRacingMaxForceDown", GetType(),
                     (pm, a) => NudgeIRacingMaxForce(-0.5), (pm, a) => { });
+                // The dash's -/+ pair fires ACTIONS (ButtonItem.TriggerAction),
+                // which AddInputMapping does not register: the mappings above
+                // serve the bindings rows, these serve the dash buttons
+                // (CalibrateCarForce set the precedent).
+                this.AddAction("IRacingMaxForceUp",
+                    (a, b) => { DashNoteActivity(); NudgeIRacingMaxForce(+0.5); });
+                this.AddAction("IRacingMaxForceDown",
+                    (a, b) => { DashNoteActivity(); NudgeIRacingMaxForce(-0.5); });
             }
             catch (Exception ex)
             {
