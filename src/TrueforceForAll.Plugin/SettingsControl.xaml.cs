@@ -1873,6 +1873,17 @@ namespace TrueforceForAll.Plugin
                         FfbTapPickerBannerButton.Visibility = want;
                 }
 
+                // Max force number box: dash / rim nudges change the value
+                // underneath this editable box, so re-fill it here at a gentle
+                // cadence. UpdateIRacingMaxNmText already refuses to stamp
+                // over a box the user is typing in (IsFocused guard).
+                if (++_maxNmSyncTick >= 30)
+                {
+                    _maxNmSyncTick = 0;
+                    UpdateIRacingMaxNmText();
+                    UpdateIRacingClipWarning();
+                }
+
                 // Mode B contention warning (Telemetry Based FFB tab). The
                 // plugin latches ModeBContentionDetected when the game keeps
                 // streaming its own FFB while Mode B drives the wheel;
@@ -6266,6 +6277,10 @@ namespace TrueforceForAll.Plugin
                 IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
             }
         }
+
+        // Tick divider for the periodic number-box re-fill above (~0.5 s at
+        // the meter timer's rate).
+        private int _maxNmSyncTick;
 
         private void UpdateIRacingMaxNmText()
         {
