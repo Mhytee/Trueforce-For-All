@@ -8340,15 +8340,18 @@ namespace TrueforceForAll.Plugin
                 racingSurface = (int)Math.Round(trkLoc) == 3;   // irsdk_OnTrack
             else if (racingSurface) racingSurface = false;
 
-            // And only while actually MOVING. A car sitting still on the
+            // And only while actually DRIVING. A car sitting still on the
             // racing surface passes every location check above, but the
-            // readiness clock is a promise that DRIVING happened; it was
+            // readiness clock is a promise that driving happened; it was
             // observed climbing while parked on track (owner, 2026-08-13).
-            // ~18 km/h separates rolling from parked without excluding a
-            // slow corner.
+            // Raised from 5 to 10 m/s (~36 km/h) after the readiness still
+            // rose at a crawl (owner, 2026-08-15): below that the wheel is
+            // mostly stationary scrub, which is huge, says nothing about how
+            // hard the car pushes in a corner, and would inflate the peak.
+            // Still well under any real cornering speed.
             double speedMs;
             if (racingSurface && SdkScalar(frame, vars, "Speed", out speedMs))
-                racingSurface = speedMs > 5.0;
+                racingSurface = speedMs > 10.0;
             else if (racingSurface) racingSurface = false;
 
             double peakTorque;
