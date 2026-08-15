@@ -3851,8 +3851,14 @@
                  Forza is the only UDP-telemetry game, so this section is the
                  entire body of the UDP telemetry expander. -->
             <StackPanel x:Name="ForzaSection">
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,3" FontSize="12"
+                Text="1. In Forza, open Settings, then HUD and Gameplay, and find UDP Race Telemetry."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,3" FontSize="12"
+                Text="2. Turn Data Out ON."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,3" FontSize="12"
+                Text="3. Set the IP address to 127.0.0.1, and the port to the number in the Port box below."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="In Forza: Settings → HUD and Gameplay → UDP Race Telemetry. Turn Data Out on, IP 127.0.0.1, port matching the Port field below. Then enable Forward to SimHub below so its dashboards keep working."/>
+                Text="4. Turn on Forward to SimHub below, so SimHub's dashboards keep working."/>
             <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>
