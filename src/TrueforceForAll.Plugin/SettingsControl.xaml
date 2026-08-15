@@ -3572,6 +3572,15 @@
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.RevLightPatternPrev"
                                                  FriendlyName="TF4ALL: rev-light pattern back"/>
                         </Grid>
+                        <!-- TEMPORARY, remove after the fn3 discrimination test
+                             (2026-08-14): replays the current pattern preview
+                             (bare level pairs, no switch) mid-drive. -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Pairs test (temp)" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.RevLightPatternReplay"
+                                                 FriendlyName="TF4ALL: pairs test replay (temporary)"/>
+                        </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Dash tab next" Style="{StaticResource LabelText}"/>
