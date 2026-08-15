@@ -1801,8 +1801,47 @@ namespace TrueforceForAll.Plugin
 
         // ---------- meter tick + active-car sync ----------
 
+        // Tick-rate probe state (dev mode only): the timer asks for 16 ms;
+        // these measure what it really gets, for the perf-review backlog
+        // entry on heavy per-tick refreshes.
+        private long _tickProbeStartTs;
+        private long _tickProbeLastTs;
+        private int _tickProbeCount;
+        private double _tickProbeWorstGapMs;
+
         private void MeterTimer_Tick(object sender, EventArgs e)
         {
+            // Dev-gated: measure the timer's REAL cadence and log it every
+            // ~10 s. One line per 10 s, only with dev mode unlocked.
+            if (_plugin?.Settings?.DevModeUnlocked == true)
+            {
+                long nowTs = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (_tickProbeLastTs != 0)
+                {
+                    double gapMs = (nowTs - _tickProbeLastTs) * 1000.0
+                                   / System.Diagnostics.Stopwatch.Frequency;
+                    if (gapMs > _tickProbeWorstGapMs) _tickProbeWorstGapMs = gapMs;
+                }
+                _tickProbeLastTs = nowTs;
+                _tickProbeCount++;
+                if (_tickProbeStartTs == 0) _tickProbeStartTs = nowTs;
+                else
+                {
+                    double spanS = (nowTs - _tickProbeStartTs)
+                                   / (double)System.Diagnostics.Stopwatch.Frequency;
+                    if (spanS >= 10.0)
+                    {
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] UI meter tick: {_tickProbeCount / spanS:0.0} Hz "
+                            + $"over {spanS:0.0} s, worst gap {_tickProbeWorstGapMs:0} ms "
+                            + "(asked: 16 ms / 60 Hz)");
+                        _tickProbeCount = 0;
+                        _tickProbeStartTs = nowTs;
+                        _tickProbeWorstGapMs = 0;
+                    }
+                }
+            }
+
             // (Was: per-tick variant-prompt recompute. Now silent
             // auto-create happens at the end of every CarFacts resolve
             // pass inside the plugin, so the UI tick has nothing to do
