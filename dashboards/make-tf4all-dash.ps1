@@ -3080,13 +3080,13 @@ $mf = New-Btn 'cf-mf-minus' 132 388 44 38 4
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 $mf = New-Text 'cf-mf-minus-t' 132 388 44 38 18 '-' $WHITE 1 $null 'Bold'
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
-$mf = New-Button 'cf-mf-minus-tap' 132 388 44 38 'IRacingMaxForceDown'
+$mf = New-Button 'cf-mf-minus-tap' 132 388 44 38 'DashMaxForceDown'
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 $mf = New-Btn 'cf-mf-plus' 184 388 44 38 4
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 $mf = New-Text 'cf-mf-plus-t' 184 388 44 38 18 '+' $WHITE 1 $null 'Bold'
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
-$mf = New-Button 'cf-mf-plus-tap' 184 388 44 38 'IRacingMaxForceUp'
+$mf = New-Button 'cf-mf-plus-tap' 184 388 44 38 'DashMaxForceUp'
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 
 # The synthesis side, in the same band. Same panel shape so the tab does not

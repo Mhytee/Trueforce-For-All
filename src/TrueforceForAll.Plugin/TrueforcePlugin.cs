@@ -3306,10 +3306,12 @@ namespace TrueforceForAll.Plugin
                 // The dash's -/+ pair fires ACTIONS (ButtonItem.TriggerAction),
                 // which AddInputMapping does not register: the mappings above
                 // serve the bindings rows, these serve the dash buttons
-                // (CalibrateCarForce set the precedent).
-                this.AddAction("IRacingMaxForceUp",
+                // (CalibrateCarForce set the precedent). DISTINCT names on
+                // purpose: sharing the mapping's name made the dash lookup
+                // resolve to the mapping entry and the taps died silently.
+                this.AddAction("DashMaxForceUp",
                     (a, b) => { DashNoteActivity(); NudgeIRacingMaxForce(+0.5); });
-                this.AddAction("IRacingMaxForceDown",
+                this.AddAction("DashMaxForceDown",
                     (a, b) => { DashNoteActivity(); NudgeIRacingMaxForce(-0.5); });
             }
             catch (Exception ex)
@@ -8000,6 +8002,10 @@ namespace TrueforceForAll.Plugin
         /// the result on the dash readout.</summary>
         public void NudgeIRacingMaxForce(double delta)
         {
+            // Taps are human-rate; one line each is cheap and settles "did
+            // the dash button fire at all" without a debugger on the rig.
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] max force nudge fired (delta={delta:+0.0;-0.0})");
             if (!IsIRacingReshapeGame(_activeGame) || !ModeBEnabledForActiveGame)
             {
                 DashReadout("MAX FORCE", "IRACING ONLY");
