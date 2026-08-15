@@ -1729,9 +1729,15 @@ namespace TrueforceForAll.Plugin
             // Whether the auto-force row belongs on screen at all: iRacing, with
             // us actually driving the wheel. With the takeover off, the number it
             // sets changes nothing, and a control that does nothing is worse than
-            // an absent one.
+            // an absent one. Also gated on having something to act on: in the
+            // car now, or the learner has seen driving this session. Before the
+            // first drive the row promised SET MAX FORCE with nothing measured
+            // (owner rig, 2026-08-15); after a stint it stays up, because the
+            // garage is exactly where the tap gets used.
             this.AttachDelegate("Dash.IRacingAutoShow",
-                () => IsIRacingReshapeGame(_activeGame) && ModeBEnabledForActiveGame ? 1 : 0);
+                () => IsIRacingReshapeGame(_activeGame) && ModeBEnabledForActiveGame
+                      && (_irFrame != null || IRacingPeakSettled || IRacingPeakConfidence > 0.001)
+                      ? 1 : 0);
             // The synthesis side's equivalent row. Its learner is continuous, so
             // unlike the iRacing one there is nothing to time and nothing to grey:
             // what a driver needs here is what it has learned so far, and a way to
