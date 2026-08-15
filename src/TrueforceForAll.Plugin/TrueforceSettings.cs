@@ -1061,7 +1061,18 @@ namespace TrueforceForAll.Plugin
         //
         // Kept as a user choice rather than a decision baked in blind: they are
         // different trades, not better and worse, and the wheel is the judge.
-        public int IRacingForceMode { get; set; } = 0;
+        //
+        // THE WHEEL JUDGED (owner rig, G PRO, 2026-08-15): Lead RINGS. Engine
+        // texture built into a growing oscillation that no damper setting
+        // cured, while Replay in the same session stayed clean, and turning
+        // prediction off brought the ring back in either mode. Read together
+        // that says the loop is delay-limited and Replay's predictor is what
+        // holds it together: its input is the WHEEL's own velocity, measured
+        // locally, so it supplies phase lead where the loop lost it. Lead
+        // projects the laggy telemetry from itself instead, which amplifies
+        // exactly the fast content the loop then feeds back. So Replay is the
+        // default now; Lead stays selectable for anyone whose wheel disagrees.
+        public int IRacingForceMode { get; set; } = 1;
 
         // How far to TRUST the learned prediction. Not a tuning step: the whole
         // point of learning the correction is that the user should not have to
