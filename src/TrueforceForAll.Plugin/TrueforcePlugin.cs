@@ -9816,7 +9816,18 @@ namespace TrueforceForAll.Plugin
 
             if (damperGain != 0f)
             {
-                double damp = damperGain * velLp * 32767.0;
+                // SIGN, and it is not the same in every mode. +Kd*vel OPPOSES
+                // wheel motion in the synthesis convention (Forza hot-lap
+                // trace, 2026-06-27). ComputeIRacingForce authors its own
+                // final sign instead of borrowing the tapped path's inversion,
+                // so at this point the reshape value carries the OPPOSITE
+                // polarity, and the identical term drove the wheel instead of
+                // resisting it: positive velocity feedback, which is why
+                // raising Damping made the standstill ring WORSE rather than
+                // settling it (owner rig, 2026-08-15, the discriminating
+                // test). The closed loop through the sim is the one path that
+                // most needs a working damper, so flip it to match.
+                double damp = (reshapeMode ? -damperGain : damperGain) * velLp * 32767.0;
                 if (damp > 16383.0) damp = 16383.0;
                 else if (damp < -16383.0) damp = -16383.0;
                 v += damp;
