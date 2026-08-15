@@ -2841,8 +2841,10 @@
                      said iRacing's number. iRacing's own box is the same shape. -->
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Max force (Nm):" Style="{StaticResource LabelText}"/>
+                    <TextBlock Grid.Column="0" Text="Max force (Nm):" Style="{StaticResource LabelText}"
+                               ToolTip="How strong the CAR should be. The steering force the real car would produce, in Nm; it is scaled to fit inside your Strength setting. Lower it and this car leans harder on the wheel; raise it and this car feels lighter."/>
                     <TextBox   Grid.Column="1" x:Name="IRacingMaxNmBox" VerticalAlignment="Center"
+                               ToolTip="How strong the CAR should be. The steering force the real car would produce, in Nm; it is scaled to fit inside your Strength setting. Lower it and this car leans harder on the wheel; raise it and this car feels lighter."
                                LostFocus="IRacingMaxNm_LostFocus" KeyDown="IRacingMaxNm_KeyDown"/>
                     <TextBlock Grid.Column="2" x:Name="IRacingMaxNmText" VerticalAlignment="Center"
                                Margin="8,0,0,0" Opacity="0.75" FontSize="11" Text=""/>
@@ -2854,13 +2856,15 @@
                             ToolTip="The number on this button is what the plugin has watched this car actually produce, plus a margin. Drive a clean lap, then press it to put that number in the box and start watching again from scratch. Had a spin or hit a wall? Drive another clean lap and press it again. It stays greyed until it has seen enough to be worth taking. Same idea as iRacing's own auto button."/>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,6"
-                           Text="The force in Nm the real car would make. Drive a clean lap and press the button. This is not your wheel's Nm rating. It is the number that scales the car's true force to fit your wheel."/>
+                           Text="How strong the CAR should be: the force in Nm the real car would make, scaled to fit within the wheel power you chose with Strength. Nudge it down to make this car feel heavier, up to make it lighter. Drive a clean lap and press the button to measure it. This is not your wheel's Nm rating."/>
                 <TextBlock x:Name="IRacingAutoMaxForceStatus" Margin="140,0,0,6"
                            FontSize="11" Opacity="0.75" Text="" Visibility="Collapsed"/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"/>
+                    <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"
+                               ToolTip="How strong the WHEEL should be. Your overall preference, roughly a percentage of the wheel's total power. It applies to every car; tune an individual car with Max force instead."/>
                     <Slider     Grid.Column="1" x:Name="IRacingGainSlider" Minimum="0.05" Maximum="3.0" SmallChange="0.05" LargeChange="0.1"
+                                ToolTip="How strong the WHEEL should be. Your overall preference, roughly a percentage of the wheel's total power. It applies to every car; tune an individual car with Max force instead."
                                 TickFrequency="0.1" ValueChanged="IRacingGain_ValueChanged" VerticalAlignment="Center"/>
                     <TextBox Grid.Column="2" x:Name="IRacingGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                 </Grid>
@@ -2868,7 +2872,7 @@
                            Foreground="#FFE8A33D" Visibility="Collapsed"
                            Text="Above this the strongest moments will clip: Auto leaves about 10 percent spare, and past that the top of big corners flattens off instead of building. Fine if you like it, but detail is lost where the car is working hardest."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Your overall preference, and the only force control you should need day to day. One setting for every car: turn it up and everything gets stronger by the same amount, so there is nothing to re-tune when you switch cars. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
+                           Text="How strong the WHEEL should be: your overall preference, roughly a percentage of the wheel's total power, and the only force control you should need day to day. One setting for every car: turn it up and everything gets stronger by the same amount, so there is nothing to re-tune when you switch cars. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
 
                 <!-- Everything below is expert surface. The panel had grown to
                      seven controls when a driver needs two: Strength day to day,
