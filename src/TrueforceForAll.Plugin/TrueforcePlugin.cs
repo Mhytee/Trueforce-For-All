@@ -4946,26 +4946,56 @@ namespace TrueforceForAll.Plugin
             {
                 bool gameWriting = _ffbTap.TryGetFreshFfbTarget(250).HasValue;
                 long nowC = Stopwatch.GetTimestamp();
-                if (!gameWriting) _contentionSinceTicks = 0;
-                else if (_contentionSinceTicks == 0) _contentionSinceTicks = nowC;
-                else if (!_contentionWarned
-                         && (nowC - _contentionSinceTicks) / (double)Stopwatch.Frequency > 3.0)
+                if (!gameWriting)
                 {
-                    _contentionWarned = true;
-                    ModeBContentionDetected = true;
-                    SimHub.Logging.Current.Warn(
-                        "[TF4ALL] Mode B CONTENTION: the game is streaming its own wheel "
-                        + "forces while synthesized FFB is active; the two interleave and the "
-                        + "wheel feels jumpy/buzzy. Fix: in the game's wheel settings set force "
-                        + "feedback / vibration scale to 0 so this plugin is the only writer.");
+                    _contentionSinceTicks = 0;
+                    // Recovery edge. The banner's advice is "zero the game's
+                    // FFB", and a user who follows it mid-session must see the
+                    // banner go away without toggling anything (owner rig,
+                    // 2026-08-14: it held for the rest of the session). 10 s
+                    // of sustained quiet, counted only while the watchdog is
+                    // eligible, so a pause (slip feed dead, ineligible) never
+                    // clears a verdict that would resume with driving.
+                    if (ModeBContentionDetected)
+                    {
+                        if (_contentionQuietSinceTicks == 0)
+                            _contentionQuietSinceTicks = nowC;
+                        else if ((nowC - _contentionQuietSinceTicks) / (double)Stopwatch.Frequency > 10.0)
+                        {
+                            _contentionWarned = false;
+                            ModeBContentionDetected = false;
+                            _contentionQuietSinceTicks = 0;
+                            SimHub.Logging.Current.Info(
+                                "[TF4ALL] Mode B contention resolved: the game's own force "
+                                + "feedback went quiet; synthesized FFB is the only writer again.");
+                        }
+                    }
+                }
+                else
+                {
+                    _contentionQuietSinceTicks = 0;
+                    if (_contentionSinceTicks == 0) _contentionSinceTicks = nowC;
+                    else if (!_contentionWarned
+                             && (nowC - _contentionSinceTicks) / (double)Stopwatch.Frequency > 3.0)
+                    {
+                        _contentionWarned = true;
+                        ModeBContentionDetected = true;
+                        SimHub.Logging.Current.Warn(
+                            "[TF4ALL] Mode B CONTENTION: the game is streaming its own wheel "
+                            + "forces while synthesized FFB is active; the two interleave and the "
+                            + "wheel feels jumpy/buzzy. Fix: in the game's wheel settings set force "
+                            + "feedback / vibration scale to 0 so this plugin is the only writer.");
+                    }
                 }
             }
             else
             {
                 // Timer always resets: a fresh contention verdict needs a
                 // fresh 3 s of sustained game writes once the watchdog is
-                // eligible again.
+                // eligible again. The quiet tracker resets with it: quiet
+                // counts toward recovery only while the watchdog is live.
                 _contentionSinceTicks = 0;
+                _contentionQuietSinceTicks = 0;
                 // The LATCHES clear on genuine disarm only. While Mode B
                 // stays armed this branch also runs whenever the slip feed
                 // is dead (that suppression is what routes us here), and
@@ -6847,6 +6877,7 @@ namespace TrueforceForAll.Plugin
         // Mode B contention watchdog state (see DataUpdate). Warned resets on
         // Mode B re-engage so a fixed in-game setting re-arms the detector.
         private long _contentionSinceTicks;
+        private long _contentionQuietSinceTicks;
         private bool _contentionWarned;
         /// <summary>True once sustained game FFB was detected during Mode B
         /// (diagnostic surface for the settings UI).</summary>

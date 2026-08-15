@@ -114,7 +114,8 @@ namespace TrueforceForAll.Plugin
 
         // Contention alert state. The plugin's ModeBContentionDetected is a
         // LATCH, not an event: once the game is caught streaming its own FFB it
-        // stays set until Mode B disarms or the game changes. Holding the alert
+        // stays set until Mode B disarms, the game changes, or the game's own
+        // FFB stays quiet for 10 s (the recovery edge). Holding the alert
         // for as long as the latch is set would eat the screen for the rest of
         // the session, so this announces on the rising edge, gets out of the
         // way, and comes back at a slow interval while the problem persists.
