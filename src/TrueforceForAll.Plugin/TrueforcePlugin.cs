@@ -1194,6 +1194,36 @@ namespace TrueforceForAll.Plugin
                 $"[TF4ALL] rev-light pattern -> {next} ({RevPatternNames[next]})");
         }
 
+        /// <summary>TEMPORARY, remove after the fn3 discrimination test
+        /// (2026-08-14): replay the CURRENT pattern's preview from a bound
+        /// control, mid-drive. A replay of the selected pattern is the
+        /// pairs-only path (no fn3/fn7: no switch is issued and the
+        /// conditional arm leaves a displaying wheel alone), which is
+        /// G HUB's exact wire footprint. Bound to a rim button with the
+        /// game's own FFB live, it answers whether bare level pairs cut
+        /// game force or only the switch sequence does.</summary>
+        public void ReplayRevLightPatternForTest()
+        {
+            if (_rpmLeds == null) return;
+            if (!WheelHasSelectableLightPattern)
+            {
+                DashReadout("PAIRS TEST", "FIXED ON THIS WHEEL");
+                return;
+            }
+            if (_rpmLeds.IsDriving)
+            {
+                // The live bar owns the strip; a sweep proves nothing here.
+                DashReadout("PAIRS TEST", "LIGHTS ALREADY RUNNING");
+                return;
+            }
+            int cur = _rpmLeds.KnownSelection;
+            DashReadout("PAIRS TEST", cur >= 1 && cur <= 9 ? RevPatternNames[cur] : "SWEEP");
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] PAIRS TEST: replaying the current pattern preview; the arm should "
+                + "log 'selection left alone' (bare level pairs on the wire, no fn3/fn7)");
+            PreviewRevLightPattern();
+        }
+
         public void CycleOledScreen(int direction)
         {
             if (Settings == null) return;
@@ -3280,6 +3310,12 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => CycleRevLightPattern(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("RevLightPatternPrev", GetType(),
                     (pm, a) => CycleRevLightPattern(-1), (pm, a) => { });
+                // TEMPORARY, remove after the fn3 discrimination test
+                // (2026-08-14): replays the current pattern's preview (bare
+                // level pairs, no fn3/fn7) so the pairs-vs-switch question
+                // can be answered mid-drive with the game's own FFB live.
+                pluginManager.AddInputMapping("RevLightPatternReplay", GetType(),
+                    (pm, a) => ReplayRevLightPatternForTest(), (pm, a) => { });
                 pluginManager.AddInputMapping("DashTabNext", GetType(),
                     (pm, a) => CycleDashTab(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("DashTabPrev", GetType(),
