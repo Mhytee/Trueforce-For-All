@@ -823,16 +823,23 @@ namespace TrueforceForAll.Plugin
         public bool  FfbSpikeUseSlewLimiter   { get; set; } = true;
         public float FfbSpikeMaxLsbPerMs      { get; set; } = 2508.36f;
 
-        // Issue #13 test path (NOLOCK access code). When on, the plugin fully
-        // leaves Trueforce mode while the game is paused (SendStopCommand +
-        // Pause) so the wheel reverts to its native FFB, e.g. Forza's own
-        // auto-center, instead of us streaming a substitute force. This is the
-        // "behave like the plugin is disabled while paused" approach, which is
-        // the only thing confirmed to stop the G923/FH6 full-lock. Default off;
-        // the existing return-zero pause-release stays the default until this
-        // is validated on hardware, after which it can become the standard
-        // behaviour and this toggle removed.
-        public bool  StopStreamOnPause        { get; set; } = false;
+        // Hand the wheel back to the game while paused (NOLOCK access code +
+        // the checkbox under Force feedback (advanced)). When on, the plugin
+        // fully leaves Trueforce mode while the game is paused (SendStopCommand
+        // + Pause) so the wheel reverts to its native FFB, e.g. Forza's own
+        // auto-center, instead of us streaming a substitute force. This is
+        // what stops the G923/FH6 pause full-lock (issue #13). Stable shipped
+        // it DEFAULT-ON in v0.1.24; the 0.2.x line left it opt-in by
+        // oversight, silently regressing upgraders, so 0.2.7 restores the
+        // shipped default (owner call 2026-08-15). The checkbox stays as the
+        // escape hatch for anyone who prefers the plugin to keep the wheel.
+        public bool  StopStreamOnPause        { get; set; } = true;
+
+        // One-time default repair marker for the above: beta-era settings
+        // files carry a stored false nobody chose (the regressed default), so
+        // the first 0.2.7 launch flips StopStreamOnPause on once. A user who
+        // turns it off afterward stays off.
+        public bool  StopStreamOnPauseMigrated { get; set; } = false;
 
         // Optional absolute path to USBPcapCMD.exe, set when the user picks a
         // custom USBPcap location via the "Browse..." action in the diagnostics

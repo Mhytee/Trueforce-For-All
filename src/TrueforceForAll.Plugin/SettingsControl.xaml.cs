@@ -4891,10 +4891,10 @@ namespace TrueforceForAll.Plugin
             MarkEffectDirty(EffectKind.StationarySpring);
         }
 
-        // Issue #13 test toggle. Global setting; SetStopStreamOnPause persists
-        // internally, so no extra PersistSettings() call here. Mirrors the
-        // NOLOCK access code (which keeps this checkbox in sync via the handler
-        // in CommitAccessCode).
+        // Pause hand-back toggle (shipped default-on since 0.2.7). Global
+        // setting; SetStopStreamOnPause persists internally, so no extra
+        // PersistSettings() call here. Mirrors the NOLOCK access code (which
+        // keeps this checkbox in sync via the handler in CommitAccessCode).
         private void StopStreamOnPause_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -12304,7 +12304,7 @@ namespace TrueforceForAll.Plugin
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
             "ACFFB          Tap-free Assetto Corsa FFB: stream the game's own force value read from AC's shared memory (finalFF) instead of the USBPcap capture. Keep in-game FFB ON (gain 0 silences it). AC only; other games are untouched. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
-            "NOLOCK         Issue #13 test: while the game is paused, fully leave Trueforce mode so the wheel reverts to the game's native FFB / auto-center instead of holding a force (stops the G923/FH6 full-lock). Persists. Toggle.\n" +
+            "NOLOCK         Toggle 'Hand the wheel back to the game while paused' (on by default; the checkbox lives under Force feedback (advanced)). Off = the plugin keeps hold of the wheel and releases its force to zero while paused. Persists. Toggle.\n" +
             "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
             "HOMEBOX        Toggle the TF4ALL master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
@@ -13324,8 +13324,8 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = on
-                        ? "Pause behavior: stop-stream ON (persists). On pause / fast-travel the wheel now reverts to the game's native FFB (auto-center) instead of holding a force. Type NOLOCK again to go back to the default."
-                        : "Pause behavior: back to default (release FFB to zero while paused).";
+                        ? "Pause behavior: hand the wheel back to the game while paused, ON (the default; persists)."
+                        : "Pause behavior: hand-back OFF (persists). The plugin keeps hold of the wheel and releases its force to zero while paused. Type NOLOCK again for the default.";
                 return;
             }
 

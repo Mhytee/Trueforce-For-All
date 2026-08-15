@@ -4005,16 +4005,18 @@
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
                                    Text="Try this if you are not getting force feedback in a game that should have it. Load the game and drive for a few seconds after turning it on. Leave it off if your force feedback already works."/>
 
-                        <!-- Release the wheel while paused (issue #13 test, NOLOCK
+                        <!-- Hand the wheel back to the game while paused (NOLOCK
                              access code). When on, the plugin fully leaves Trueforce
                              mode while the game is paused so the wheel reverts to the
                              game's own FFB / auto-center instead of holding a force.
-                             Global, not preset-saved. Default off. -->
+                             Global, not preset-saved. Default ON since 0.2.7: stable
+                             shipped it on in v0.1.24, the 0.2.x opt-in was a
+                             regression (owner call 2026-08-15). -->
                         <CheckBox x:Name="StopStreamOnPauseCheck" Content="Hand the wheel back to the game while paused"
                                   Margin="0,4,0,2" Checked="StopStreamOnPause_Changed" Unchecked="StopStreamOnPause_Changed"
-                                  ToolTip="Off by default. When the game pauses (menu, fast travel, race start) the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center instead of holding the last force. Turn this on if your wheel jerks or runs to full lock when you pause (seen on the G923 in Forza Horizon 6)."/>
+                                  ToolTip="On by default. When the game pauses (menu, fast travel, race start) the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center instead of holding the last force. Turn it off if you prefer the plugin to keep hold of the wheel while paused."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
-                                   Text="Try this if the wheel pulls to one side or locks up when you pause the game."/>
+                                   Text="If the wheel misbehaves around pauses or fast travel, try flipping this."/>
 
                         <!-- Driver testing mode. Hidden by default (Collapsed); revealed
                              only after the DRIVER access code is entered, and kept revealed

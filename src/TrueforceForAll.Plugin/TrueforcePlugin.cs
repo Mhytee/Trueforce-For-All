@@ -2610,6 +2610,17 @@ namespace TrueforceForAll.Plugin
             // false persisted by an older build would leave FS silently dead
             // with nothing visible to re-enable, so normalize to on at load.
             Settings.ClassicSpringEmulationEnabled = true;
+            // Hand-the-wheel-back-on-pause default repair (owner call
+            // 2026-08-15). Stable shipped StopStreamOnPause DEFAULT-ON in
+            // v0.1.24; the 0.2.x line left it opt-in by oversight, so
+            // beta-era settings files carry a stored false nobody chose.
+            // One-time flip so every install matches the shipped default;
+            // the user's checkbox choice sticks from then on.
+            if (!Settings.StopStreamOnPauseMigrated)
+            {
+                Settings.StopStreamOnPauseMigrated = true;
+                Settings.StopStreamOnPause = true;
+            }
             // Provision the official community backend. The plugin ships no backend baked into its
             // code, so without this a fresh install has empty settings and can't reach sign-in /
             // community / backup ("could not reach the sign-in server"). Seed the public URL +
