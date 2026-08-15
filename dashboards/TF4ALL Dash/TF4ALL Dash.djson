@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "75798079-249a-4656-bf3d-e47fb3387d05",
+    "Id":  "085b9eba-e577-40f1-914d-617d38ab0339",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c3cc0c24-ce62-44d5-9e99-d1a4656cb177",
+                        "ScreenId":  "db94b383-aad5-46f7-8ed6-e6b38f6f05ce",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -14872,7 +14872,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a2c9a952-23a6-4c9f-b7ef-6b0c444a1649",
+                        "ScreenId":  "a2e16184-e28b-41ef-975a-24344eb018ab",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -42095,7 +42095,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "fa5d87b0-cfb3-4f70-9bbe-cb5b14e35985",
+                        "ScreenId":  "16372d53-a930-40b2-9af2-38e5a25ce436",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -66894,7 +66894,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c022a0df-45fe-47fd-94ab-fd9bdd3b76f0",
+                        "ScreenId":  "04a73665-66a1-4bcb-8460-4ba5e978d34a",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -80701,7 +80701,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "7d55c739-cc09-469c-b156-af3dcf5027cb",
+                        "ScreenId":  "638194ed-09d6-4b35-864a-abc7a3472a56",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -100845,7 +100845,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "c1403201-c843-459c-a2e5-d06723dcb307",
+                        "ScreenId":  "ada88c90-3c03-40f0-9f6c-afac1adbd99b",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -122165,7 +122165,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "6890efcb-4c8d-4f89-b2c2-708ab13bdadb",
+                        "ScreenId":  "04a172b9-832a-40a9-a9c0-7f66838cbb16",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -124406,7 +124406,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;if(c\u003c1)return \"LEARNING  \"+Math.round(c*100)+\"%\";if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"LEARNED\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;var on=$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\");var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");if(c\u003c1){var pc=\"LEARNING \"+Math.round(c*100)+\"%\";return (on\u0026\u0026s\u003e0)?(\"x\"+s.toFixed(2)+\"  \"+pc):pc;}if(!on)return \"LEARNED\";return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -139384,7 +139384,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;if(c\u003c1)return \"LEARNING  \"+Math.round(c*100)+\"%\";if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"LEARNED\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;var on=$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\");var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");if(c\u003c1){var pc=\"LEARNING \"+Math.round(c*100)+\"%\";return (on\u0026\u0026s\u003e0)?(\"x\"+s.toFixed(2)+\"  \"+pc):pc;}if(!on)return \"LEARNED\";return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -154602,7 +154602,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;if(c\u003c1)return \"LEARNING  \"+Math.round(c*100)+\"%\";if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"LEARNED\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;var on=$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\");var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");if(c\u003c1){var pc=\"LEARNING \"+Math.round(c*100)+\"%\";return (on\u0026\u0026s\u003e0)?(\"x\"+s.toFixed(2)+\"  \"+pc):pc;}if(!on)return \"LEARNED\";return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -172166,7 +172166,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;if(c\u003c1)return \"LEARNING  \"+Math.round(c*100)+\"%\";if(!$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\"))return \"LEARNED\";var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
+                                                                                        "Expression":  "var c=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthConf\");if(isNaN(c))c=0;var on=$prop(\"TrueforcePlugin.Dash.ModeBAutoStrengthOn\");var s=1*$prop(\"TrueforcePlugin.Dash.ModeBStrengthScale\");if(c\u003c1){var pc=\"LEARNING \"+Math.round(c*100)+\"%\";return (on\u0026\u0026s\u003e0)?(\"x\"+s.toFixed(2)+\"  \"+pc):pc;}if(!on)return \"LEARNED\";return s\u003e0?(\"x\"+s.toFixed(2)):\"LEARNED\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"

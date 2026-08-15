@@ -1130,16 +1130,19 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $r.Bindings['Visible'] = BindJS 'Visible' $rlVis; $items.Add($r)
     $t = New-Text "d$slot-cf-rl-t" ($ix + 10) ($iy + 160) ($iw - 20) 30 13 'RE-LEARN CAR' $script:WHITE 0 $null 'Bold'
     $t.Bindings['Visible'] = BindJS 'Visible' $rlVis; $items.Add($t)
-    # What it has learned so far, right-aligned on the same row: the percentage
-    # while it converges, then the scale it settled on. With auto strength off the
-    # learner still runs but nothing is applied, so claiming a scale there would
-    # be a lie; it reports that it is only watching.
+    # What it has learned so far, right-aligned on the same row: while it
+    # converges, the scale currently in use rides along with the percentage
+    # (the learner applies as it goes, so that value is live, not a preview);
+    # settled, just the scale. With auto strength off nothing is applied, so
+    # no scale is claimed at any stage; it reports that it is only watching.
     $t = New-Text "d$slot-cf-rl-st" ($ix + 10) ($iy + 160) ($iw - 20) 30 12 '' $script:MUTED 2 @{
         Text = BindJS 'Text' (
             'var c=1*$prop("' + $P + '.ModeBStrengthConf");if(isNaN(c))c=0;' +
-            'if(c<1)return "LEARNING  "+Math.round(c*100)+"%";' +
-            'if(!$prop("' + $P + '.ModeBAutoStrengthOn"))return "LEARNED";' +
+            'var on=$prop("' + $P + '.ModeBAutoStrengthOn");' +
             'var s=1*$prop("' + $P + '.ModeBStrengthScale");' +
+            'if(c<1){var pc="LEARNING "+Math.round(c*100)+"%";' +
+            'return (on&&s>0)?("x"+s.toFixed(2)+"  "+pc):pc;}' +
+            'if(!on)return "LEARNED";' +
             'return s>0?("x"+s.toFixed(2)):"LEARNED"')
     }
     $t.Bindings['Visible'] = BindJS 'Visible' $rlVis; $items.Add($t)
