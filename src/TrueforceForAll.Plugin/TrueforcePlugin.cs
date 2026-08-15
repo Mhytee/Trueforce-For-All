@@ -7862,6 +7862,14 @@ namespace TrueforceForAll.Plugin
         private const double IRacingPeakSettleMs   = 15000.0;   // no growth for this long
         private const double IRacingPeakMinDriveMs = 30000.0;   // and at least this much racing
 
+        // The lazy car-change reset lives inside LearnIRacingPeak, which only
+        // runs while driving on track. Between a garage car swap and the first
+        // lap, the peak still describes the OLD car, and the readiness UI was
+        // offering to write it into the new car's slot (owner rig,
+        // 2026-08-15). Every public surface therefore checks ownership first.
+        private bool IRacingPeakIsForActiveCar =>
+            string.Equals(_irPeakCarId, _activeCarId, StringComparison.Ordinal);
+
         /// <summary>True once the observed peak has stopped climbing for a while
         /// AND enough racing has actually happened. The Auto button uses this to
         /// show whether it is worth pressing yet.</summary>
@@ -7869,6 +7877,7 @@ namespace TrueforceForAll.Plugin
         {
             get
             {
+                if (!IRacingPeakIsForActiveCar) return false;
                 if (_irPeakNm <= 0.05f || _irPeakGrowthTicks == 0) return false;
                 if (_irPeakRacingMs < IRacingPeakMinDriveMs) return false;
                 double sinceMs = (Stopwatch.GetTimestamp() - _irPeakGrowthTicks)
@@ -7884,6 +7893,7 @@ namespace TrueforceForAll.Plugin
         {
             get
             {
+                if (!IRacingPeakIsForActiveCar) return 0.0;
                 if (_irPeakNm <= 0.05f || _irPeakGrowthTicks == 0) return 0.0;
                 double drive = _irPeakRacingMs / IRacingPeakMinDriveMs;
                 if (drive > 1.0) drive = 1.0;
@@ -8030,7 +8040,11 @@ namespace TrueforceForAll.Plugin
         /// racing has happened to mean anything.</summary>
         public double IRacingLearnedMaxNm
         {
-            get { return _irPeakNm > 0.05f ? _irPeakNm * 1.10 : 0.0; }
+            get
+            {
+                return IRacingPeakIsForActiveCar && _irPeakNm > 0.05f
+                    ? _irPeakNm * 1.10 : 0.0;
+            }
         }
 
         /// <summary>Feed the peak learner. Surface gating is the caller's job so
