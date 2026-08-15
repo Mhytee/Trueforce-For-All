@@ -3295,6 +3295,14 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => CycleDashTab(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("DashTabPrev", GetType(),
                     (pm, a) => CycleDashTab(-1), (pm, a) => { });
+                // Max force from the rim / dash: iRacing's own workflow is
+                // nudging the read number to make a car heavier or lighter
+                // without touching Strength. 0.5 Nm per press through the
+                // same targeting rule as the settings number box.
+                pluginManager.AddInputMapping("IRacingMaxForceUp", GetType(),
+                    (pm, a) => NudgeIRacingMaxForce(+0.5), (pm, a) => { });
+                pluginManager.AddInputMapping("IRacingMaxForceDown", GetType(),
+                    (pm, a) => NudgeIRacingMaxForce(-0.5), (pm, a) => { });
             }
             catch (Exception ex)
             {
@@ -7975,6 +7983,32 @@ namespace TrueforceForAll.Plugin
                 s.IRacingMaxForceNmOverride = clear ? 0.0f : (float)v;
             }
             PersistSettings();
+        }
+
+        /// <summary>Step the effective Max force from a bound control or the
+        /// dash's +/- pair. Starts from whatever the force path is actually
+        /// using (the live iRacing number when nothing is overridden), writes
+        /// through the same targeting rule as the number box, and announces
+        /// the result on the dash readout.</summary>
+        public void NudgeIRacingMaxForce(double delta)
+        {
+            if (!IsIRacingReshapeGame(_activeGame) || !ModeBEnabledForActiveGame)
+            {
+                DashReadout("MAX FORCE", "IRACING ONLY");
+                return;
+            }
+            double cur = GetEditableMaxForceNm();
+            if (cur < 0.5) cur = IRacingEffectiveMaxForceNm;
+            if (cur < 0.5)
+            {
+                // No override, and iRacing has not published a number yet.
+                DashReadout("MAX FORCE", "NO NUMBER YET");
+                return;
+            }
+            double v = Math.Max(1.0, Math.Min(50.0, cur + delta));
+            SetEditableMaxForceNm(v);
+            DashReadout("MAX FORCE", v.ToString("0.0",
+                System.Globalization.CultureInfo.InvariantCulture) + " NM");
         }
 
         /// <summary>Peak this car has actually produced, plus a margin, in Nm.

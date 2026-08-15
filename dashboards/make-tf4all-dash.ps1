@@ -3072,6 +3072,22 @@ $mf = New-Text 'cf-mf-t' 552 388 216 38 15 '' $GRAY 1 @{
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 $mf = New-Button 'cf-mf-btn' 552 388 216 38 'CalibrateCarForce'
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+# Nudge pair beside the number: iRacing's own workflow is nudging the read
+# value to make a car heavier or lighter without touching Strength; doing it
+# from the dash keeps that at the wheel. 0.5 Nm per tap, routed through the
+# same targeting rule as the settings number box.
+$mf = New-Btn 'cf-mf-minus' 132 388 44 38 4
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Text 'cf-mf-minus-t' 132 388 44 38 18 '-' $WHITE 1 $null 'Bold'
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Button 'cf-mf-minus-tap' 132 388 44 38 'IRacingMaxForceDown'
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Btn 'cf-mf-plus' 184 388 44 38 4
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Text 'cf-mf-plus-t' 184 388 44 38 18 '+' $WHITE 1 $null 'Bold'
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
+$mf = New-Button 'cf-mf-plus-tap' 184 388 44 38 'IRacingMaxForceUp'
+$mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 
 # The synthesis side, in the same band. Same panel shape so the tab does not
 # reflow between games, but the tile never greys: this learner runs continuously,

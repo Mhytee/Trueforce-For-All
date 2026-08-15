@@ -3584,6 +3584,18 @@
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.DashTabPrev"
                                                  FriendlyName="TF4ALL: dash tab back"/>
                         </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Max force up" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.IRacingMaxForceUp"
+                                                 FriendlyName="TF4ALL: max force up (iRacing)"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Max force down" Style="{StaticResource LabelText}"/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.IRacingMaxForceDown"
+                                                 FriendlyName="TF4ALL: max force down (iRacing)"/>
+                        </Grid>
 
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,8,0,0" FontSize="11"
                             Text="These actions also appear in SimHub's Controls and events list. Bindings are stored by SimHub, not in your TF4ALL preset."/>
