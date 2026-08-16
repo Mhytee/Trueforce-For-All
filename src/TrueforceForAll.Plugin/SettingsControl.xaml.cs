@@ -10943,12 +10943,16 @@ namespace TrueforceForAll.Plugin
         // sets TextWrapping.Wrap), so baked-in line breaks only fought it and
         // left ragged short lines (owner, 2026-08-16). Breaks here are
         // structural now, one per step and a blank line between sections.
+        // Short, and reasons instead of warnings (owner, 2026-08-16). The
+        // long version spent its words on caveats, which reads as risk for
+        // something that is three settings and reversible.
         private const string IracingTrueforceNoticeBody =
-            "The plugin does not replace iRacing's force feedback. iRacing still works out what the car is doing and hands over those same forces, which the plugin delivers over Trueforce, so the feel stays the sim's own. What it buys you is your rev lights and wheel screen, which cannot run while iRacing is driving the wheel itself.\n\n" +
-            "Two switches hand it over, and they are in different places.\n\n" +
-            "In iRacing's files. Fully close iRacing, open app.ini in your iRacing documents folder (usually Documents\\iRacing), change loadTrueForceAPI=1 to loadTrueForceAPI=0, and save. That releases the Trueforce connection the plugin needs.\n\n" +
-            "In iRacing's options. Relaunch it and turn its own force feedback OFF. Do not just set the strength to 0: the plugin reads that number to know what full force means for your car, so leave it wherever you like it.\n\n" +
-            "Then tick Telemetry Based FFB for iRacing on that tab in the plugin. Miss either switch and the wheel stays silent.";
+            "iRacing keeps working out what the car is doing. It just stops driving the wheel itself and hands those forces to the plugin, so the feel stays the sim's own, and your rev lights and wheel screen come back with it.\n\n" +
+            "Three steps, once:\n\n" +
+            "1. With iRacing closed, open Documents\\iRacing\\app.ini and set loadTrueForceAPI=0.\n" +
+            "2. Start iRacing and turn its force feedback off in the options. Leave its strength number where it is, the plugin reads it.\n" +
+            "3. Tick Telemetry Based FFB for iRacing on that tab.\n\n" +
+            "If the wheel stays quiet afterwards, one of the two iRacing switches is still on.";
 
         private void MaybeShowIracingTrueforceNotice()
         {
