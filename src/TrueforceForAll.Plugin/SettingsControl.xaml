@@ -2894,7 +2894,7 @@
                     </ComboBox>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Sharp puts every change on your hands the moment the sim reports it, so the wheel feels immediate and lively. Smooth lets each kerb and bump arrive whole and evenly paced, so the wheel feels calmer and more planted. Both carry the same detail; they differ in how it reaches you. Smooth is the default. Drive a few laps on each and keep the one you like."/>
+                           Text="Sharp puts every change on your hands the moment the sim reports it, so the wheel feels immediate and lively. Smooth lets each kerb and bump arrive whole and evenly paced, so the wheel feels calmer and more planted. Both carry the same detail; they differ in how it reaches you. Smooth is the default. Drive a few laps on each and keep the one you like. Under the hood both read iRacing's 360 Hz force rather than its 60 Hz value: Sharp projects the current trend forward so nothing waits for the next update, and Smooth plays each update's samples out in order, using your wheel's own movement to keep them current."/>
                 <Grid Margin="0,0,0,2" x:Name="IRacingPredictRow">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Prediction:" Style="{StaticResource LabelText}"/>
