@@ -627,12 +627,6 @@ namespace TrueforceForAll.Plugin
                     int m = _plugin.Settings?.IRacingForceMode ?? 0;
                     IRacingForceModeCombo.SelectedIndex = (m == 1) ? 1 : 0;
                 }
-                if (IRacingPredictSlider != null)
-                {
-                    IRacingPredictSlider.Value = _plugin.Settings?.IRacingPredictGain ?? 1.0;
-                    if (IRacingPredictText != null)
-                        IRacingPredictText.Text = IRacingPredictSlider.Value.ToString("F2");
-                }
                 UpdateIRacingPredictVisibility();
                 if (SpringMinForceSlider != null)
                 {
@@ -6381,18 +6375,12 @@ namespace TrueforceForAll.Plugin
                 : "following iRacing";
         }
 
-        private void IRacingPredict_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_suppressEvents || _plugin == null || _plugin.Settings == null
-                || IRacingPredictSlider == null) return;
-            _plugin.Settings.IRacingPredictGain = (float)IRacingPredictSlider.Value;
-            if (IRacingPredictText != null)
-                IRacingPredictText.Text = IRacingPredictSlider.Value.ToString("F2");
-            _plugin.PersistSettings();
-        }
-
-        // Prediction only means anything in Replay mode: it exists to cancel a
-        // lag that Lead mode never incurs. Hiding it in Lead keeps the panel
+        // Feel only means anything with the 360 Hz feed on: without the six
+        // sub-samples there is nothing to arrange differently, so the control
+        // hides with the feed. (The Prediction slider lived here until
+        // 2026-08-16; the plugin learns that lead per car and 1.00 means use
+        // what it learned, so it was never a number to put in front of a
+        // driver. IRacingPredictGain survives as a file-level escape hatch.)
         // honest rather than offering a knob that does nothing.
         private void UpdateIRacingPredictVisibility()
         {
@@ -6402,13 +6390,9 @@ namespace TrueforceForAll.Plugin
             // control that silently does nothing is worse than an absent one,
             // so the whole pair goes away with the feed that gives it meaning.
             bool use360 = _plugin?.Settings?.IRacingUse360Hz == true;
-            bool replay = _plugin?.Settings?.IRacingForceMode == 1;
             var feelWant = use360 ? Visibility.Visible : Visibility.Collapsed;
             if (IRacingFeelRow  != null) IRacingFeelRow.Visibility  = feelWant;
             if (IRacingFeelHelp != null) IRacingFeelHelp.Visibility = feelWant;
-            var want = (use360 && replay) ? Visibility.Visible : Visibility.Collapsed;
-            if (IRacingPredictRow  != null) IRacingPredictRow.Visibility  = want;
-            if (IRacingPredictHelp != null) IRacingPredictHelp.Visibility = want;
         }
 
         private void IRacingSmooth_Changed(object sender, RoutedEventArgs e)

@@ -2906,15 +2906,15 @@
                 </Grid>
                 <TextBlock x:Name="IRacingFeelHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
                            Text="How those six samples are played. Sharp reads the trend across them and projects it forward, so the steering weight is current and the finer detail follows a frame behind. Smooth plays the six in their real order and shape, then uses your wheel's own movement to keep them current. Both deliver the same detail; Sharp feels the more immediate, Smooth the more settled. Smooth is the default. Drive a few laps on each and keep the one you like."/>
-                <Grid Margin="0,0,0,2" x:Name="IRacingPredictRow">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Prediction:" Style="{StaticResource LabelText}"/>
-                    <Slider     Grid.Column="1" x:Name="IRacingPredictSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
-                                TickFrequency="0.1" ValueChanged="IRacingPredict_ValueChanged" VerticalAlignment="Center"/>
-                    <TextBox Grid.Column="2" x:Name="IRacingPredictText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
-                </Grid>
-                <TextBlock x:Name="IRacingPredictHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Smooth only, and NOT something you need to tune. Playing the six in order means starting a frame behind, so the plugin works out how far ahead this car's force is heading and closes that gap, learning it fresh for every car you drive; 1.00 means simply using what it found. Turn it down only if the wheel feels nervous, or to 0 to switch it off and accept a slightly later force."/>
+                <!-- Prediction had a slider until 2026-08-16. Its own help said
+                     it was not a number to tune, and that was true: the plugin
+                     learns the lead per car, 1.00 means use what it learned,
+                     and needing another value would mean the learning failed.
+                     The setting stays (IRacingPredictGain, default 1.0) as a
+                     file-level escape hatch and for diagnosing the predictor;
+                     it is simply not a knob to put in front of a driver. -->
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="On Smooth, playing the six in order starts a frame behind, so the plugin works out how far ahead this car's force is heading and closes that gap on its own, learning it fresh for every car you drive."/>
                     </StackPanel>
                 </Expander>
             </StackPanel>
