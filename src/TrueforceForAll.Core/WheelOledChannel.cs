@@ -199,6 +199,10 @@ namespace TrueforceForAll.Core
         private volatile bool _txStop;
 
         public bool IsReady => _ready;
+        /// <summary>Still on the pipe: either holding a frame up, or running
+        /// the sender thread that would. Lets a caller that has already let the
+        /// screen go with Release() still know there is a thread to tear down.</summary>
+        public bool IsHolding => _txThread != null || _pending != null;
         public int LayoutCount => _layoutCount;
         public string ResolvedInfo =>
             _ready
@@ -797,16 +801,22 @@ namespace TrueforceForAll.Core
 
         private static long NowMs() => DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
 
-        /// <summary>Stop writing and hand the panel back to the wheel's own
-        /// firmware (fn2 = clear pending Dynamic data). Called whenever the
-        /// Mode B gate closes, so the screen never freezes on a stale frame and
-        /// we stop touching the HID++ pipe entirely.</summary>
-        public void Clear()
+        /// <summary>Hand the panel back to the wheel's own view while KEEPING
+        /// the sender thread, so taking the screen again costs a field write
+        /// rather than a thread start. A caller that shows only occasional
+        /// takeovers gives the screen back many times a lap, and Clear()'s
+        /// teardown at that rate is thread churn buying nothing.
+        ///
+        /// The fn2 is what makes the handback immediate. Going quiet alone
+        /// would also do it, but only after the firmware's own timeout, which
+        /// is unknown beyond being under two seconds (see SenderLoop), and a
+        /// takeover that hangs on for a second after its moment is worse than
+        /// one that never happened.
+        ///
+        /// Idempotent: _sent records whether anything is actually on the panel,
+        /// so a second call puts nothing on the wire.</summary>
+        public void Release()
         {
-            _txStop = true;
-            var t = _txThread; _txThread = null;
-            try { t?.Join(300); } catch { }
-
             _pending = null;
             if (!_ready) return;
             lock (_io)
@@ -824,6 +834,18 @@ namespace TrueforceForAll.Core
                 catch (Exception ex) { _log($"[OLED] clear failed: {ex.Message}"); }
                 _sent = null;
             }
+        }
+
+        /// <summary>Release the panel AND stop the sender, so we are off the
+        /// HID++ pipe entirely. Called whenever the Mode B gate closes, so the
+        /// screen never freezes on a stale frame and nothing of ours is left
+        /// running against a pipe a game may be about to use.</summary>
+        public void Clear()
+        {
+            _txStop = true;
+            var t = _txThread; _txThread = null;
+            try { t?.Join(300); } catch { }
+            Release();
         }
 
         // Pad a SHORT (7-byte) payload up to the command stream's output length.

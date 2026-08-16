@@ -234,15 +234,10 @@ namespace TrueforceForAll.Plugin
                 _wasContending = false;   // re-announce if it comes back
                 _lapResultFrame = null;
                 _prevGear = null;         // do not flash the gear on re-entry
-                // Release for real (game switch, pause, Mode B disarm). Clear()
-                // also STOPS the sender thread, so we stop writing the HID++
-                // pipe entirely and the wheel's own menu has the screen back.
-                // Once released this no-ops.
-                if (_showing && _channel.IsReady)
-                {
-                    try { _channel.Clear(); } catch { }
-                }
-                _showing = false;
+                // Release for real (game switch, pause, Mode B disarm): stop
+                // writing the HID++ pipe entirely and the wheel's own menu has
+                // the screen back. Once released this no-ops.
+                ReleaseAll();
                 return;
             }
 
@@ -289,7 +284,9 @@ namespace TrueforceForAll.Plugin
                 //      and it only competes with one for a few seconds a lap.
                 //   5. the shift flash, lowest of the interruptions: it fires
                 //      constantly, so it must never bury something rarer.
-                //   6. the driving screen you picked.
+                //   6. the driving screen you picked, or, when that is Nothing,
+                //      the wheel's own display: we let the panel go and it
+                //      comes back on its own until there is news again.
                 // Levels 1 to 4 use layout H, which puts the label small over
                 // the value large: the dash's readout bar stood on end.
                 // Edge detection runs on EVERY frame: a gear change or a lap
@@ -364,6 +361,19 @@ namespace TrueforceForAll.Plugin
                                 OledScreenModel.GearText(frame.Gear, 1),
                                 OledScreenModel.SpeedText(frame.SpeedKmh, ctx.UseMph)))
                         : Stacked("GEAR", OledScreenModel.GearText(frame.Gear, 10));
+                else if (ctx.Screen == OledScreen.None)
+                {
+                    // Nothing above is due and no driving screen was asked
+                    // for, so the panel goes back to the wheel until there is
+                    // news again. A SOFT release: the next takeover can be one
+                    // shift away, and stopping and restarting the sender
+                    // between every one of them would be churn for nothing.
+                    // The gate path above still does the full release, which is
+                    // where getting off the pipe actually matters.
+                    if (_showing) { try { _channel.Release(); } catch { } }
+                    _showing = false;
+                    return;
+                }
                 else
                     setter = Compose(frame, ctx);
 
@@ -409,6 +419,23 @@ namespace TrueforceForAll.Plugin
             // so repeat until it more than fills one screenful.
             while (loop.Length < 12) loop += loop;
             return loop;
+        }
+
+        /// <summary>Give the panel back AND get off the pipe, for when there is
+        /// no reason to be holding the channel at all.
+        ///
+        /// The IsHolding test earns its place with the Nothing screen: that
+        /// mode releases the panel on its own between takeovers, so _showing is
+        /// routinely false while the sender thread is still parked and waiting
+        /// for the next one. Asking _showing alone would leave that thread
+        /// running for the rest of the session.</summary>
+        private void ReleaseAll()
+        {
+            if ((_showing || _channel.IsHolding) && _channel.IsReady)
+            {
+                try { _channel.Clear(); } catch { }
+            }
+            _showing = false;
         }
 
         /// <summary>Something time-boxed is still on screen and has not had its
@@ -492,11 +519,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!has)
             {
-                if (_showing && _channel.IsReady)
-                {
-                    try { _channel.Clear(); } catch { }
-                }
-                _showing = false;
+                ReleaseAll();
                 return;
             }
             if (!EnsureOpening()) return;
@@ -616,6 +639,9 @@ namespace TrueforceForAll.Plugin
         {
             OledLayoutKind kind;
             string[] slots, texts;
+            // With no driving screen there is nothing showing the gear, so the
+            // flash is the only thing that ever says it.
+            if (ctx.Screen == OledScreen.None) return false;
             if (ctx.Screen == OledScreen.Custom)
                 slots = OledScreenModel.SanitizeSlots(ctx.CustomSlots, ctx.CustomLayout);
             else
@@ -631,6 +657,12 @@ namespace TrueforceForAll.Plugin
         /// and a hand-built one can never diverge in how they draw.</summary>
         private byte[] Compose(in TelemetryFrame frame, in OledFrameContext ctx)
         {
+            // No screen to build. OnFrame never gets this far with Nothing
+            // picked, so this is for the settings preview, which asks Compose
+            // what the current choice looks like: the honest answer is no
+            // frame, and its caller treats that as nothing to show.
+            if (ctx.Screen == OledScreen.None) return null;
+
             OledLayoutKind kind;
             string[] slots, texts;
             if (ctx.Screen == OledScreen.Custom)

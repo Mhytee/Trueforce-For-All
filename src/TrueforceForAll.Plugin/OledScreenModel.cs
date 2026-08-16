@@ -72,6 +72,12 @@ namespace TrueforceForAll.Plugin
         SpeedOverGearPlain = 10,
         GearOverSpeedPlain = 11,
         GearAndDelta = 12,
+        /// <summary>No driving screen. The takeovers (a readout, a finished
+        /// lap, a shift, an incident, the contention alarm) still get their
+        /// moment, and between them the panel goes back to the wheel's own
+        /// view instead of being held for a dash. Not "the screen is off":
+        /// the master checkbox is what turns the feature off.</summary>
+        None = 13,
     }
 
     public static class OledScreenModel
@@ -82,12 +88,15 @@ namespace TrueforceForAll.Plugin
         public static readonly string[] ScreenShortNames =
             { "GEAR+SPEED", "SPEED+GEAR", "SPD+DELTA", "SPD GEAR D", "SPD OVER G", "CUSTOM",
               "SPEED/GEAR", "GEAR/SPEED", "SPEED", "GEAR", "SPD GEAR", "GEAR SPD",
-              "GEAR+DELTA" };
+              "GEAR+DELTA", "NO SCREEN" };
 
         /// <summary>The order screens are offered and cycled in, which is NOT
         /// the enum's numeric order: the labelled pair are the ones to reach
         /// for, so they lead, and Build my own sits at the end where a
-        /// catch-all belongs. Enum values stay put because they are persisted.</summary>
+        /// catch-all belongs. Nothing goes last of all: it is the one entry
+        /// that is not a screen, and leading with it would make an empty panel
+        /// read as the expected choice. Enum values stay put because they are
+        /// persisted.</summary>
         public static readonly OledScreen[] ScreenOrder =
         {
             OledScreen.SpeedOverGear, OledScreen.GearOverSpeed,
@@ -97,6 +106,7 @@ namespace TrueforceForAll.Plugin
             OledScreen.SpeedAndDelta, OledScreen.GearAndDelta,
             OledScreen.SpeedGearAndDelta,
             OledScreen.Custom,
+            OledScreen.None,
         };
         public static readonly string[] ScreenOrderLabels =
         {
@@ -112,6 +122,7 @@ namespace TrueforceForAll.Plugin
             "Gear and lap delta",
             "Speed, gear and lap delta",
             "Build my own",
+            "Nothing, the wheel's own display",
         };
 
         // ---- Field catalog -------------------------------------------------
@@ -395,6 +406,18 @@ namespace TrueforceForAll.Plugin
                     kind = OledLayoutKind.FourCenter;
                     slots = new[] { "Custom", "Gear", "None", "None" };
                     texts = new[] { "Gear", null, null, null };
+                    return;
+
+                // No driving screen, so there is nothing to arrange. Nothing
+                // reaches here in normal running: the controller hands the
+                // panel back instead of composing. It answers anyway, with a
+                // shape that has no slots, so a caller that has not been told
+                // about None draws an empty screen rather than confidently
+                // drawing a gear and a speed nobody asked for.
+                case OledScreen.None:
+                    kind = OledLayoutKind.FourCenter;
+                    slots = new string[0];
+                    texts = new string[0];
                     return;
 
                 // RETIRED, and no longer offered: it put the small speed VALUE
