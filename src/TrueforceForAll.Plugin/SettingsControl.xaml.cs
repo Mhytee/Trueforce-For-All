@@ -762,6 +762,13 @@ namespace TrueforceForAll.Plugin
                     if (IRacingTuningPanel != null)
                         IRacingTuningPanel.Visibility = reshapeGame
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Advanced lives outside that panel now, so Damping and
+                    // Smoothing can sit above it while staying visible in every
+                    // game. Its contents are still iRacing-only, so it follows
+                    // the same flag by hand.
+                    if (IRacingAdvancedExpander != null)
+                        IRacingAdvancedExpander.Visibility = reshapeGame
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
 
                     // The tapped-path corrections are switched off under the
                     // iRacing reshape (the device skips them), so the two
@@ -776,6 +783,11 @@ namespace TrueforceForAll.Plugin
                         ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     if (FfbScaleRow    != null) FfbScaleRow.Visibility    = deadInReshape;
                     if (FfbInvertCheck != null) FfbInvertCheck.Visibility = deadInReshape;
+                    // Smoothing moved out to sit with Damping, so scale and
+                    // invert are all this section has left; under the reshape
+                    // both are dead, which makes the section itself dead.
+                    if (FfbPassthroughExpanderSection != null)
+                        FfbPassthroughExpanderSection.Visibility = deadInReshape;
                     // The stationary spring is hard-skipped for iRacing in
                     // ApplyStationarySpring, and now that this group shares the
                     // tab it would be a dead section sitting next to live ones.
@@ -1605,7 +1617,11 @@ namespace TrueforceForAll.Plugin
             if (MasterGainText  != null)  MasterGainText.IsEnabled   = en;
             if (MasterSaveBtn   != null)  MasterSaveBtn.IsEnabled     = en;
             if (MasterRevertBtn != null)  MasterRevertBtn.IsEnabled   = en;
-            if (FfbTweaksExpander != null) FfbTweaksExpander.IsEnabled = en;
+            // The old FFB tweaks wrapper became three sections; each takes the
+            // car-edit lock the wrapper used to take for all of them.
+            if (FfbPassthroughExpanderSection  != null) FfbPassthroughExpanderSection.IsEnabled  = en;
+            if (StationarySpringExpander       != null) StationarySpringExpander.IsEnabled       = en;
+            if (SpikeReductionExpanderSection  != null) SpikeReductionExpanderSection.IsEnabled  = en;
             // Airborne is per-car, so it stays editable during car-edit.
             if (RpmLedSection     != null) RpmLedSection.IsEnabled     = en;
         }

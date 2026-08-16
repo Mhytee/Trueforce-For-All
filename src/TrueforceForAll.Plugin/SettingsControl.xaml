@@ -2874,12 +2874,59 @@
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
                            Text="How strong the WHEEL should be: your overall preference, roughly a percentage of the wheel's total power, and the only force control you should need day to day. One setting for every car: turn it up and everything gets stronger by the same amount, so there is nothing to re-tune when you switch cars. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
 
-                <!-- Everything below is expert surface. The panel had grown to
-                     seven controls when a driver needs two: Strength day to day,
-                     and Auto once per car. Burying the rest is not tidying, it is
-                     the difference between a tab someone can use and one they
-                     scroll past. -->
-                <Expander x:Name="IRacingAdvancedExpander" IsExpanded="False" Margin="0,6,0,4">
+            </StackPanel> <!-- /IRacingTuningPanel: Damping and FFB smooth follow,
+                 outside it, because they are live in every game. The Advanced
+                 expander is re-opened below them so the two everyday feel
+                 sliders sit together above it. -->
+
+            <!-- Damping sits OUTSIDE the game-specific panels: it is live in
+                 spring mode (the anti-ring half of rendering a spring) so it
+                 stays visible in Farming Simulator, and live in the iRacing
+                 reshape, where it matters MORE because that path is a closed
+                 loop through the sim and damping is what settles it. -->
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Damping:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="ModeBDamperSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
+                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="2" x:Name="ModeBDamperText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.07"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Resistance to wheel motion. The heavy, planted feel that is not grip force."/>
+
+            <!-- Smoothing moved up here from the old FFB tweaks section (owner,
+                 2026-08-16). It belongs beside Damping: both are everyday feel
+                 controls, and unlike the FFB scale and invert it sat next to,
+                 this one is LIVE on the iRacing path (the authored force
+                 bypasses those two but is smoothed by this). -->
+            <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Smoothing (ms):" Style="{StaticResource LabelText}"
+                           ToolTip="Smooths the force before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = none, the default."/>
+                <Slider     Grid.Column="1" x:Name="FfbSmoothSlider"
+                            Minimum="0" Maximum="10" SmallChange="0.5" LargeChange="1"
+                            TickFrequency="1" ValueChanged="FfbSmoothSlider_ValueChanged" VerticalAlignment="Center"
+                            ToolTip="Smooths the force before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = none, the default."/>
+                <TextBox Grid.Column="2" x:Name="FfbSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.0"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                       Text="Takes the edge off a force that arrives in steps, at the cost of a little lag. Leave it at 0 unless the wheel feels notchy."/>
+            <!-- Save/Revert for the Master trio (scale, smoothing, invert).
+                 They live with Smoothing because that is the one of the three
+                 that is live in EVERY game; the other two hide under the
+                 iRacing reshape, and their section hides with them. -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8">
+                <Button x:Name="MasterRevertBtn" Content="↶" Tag="Master" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                <Button x:Name="MasterSaveBtn"   Content="Save…" Tag="Master" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+            </StackPanel>
+
+            <!-- MOVED OUT of IRacingTuningPanel (owner, 2026-08-16) so Damping
+                 and FFB smooth can sit above it while staying visible in Forza
+                 and Farming Simulator. Visibility is now driven in code beside
+                 the panel's own. Everything in here is expert surface: the tab
+                 needs Strength day to day and Auto once per car, and burying
+                 the rest is the difference between a tab someone can use and
+                 one they scroll past. -->
+            <Expander x:Name="IRacingAdvancedExpander" IsExpanded="False" Margin="0,6,0,4" Visibility="Collapsed">
                     <Expander.Header>
                         <TextBlock Text="Advanced" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
@@ -2915,22 +2962,6 @@
                 <TextBlock x:Name="IRacingFeelHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text=""/>
                     </StackPanel>
                 </Expander>
-            </StackPanel>
-
-            <!-- Damping sits OUTSIDE the Forza-only panels: it is live in
-                 spring mode too (the anti-ring half of rendering a spring),
-                 so it stays visible in Farming Simulator. It is live in the
-                 iRacing reshape as well, and matters MORE there: that path is
-                 a closed loop through the sim, and damping is what settles it.
-                 The panel split around it keeps the Forza layout identical. -->
-            <Grid Margin="0,0,0,2">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Damping:" Style="{StaticResource LabelText}"/>
-                <Slider     Grid.Column="1" x:Name="ModeBDamperSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
-                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
-                <TextBox Grid.Column="2" x:Name="ModeBDamperText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.07"/>
-            </Grid>
-            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Resistance to wheel motion. The heavy, planted feel that is not grip force."/>
 
             <!-- Spring-mode enhancements. Visible only in spring-mode games
                  (Farming Simulator); each is its own toggle so they can be
@@ -3198,17 +3229,18 @@
                  setting is two places to disagree, and WPF cannot reparent a
                  named control per game anyway. So every game finds them here
                  now, not only iRacing. -->
-            <Expander x:Name="FfbTweaksExpander" IsExpanded="False" Margin="0,12,0,4">
-                <Expander.Header>
-                    <TextBlock Text="FFB tweaks" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
-                </Expander.Header>
-                <StackPanel Margin="0,10,0,0">
+            <!-- The "FFB tweaks" wrapper is gone (owner, 2026-08-16). It held
+                 three unrelated things behind one vague word, and its smoothing
+                 slider has moved up beside Damping where it is actually used.
+                 Its three parts now stand as their own sections. -->
 
-                <!-- FFB pass-through: how the game's own force feedback is
-                     mirrored to the wheel - output scale, smoothing, and sign. -->
-                <Expander IsExpanded="False" Margin="0,0,0,4">
+            <!-- FFB pass-through: how the game's own force feedback is mirrored
+                 to the wheel. Scale and sign only now: BOTH are bypassed on the
+                 authored iRacing path, so this section is about games we
+                 mirror. -->
+                <Expander x:Name="FfbPassthroughExpanderSection" IsExpanded="False" Margin="0,12,0,4">
                     <Expander.Header>
-                        <TextBlock x:Name="FfbPassthroughHeader" Text="FFB pass-through" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="FfbPassthroughHeader" Text="FFB pass-through" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel x:Name="FfbPassthroughControls" Margin="0,8,0,0">
                         <Grid Margin="0,0,0,4" x:Name="FfbScaleRow">
@@ -3219,28 +3251,10 @@
                                         TickFrequency="0.25" ValueChanged="FfbScaleSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="FfbScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="FFB smooth (ms):" Style="{StaticResource LabelText}"
-                                       ToolTip="Smooths the game's force feedback before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = no smoothing (tightest, the default)."/>
-                            <Slider     Grid.Column="1" x:Name="FfbSmoothSlider"
-                                        Minimum="0" Maximum="10" SmallChange="0.5" LargeChange="1"
-                                        TickFrequency="1" ValueChanged="FfbSmoothSlider_ValueChanged" VerticalAlignment="Center"
-                                        ToolTip="Smooths the game's force feedback before it reaches the wheel. Higher = smoother feel but more lag; lower = tighter response. 0 = no smoothing (tightest, the default)."/>
-                            <TextBox Grid.Column="2" x:Name="FfbSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.0"/>
-                        </Grid>
                         <CheckBox x:Name="FfbInvertCheck" Content="Invert FFB sign (uncheck if forces feel reversed)"
                                   Margin="0,2,0,0" VerticalAlignment="Center"
                                   Checked="FfbInvert_Changed" Unchecked="FfbInvert_Changed"
                                   ToolTip="Flips the direction of the game's force feedback sent to the wheel. On by default. If your wheel pushes the wrong way (e.g. forces feel reversed in RaceRoom), uncheck this."/>
-                        <!-- Save/Revert for the FFB pass-through trio (scale/smooth/
-                             invert). Tag="Master" so the existing EffectKind.Master
-                             save/revert handlers apply unchanged. Shown only when
-                             these values drift from the active preset. -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                            <Button x:Name="MasterRevertBtn" Content="↶" Tag="Master" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                            <Button x:Name="MasterSaveBtn"   Content="Save…" Tag="Master" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                        </StackPanel>
                     </StackPanel>
                 </Expander>
 
@@ -3254,10 +3268,10 @@
                      it works in any game; always off for iRacing (the sim
                      already weights it). Forza's steering is coarse so the consumer
                      smooths it. -->
-                <Expander x:Name="StationarySpringExpander" IsExpanded="False" Margin="0,0,0,4">
+                <Expander x:Name="StationarySpringExpander" IsExpanded="False" Margin="0,12,0,4">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Stationary spring" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="Stationary spring" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             <Button x:Name="StationarySpringRevertBtn" Content="↶" Tag="StationarySpring" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="StationarySpringSaveBtn"   Content="Save…" Tag="StationarySpring" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -3296,11 +3310,12 @@
                     </StackPanel>
                 </Expander>
 
-                <!-- FFB spike reduction. Save/Revert live in the expander header. -->
-                <Expander IsExpanded="False" Margin="0,0,0,4">
+                <!-- FFB spike reduction, now its own section rather than a row
+                     inside a grab-bag. Save/Revert live in the expander header. -->
+                <Expander x:Name="SpikeReductionExpanderSection" IsExpanded="False" Margin="0,12,0,4">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="FFB spike reduction" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="FFB spike reduction" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             <Button x:Name="SpikeReductionRevertBtn" Content="↶" Tag="SpikeReduction" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="SpikeReductionSaveBtn"   Content="Save…" Tag="SpikeReduction" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -3356,8 +3371,6 @@
                         </StackPanel>
                     </StackPanel>
                 </Expander>
-                </StackPanel>
-            </Expander>
 
             <!-- Header text set in RefreshFromPlugin: "Wheel lights" on a
                  wheel with no screen (the OLED expander hides there too). -->
