@@ -1017,6 +1017,16 @@ namespace TrueforceForAll.Plugin
         //        distinguishable either.
         // Off by default: keeping cars distinct is the behaviour people expect
         // when they have not asked for anything, and flattening is the opinion.
+        // RETIRED as a choice (owner, 2026-08-15): forced true at load, and the
+        // checkbox is gone. With nothing set both positions behaved identically
+        // (they fall through to iRacing's own per-car number), so it only ever
+        // decided where a typed number or an Auto press LANDED, while its copy
+        // sold it as deciding whether cars feel different. Off it was also a
+        // trap: Auto in a light car wrote the shared number and every heavier
+        // car then clipped. Per car matches how iRacing itself stores max
+        // force. The field stays so the resolution order below still reads
+        // per-car slot, then the legacy shared override for cars never tuned,
+        // then the sim's own figure.
         public bool IRacingMaxForcePerCar { get; set; } = false;
 
         // Per-car Max force in Nm, keyed by iRacing CarPath. Written by the Auto

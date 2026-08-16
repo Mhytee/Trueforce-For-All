@@ -2610,6 +2610,10 @@ namespace TrueforceForAll.Plugin
             // false persisted by an older build would leave FS silently dead
             // with nothing visible to re-enable, so normalize to on at load.
             Settings.ClassicSpringEmulationEnabled = true;
+            // Max force is per car, always (see the setting's own note). The
+            // choice is retired rather than removed so the resolution order
+            // keeps honouring a shared number set before this release.
+            Settings.IRacingMaxForcePerCar = true;
             // Hand-the-wheel-back-on-pause default repair (owner call
             // 2026-08-15). Stable shipped StopStreamOnPause DEFAULT-ON in
             // v0.1.24; the 0.2.x line left it opt-in by oversight, so
@@ -7957,7 +7961,7 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info(
                 "[TF4ALL] iRacing Max force auto-set to "
                 + learned.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
-                + " Nm" + (Settings.IRacingMaxForcePerCar ? " for " + (_activeCarId ?? "?") : " (all cars)")
+                + " Nm for " + (_activeCarId ?? "?")
                 + ". Peak observer reset: drive a clean lap and press again to redo it.");
             return learned;
         }

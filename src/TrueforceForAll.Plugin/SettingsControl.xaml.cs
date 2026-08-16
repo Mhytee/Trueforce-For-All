@@ -609,8 +609,6 @@ namespace TrueforceForAll.Plugin
                     if (SpringStrengthText != null)
                         SpringStrengthText.Text = SpringStrengthSlider.Value.ToString("F2");
                 }
-                if (IRacingPerCarCheck != null)
-                    IRacingPerCarCheck.IsChecked = _plugin.Settings?.IRacingMaxForcePerCar == true;
                 UpdateIRacingClipWarning();
                 // Same targeting rule as the writes: show the number the force
                 // path is actually using for the active car. UpdateIRacingMaxNmText
@@ -6151,15 +6149,6 @@ namespace TrueforceForAll.Plugin
 
             IRacingClipWarn.Visibility = predicted > 1.0
                 ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        private void IRacingPerCar_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null || _plugin.Settings == null
-                || IRacingPerCarCheck == null) return;
-            _plugin.Settings.IRacingMaxForcePerCar = IRacingPerCarCheck.IsChecked == true;
-            _plugin.PersistSettings();
-            UpdateIRacingMaxNmText();
         }
 
         // One shot, exactly like iRacing's own auto button: drive, press, keep a

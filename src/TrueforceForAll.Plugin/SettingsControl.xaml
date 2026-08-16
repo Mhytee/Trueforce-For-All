@@ -2884,13 +2884,8 @@
                         <TextBlock Text="Advanced" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
-                <CheckBox x:Name="IRacingPerCarCheck" Content="Remember a separate Max force for each car"
-                          Margin="140,0,0,2" Checked="IRacingPerCar_Changed" Unchecked="IRacingPerCar_Changed"
-                          ToolTip="Off: one number for everything, so a heavy car really does push harder than a light one. On: each car gets its own, so every car feels about the same effort."/>
-                <TextBlock Style="{StaticResource HelpText}" Margin="162,0,0,8"
-                           Text="This is the switch that decides whether cars feel different. Off, one number scales everything, so set it from your HEAVIEST car and nothing will clip while lighter cars sit honestly below it. On, each car reaches full force at its own limit: nothing clips and nothing feels weak, but a Formula Vee and a GT3 end up feeling much alike."/>
                 <TextBlock x:Name="IRacingMaxNmHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Max force is the force the real car makes, and it decides whether cars keep their relative weight. A DIFFERENT number per car makes every car reach full force at its own limit, so they all feel about the same effort. ONE number for every car keeps the difference: a heavy GT3 pushes harder than a light car, as it does in reality. Follow iRacing inherits whatever you set in its black box, which flattens them if you use iRacing's auto force and keeps them apart if you set one value there. Strength is your preference on top and is never changed for you."/>
+                           Text="Max force belongs to the car you are driving: typing a number, or pressing Auto, sets it for that car and nothing else. Cars you have not set keep following iRacing's own number for them. Strength is your preference on top and is never changed for you."/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Detail method:" Style="{StaticResource LabelText}"/>
