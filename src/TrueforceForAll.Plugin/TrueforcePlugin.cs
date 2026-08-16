@@ -6718,8 +6718,6 @@ namespace TrueforceForAll.Plugin
         // damper block in MaybeReshapeFfb: the raw velocity path self-
         // oscillated at ~70 Hz through the wheel's physical motion.
         private float _mbDamperVelLp;
-        // Second cascaded pole for the reshape damper only (see MaybeReshapeFfb).
-        private float _mbDamperVelLp2;
         private long  _mbDampPrevTicks;
 
         // Crash duck: impact protection for the synthesized force (Mode B
@@ -9776,24 +9774,14 @@ namespace TrueforceForAll.Plugin
                 float aD = (float)(1.0 - Math.Exp(-dtD / 25.0));
                 _mbDamperVelLp += (vel - _mbDamperVelLp) * aD;
                 velLp = _mbDamperVelLp;
-                // SECOND POLE, reshape path only. One 25 ms pole rolls off at
-                // 6 dB/oct, so engine-band motion still reaches the damper at
-                // about an eighth of its amplitude. That was enough to sustain
-                // a growing buzz once the damper's sign was corrected: engine
-                // texture shakes the wheel, the HID velocity reports it ~15-20
-                // ms late, and at those frequencies late opposition is
-                // indistinguishable from drive. It showed as damping fixing
-                // the big let-go swing while making the small fast one worse
-                // (owner rig, 2026-08-15). Cascading a second pole gives
-                // 12 dB/oct: engine band drops ~64x instead of ~8x, while a
-                // 1-3 Hz hands-off swing keeps most of its amplitude. The
-                // trade is real and deliberate: a delayed velocity damper
-                // cannot be right at every frequency, so it is aimed at the
-                // slow swing it exists to catch and made blind to the rest.
-                // Forza / spring keep the trace-proven single pole; the raw
-                // one-pole state also feeds the predictor and stays untouched.
-                _mbDamperVelLp2 += (_mbDamperVelLp - _mbDamperVelLp2) * aD;
-                if (reshapeMode) velLp = _mbDamperVelLp2;
+                // (A second cascaded pole was tried here on 2026-08-15 and
+                // REVERTED the same day. It was aimed at an engine-band ring
+                // that turned out not to come through the damper at all: the
+                // Lead detail mode's slope extrapolation is a differentiator
+                // whose gain rises with frequency, and it is applied in
+                // ComputeIRacingForce, before this term and unfiltered. All
+                // the extra pole achieved was deafening the one term that
+                // removes energy from the loop, exactly where it was needed.)
             }
 
             if (centerGain != 0f)
