@@ -2904,17 +2904,13 @@
                         <ComboBoxItem Content="Smooth"/>
                     </ComboBox>
                 </Grid>
-                <TextBlock x:Name="IRacingFeelHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="How those six samples are played. Sharp reads the trend across them and projects it forward, so the steering weight is current and the finer detail follows a frame behind. Smooth plays the six in their real order and shape, then uses your wheel's own movement to keep them current. Both deliver the same detail; Sharp feels the more immediate, Smooth the more settled. Smooth is the default. Drive a few laps on each and keep the one you like."/>
-                <!-- Prediction had a slider until 2026-08-16. Its own help said
-                     it was not a number to tune, and that was true: the plugin
-                     learns the lead per car, 1.00 means use what it learned,
-                     and needing another value would mean the learning failed.
-                     The setting stays (IRacingPredictGain, default 1.0) as a
-                     file-level escape hatch and for diagnosing the predictor;
-                     it is simply not a knob to put in front of a driver. -->
-                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="On Smooth, playing the six in order starts a frame behind, so the plugin works out how far ahead this car's force is heading and closes that gap on its own, learning it fresh for every car you drive."/>
+                <!-- Text is set in code, per selection: describing both modes at
+                     once made this three times as long as the one a driver
+                     needs, and buried the difference. Prediction had a slider
+                     here until 2026-08-16; the plugin learns that lead per car,
+                     so it belongs in Smooth's sentence rather than in a knob.
+                     IRacingPredictGain survives as a file-level escape hatch. -->
+                <TextBlock x:Name="IRacingFeelHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text=""/>
                     </StackPanel>
                 </Expander>
             </StackPanel>

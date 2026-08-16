@@ -6392,7 +6392,15 @@ namespace TrueforceForAll.Plugin
             bool use360 = _plugin?.Settings?.IRacingUse360Hz == true;
             var feelWant = use360 ? Visibility.Visible : Visibility.Collapsed;
             if (IRacingFeelRow  != null) IRacingFeelRow.Visibility  = feelWant;
-            if (IRacingFeelHelp != null) IRacingFeelHelp.Visibility = feelWant;
+            if (IRacingFeelHelp != null)
+            {
+                IRacingFeelHelp.Visibility = feelWant;
+                // Only the selected mode is described. Explaining both at once
+                // tripled the length and buried the one line that applies.
+                IRacingFeelHelp.Text = _plugin?.Settings?.IRacingForceMode == 1
+                    ? "Plays the six samples in their real order and shape, so every kerb and bump arrives whole. That starts a frame behind, so the plugin works out how far ahead this car's force is heading and closes the gap itself, learning it fresh for every car you drive. The calmer, more planted of the two. Try Sharp if you want the most immediate response."
+                    : "Reads the trend across the six samples and projects it forward, so the steering weight is always current, with the finer detail following a frame behind. The more immediate of the two. Smooth is the default if you would rather have the calmer one.";
+            }
         }
 
         private void IRacingSmooth_Changed(object sender, RoutedEventArgs e)
