@@ -2841,10 +2841,10 @@
                      said iRacing's number. iRacing's own box is the same shape. -->
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Max force (Nm):" Style="{StaticResource LabelText}"
-                               ToolTip="How strong the CAR should be. The steering force the real car would produce, in Nm; it is scaled to fit inside your Strength setting. Lower it and this car leans harder on the wheel; raise it and this car feels lighter."/>
+                    <TextBlock Grid.Column="0" Text="Car's peak force:" Style="{StaticResource LabelText}"
+                               ToolTip="The peak steering force this car itself produces, in Nm. Not your wheel's rating: it is the car's number, scaled to fit inside your Strength setting. Lower it and this car leans harder on the wheel; raise it and this car feels lighter."/>
                     <TextBox   Grid.Column="1" x:Name="IRacingMaxNmBox" VerticalAlignment="Center"
-                               ToolTip="How strong the CAR should be. The steering force the real car would produce, in Nm; it is scaled to fit inside your Strength setting. Lower it and this car leans harder on the wheel; raise it and this car feels lighter."
+                               ToolTip="The peak steering force this car itself produces, in Nm. Not your wheel's rating: it is the car's number, scaled to fit inside your Strength setting. Lower it and this car leans harder on the wheel; raise it and this car feels lighter."
                                LostFocus="IRacingMaxNm_LostFocus" KeyDown="IRacingMaxNm_KeyDown"/>
                     <TextBlock Grid.Column="2" x:Name="IRacingMaxNmText" VerticalAlignment="Center"
                                Margin="8,0,0,0" Opacity="0.75" FontSize="11" Text=""/>
@@ -2856,15 +2856,15 @@
                             ToolTip="The number on this button is what the plugin has watched this car actually produce, plus a margin. Drive a clean lap, then press it to put that number in the box and start watching again from scratch. Had a spin or hit a wall? Drive another clean lap and press it again. It stays greyed until it has seen enough to be worth taking. Same idea as iRacing's own auto button."/>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,6"
-                           Text="How strong the CAR should be: the force in Nm the real car would make, scaled to fit within the wheel power you chose with Strength. Nudge it down to make this car feel heavier, up to make it lighter. Each car keeps its own number, so drive a clean lap and press the button to measure the one you are in. This is not your wheel's Nm rating."/>
+                           Text="The peak steering force this car itself produces, in Nm, scaled to fit within the wheel power you chose with Strength. Nudge it down to make this car feel heavier, up to make it lighter. Each car keeps its own number, so drive a clean lap and press the button to measure the one you are in. This is not your wheel's Nm rating."/>
                 <TextBlock x:Name="IRacingAutoMaxForceStatus" Margin="140,0,0,6"
                            FontSize="11" Opacity="0.75" Text="" Visibility="Collapsed"/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"
-                               ToolTip="How strong the WHEEL should be. Your overall preference, roughly a percentage of the wheel's total power. It applies to every car; tune an individual car with Max force instead."/>
+                               ToolTip="How strong the WHEEL should be. Your overall preference, roughly a percentage of the wheel's total power. It applies to every car; tune an individual car with its peak force instead."/>
                     <Slider     Grid.Column="1" x:Name="IRacingGainSlider" Minimum="0.05" Maximum="3.0" SmallChange="0.05" LargeChange="0.1"
-                                ToolTip="How strong the WHEEL should be. Your overall preference, roughly a percentage of the wheel's total power. It applies to every car; tune an individual car with Max force instead."
+                                ToolTip="How strong the WHEEL should be. Your overall preference, roughly a percentage of the wheel's total power. It applies to every car; tune an individual car with its peak force instead."
                                 TickFrequency="0.1" ValueChanged="IRacingGain_ValueChanged" VerticalAlignment="Center"/>
                     <TextBox Grid.Column="2" x:Name="IRacingGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                 </Grid>
@@ -3407,20 +3407,26 @@
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
                        Text="Puts your speed, gear, lap delta, and more on the little screen in the middle of the wheel, so you can read them without looking away from the road."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="It also reports changes as they happen: a preset loading, a gain nudged from a bound button, Auto strength settling on a car, or a warning that the game is still sending its own force feedback. Each shows for a moment, then your driving screen comes back."/>
+                       Text="It also reports changes as they happen: a preset loading, a gain nudged from a bound button, Auto strength settling on a car, or a warning that the game is still sending its own force feedback. Each shows for a moment, then your driving screen comes back. Set Show to Nothing and those moments are all you get, with the wheel keeping its own display the rest of the time."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
                        Text="The screen's protocol was reverse engineered; Logitech never documented it for the public."/>
             <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
                 <TextBlock Text="Show:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                 <!-- Items are filled from OledScreenModel.ScreenOrder so the
                      offered order can differ from the persisted enum values. -->
-                <ComboBox x:Name="OledScreenCombo" Width="230" Margin="8,0,0,0"
+                <ComboBox x:Name="OledScreenCombo" Width="250" Margin="8,0,0,0"
                           SelectionChanged="OledScreen_Changed"/>
                 <CheckBox x:Name="OledMphCheck" Content="mph" Margin="12,0,0,0"
                           VerticalAlignment="Center"
                           Checked="OledMph_Changed" Unchecked="OledMph_Changed"
                           ToolTip="Show the speed in mph instead of km/h. Affects this screen only."/>
             </StackPanel>
+            <!-- Shown only for "Nothing", where the picker's answer needs
+                 explaining: the takeovers below still work, and they are the
+                 whole point of choosing it. -->
+            <TextBlock x:Name="OledNoScreenText" Visibility="Collapsed"
+                       Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
+                       Text="The wheel keeps its own display while you drive. A shift, a finished lap, an incident, a value you nudge from a bound button, or a force feedback warning still takes the screen for its moment and then hands it straight back."/>
             <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
                 <CheckBox x:Name="OledShiftFlashCheck" Content="Flash the gear when I shift"
                           VerticalAlignment="Center"
@@ -3600,13 +3606,13 @@
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Max force up" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Peak force up" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.IRacingMaxForceUp"
                                                  FriendlyName="TF4ALL: max force up (iRacing)"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Max force down" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Peak force down" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.IRacingMaxForceDown"
                                                  FriendlyName="TF4ALL: max force down (iRacing)"/>
                         </Grid>

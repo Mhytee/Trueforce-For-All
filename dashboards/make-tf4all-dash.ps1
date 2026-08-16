@@ -1105,7 +1105,7 @@ function DriveBox([string]$P, [int]$slot, $x, $y, $w, $h, [bool]$topRow) {
     $t = New-Text "d$slot-cf-mf-t" ($ix + 10) ($iy + 160) ($iw - 20) 30 13 '' $script:GRAY 0 @{
         Text = BindJS 'Text' (
             'var rdy=$prop("' + $P + '.IRacingAutoReady");var n=1*$prop("' + $P + '.IRacingAutoNm");' +
-            'if(rdy)return "SET MAX FORCE  "+(n>0?n.toFixed(1):"--")+" NM";' +
+            'if(rdy)return "SET PEAK FORCE  "+(n>0?n.toFixed(1):"--")+" NM";' +
             'var c=1*$prop("' + $P + '.IRacingAutoConfidence");if(isNaN(c))c=0;' +
             'return "LEARNING CAR  "+Math.round(c*100)+"%"')
         TextColor = BindJS 'TextColor' (
@@ -3046,7 +3046,7 @@ $s2.Add((New-Text 'cf-note' 32 414 736 26 14 'Edits save to this car and apply i
 $mfVis = 'return $prop("' + $P + '.IRacingAutoShow")'
 $mf = New-Card 'cf-mf-panel' 16 378 768 58
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
-$mf = New-Text 'cf-mf-label' 32 384 300 18 13 'MAX FORCE' $MUTED 0
+$mf = New-Text 'cf-mf-label' 32 384 300 18 13 'CAR PEAK FORCE' $MUTED 0
 $mf.Bindings['Visible'] = BindJS 'Visible' $mfVis; $s2.Add($mf)
 $mf = New-Text 'cf-mf-value' 32 402 300 28 20 '' $WHITE 0 @{
     Text = BindJS 'Text' ('var v=1*$prop("' + $P + '.IRacingMaxForceNm");return v>0?(v.toFixed(1)+" Nm"):"--"')

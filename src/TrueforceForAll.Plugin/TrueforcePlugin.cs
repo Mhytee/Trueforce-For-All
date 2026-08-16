@@ -8029,7 +8029,7 @@ namespace TrueforceForAll.Plugin
                 $"[TF4ALL] max force nudge fired (delta={delta:+0.0;-0.0})");
             if (!IsIRacingReshapeGame(_activeGame) || !ModeBEnabledForActiveGame)
             {
-                DashReadout("MAX FORCE", "IRACING ONLY");
+                DashReadout("PEAK FORCE","IRACING ONLY");
                 return;
             }
             double cur = GetEditableMaxForceNm();
@@ -8037,12 +8037,12 @@ namespace TrueforceForAll.Plugin
             if (cur < 0.5)
             {
                 // No override, and iRacing has not published a number yet.
-                DashReadout("MAX FORCE", "NO NUMBER YET");
+                DashReadout("PEAK FORCE","NO NUMBER YET");
                 return;
             }
             double v = Math.Max(1.0, Math.Min(50.0, cur + delta));
             SetEditableMaxForceNm(v);
-            DashReadout("MAX FORCE", v.ToString("0.0",
+            DashReadout("PEAK FORCE", v.ToString("0.0",
                 System.Globalization.CultureInfo.InvariantCulture) + " NM");
         }
 

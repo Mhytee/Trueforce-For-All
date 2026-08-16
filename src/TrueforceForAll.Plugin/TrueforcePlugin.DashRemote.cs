@@ -2176,7 +2176,7 @@ namespace TrueforceForAll.Plugin
                     }
                     double applied = ApplyIRacingAutoMaxForce();
                     DashToast(applied > 0.5
-                        ? "MAX FORCE SET TO " + applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " NM"
+                        ? "PEAK FORCE SET TO " + applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " NM"
                         : "NOTHING LEARNED YET");
                     RaiseDashRemoteChanged();
                     return;
