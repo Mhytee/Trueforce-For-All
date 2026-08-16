@@ -2889,7 +2889,7 @@
                      inside that one. The 360 Hz checkbox used to sit LAST,
                      below the two controls it governs. -->
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="iRacing sends telemetry 60 times a second, and every frame carries six force samples from the physics steps in between. Those six describe the frame that has just ended, so using them means deciding how to play them out before the next frame lands. That is the trade this setting makes, from the plainest to the most detailed."/>
+                           Text="iRacing sends telemetry 60 times a second, and each update carries six force samples from the physics steps in between. Two things follow: whether to fill the time between updates instead of holding still, and whether to bring in the detail those six samples carry. These options go from neither to both."/>
                 <!-- One control, four rungs of a single ladder, replacing a
                      checkbox plus a conditional dropdown that between them hid
                      which combinations existed. It writes both underlying
@@ -2901,9 +2901,9 @@
                     <ComboBox Grid.Column="1" x:Name="IRacingForceModeCombo" VerticalAlignment="Center"
                               SelectionChanged="IRacingForceMode_Changed">
                         <ComboBoxItem Content="Plain"/>
-                        <ComboBoxItem Content="Plain, carried forward"/>
-                        <ComboBoxItem Content="Detailed, sharp"/>
-                        <ComboBoxItem Content="Detailed, smooth"/>
+                        <ComboBoxItem Content="Filled"/>
+                        <ComboBoxItem Content="Detailed"/>
+                        <ComboBoxItem Content="Detailed, whole events"/>
                     </ComboBox>
                 </Grid>
                 <!-- Text is set in code, per selection: describing both modes at

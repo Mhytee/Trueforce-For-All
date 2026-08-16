@@ -6410,16 +6410,16 @@ namespace TrueforceForAll.Plugin
             switch (IRacingFeelIndexFromSettings())
             {
                 case 0:
-                    IRacingFeelHelp.Text = "The sim's own force, 60 times a second, held until the next one arrives. The cleanest and least busy, at the cost of going slightly stale between updates and of missing anything that happens in between.";
+                    IRacingFeelHelp.Text = "Each update is used exactly as the sim sends it, and held until the next one arrives. Nothing is filled in and nothing is added.";
                     break;
                 case 1:
-                    IRacingFeelHelp.Text = "As clean as Plain, but instead of holding still between updates the force keeps moving at the rate it was already changing, so it never goes stale and the updates stop arriving as small steps. None of the road in between reaches you, which is the point: response without the extra texture.";
+                    IRacingFeelHelp.Text = "Fills the time between updates by continuing the force along its own trend, so it keeps moving instead of holding still and the updates stop arriving as small steps.";
                     break;
                 case 2:
-                    IRacingFeelHelp.Text = "Adds everything the sim solves between updates, so kerbs and surface texture reach your hands. The steering weight is carried forward as before; only the fine texture arrives a fraction late, where the delay cannot be felt.";
+                    IRacingFeelHelp.Text = "Fills the gaps as above, and brings in the detail the sim solves between updates, so kerbs and surface texture reach your hands. The texture arrives a fraction later than the steering weight, where the delay cannot be felt.";
                     break;
                 default:
-                    IRacingFeelHelp.Text = "The same detail, but every kerb and bump kept whole and in its true order. That means starting an update behind, so the plugin predicts forward to close the gap, learning how far ahead to reach for every car you drive. The calmest of the detailed options.";
+                    IRacingFeelHelp.Text = "The same detail, with every kerb and bump kept whole and in its true order rather than split from the weight. That starts an update behind, so the plugin predicts forward to close the gap, learning how far ahead to reach for every car you drive.";
                     break;
             }
         }
