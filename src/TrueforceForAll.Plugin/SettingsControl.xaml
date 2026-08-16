@@ -2901,7 +2901,7 @@
                     <ComboBox Grid.Column="1" x:Name="IRacingForceModeCombo" VerticalAlignment="Center"
                               SelectionChanged="IRacingForceMode_Changed">
                         <ComboBoxItem Content="Plain"/>
-                        <ComboBoxItem Content="Plain, kept fresh"/>
+                        <ComboBoxItem Content="Plain, carried forward"/>
                         <ComboBoxItem Content="Detailed, sharp"/>
                         <ComboBoxItem Content="Detailed, smooth"/>
                     </ComboBox>

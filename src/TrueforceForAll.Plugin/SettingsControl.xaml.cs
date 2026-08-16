@@ -6413,7 +6413,7 @@ namespace TrueforceForAll.Plugin
                     IRacingFeelHelp.Text = "The sim's own force, 60 times a second, held until the next one arrives. The cleanest and least busy, at the cost of going slightly stale between updates and of missing anything that happens in between.";
                     break;
                 case 1:
-                    IRacingFeelHelp.Text = "As clean as Plain, but the weight is carried forward between updates instead of sitting still, so it never feels stale. Nothing of the road in between reaches you, which is the point: this is for drivers who want response without the extra texture.";
+                    IRacingFeelHelp.Text = "As clean as Plain, but instead of holding still between updates the force keeps moving at the rate it was already changing, so it never goes stale and the updates stop arriving as small steps. None of the road in between reaches you, which is the point: response without the extra texture.";
                     break;
                 case 2:
                     IRacingFeelHelp.Text = "Adds everything the sim solves between updates, so kerbs and surface texture reach your hands. The steering weight is carried forward as before; only the fine texture arrives a fraction late, where the delay cannot be felt.";
