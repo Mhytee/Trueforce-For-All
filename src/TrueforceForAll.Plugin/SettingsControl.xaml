@@ -2889,12 +2889,12 @@
                     <TextBlock Grid.Column="0" Text="Detail method:" Style="{StaticResource LabelText}"/>
                     <ComboBox Grid.Column="1" x:Name="IRacingForceModeCombo" VerticalAlignment="Center"
                               SelectionChanged="IRacingForceMode_Changed">
-                        <ComboBoxItem Content="Lead (more direct, can shake)"/>
-                        <ComboBoxItem Content="Replay (recommended)"/>
+                        <ComboBoxItem Content="Lead (nothing delayed)"/>
+                        <ComboBoxItem Content="Replay (whole events)"/>
                     </ComboBox>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Two ways to turn iRacing's 360 Hz force into a smooth stream, both using all six samples per frame. Replay is recommended: it plays each event out whole and uses your wheel's own movement to stay current. Lead sends the steering weight immediately instead, which is more direct, but it can feel harsh under braking and on a strong wheel it can shake at a standstill. If you get shaking or tiny jolts, use Replay."/>
+                           Text="Two ways to turn iRacing's 360 Hz force into a smooth stream, both using all six samples per frame. Lead sends the steering weight immediately and lets fine detail trail slightly, so it feels the most direct. Replay plays each event out whole and uses your wheel's own movement to stay current, so it feels the smoothest. Replay is the default; drive both and keep the one you prefer. If a wheel ever shakes or feels harsh on Lead, Replay is the calmer one."/>
                 <Grid Margin="0,0,0,2" x:Name="IRacingPredictRow">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Prediction:" Style="{StaticResource LabelText}"/>
