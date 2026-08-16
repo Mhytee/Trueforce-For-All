@@ -2884,6 +2884,17 @@
                         <TextBlock Text="Advanced" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
+                <!-- The section reads top-down: the situation, then the choice
+                     that follows from it, then the choices that only exist
+                     inside that one. The 360 Hz checkbox used to sit LAST,
+                     below the two controls it governs. -->
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                           Text="iRacing sends telemetry 60 times a second, and every frame carries six force samples from the physics steps in between. Those six describe the frame that has just ended, so using them means deciding how to play them out before the next frame lands. That is the trade these settings make."/>
+                <CheckBox x:Name="IRacingSmoothCheck" Content="Use iRacing's 360 Hz detail"
+                          Margin="0,4,0,2" Checked="IRacingSmooth_Changed" Unchecked="IRacingSmooth_Changed"
+                          ToolTip="On by default. Uses all six samples in every frame to follow the force between frames, instead of holding the frame's single value."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8"
+                           Text="On, the wheel follows the force between frames and you feel more of the road. Off, it holds each frame's single value until the next arrives, which is calmer and less busy; some drivers prefer that, and it is worth trying if the wheel ever feels nervous."/>
                 <Grid Margin="0,0,0,2" x:Name="IRacingFeelRow">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Feel:" Style="{StaticResource LabelText}"/>
@@ -2894,7 +2905,7 @@
                     </ComboBox>
                 </Grid>
                 <TextBlock x:Name="IRacingFeelHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Sharp puts every change on your hands the moment the sim reports it, so the wheel feels immediate and lively. Smooth lets each kerb and bump arrive whole and evenly paced, so the wheel feels calmer and more planted. Both carry the same detail; they differ in how it reaches you. Smooth is the default. Drive a few laps on each and keep the one you like. Under the hood both read iRacing's 360 Hz force rather than its 60 Hz value: Sharp projects the current trend forward so nothing waits for the next update, and Smooth plays each update's samples out in order, using your wheel's own movement to keep them current."/>
+                           Text="How those six samples are played. Sharp reads the trend across them and projects it forward, so the steering weight is current and the finer detail follows a frame behind. Smooth plays the six in their real order and shape, then uses your wheel's own movement to keep them current. Both deliver the same detail; Sharp feels the more immediate, Smooth the more settled. Smooth is the default. Drive a few laps on each and keep the one you like."/>
                 <Grid Margin="0,0,0,2" x:Name="IRacingPredictRow">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Prediction:" Style="{StaticResource LabelText}"/>
@@ -2903,12 +2914,7 @@
                     <TextBox Grid.Column="2" x:Name="IRacingPredictText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                 </Grid>
                 <TextBlock x:Name="IRacingPredictHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Replay only, and NOT something you need to tune. The plugin works out for itself how far ahead this car's force is heading, learning it fresh for every car you drive, so 1.00 means simply using what it found. Turn it down only if prediction feels nervous to you, or to 0 to switch it off and accept a slightly later force."/>
-                <CheckBox x:Name="IRacingSmoothCheck" Content="Use iRacing's 360 Hz detail"
-                          Margin="0,4,0,2" Checked="IRacingSmooth_Changed" Unchecked="IRacingSmooth_Changed"
-                          ToolTip="On by default. iRacing solves physics six times per frame and publishes all six; this uses them to follow the force between frames instead of holding the last value."/>
-                <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8"
-                           Text="Sharper, and it does NOT add delay: the extra samples are used to track where the force is heading, not to replay where it has been. Turn it off if the wheel ever feels nervous or busy at a standstill."/>
+                           Text="Smooth only, and NOT something you need to tune. Playing the six in order means starting a frame behind, so the plugin works out how far ahead this car's force is heading and closes that gap, learning it fresh for every car you drive; 1.00 means simply using what it found. Turn it down only if the wheel feels nervous, or to 0 to switch it off and accept a slightly later force."/>
                     </StackPanel>
                 </Expander>
             </StackPanel>
