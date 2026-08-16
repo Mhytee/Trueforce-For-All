@@ -6396,8 +6396,17 @@ namespace TrueforceForAll.Plugin
         // honest rather than offering a knob that does nothing.
         private void UpdateIRacingPredictVisibility()
         {
+            // BOTH detail paths are gated on the 360 Hz feed: with it off the
+            // force path takes the sim's per-frame value and neither Feel nor
+            // Prediction changes anything at all (owner, 2026-08-15). A live
+            // control that silently does nothing is worse than an absent one,
+            // so the whole pair goes away with the feed that gives it meaning.
+            bool use360 = _plugin?.Settings?.IRacingUse360Hz == true;
             bool replay = _plugin?.Settings?.IRacingForceMode == 1;
-            var want = replay ? Visibility.Visible : Visibility.Collapsed;
+            var feelWant = use360 ? Visibility.Visible : Visibility.Collapsed;
+            if (IRacingFeelRow  != null) IRacingFeelRow.Visibility  = feelWant;
+            if (IRacingFeelHelp != null) IRacingFeelHelp.Visibility = feelWant;
+            var want = (use360 && replay) ? Visibility.Visible : Visibility.Collapsed;
             if (IRacingPredictRow  != null) IRacingPredictRow.Visibility  = want;
             if (IRacingPredictHelp != null) IRacingPredictHelp.Visibility = want;
         }
@@ -6408,6 +6417,7 @@ namespace TrueforceForAll.Plugin
                 || IRacingSmoothCheck == null) return;
             _plugin.Settings.IRacingUse360Hz = IRacingSmoothCheck.IsChecked == true;
             _plugin.PersistSettings();
+            UpdateIRacingPredictVisibility();   // Feel / Prediction only exist with the feed
         }
 
         // FS's OWN min-force floor (SpringModeMinForce), separate from the
