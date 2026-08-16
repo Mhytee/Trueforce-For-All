@@ -620,14 +620,9 @@ namespace TrueforceForAll.Plugin
                     if (IRacingGainText != null)
                         IRacingGainText.Text = IRacingGainSlider.Value.ToString("F2");
                 }
-                if (IRacingSmoothCheck != null)
-                    IRacingSmoothCheck.IsChecked = _plugin.Settings?.IRacingUse360Hz == true;
                 if (IRacingForceModeCombo != null)
-                {
-                    int m = _plugin.Settings?.IRacingForceMode ?? 0;
-                    IRacingForceModeCombo.SelectedIndex = (m == 1) ? 1 : 0;
-                }
-                UpdateIRacingPredictVisibility();
+                    IRacingForceModeCombo.SelectedIndex = IRacingFeelIndexFromSettings();
+                UpdateIRacingFeelHelp();
                 if (SpringMinForceSlider != null)
                 {
                     SpringMinForceSlider.Value = _plugin.Settings?.SpringModeMinForce ?? 0.05;
@@ -6065,15 +6060,35 @@ namespace TrueforceForAll.Plugin
         // 1 kHz force path reads the setting every pass, so the wheel changes
         // character under your hands without a restart, which is the only way
         // to compare them honestly.
+        // One dropdown over two settings. The ladder, and what each rung is:
+        //   0 Plain              360 off        the frame's own value, held
+        //   1 Plain, kept fresh  360 on, mode 2 trend projected, texture dropped
+        //   2 Detailed, sharp    360 on, mode 0 trend projected, texture late
+        //   3 Detailed, smooth   360 on, mode 1 true shape, all predicted forward
         private void IRacingForceMode_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null || _plugin.Settings == null
                 || IRacingForceModeCombo == null) return;
-            int mode = IRacingForceModeCombo.SelectedIndex;
-            if (mode < 0) mode = 0;
-            _plugin.Settings.IRacingForceMode = mode;
+            switch (IRacingForceModeCombo.SelectedIndex)
+            {
+                case 1:  _plugin.Settings.IRacingUse360Hz = true;  _plugin.Settings.IRacingForceMode = 2; break;
+                case 2:  _plugin.Settings.IRacingUse360Hz = true;  _plugin.Settings.IRacingForceMode = 0; break;
+                case 3:  _plugin.Settings.IRacingUse360Hz = true;  _plugin.Settings.IRacingForceMode = 1; break;
+                default: _plugin.Settings.IRacingUse360Hz = false; break;   // Plain: the mode is moot
+            }
             _plugin.PersistSettings();
-            UpdateIRacingPredictVisibility();
+            UpdateIRacingFeelHelp();
+        }
+
+        /// <summary>Which rung the stored pair of settings sits on. Plain wins
+        /// whenever the detail feed is off, because the mode means nothing
+        /// there.</summary>
+        private int IRacingFeelIndexFromSettings()
+        {
+            var s = _plugin?.Settings;
+            if (s == null || !s.IRacingUse360Hz) return 0;
+            if (s.IRacingForceMode == 2) return 1;
+            return s.IRacingForceMode == 1 ? 3 : 2;
         }
 
         private void IRacingMaxNm_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -6382,34 +6397,31 @@ namespace TrueforceForAll.Plugin
         // what it learned, so it was never a number to put in front of a
         // driver. IRacingPredictGain survives as a file-level escape hatch.)
         // honest rather than offering a knob that does nothing.
-        private void UpdateIRacingPredictVisibility()
+        private void UpdateIRacingFeelHelp()
         {
             // BOTH detail paths are gated on the 360 Hz feed: with it off the
             // force path takes the sim's per-frame value and neither Feel nor
             // Prediction changes anything at all (owner, 2026-08-15). A live
             // control that silently does nothing is worse than an absent one,
             // so the whole pair goes away with the feed that gives it meaning.
-            bool use360 = _plugin?.Settings?.IRacingUse360Hz == true;
-            var feelWant = use360 ? Visibility.Visible : Visibility.Collapsed;
-            if (IRacingFeelRow  != null) IRacingFeelRow.Visibility  = feelWant;
-            if (IRacingFeelHelp != null)
+            // Only the chosen rung is described: four descriptions at once is a
+            // wall nobody reads, and the one that applies gets lost in it.
+            if (IRacingFeelHelp == null) return;
+            switch (IRacingFeelIndexFromSettings())
             {
-                IRacingFeelHelp.Visibility = feelWant;
-                // Only the selected mode is described. Explaining both at once
-                // tripled the length and buried the one line that applies.
-                IRacingFeelHelp.Text = _plugin?.Settings?.IRacingForceMode == 1
-                    ? "Keeps every kerb and bump in its true order and shape, which means starting a frame behind, then predicts forward to close that gap, learning how far ahead to reach for every car you drive. The calmer, more planted of the two. Try Sharp if you want the most immediate response."
-                    : "Keeps the steering weight fresh between frames by following where the force is heading, so it never sits waiting on the next one. The fine texture replays from the frame just gone, where the delay cannot be felt. The more immediate of the two. Smooth is the default if you would rather have the calmer one.";
+                case 0:
+                    IRacingFeelHelp.Text = "The sim's own force, 60 times a second, held until the next one arrives. The cleanest and least busy, at the cost of going slightly stale between updates and of missing anything that happens in between.";
+                    break;
+                case 1:
+                    IRacingFeelHelp.Text = "As clean as Plain, but the weight is carried forward between updates instead of sitting still, so it never feels stale. Nothing of the road in between reaches you, which is the point: this is for drivers who want response without the extra texture.";
+                    break;
+                case 2:
+                    IRacingFeelHelp.Text = "Adds everything the sim solves between updates, so kerbs and surface texture reach your hands. The steering weight is carried forward as before; only the fine texture arrives a fraction late, where the delay cannot be felt.";
+                    break;
+                default:
+                    IRacingFeelHelp.Text = "The same detail, but every kerb and bump kept whole and in its true order. That means starting an update behind, so the plugin predicts forward to close the gap, learning how far ahead to reach for every car you drive. The calmest of the detailed options.";
+                    break;
             }
-        }
-
-        private void IRacingSmooth_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null || _plugin.Settings == null
-                || IRacingSmoothCheck == null) return;
-            _plugin.Settings.IRacingUse360Hz = IRacingSmoothCheck.IsChecked == true;
-            _plugin.PersistSettings();
-            UpdateIRacingPredictVisibility();   // Feel / Prediction only exist with the feed
         }
 
         // FS's OWN min-force floor (SpringModeMinForce), separate from the

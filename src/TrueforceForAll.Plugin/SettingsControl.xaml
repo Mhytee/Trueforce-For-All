@@ -2889,19 +2889,21 @@
                      inside that one. The 360 Hz checkbox used to sit LAST,
                      below the two controls it governs. -->
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="iRacing sends telemetry 60 times a second, and every frame carries six force samples from the physics steps in between. Those six describe the frame that has just ended, so using them means deciding how to play them out before the next frame lands. That is the trade these settings make."/>
-                <CheckBox x:Name="IRacingSmoothCheck" Content="Use iRacing's 360 Hz detail"
-                          Margin="0,4,0,2" Checked="IRacingSmooth_Changed" Unchecked="IRacingSmooth_Changed"
-                          ToolTip="On by default. Uses all six samples in every frame to follow the force between frames, instead of holding the frame's single value."/>
-                <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8"
-                           Text="On, the wheel follows the force between frames and you feel more of the road. Off, it holds each frame's single value until the next arrives, which is calmer and less busy; some drivers prefer that, and it is worth trying if the wheel ever feels nervous."/>
+                           Text="iRacing sends telemetry 60 times a second, and every frame carries six force samples from the physics steps in between. Those six describe the frame that has just ended, so using them means deciding how to play them out before the next frame lands. That is the trade this setting makes, from the plainest to the most detailed."/>
+                <!-- One control, four rungs of a single ladder, replacing a
+                     checkbox plus a conditional dropdown that between them hid
+                     which combinations existed. It writes both underlying
+                     settings (IRacingUse360Hz + IRacingForceMode), so nobody's
+                     stored configuration moves. -->
                 <Grid Margin="0,0,0,2" x:Name="IRacingFeelRow">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Feel:" Style="{StaticResource LabelText}"/>
                     <ComboBox Grid.Column="1" x:Name="IRacingForceModeCombo" VerticalAlignment="Center"
                               SelectionChanged="IRacingForceMode_Changed">
-                        <ComboBoxItem Content="Sharp"/>
-                        <ComboBoxItem Content="Smooth"/>
+                        <ComboBoxItem Content="Plain"/>
+                        <ComboBoxItem Content="Plain, kept fresh"/>
+                        <ComboBoxItem Content="Detailed, sharp"/>
+                        <ComboBoxItem Content="Detailed, smooth"/>
                     </ComboBox>
                 </Grid>
                 <!-- Text is set in code, per selection: describing both modes at

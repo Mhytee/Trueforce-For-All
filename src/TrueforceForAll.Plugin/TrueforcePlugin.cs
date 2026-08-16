@@ -9273,6 +9273,14 @@ namespace TrueforceForAll.Plugin
             var irCfg = Settings;
             bool use360 = irCfg != null && irCfg.IRacingUse360Hz;
             bool replayMode = irCfg != null && irCfg.IRacingForceMode == 1;
+            // Mode 2, TREND ONLY: the projection without the texture. The six
+            // samples are still read, but only to fit the line; the residual
+            // that carries kerbs and surface detail is dropped. That is the
+            // cell the other three left empty (owner, 2026-08-16): the plain
+            // force is clean but goes stale between frames, and someone who
+            // finds the texture busy had no way to have clean AND current.
+            // Rides the Lead branch, which already computes both halves.
+            bool trendOnly = irCfg != null && irCfg.IRacingForceMode == 2;
             float torque;
             if (f.Sub != null && use360 && replayMode)
             {
@@ -9460,7 +9468,7 @@ namespace TrueforceForAll.Plugin
                 if (residual > maxDev) residual = maxDev;
                 else if (residual < -maxDev) residual = -maxDev;
 
-                double raw = projected + residual;
+                double raw = projected + (trendOnly ? 0.0 : residual);
 
                 // CONTINUITY AT THE FRAME JOIN. Everything above is rebuilt
                 // from scratch each frame: new samples, new fitted slope, lead
