@@ -7763,6 +7763,13 @@ namespace TrueforceForAll.Plugin
         private volatile IRacingTorqueFrame _irFrame;
         private float _irRamp;
         private long  _irPrevTicks;
+        // Lead-mode frame-join continuity (see ComputeIRacingForce). PrevOut is
+        // the last torque the Lead branch emitted, FrameTicks identifies the
+        // frame currently being blended from (0 = no previous, after a gap),
+        // and Offset is the error being carried across the join.
+        private double _irLeadPrevOut;
+        private long   _irLeadFrameTicks;
+        private double _irLeadOffset;
 
         // Telemetry iRacing publishes that SimHub's generic reader drops on the
         // floor. SimHubTelemetrySource fills 20 fields and leaves steering,
@@ -9196,6 +9203,7 @@ namespace TrueforceForAll.Plugin
             {
                 _irRamp = 0f; _irPrevTicks = 0;
                 _irRingPrimed = false;
+                _irLeadFrameTicks = 0;   // nothing to be continuous with
                 return null;
             }
 
@@ -9230,6 +9238,7 @@ namespace TrueforceForAll.Plugin
             if (ageMs > 250.0)
             {
                 _irRamp = 0f; _irPrevTicks = 0;
+                _irLeadFrameTicks = 0;   // the gap breaks continuity; start clean
                 // Drop the TIMING state, which is now meaningless, but keep the
                 // FIT: a gap means paused, in the pits or in the garage, and the
                 // car's steering physics did not change while you sat there.
@@ -9451,7 +9460,50 @@ namespace TrueforceForAll.Plugin
                 if (residual > maxDev) residual = maxDev;
                 else if (residual < -maxDev) residual = -maxDev;
 
-                torque = (float)(projected + residual);
+                double raw = projected + residual;
+
+                // CONTINUITY AT THE FRAME JOIN. Everything above is rebuilt
+                // from scratch each frame: new samples, new fitted slope, lead
+                // measured from the new arrival. Nothing makes the new curve
+                // start where the old one left off, so at every boundary the
+                // output STEPS by whatever the previous frame's projection got
+                // wrong. Sixty of those a second is felt as tiny jolts rather
+                // than as force arriving, worst under braking where the sim's
+                // torque carries the fastest content and the projection is
+                // therefore least accurate (owner rig, 2026-08-15: "it jerks
+                // between the small movements instead of arriving smoothly",
+                // and Replay, which joins its samples through a Hermite curve,
+                // feels tamed by comparison).
+                //
+                // So carry the error across the join instead of stepping over
+                // it: capture the gap at the boundary and let it decay to zero
+                // over the frame on a Hermite blend that is flat at both ends
+                // (h(0)=1, h(1)=0, h'=0 at both). The wheel then leaves each
+                // frame exactly where it was and arrives at the new projection
+                // smoothly. It costs nothing in latency at the join, which is
+                // Lead's whole reason to exist: the FIRST tick of a frame still
+                // renders the previous trajectory, and the new one has taken
+                // over completely by the time the next frame lands.
+                //
+                // Bounded by the same maxDev as the projection: a genuinely
+                // large frame-to-frame change is real force and must not be
+                // smeared into a slew, only the small errors are blended.
+                if (f.Ticks != _irLeadFrameTicks)
+                {
+                    bool firstAfterGap = _irLeadFrameTicks == 0;
+                    _irLeadFrameTicks = f.Ticks;
+                    double gap = firstAfterGap ? 0.0 : _irLeadPrevOut - raw;
+                    if (gap > maxDev) gap = maxDev;
+                    else if (gap < -maxDev) gap = -maxDev;
+                    _irLeadOffset = gap;
+                }
+                double hs = leadMs / FrameMs;
+                if (hs < 0.0) hs = 0.0; else if (hs > 1.0) hs = 1.0;
+                double hBlend = 1.0 - hs * hs * (3.0 - 2.0 * hs);
+                raw += _irLeadOffset * hBlend;
+
+                _irLeadPrevOut = raw;
+                torque = (float)raw;
             }
             else
             {

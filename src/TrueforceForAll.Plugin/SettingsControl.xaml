@@ -2856,7 +2856,7 @@
                             ToolTip="The number on this button is what the plugin has watched this car actually produce, plus a margin. Drive a clean lap, then press it to put that number in the box and start watching again from scratch. Had a spin or hit a wall? Drive another clean lap and press it again. It stays greyed until it has seen enough to be worth taking. Same idea as iRacing's own auto button."/>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,6"
-                           Text="How strong the CAR should be: the force in Nm the real car would make, scaled to fit within the wheel power you chose with Strength. Nudge it down to make this car feel heavier, up to make it lighter. Drive a clean lap and press the button to measure it. This is not your wheel's Nm rating."/>
+                           Text="How strong the CAR should be: the force in Nm the real car would make, scaled to fit within the wheel power you chose with Strength. Nudge it down to make this car feel heavier, up to make it lighter. Each car keeps its own number, so drive a clean lap and press the button to measure the one you are in. This is not your wheel's Nm rating."/>
                 <TextBlock x:Name="IRacingAutoMaxForceStatus" Margin="140,0,0,6"
                            FontSize="11" Opacity="0.75" Text="" Visibility="Collapsed"/>
                 <Grid Margin="0,0,0,2">
@@ -2884,8 +2884,6 @@
                         <TextBlock Text="Advanced" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
-                <TextBlock x:Name="IRacingMaxNmHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Max force belongs to the car you are driving: typing a number, or pressing Auto, sets it for that car and nothing else. Cars you have not set keep following iRacing's own number for them. Strength is your preference on top and is never changed for you."/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Detail method:" Style="{StaticResource LabelText}"/>
