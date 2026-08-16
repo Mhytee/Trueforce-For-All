@@ -2903,7 +2903,7 @@
                         <ComboBoxItem Content="Plain"/>
                         <ComboBoxItem Content="Filled"/>
                         <ComboBoxItem Content="Detailed"/>
-                        <ComboBoxItem Content="Detailed, whole events"/>
+                        <ComboBoxItem Content="Detailed, predicted"/>
                     </ComboBox>
                 </Grid>
                 <!-- Text is set in code, per selection: describing both modes at

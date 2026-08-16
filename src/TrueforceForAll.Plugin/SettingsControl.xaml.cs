@@ -6419,7 +6419,7 @@ namespace TrueforceForAll.Plugin
                     IRacingFeelHelp.Text = "Fills the gaps as above, and brings in the detail the sim solves between updates, so kerbs and surface texture reach your hands. The texture arrives a fraction later than the steering weight, where the delay cannot be felt.";
                     break;
                 default:
-                    IRacingFeelHelp.Text = "The same detail, with every kerb and bump kept whole and in its true order rather than split from the weight. That starts an update behind, so the plugin predicts forward to close the gap, learning how far ahead to reach for every car you drive.";
+                    IRacingFeelHelp.Text = "The same detail, kept whole and in its true order rather than split from the steering weight. The force arrives a frame delayed as a result, so the plugin predicts forward to close that gap, learning how far ahead to reach for every car you drive.";
                     break;
             }
         }
