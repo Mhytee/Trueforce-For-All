@@ -10939,21 +10939,16 @@ namespace TrueforceForAll.Plugin
         // RefreshFromPlugin (transition into "IRacing"); this is the show step.
         private string _lastGameForIracingNotice;
         private bool _iracingNoticeShowing;
+        // No hand-wrapping: the dialog's body already wraps (TrueforceDialog
+        // sets TextWrapping.Wrap), so baked-in line breaks only fought it and
+        // left ragged short lines (owner, 2026-08-16). Breaks here are
+        // structural now, one per step and a blank line between sections.
         private const string IracingTrueforceNoticeBody =
-            "The plugin can take force feedback over from iRacing: iRacing still works out what the\n" +
-            "car is doing, it just stops driving the wheel itself, and the plugin delivers those same\n" +
-            "forces over Trueforce. That is what frees your rev lights and wheel screen.\n\n" +
+            "The plugin does not replace iRacing's force feedback. iRacing still works out what the car is doing and hands over those same forces, which the plugin delivers over Trueforce, so the feel stays the sim's own. What it buys you is your rev lights and wheel screen, which cannot run while iRacing is driving the wheel itself.\n\n" +
             "Two switches hand it over, and they are in different places.\n\n" +
-            "1. Fully close iRacing.\n" +
-            "2. Open app.ini in your iRacing documents folder (usually Documents\\iRacing).\n" +
-            "3. Change loadTrueForceAPI=1 to loadTrueForceAPI=0, then save. This releases the\n" +
-            "   Trueforce connection the plugin needs.\n" +
-            "4. Relaunch iRacing and turn its own force feedback OFF in the in-sim options.\n" +
-            "   Do NOT just set the strength to 0: the plugin reads that number to know what\n" +
-            "   full force means for your car, so leave it wherever you like it.\n" +
-            "5. In the plugin, enable it for iRacing, then tick Telemetry Based FFB on that tab.\n\n" +
-            "The plugin then plays iRacing's own steering force through the wheel, and your rev\n" +
-            "lights and wheel screen come back with it. Miss either switch and it stays silent.";
+            "In iRacing's files. Fully close iRacing, open app.ini in your iRacing documents folder (usually Documents\\iRacing), change loadTrueForceAPI=1 to loadTrueForceAPI=0, and save. That releases the Trueforce connection the plugin needs.\n\n" +
+            "In iRacing's options. Relaunch it and turn its own force feedback OFF. Do not just set the strength to 0: the plugin reads that number to know what full force means for your car, so leave it wherever you like it.\n\n" +
+            "Then tick Telemetry Based FFB for iRacing on that tab in the plugin. Miss either switch and the wheel stays silent.";
 
         private void MaybeShowIracingTrueforceNotice()
         {
@@ -11003,19 +10998,34 @@ namespace TrueforceForAll.Plugin
             _modeBIntroShowing = true;
             try
             {
-                string body =
-                    "Instead of passing this game's own force feedback through, the plugin "
-                    + "can build the steering force itself. There's a real sense of grip. "
-                    + "The wheel goes light as the front washes out and it pulls into a "
-                    + "countersteer as the rear steps out.\n\n"
-                    + "It also unlocks your wheel's rev lights: they share a channel with "
-                    + "game force feedback, so they can only run when the plugin owns the "
-                    + "whole signal, as it does here.\n\n"
-                    + "To try it, set this game's force feedback and vibration to 0 in its "
-                    + "wheel settings, so the plugin is the only force on the wheel. "
-                    + "Then activate it below.";
+                // iRacing is NOT the synthesis pitch. There the plugin carries
+                // the sim's own solved forces rather than building its own from
+                // telemetry, and saying otherwise promises a different feel
+                // than the one that arrives (owner, 2026-08-16).
+                bool reshape = _plugin.ActiveGameIsReshapeGame;
+                string body = reshape
+                    ? "The plugin can carry iRacing's force feedback for you. It does not "
+                      + "replace it: iRacing still works out what the car is doing and hands "
+                      + "over those same forces, so the feel stays the sim's own.\n\n"
+                      + "What it buys you is your wheel's rev lights and screen. They share a "
+                      + "channel with force feedback, so they can only run when the plugin "
+                      + "owns that channel instead of the sim.\n\n"
+                      + "It needs two switches on iRacing's side first: turn iRacing's own "
+                      + "force feedback off (not its strength to 0), and set loadTrueForceAPI=0 "
+                      + "in app.ini. The iRacing notice walks through both."
+                    : "Instead of passing this game's own force feedback through, the plugin "
+                      + "can build the steering force itself. There's a real sense of grip. "
+                      + "The wheel goes light as the front washes out and it pulls into a "
+                      + "countersteer as the rear steps out.\n\n"
+                      + "It also unlocks your wheel's rev lights: they share a channel with "
+                      + "game force feedback, so they can only run when the plugin owns the "
+                      + "whole signal, as it does here.\n\n"
+                      + "To try it, set this game's force feedback and vibration to 0 in its "
+                      + "wheel settings, so the plugin is the only force on the wheel. "
+                      + "Then activate it below.";
                 bool? r = TrueforceDialog.Show(owner,
-                    "Telemetry Based FFB is available",
+                    reshape ? "Let the plugin carry iRacing's force feedback"
+                            : "Telemetry Based FFB is available",
                     body,
                     DialogKind.Info,
                     okLabel: "Activate for this game",
@@ -13828,10 +13838,13 @@ namespace TrueforceForAll.Plugin
             // First time into the editor, start from the screen they were just
             // on instead of four empty slots. Nobody wants to build a screen
             // from nothing, and a blank panel on the wheel looks like a bug.
+            // Coming from Nothing there is no screen to copy, so the editor
+            // starts from the first one offered, for that same reason.
             if (s.OledScreen == OledScreen.Custom && was != OledScreen.Custom
                 && (s.OledCustomSlots == null || s.OledCustomSlots.Count == 0))
             {
-                OledScreenModel.Preset(was, s.OledUseMph, deltaOk: true,
+                var seed = was == OledScreen.None ? OledScreenModel.ScreenOrder[0] : was;
+                OledScreenModel.Preset(seed, s.OledUseMph, deltaOk: true,
                                        out var kind, out var slots, out var texts);
                 s.OledCustomLayout = kind;
                 s.OledCustomSlots = new List<string>(slots);
@@ -13840,7 +13853,11 @@ namespace TrueforceForAll.Plugin
             }
             _plugin.PersistSettings();
             RefreshOledEditor();
-            PreviewOledNow();
+            // Picking Nothing has nothing to preview, and leaving the old
+            // screen sitting on the wheel would read as the choice not having
+            // taken. Hand the panel back instead, which IS the preview.
+            if (s.OledScreen == OledScreen.None) _plugin.TurnOffOled();
+            else PreviewOledNow();
         }
 
         private ComboBox[] OledSlotCombos() => new[]
@@ -13863,6 +13880,9 @@ namespace TrueforceForAll.Plugin
             var s = _plugin.Settings;
             bool custom = s.OledScreen == OledScreen.Custom;
             OledCustomPanel.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+            if (OledNoScreenText != null)
+                OledNoScreenText.Visibility = s.OledScreen == OledScreen.None
+                    ? Visibility.Visible : Visibility.Collapsed;
 
             bool prevSuppress = _suppressEvents;
             _suppressEvents = true;
