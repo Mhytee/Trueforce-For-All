@@ -6398,8 +6398,8 @@ namespace TrueforceForAll.Plugin
                 // Only the selected mode is described. Explaining both at once
                 // tripled the length and buried the one line that applies.
                 IRacingFeelHelp.Text = _plugin?.Settings?.IRacingForceMode == 1
-                    ? "The whole force is held back a frame so each kerb and bump reaches you whole, then predicted forward to close that gap, learning how far ahead to reach for every car you drive. The calmer, more planted of the two. Try Sharp if you want the most immediate response."
-                    : "The steering weight is projected forward so it arrives on time. Only the fine texture runs a frame behind, where the delay cannot be felt. The more immediate of the two. Smooth is the default if you would rather have the calmer one.";
+                    ? "Keeps every kerb and bump in its true order and shape, which means starting a frame behind, then predicts forward to close that gap, learning how far ahead to reach for every car you drive. The calmer, more planted of the two. Try Sharp if you want the most immediate response."
+                    : "Keeps the steering weight fresh between frames by following where the force is heading, so it never sits waiting on the next one. The fine texture replays from the frame just gone, where the delay cannot be felt. The more immediate of the two. Smooth is the default if you would rather have the calmer one.";
             }
         }
 
