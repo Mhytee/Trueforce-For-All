@@ -9485,6 +9485,33 @@ namespace TrueforceForAll.Plugin
                 }
             }
             if (!(fullScaleNm > 0.01)) return null;
+
+            // LOW-SPEED AMPLIFICATION LIMIT. This path is a closed loop: the
+            // sim solves steering torque FROM wheel position, so 1/fullScaleNm
+            // is the loop's gain, not just a volume knob. A per-car number well
+            // under the sim's own full scale is exactly what Auto produces on a
+            // light car, and it multiplies everything the loop carries. Parked
+            // there is no tyre damping to absorb any of it, so engine shake
+            // alone can sustain a limit cycle: the owner's rig reproduced that
+            // at idle, and turning per-car max force off (a bigger divisor, so
+            // less gain) calmed BOTH detail modes (2026-08-15).
+            //
+            // So amplify no further than the sim's own scale while stopped, and
+            // ramp to the driver's chosen number by the time the tyres are
+            // doing the damping themselves. This costs nothing where it counts:
+            // a parked wheel is the one place full-resolution force detail buys
+            // nothing, and the ramp is complete well below any real cornering
+            // speed. Only ever REDUCES gain: a number above the sim's own scale
+            // is attenuation and cannot ring, so it is left alone.
+            double simFullNm = f.MaxNm;
+            if (simFullNm > 0.01 && fullScaleNm < simFullNm)
+            {
+                const double rampLoKmh = 5.0, rampHiKmh = 25.0;
+                double gr = (_lastSpeedKmh - rampLoKmh) / (rampHiKmh - rampLoKmh);
+                if (gr < 0.0) gr = 0.0; else if (gr > 1.0) gr = 1.0;
+                fullScaleNm = simFullNm + (fullScaleNm - simFullNm) * gr;
+            }
+
             double f01 = torque / fullScaleNm;
 
             // Strength. Its OWN field, not ModeBSatGain: that one is a
