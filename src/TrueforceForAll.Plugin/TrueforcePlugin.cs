@@ -7803,6 +7803,13 @@ namespace TrueforceForAll.Plugin
             // Consumers take its absolute value, so the sign convention between
             // iRacing and SimHub does not have to be reconciled here.
             public double? YawRateDeg;
+            // MEASURED sideslip in degrees, signed, from iRacing's own velocity
+            // vector. This is the honest version of what traction loss has been
+            // guessing at: the guess solves AccelSway = v x yawRate x cos(beta)
+            // for beta, which only holds in a settled corner, goes non-linear
+            // through acos exactly where the slide starts, and loses the sign.
+            // Two channels the sim already publishes replace all of it.
+            public double? SideslipDeg;
             public long    Ticks;
         }
         private volatile IRacingOverlay _irOverlay;
@@ -8393,8 +8400,27 @@ namespace TrueforceForAll.Plugin
                 SwayMean = swayMean,
                 SurgeMean = surgeMean,
                 YawRateDeg = YawRateDegFrom(SdkArray(frame, vars, "YawRate_ST")),
+                SideslipDeg = SideslipDegFrom(frame, vars),
                 Ticks = Stopwatch.GetTimestamp(),
             };
+        }
+
+        /// <summary>Signed sideslip in degrees from iRacing's body-axis velocity
+        /// vector: atan2(lateral, longitudinal). Null below walking pace, where
+        /// the angle is real but meaningless (a car being pushed sideways in the
+        /// pits is at 90 degrees of "slip"), and null when the sim does not
+        /// publish the channels, which leaves the old estimator in charge.</summary>
+        private static double? SideslipDegFrom(byte[] frame,
+                                               Dictionary<string, IRacingSdkReader.VarDef> vars)
+        {
+            double vx, vy;
+            if (!SdkScalar(frame, vars, "VelocityX", out vx)) return null;
+            if (!SdkScalar(frame, vars, "VelocityY", out vy)) return null;
+            // VelocityX is forward in m/s. Below ~5 m/s the ratio is dominated by
+            // parking-speed noise and the effect is gated off down there anyway.
+            if (vx < 5.0) return null;
+            if (double.IsNaN(vy) || double.IsInfinity(vy)) return null;
+            return Math.Atan2(vy, vx) * 180.0 / Math.PI;
         }
 
         /// <summary>Mean of the 360 Hz yaw-rate array, converted from the
@@ -9170,6 +9196,7 @@ namespace TrueforceForAll.Plugin
             if (o.SwayMean.HasValue)  frame.AccelerationSway  = o.SwayMean;
             if (o.SurgeMean.HasValue) frame.AccelerationSurge = o.SurgeMean;
             if (o.YawRateDeg.HasValue) frame.YawRateDegPerSec = o.YawRateDeg;
+            if (o.SideslipDeg.HasValue) frame.SideslipDeg = o.SideslipDeg;
 
             if (!frame.SurfaceRumble.HasValue && o.SurfaceRumble.HasValue)
                 frame.SurfaceRumble = o.SurfaceRumble;
@@ -27266,6 +27293,21 @@ namespace TrueforceForAll.Plugin
                     + " SessionTime=" + IrRawRead(tel, dict, "SessionTime")
                     + " SessionTick=" + IrRawRead(tel, dict, "SessionTick")
                     + " Speed="       + IrRawRead(tel, dict, "Speed")
+                    // Sideslip inputs. "--" here means the sim does not publish
+                    // them and traction loss stays on the inferred estimator.
+                    + " VelocityX="   + IrRawRead(tel, dict, "VelocityX")
+                    + " VelocityY="   + IrRawRead(tel, dict, "VelocityY")
+                    + " YawRate="     + IrRawRead(tel, dict, "YawRate")
+                    // Per-wheel speeds. If these carry numbers we can derive real
+                    // slip ratios, which is wheelspin AND lockup AND the axle
+                    // rollups that AxleSlipEffect needs and never gets in iRacing.
+                    // "--" means the whole grip stack here stays inferential.
+                    + " LFspeed=" + IrRawRead(tel, dict, "LFspeed")
+                    + " RFspeed=" + IrRawRead(tel, dict, "RFspeed")
+                    + " LRspeed=" + IrRawRead(tel, dict, "LRspeed")
+                    + " RRspeed=" + IrRawRead(tel, dict, "RRspeed")
+                    + " RPM=" + IrRawRead(tel, dict, "RPM")
+                    + " Gear=" + IrRawRead(tel, dict, "Gear")
                     + " | Q2=" + q2
                     + " SteeringFFBEnabled="       + IrRawRead(tel, dict, "SteeringFFBEnabled")
                     + " SteeringWheelTorque="      + IrRawRead(tel, dict, "SteeringWheelTorque")
