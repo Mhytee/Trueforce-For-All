@@ -44,8 +44,8 @@
   },
   "TractionLoss": {
     "Enabled": true,
-    "Gain": 0.0387813151,
-    "Sensitivity": 0.178701326,
+    "Gain": 0.2,
+    "Sensitivity": 1.0,
     "Freq": 133.901657,
     "NoiseLowpassHz": 250.0,
     "NoiseHighpassHz": 40.9325,
@@ -65,22 +65,22 @@
   },
   "KerbThump": {
     "Enabled": true,
-    "Gain": 0.135,
+    "Gain": 0.136105061,
     "Freq": 30.0
   },
   "LockupJudder": {
     "Enabled": true,
-    "Gain": 0.14
+    "Gain": 0.142231956
   },
   "GearShift": {
     "Enabled": true,
-    "Gain": 0.396566778,
+    "Gain": 0.30758065,
     "Freq": 34.6132431,
     "Waveform": "Square"
   },
   "AbsClick": {
     "Enabled": true,
-    "Gain": 0.140768245,
+    "Gain": 0.167682916,
     "Freq": 150.0,
     "PulseFreq": 9.821309,
     "DutyCycle": 0.331281453,
