@@ -895,10 +895,14 @@ namespace TrueforceForAll.Plugin
                         // it is currently cutting in.
                         ShowEffect(LockupJudderExpander, !springGame && !reshapeGame);
                         // Axle slip needs front/rear grip rollups, which need
-                        // per-tire slip. iRacing has none, so this would have to
-                        // be a bicycle-model ESTIMATE rather than a measurement.
-                        // Hidden until that exists, if it ever does.
-                        ShowEffect(AxleSlipExpander,     !reshapeGame);
+                        // per-tire slip. Gated on whether the LIVE source can
+                        // actually supply them rather than on a list of game
+                        // names: iRacing has none, and neither does anything else
+                        // running through SimHub's generic reader, which is how
+                        // Wreckfest arrived showing a section that could never
+                        // speak (owner, 2026-08-16). One rule covers both and
+                        // whatever comes next.
+                        ShowEffect(AxleSlipExpander,     !reshapeGame && _plugin.AxleSlipFeedable);
                         // Airborne IS driven in FS (all-wheels-off from the
                         // mod's per-wheel contact flags), so it stays
                         // visible everywhere.

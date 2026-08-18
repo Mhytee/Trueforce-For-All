@@ -321,6 +321,7 @@ namespace TrueforceForAll.Plugin
                 _capSeenRun.Clear();
                 _capSec = 0; _capUnflushedSec = 0; _capLastTick = 0;
                 _dashSlipSeen = false;   // the new game earns its own latch
+                _axleFeedSeen = false; _axleFeedFrames = 0;
             }
 
             // Driving time only. A car sitting in the pits reports no lap
@@ -561,6 +562,29 @@ namespace TrueforceForAll.Plugin
         // than freshness so a pause or a pit stop cannot flap the box into
         // its "not reported" notice mid-session.
         private volatile bool _dashSlipSeen;
+
+        // Can the LIVE source feed AxleSlipEffect? It needs FrontGrip01 and
+        // RearGrip01, which only exist where a source publishes per-tire quads
+        // (Forza, AC, the CSV reader) or the axle rollups directly (Farming Sim).
+        // Anything running through SimHub's generic reader has neither, so the
+        // effect is inert there: iRacing and Wreckfest both, and the panel used
+        // to name those one at a time and still miss the next one.
+        //
+        // Verdict is DELAYED rather than instant, and defaults to "yes". Hiding
+        // a section the moment a game starts, before any frame has arrived, then
+        // showing it again a second later would be worse than a short wait, so
+        // absence has to be demonstrated over a few seconds of frames.
+        private volatile bool _axleFeedSeen;
+        private int _axleFeedFrames;
+        private const int AxleFeedVerdictFrames = 300;   // ~5 s at 60 Hz
+
+        /// <summary>True while axle slip could still work here: either the pair
+        /// of rollups has been seen this game run, or not enough frames have
+        /// arrived yet to say it never will.</summary>
+        public bool AxleSlipFeedable
+        {
+            get { return _axleFeedSeen || _axleFeedFrames < AxleFeedVerdictFrames; }
+        }
         // Display lag state: -1 = re-seed on next sample.
         private const int   DashSlipFreshMs = 700;
         private const float DashSlipUiTauS  = 0.12f;

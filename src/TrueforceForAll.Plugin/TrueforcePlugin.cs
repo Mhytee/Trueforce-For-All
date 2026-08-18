@@ -5791,6 +5791,12 @@ namespace TrueforceForAll.Plugin
                     RecomputeDashUnsupported();
                 }
             }
+            // Axle slip needs BOTH rollups, not either: it reads front and rear
+            // utilization separately and returns silent without the pair. Latched
+            // per game run so the panel can hide a section that provably cannot
+            // speak here, instead of naming games one at a time.
+            if (frame.FrontGrip01.HasValue && frame.RearGrip01.HasValue) _axleFeedSeen = true;
+            if (_axleFeedFrames < AxleFeedVerdictFrames) _axleFeedFrames++;
             // Suspension-load input: front suspension compression vs its own
             // slow baseline = live front-axle load ratio. The baseline EMA
             // (~3 s) learns the car's ride height, so the ratio reads dive,
