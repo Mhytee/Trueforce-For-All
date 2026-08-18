@@ -1000,27 +1000,30 @@ namespace TrueforceForAll.Plugin
                     // running (owner confirmed the no-difference observation
                     // 2026-08-09).
                     if (ModeBIntroText != null)
+                    {
                         ModeBIntroText.Text = springGame
                             ? "In Farming Simulator the plugin replaces the game's basic force " +
                               "feedback with its own steering model built from the game's physics, " +
                               "and engages by itself. The game's force feedback setting doesn't " +
                               "change the feel while SimHub runs; leaving it on just keeps native " +
-                              "FFB as a fallback when SimHub is closed. Also works in Forza " +
-                              "Motorsport (2023) and Forza Horizon 4, 5, and 6."
+                              "FFB as a fallback when SimHub is closed."
                             : reshapeGame
                             ? "The plugin takes force feedback over from iRacing rather than inventing " +
-                              "its own. iRacing works out what the car's steering is doing; you stop it " +
-                              "driving the wheel directly, and the plugin reads those same forces and " +
-                              "delivers them over Trueforce instead. The car still feels like the car, " +
-                              "and your rev lights and wheel screen work again, because nothing is " +
-                              "fighting over the wheel any more. Two switches make the handover: turn " +
-                              "iRacing's force feedback OFF in its options (do not just set its strength " +
-                              "to 0, the plugin reads that number), and set loadTrueForceAPI=0 in app.ini."
+                              "its own: it reads the forces iRacing computes and delivers them over " +
+                              "Trueforce, so the car still feels like the car and your rev lights and " +
+                              "wheel screen work again. The two setup switches are in the note below."
                             : "The wheel's steering force is built from telemetry instead of the game's " +
                               "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
                               "Set the game's force feedback and vibration to 0 so this is the only " +
                               "force on the wheel. Farming Simulator 22 and 25 are supported too, " +
                               "through the spring option below.";
+                        // The other-games coverage line moved off the visible intro
+                        // and into a tooltip, and only the Farming Simulator variant
+                        // carries it, so it is set beside the text it belongs to.
+                        ModeBIntroText.ToolTip = springGame
+                            ? "Also works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6."
+                            : null;
+                    }
                     ModeBEnabledCheck.Visibility = springGame
                         ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     // The controls stay visible in every game so the section can be
@@ -1058,14 +1061,23 @@ namespace TrueforceForAll.Plugin
                     if (WheelLightsNeedNote != null)
                         WheelLightsNeedNote.Text = reshapeGame
                             ? "These need the force feedback above switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; taking the force over ourselves frees them. That is why iRacing needs its own force feedback turned off, and why the lights and screen come back once it is."
-                            : "These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them. A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first.";
+                            : "These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them.";
                     if (ModeBUnsupportedBadge != null)
                         ModeBUnsupportedBadge.Visibility = mbSupported || springGame
                             ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     if (!mbSupported && ModeBUnsupportedBadgeText != null)
+                    {
                         ModeBUnsupportedBadgeText.Text = string.IsNullOrEmpty(mbGame)
-                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25. Start one of those to turn it on. You can still see and pre-tune the controls below."
-                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25. It also enables your wheel's rev lights. Start one of those to turn it on.";
+                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25."
+                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25.";
+                        // The badge's two states dropped a sentence each when the
+                        // copy was trimmed; the hover carries them. Set here rather
+                        // than in XAML because one host serves both states.
+                        if (ModeBUnsupportedBadge != null)
+                            ModeBUnsupportedBadge.ToolTip = string.IsNullOrEmpty(mbGame)
+                                ? "You can pre-tune the controls below without a game; the per-game Enable box unlocks when a supported game starts."
+                                : "Telemetry Based FFB also enables your wheel's rev lights and screen in these games.";
+                    }
                     if (ModeBGameNote != null)
                     {
                         if (springGame)
@@ -1589,7 +1601,7 @@ namespace TrueforceForAll.Plugin
                 OfflineEditBanner.Visibility = Visibility.Visible;
                 OfflineEditTitle.Text = $"Editing per-car settings for '{_plugin.OfflineEditingCarId}' (preset '{_plugin.OfflineEditingCarPresetName}')";
                 if (OfflineEditHint != null)
-                    OfflineEditHint.Text = "The game defaults are shown (and locked) for context; only the per-car effects are editable. Save the usual way, or Revert a section to undo it. Done finishes and returns to your live setup.";
+                    OfflineEditHint.Text = "Game defaults are locked for context; only the per-car effects are editable.";
                 return;
             }
 
@@ -1602,7 +1614,7 @@ namespace TrueforceForAll.Plugin
             OfflineEditBanner.Visibility = Visibility.Visible;
             OfflineEditTitle.Text = $"Editing preset '{editing}'";
             if (OfflineEditHint != null)
-                OfflineEditHint.Text = "Save the usual way, or Revert a section to undo it. Done finishes editing.";
+                OfflineEditHint.Text = "Save the usual way, or Revert a section to undo it.";
         }
 
         // While editing a car preset, only per-car effects are editable. Lock the
@@ -1937,7 +1949,7 @@ namespace TrueforceForAll.Plugin
                         && IRacingAutoMaxForceStatus.Text.StartsWith("Set to "))
                     {
                         IRacingAutoMaxForceStatus.Text = "Set to " + curNm.ToString("F1")
-                            + " Nm. Watching again from now, so a clean lap plus another press redoes it.";
+                            + " Nm. Watching again from now.";
                     }
                 }
 
@@ -2092,7 +2104,7 @@ namespace TrueforceForAll.Plugin
                     {
                         EngineLayoutAutoText.Text =
                             $"Could not auto-detect engine type for '{activeCar}'. "
-                            + "Pick the closest match in the Engine dropdown above; the Engine pulse Test button can help you A/B.";
+                            + "Pick the closest match in the Engine dropdown above.";
                     }
                     else if (ep != null && pinnedLayout is Effects.EngineLayout pinnedL
                              && ep.AutoLayout is Effects.EngineLayout autoOverridden
@@ -2102,8 +2114,7 @@ namespace TrueforceForAll.Plugin
                         EngineLayoutAutoText.Text =
                             $"Your pick: {DescribePinnedEngine(pinnedL, pinnedCustomId)}. "
                             + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}"
-                            + $"{FriendlyDetectSourceSuffix(ep.AutoLayoutSource)}. "
-                            + "Pick Auto to use detection.";
+                            + $"{FriendlyDetectSourceSuffix(ep.AutoLayoutSource)}.";
                     }
                     else if (pinnedLayout is Effects.EngineLayout pinnedPick)
                     {
@@ -5191,8 +5202,8 @@ namespace TrueforceForAll.Plugin
             bool slew = SpikeModeSlewRadio.IsChecked == true;
             if (SpikeModeDescription != null)
                 SpikeModeDescription.Text = slew
-                    ? "Slew-rate limiter (iRacing-style): caps how fast the force is allowed to change. No amplitude reduction, sustained forces always reach full strength; a sharp spike just gets spread across a few extra milliseconds."
-                    : "Transient detector: soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big curb hits get rounded off.";
+                    ? "Caps how fast the force is allowed to change. No amplitude reduction, sustained forces always reach full strength; a sharp spike just gets spread across a few extra milliseconds."
+                    : "Soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big curb hits get rounded off.";
             if (FfbSpikeLimitLabel != null)
                 FfbSpikeLimitLabel.Text = slew ? "Slew rate:" : "Spike threshold:";
             if (FfbSpikeLimitHelp != null)
@@ -6200,7 +6211,7 @@ namespace TrueforceForAll.Plugin
             if (IRacingAutoMaxForceStatus != null)
             {
                 IRacingAutoMaxForceStatus.Text = applied > 0.5
-                    ? "Set to " + applied.ToString("F1") + " Nm. Watching again from now, so a clean lap plus another press redoes it."
+                    ? "Set to " + applied.ToString("F1") + " Nm. Watching again from now."
                     : "Drive a lap first, then press this.";
                 IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
             }
@@ -6429,13 +6440,13 @@ namespace TrueforceForAll.Plugin
                     IRacingFeelHelp.Text = "Each update is used exactly as the sim sends it, and held until the next one arrives. Nothing is filled in and nothing is added.";
                     break;
                 case 1:
-                    IRacingFeelHelp.Text = "Fills the time between updates by continuing the force along its own trend, so it keeps moving instead of holding still and the updates stop arriving as small steps.";
+                    IRacingFeelHelp.Text = "Fills the time between updates by continuing the force along its own trend, so it keeps moving instead of holding still.";
                     break;
                 case 2:
-                    IRacingFeelHelp.Text = "Fills the gaps as above, and brings in the detail the sim solves between updates, so kerbs and surface texture reach your hands. The texture arrives a fraction later than the steering weight, where the delay cannot be felt.";
+                    IRacingFeelHelp.Text = "Fills the gaps as above, and brings in the detail the sim solves between updates, so kerbs and surface texture reach your hands.";
                     break;
                 default:
-                    IRacingFeelHelp.Text = "The same detail, kept whole and in its true order rather than split from the steering weight. The force arrives a frame delayed as a result, so the plugin predicts forward to close that gap, learning how far ahead to reach for every car you drive.";
+                    IRacingFeelHelp.Text = "Kerbs and texture arrive whole and in step with the steering weight, instead of split from it. Keeping them together costs a frame of delay, which the plugin predicts forward to cancel.";
                     break;
             }
         }
@@ -8786,7 +8797,7 @@ namespace TrueforceForAll.Plugin
             if (BetaUpdatesCheck == null) return;   // panel not built yet
 
             SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
-                ? "You're on the beta channel: the in-app updater will offer pre-release builds."
+                ? (string)null
                 : (_plugin?.UpdateChecker?.CurrentVersionIsPrerelease == true
                     ? "Beta is off: the updater offers the newest main release so you can switch back."
                     : null));
@@ -16167,7 +16178,7 @@ namespace TrueforceForAll.Plugin
             if (RatchetNoticeDetail != null)
             {
                 RatchetNoticeDetail.Text = string.Join("  ·  ", segments)
-                    + ". Persisted across sessions. Revert to restore the size(s) at the start of this run, or dismiss to keep the current size(s).";
+                    + ". Persisted across sessions. Revert restores this run's starting sizes.";
             }
             if (RatchetNoticeBanner != null)
                 RatchetNoticeBanner.Visibility = Visibility.Visible;

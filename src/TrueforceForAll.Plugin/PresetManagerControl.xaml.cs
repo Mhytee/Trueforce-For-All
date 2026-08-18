@@ -1512,32 +1512,27 @@ namespace TrueforceForAll.Plugin
                 if (_communityMode == "mine")
                 {
                     CommunityHelpText.Text =
-                        "Your community uploads. Select a row to reveal Edit and Delete; "
-                        + "use Edit to update a preset's name, description, or body without resetting its votes and downloads.";
+                        "Your community uploads. Select a row to reveal Edit and Delete.";
                 }
                 else switch (_communityKind)
                 {
                     case "game":
                         CommunityHelpText.Text = unscoped
                             ? "No game loaded, so showing every game preset the community has shared. Load a game and refresh to filter."
-                            : "Browse + download community game presets for the game you're playing, or switch to your own uploads to manage them. "
-                              + "Pick a row and Download to import; you'll get a section picker so you can take just the parts you want.";
+                            : "Browse and download community game presets for the game you're playing.";
                         break;
                     case "engine":
                         CommunityHelpText.Text =
-                            "Browse + download community custom engines (cylinder patterns + layout), or switch to your own uploads to manage them. "
-                            + "Pick a row and Download to add it to your library.";
+                            "Browse and download community custom engines (cylinder patterns + layout).";
                         break;
                     case "pack":
                         CommunityHelpText.Text =
-                            "Browse + download community packs (bundles of game presets, car presets, and custom engines), or switch to your own uploads to manage them. "
-                            + "Pick a row and Download to import every entry into the matching part of your library.";
+                            "Browse and download community packs (bundles of game presets, car presets, and custom engines).";
                         break;
                     default:
                         CommunityHelpText.Text = unscoped
                             ? "No car loaded, so showing every car preset the community has shared. Load a car in your game and refresh to filter."
-                            : "Browse + download community presets for the car you're driving, or switch to your own uploads to manage them. "
-                              + "Pick a row and Download to import; you'll get a section picker so you can take just the parts you want.";
+                            : "Browse and download community presets for the car you're driving.";
                         break;
                 }
             }

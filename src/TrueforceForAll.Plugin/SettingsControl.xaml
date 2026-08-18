@@ -800,7 +800,7 @@
                                    FontSize="13" Text="Editing preset"/>
                         <TextBlock x:Name="OfflineEditHint" Foreground="White" Opacity="0.85" FontSize="11"
                                    Margin="0,2,0,0" TextWrapping="Wrap"
-                                   Text="The game defaults are shown (and locked) for context; only the per-car effects are editable. Save the usual way, or Revert a section to undo it. Done finishes and returns to your live setup."/>
+                                   Text="Game defaults are locked for context; only the per-car effects are editable."/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
                         <Button x:Name="OfflineEditDoneBtn" Content="Done" Width="84" Height="26"
@@ -1142,7 +1142,7 @@
                             <!-- No-car placeholder: tells the user what will appear
                                  here and why they'd care, before they ever drive. -->
                             <TextBlock x:Name="CarFactsNoCarHint" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
-                                       Text="Once you're driving, the car's facts (name, engine, redline) show here. If the redline buzz or the rev lights fire at the wrong RPM, this is where to fix it."/>
+                                       Text="Once you're driving, the car's facts show here. If the redline buzz or the rev lights fire at the wrong RPM, this is where to fix it."/>
                             <StackPanel x:Name="CarFactsRowsPanel">
                             <!-- Name -->
                             <Grid Margin="0,0,0,4">
@@ -1169,7 +1169,7 @@
                                            DropDownClosed="CarFactsEngine_DropDownClosed"
                                            LostKeyboardFocus="CarFactsEngine_LostKeyboardFocus"
                                            VerticalAlignment="Center" Margin="0,0,8,0"
-                                           ToolTip="The engine type used for the firing pattern. Correct it if the auto-detected type is wrong."/>
+                                           ToolTip="The engine type used for the firing pattern. Correct it if the auto-detected type is wrong. The Engine pulse Test button can help you A/B two candidates."/>
                                 <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" VerticalAlignment="Center">
                                     <Hyperlink x:Name="CarFactsRefreshCommunityLink" Click="CarFactsRefreshCommunity_Click"
                                                ToolTip="Refresh this car's community facts from the server now (they otherwise refresh at most weekly).">↻ Refresh</Hyperlink>
@@ -1202,7 +1202,7 @@
                                            VerticalAlignment="Center" Margin="2,0,0,0"/>
                             </Grid>
                             <TextBlock Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
-                                       Text="The redline start: where the tachometer turns red and you upshift. Not the rev limiter cutoff (that sits a little higher)."/>
+                                       Text="Where the tachometer turns red and you upshift. This is not the rev limiter cutoff, which sits a little higher."/>
                             <!-- Factual note when no community redline exists yet. No share
                                  button: Set routes through the submit path by itself. -->
                             <TextBlock x:Name="CarFactsNoCommunityNudge" Margin="64,4,0,0" FontSize="11"
@@ -1221,7 +1221,7 @@
                                 </Expander.Header>
                                 <StackPanel Margin="0,4,0,0">
                                     <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
-                                               Text="Optional. Set a different redline start (where you upshift) for specific gears, e.g. a lower 1st-gear shift point. Gears you don't list use the redline above."/>
+                                               Text="Set a different redline for specific gears, e.g. a lower 1st-gear shift point. Unlisted gears use the redline above."/>
                                     <StackPanel x:Name="CarFactsPerGearRows"/>
                                     <Button x:Name="CarFactsAddGearBtn" Content="+ Add gear" HorizontalAlignment="Left"
                                             Padding="10,2" Margin="0,2,0,0" Click="CarFactsAddGear_Click"/>
@@ -1500,13 +1500,14 @@
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,0">
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4"
-                                       Text="Type the game's exe name here (with or without &quot;.exe&quot;). Saved per-game and applied within 1 second."/>
+                                       Text="Type the game's exe name here (with or without &quot;.exe&quot;)."/>
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Capture exe:" Style="{StaticResource LabelText}"/>
                                 <TextBox   Grid.Column="1" x:Name="CaptureExeOverrideBox"
                                            VerticalAlignment="Center" LostFocus="CaptureExeOverride_LostFocus"
-                                           KeyDown="CaptureExeOverride_KeyDown"/>
+                                           KeyDown="CaptureExeOverride_KeyDown"
+                                           ToolTip="Saved per-game and applied within 1 second."/>
                             </Grid>
                         </StackPanel>
                     </Expander>
@@ -1541,7 +1542,7 @@
                         <!-- Evergreen guidance (not a migration note) so it reads
                              right for new users too. -->
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                                   Text="For the most accurate engine pulse, make sure the engine type is correct in Car facts on the active car card."/>
+                                   Text="Set the engine type in Car facts (active car card) for the most accurate pulse."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -1593,8 +1594,6 @@
                              keep the engine feel present where the wheel
                              motor naturally rolls off the firing pulse. -->
                         <Separator Margin="0,8,0,8"/>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6"
-                                   Text="Helps the engine still feel present at high RPM, where the wheel's motor can't keep up with the firing rate."/>
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="EngineLoadLayerCheck"
@@ -1675,12 +1674,12 @@
                         <StackPanel x:Name="BumpsLeadingEdgePanel" Visibility="Collapsed">
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Leading edge:" Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Column="0" Text="Leading edge:" Style="{StaticResource LabelText}"
+                                           ToolTip="The extra whack the instant a wheel first strikes a hard bump: ruts, edges, drops. 0 = smooth texture only."/>
                                 <Slider     Grid.Column="1" x:Name="BumpsLeadingEdgeSlider" Minimum="0" Maximum="3" SmallChange="0.05" LargeChange="0.1"
                                             TickFrequency="0.25" ValueChanged="BumpsLeadingEdge_ValueChanged" VerticalAlignment="Center"/>
                                 <TextBox Grid.Column="2" x:Name="BumpsLeadingEdgeText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.00"/>
                             </Grid>
-                            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The extra whack the instant a wheel first strikes a hard bump: ruts, edges, drops. 0 = smooth texture only."/>
                         </StackPanel>
 
                         <!-- Surface texture (Forza-supplied SurfaceRumble + WheelOnRumbleStrip).
@@ -1875,18 +1874,16 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="AxleSlipPredictiveCheck"
                                       Content="Predictive early warning" VerticalAlignment="Center"
-                                      Checked="AxleSlipPredictive_Changed" Unchecked="AxleSlipPredictive_Changed"/>
+                                      Checked="AxleSlipPredictive_Changed" Unchecked="AxleSlipPredictive_Changed"
+                                      ToolTip="Predicts the slide from how fast grip is being used up, so the warning arrives a fraction before the limit instead of at it."/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,8" TextWrapping="Wrap"
-                                   Text="Predicts the slide from how fast grip is being used up, so the warning arrives a fraction before the limit instead of at it."/>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="AxleSlipRevLockedCheck"
                                       Content="Wheelspin-locked rear pulse" VerticalAlignment="Center"
-                                      Checked="AxleSlipRevLocked_Changed" Unchecked="AxleSlipRevLocked_Changed"/>
+                                      Checked="AxleSlipRevLocked_Changed" Unchecked="AxleSlipRevLocked_Changed"
+                                      ToolTip="The rear pulse speeds up and slows down with the spinning wheels themselves, so wheelspin feels like wheels turning rather than a generic buzz."/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,0" TextWrapping="Wrap"
-                                   Text="The rear pulse speeds up and slows down with the spinning wheels themselves, so wheelspin feels like wheels turning rather than a generic buzz."/>
                     </StackPanel>
                 </Expander>
 
@@ -2044,60 +2041,60 @@
                         </Grid>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Raise amount:" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Raise amount:" Style="{StaticResource LabelText}"
+                                       ToolTip="How hard lifting OUT of work lands, relative to dropping in. 0 = raising is silent."/>
                             <Slider     Grid.Column="1" x:Name="ImplementThudRaiseSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="ImplementThudRaise_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ImplementThudRaiseText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.60"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="How hard lifting OUT of work lands, relative to dropping in. 0 = raising is silent."/>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Hydraulic hum:" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Hydraulic hum:" Style="{StaticResource LabelText}"
+                                       ToolTip="A pump whine while the linkage or a fold is actually traveling; the thud then lands when the motion settles. 0 = thud only."/>
                             <Slider     Grid.Column="1" x:Name="ImplementThudHumSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="ImplementThudHum_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ImplementThudHumText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.30"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="A pump whine while the linkage or a fold is actually traveling; the thud then lands when the motion settles. 0 = thud only."/>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Hum frequency (Hz):" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Hum frequency (Hz):" Style="{StaticResource LabelText}"
+                                       ToolTip="The pump's pitch. Sits above the thud's knock so the two read as one mechanism."/>
                             <Slider     Grid.Column="1" x:Name="ImplementThudHumFreqSlider" Minimum="20" Maximum="150" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="ImplementThudHumFreq_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ImplementThudHumFreqText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="46"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The pump's pitch. Sits above the thud's knock so the two read as one mechanism."/>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Pitch bend:" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Pitch bend:" Style="{StaticResource LabelText}"
+                                       ToolTip="How far the whine spools up from below its pitch as motion starts, and again as it settles. 0 = flat pitch."/>
                             <Slider     Grid.Column="1" x:Name="ImplementThudBendSlider" Minimum="0" Maximum="0.5" SmallChange="0.01" LargeChange="0.05"
                                         TickFrequency="0.05" ValueChanged="ImplementThudBend_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ImplementThudBendText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.15"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="How far the whine spools up from below its pitch as motion starts, and again as it settles. 0 = flat pitch."/>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Speed pitch:" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Speed pitch:" Style="{StaticResource LabelText}"
+                                       ToolTip="How much a fast-moving linkage raises the whine's pitch."/>
                             <Slider     Grid.Column="1" x:Name="ImplementThudSpeedPitchSlider" Minimum="0" Maximum="0.5" SmallChange="0.01" LargeChange="0.05"
                                         TickFrequency="0.05" ValueChanged="ImplementThudSpeedPitch_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ImplementThudSpeedPitchText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.12"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="How much a fast-moving linkage raises the whine's pitch."/>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Speed volume:" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Speed volume:" Style="{StaticResource LabelText}"
+                                       ToolTip="How much slow hydraulic movement quiets the whine: it swells as motion picks up and fades as it eases into the stop. 0 = constant loudness."/>
                             <Slider     Grid.Column="1" x:Name="ImplementThudSpeedVolSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="ImplementThudSpeedVol_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ImplementThudSpeedVolText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.50"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="How much slow hydraulic movement quiets the whine: it swells as motion picks up and fades as it eases into the stop. 0 = constant loudness."/>
                         <Grid Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Octave layer:" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Octave layer:" Style="{StaticResource LabelText}"
+                                       ToolTip="A higher second tone inside the whine so it reads as machinery, not a pure hum. 0 = single tone."/>
                             <Slider     Grid.Column="1" x:Name="ImplementThudHarmonicSlider" Minimum="0" Maximum="0.8" SmallChange="0.01" LargeChange="0.05"
                                         TickFrequency="0.05" ValueChanged="ImplementThudHarmonic_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ImplementThudHarmonicText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.22"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,0" Text="A higher second tone inside the whine so it reads as machinery, not a pure hum. 0 = single tone."/>
                     </StackPanel>
                 </Expander>
 
@@ -2179,6 +2176,7 @@
                         <StackPanel Orientation="Horizontal">
                             <CheckBox x:Name="PitLimiterEnabledCheck" Content="Pit limiter"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                      ToolTip="Driven by SimHub's PitLimiterOn property."
                                       Checked="PitLimiterEnabled_Changed" Unchecked="PitLimiterEnabled_Changed"/>
                             <Border x:Name="PitLimiterNewBadge" Style="{StaticResource NewEffectBadge}">
                                 <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
@@ -2191,7 +2189,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="Feels like the engine being cut at low RPM while the pit limiter is engaged. A steady pulse train you can't miss in the pit lane. Source: SimHub StatusDataBase.PitLimiterOn (works for most racing sims that have a pit lane)."/>
+                                   Text="Feels like the engine being cut at low RPM while the pit limiter is engaged: a steady pulse train you can't miss. Works in most racing sims that have a pit lane."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2249,6 +2247,7 @@
                         <StackPanel Orientation="Horizontal">
                             <CheckBox x:Name="DrsEnabledCheck" Content="DRS"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                      ToolTip="Driven by SimHub's DRSEnabled property."
                                       Checked="DrsEnabled_Changed" Unchecked="DrsEnabled_Changed"/>
                             <Border x:Name="DrsNewBadge" Style="{StaticResource NewEffectBadge}">
                                 <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
@@ -2261,7 +2260,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A quick chirp the moment DRS opens, then a faint sustained tone while the wing stays open. Silent on games that don't expose DRS. Source: SimHub StatusDataBase.DRSEnabled."/>
+                                   Text="A quick chirp the moment DRS opens, then a faint sustained tone while the wing stays open. Silent on games that don't expose DRS."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2335,6 +2334,7 @@
                         <StackPanel Orientation="Horizontal">
                             <CheckBox x:Name="CollisionEnabledCheck" Content="Collision"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                      ToolTip="Project CARS 2 supplies its native impact magnitude; other games derive it from sudden acceleration spikes above about 5g, well above hard cornering or curbs."
                                       Checked="CollisionEnabled_Changed" Unchecked="CollisionEnabled_Changed"/>
                             <Border x:Name="CollisionNewBadge" Style="{StaticResource NewEffectBadge}">
                                 <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
@@ -2347,7 +2347,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="A thud on impact that hits harder the bigger the crash. Sources: PC2 reads its native impact magnitude directly; other sources derive from sudden lateral/vertical accel spikes above ~5g (well above hard cornering or curbs)."/>
+                                   Text="A thud on impact that hits harder the bigger the crash."/>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Gain:" Style="{StaticResource LabelText}"/>
@@ -2530,6 +2530,7 @@
                         <StackPanel Orientation="Horizontal">
                             <CheckBox x:Name="AirborneEnabledCheck" Content="Airborne ducking"
                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                      ToolTip="Everything comes back the moment you land. The checkboxes below choose which effects are cut; the engine keeps pulsing by default, since it's still revving."
                                       Checked="AirborneEnabled_Changed" Unchecked="AirborneEnabled_Changed"/>
                             <Border x:Name="AirborneNewBadge" Style="{StaticResource NewEffectBadge}">
                                 <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
@@ -2540,7 +2541,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="Cuts vibrations while the car is in the air, so a jump feels weightless instead of buzzing as if the tires were still on the track. Everything comes back the moment you land. Choose how far to turn things down and which effects to cut below (the engine keeps pulsing by default, since it's still revving). Works in Assetto Corsa, Forza, and Farming Simulator (with the TF4ALL Enhanced Telemetry mod), the games that report enough to know the car has left the ground; it does nothing elsewhere."/>
+                                   Text="Cuts vibrations while the car is in the air, so a jump feels weightless. Works in Assetto Corsa, Forza, and Farming Simulator (with the TF4ALL Enhanced Telemetry mod), and does nothing in other games."/>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Reduction:" Style="{StaticResource LabelText}"
@@ -2613,9 +2614,10 @@
                                 </Grid>
                                 <CheckBox x:Name="DuckFrequencyAwareCheck" Content="Frequency-aware ducking"
                                           Margin="0,8,0,2" VerticalAlignment="Center"
+                                          ToolTip="Grip textures always win their band, so a slide stays crisp through the engine pulse instead of blending into it."
                                           Checked="DuckFrequencyAware_Changed" Unchecked="DuckFrequencyAware_Changed"/>
                                 <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,0" FontSize="12" TextWrapping="Wrap"
-                                           Text="Only ducks effects that overlap in frequency. Grip textures always win their band, so a slide stays crisp through the engine pulse instead of blending into it."/>
+                                           Text="Only ducks effects that overlap in frequency."/>
                             </StackPanel>
                         </Expander>
                     </StackPanel>
@@ -2736,7 +2738,8 @@
             </Grid>
 
             <CheckBox x:Name="ModeBEnabledCheck" Content="Enable Telemetry Based FFB for this game"
-                      Margin="0,4,0,2" Checked="ModeBEnabled_Changed" Unchecked="ModeBEnabled_Changed"/>
+                      Margin="0,4,0,2" ToolTip="Remembered per game, for whichever game is running."
+                      Checked="ModeBEnabled_Changed" Unchecked="ModeBEnabled_Changed"/>
             <TextBlock x:Name="ModeBGameNote" Style="{StaticResource HelpText}" Margin="22,0,0,12"
                        Text="Enable this per game, for whichever game is running. Set that game's own force feedback and vibration to 0."/>
 
@@ -2763,8 +2766,9 @@
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Overall steering force. Your wheel's defaults set the starting point."/>
 
             <CheckBox x:Name="ModeBAutoStrengthCheck" Margin="0,0,0,2" Content="Auto strength per car"
+                      ToolTip="Learns how hard each car pushes the wheel, then scales it to match your Strength setting."
                       Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,4" Text="Levels cars out: learns how hard each car pushes the wheel, then scales it so every car lands at the heaviness your Strength slider sets. No more retuning per car; the trade is that cars stop feeling lighter or heavier than each other. Takes a few laps per car to settle."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,4" Text="Levels cars out so every car lands at the heaviness your Strength slider sets. The trade: cars stop feeling lighter or heavier than each other. Takes a few laps per car to settle."/>
             <!-- Live state for the learner. It has always decided a number per
                  car and never shown it, which made "is this doing anything?"
                  unanswerable without the BAUTOS console command. -->
@@ -2785,14 +2789,13 @@
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Min force:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBMinForceSlider" Minimum="0" Maximum="0.5" SmallChange="0.01" LargeChange="0.05"
-                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"
+                            ToolTip="Raising it lifts faint cues above the wheel's own friction and brings the average force up, so a belt-driven wheel like the G923 feels stronger overall."/>
                 <TextBox Grid.Column="2" x:Name="ModeBMinForceText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.05"/>
             </Grid>
-            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The smallest force your wheel will play. Raising it lifts faint cues above the wheel's own friction and brings the average force up, so a belt-driven wheel like the G923 feels stronger overall."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The smallest force your wheel will play."/>
 
             <TextBlock Text="Steering feel" FontWeight="SemiBold" Margin="0,10,0,2"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                       Text="The wheel's everyday manner: cornering weight, resistance, and the pull back to center."/>
 
             <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -2814,10 +2817,11 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Strength:" Style="{StaticResource LabelText}"/>
                     <Slider     Grid.Column="1" x:Name="SpringStrengthSlider" Minimum="0.05" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
-                                TickFrequency="0.1" ValueChanged="SpringStrength_ValueChanged" VerticalAlignment="Center"/>
+                                TickFrequency="0.1" ValueChanged="SpringStrength_ValueChanged" VerticalAlignment="Center"
+                                ToolTip="Damping is unaffected. The bound strength buttons adjust this while in Farming Simulator."/>
                     <TextBox Grid.Column="2" x:Name="SpringStrengthText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                 </Grid>
-                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Overall steering force (spring, terrain, drag, cornering weight together). Damping is unaffected. The bound strength buttons adjust this while in Farming Simulator."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Overall steering force (spring, terrain, drag, cornering weight together)."/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Min force:" Style="{StaticResource LabelText}"/>
@@ -2853,10 +2857,10 @@
                          "Use 23.8". -->
                     <Button Grid.Column="3" x:Name="IRacingAutoMaxForceBtn" Content="Auto" Margin="8,0,0,0" Width="88" IsEnabled="False"
                             Style="{StaticResource EffectTestButton}" Click="IRacingAutoMaxForce_Click"
-                            ToolTip="The number on this button is what the plugin has watched this car actually produce, plus a margin. Drive a clean lap, then press it to put that number in the box and start watching again from scratch. Had a spin or hit a wall? Drive another clean lap and press it again. It stays greyed until it has seen enough to be worth taking. Same idea as iRacing's own auto button."/>
+                            ToolTip="The number on this button is what the plugin has watched this car produce, plus a margin. Drive a clean lap, then press it to take that number and start watching again from scratch. It stays greyed until the reading has held steady. Same idea as iRacing's own auto button."/>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,6"
-                           Text="The peak steering force this car itself produces, in Nm, scaled to fit within the wheel power you chose with Strength. Nudge it down to make this car feel heavier, up to make it lighter. Each car keeps its own number, so drive a clean lap and press the button to measure the one you are in. This is not your wheel's Nm rating."/>
+                           Text="Each car keeps its own number. Nudge it down to make this car feel heavier, up to make it lighter."/>
                 <TextBlock x:Name="IRacingAutoMaxForceStatus" Margin="140,0,0,6"
                            FontSize="11" Opacity="0.75" Text="" Visibility="Collapsed"/>
                 <Grid Margin="0,0,0,2">
@@ -2872,7 +2876,7 @@
                            Foreground="#FFE8A33D" Visibility="Collapsed"
                            Text="Above this the strongest moments will clip: Auto leaves about 10 percent spare, and past that the top of big corners flattens off instead of building. Fine if you like it, but detail is lost where the car is working hardest."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="How strong the WHEEL should be: your overall preference, roughly a percentage of the wheel's total power, and the only force control you should need day to day. One setting for every car: turn it up and everything gets stronger by the same amount, so there is nothing to re-tune when you switch cars. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
+                           Text="The only force control you should need day to day. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
 
             </StackPanel> <!-- /IRacingTuningPanel: Damping and FFB smooth follow,
                  outside it, because they are live in every game. The Advanced
@@ -2909,7 +2913,7 @@
                 <TextBox Grid.Column="2" x:Name="FfbSmoothText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.0"/>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                       Text="Takes the edge off a force that arrives in steps, at the cost of a little lag. Leave it at 0 unless the wheel feels notchy."/>
+                       Text="Leave smoothing at 0 unless the wheel feels notchy."/>
             <!-- Save/Revert for the Master trio (scale, smoothing, invert).
                  They live with Smoothing because that is the one of the three
                  that is live in EVERY game; the other two hide under the
@@ -2971,7 +2975,7 @@
                           Margin="0,4,0,2" Checked="SpringTerrain_Changed" Unchecked="SpringTerrain_Changed"
                           ToolTip="On by default. Field texture, ruts, and edges reach the wheel as steering force, not just the spring's centering."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8"
-                           Text="Bumps and ground texture from the game's physics, added to the steering force. Needs the TF4ALL Enhanced Telemetry mod in the game (the plugin offers to install it)."/>
+                           Text="Bumps and ground texture reach the wheel as steering force. Needs the TF4ALL Enhanced Telemetry mod in the game (the plugin offers to install it)."/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Terrain strength:" Style="{StaticResource LabelText}"/>
@@ -2985,10 +2989,11 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Centering:" Style="{StaticResource LabelText}"/>
                     <Slider     Grid.Column="1" x:Name="SpringCenterGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
-                                TickFrequency="0.1" ValueChanged="SpringCenterGain_ValueChanged" VerticalAlignment="Center"/>
+                                TickFrequency="0.1" ValueChanged="SpringCenterGain_ValueChanged" VerticalAlignment="Center"
+                                ToolTip="0 turns the spring off entirely, so you can feel what remains (terrain, damping, effects)."/>
                     <TextBox Grid.Column="2" x:Name="SpringCenterGainText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                 </Grid>
-                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The pull back to center. 0 turns the spring off entirely, so you can feel what remains (terrain, damping, effects)."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="The pull back to center."/>
 
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -3047,10 +3052,11 @@
                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Centering:" Style="{StaticResource LabelText}"/>
                 <Slider     Grid.Column="1" x:Name="ModeBCenterSlider" Minimum="0" Maximum="0.5" SmallChange="0.02" LargeChange="0.05"
-                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
+                            TickFrequency="0.05" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"
+                            ToolTip="Follows the wheel's own position, so a released wheel settles into center instead of swinging past."/>
                 <TextBox Grid.Column="2" x:Name="ModeBCenterText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.25"/>
             </Grid>
-            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,2" Text="Caster-style pull toward straight, scaled up with speed (a parked wheel stays free). Follows the wheel's own position, so a released wheel settles into center instead of swinging past."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,2" Text="Caster-style pull toward straight, scaled up with speed (a parked wheel stays free)."/>
             <Grid Margin="20,0,0,2">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Look-ahead (ms):" Style="{StaticResource LabelText}"/>
@@ -3082,9 +3088,6 @@
                     <TextBlock Text="Slides and drifting" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="How the wheel behaves when the car slides or drifts."/>
-
                     <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Slide lightness:" Style="{StaticResource LabelText}"/>
@@ -3108,10 +3111,11 @@
 
                     <CheckBox x:Name="ModeBPhaseLeadCheck" Margin="0,0,0,2" Content="Anticipation"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="Leads the force slightly ahead of the wheel to cancel telemetry lag, so a released wheel settles instead of oscillating. Raise the lead only until a released wheel stops ringing; too much adds nervousness on fast transitions."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,2" Text="A released wheel settles instead of oscillating, because the force is led slightly ahead of the wheel to cancel telemetry lag."/>
                     <Grid Margin="20,0,0,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Lead (ms):" Style="{StaticResource LabelText}"/>
+                        <TextBlock Grid.Column="0" Text="Lead (ms):" Style="{StaticResource LabelText}"
+                                   ToolTip="Raise the lead only until a released wheel stops ringing; too much adds nervousness on fast transitions."/>
                         <Slider     Grid.Column="1" x:Name="ModeBPhaseLeadSlider" Minimum="0" Maximum="120" SmallChange="5" LargeChange="10"
                                     TickFrequency="20" ValueChanged="ModeBPhaseLeadSlider_ValueChanged" VerticalAlignment="Center"/>
                         <TextBox Grid.Column="2" x:Name="ModeBPhaseLeadText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="40"/>
@@ -3124,12 +3128,10 @@
                     <TextBlock Text="Braking" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="How steering weight behaves under braking and lockup."/>
-
                     <CheckBox x:Name="ModeBGripCalCheck" Margin="0,0,0,2" Content="Adaptive grip &amp; braking feel"
+                              ToolTip="Shapes both the grip limit and the braking fade to each car's measured grip as you brake or slide, instead of one fixed point. Off also restores the classic lockup fade."
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Learns where each car's grip actually tops out as you drive (about a lap of pushing) and shapes the limit and braking feel to it: the wheel lightens at each car's real grip limit as you brake or slide, instead of at one fixed point. Off = a fixed manual grip limit (the slider below) and the classic lockup fade."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="The wheel lightens at each car's real grip limit, learned as you drive (about a lap of pushing). Off = a fixed manual grip limit (the slider below)."/>
 
                     <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -3151,7 +3153,7 @@
                                         TickFrequency="0.1" ValueChanged="ModeBSlider_ValueChanged" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="2" x:Name="ModeBPeakText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Where the game's combined-slip metric counts as the grip limit (1.0 = Forza's own limit). Lower = the wheel peaks and washes out earlier. Only used when adaptive grip is off."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Where the game's combined-slip metric counts as the grip limit (1.0 = Forza's own limit). Lower = the wheel peaks and washes out earlier."/>
                     </StackPanel>
                 </StackPanel>
             </Expander>
@@ -3187,8 +3189,9 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Soft ceiling on the steering force: stacked cornering weight and road kick compress into the top of the range instead of clipping flat."/>
 
                     <CheckBox x:Name="ModeBLateralDemandCheck" Margin="0,0,0,2" Content="Lateral-demand force"
+                              ToolTip="Bases the steering force on cornering (lateral) grip instead of total grip."
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Bases the steering force on cornering (lateral) grip instead of total grip, so braking in a straight line makes almost no force and the wheel cannot start swinging left and right on its own. Cornering feel is unchanged."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="20,0,0,8" Text="Braking in a straight line makes almost no force, so the wheel cannot start swinging left and right on its own. Cornering feel is unchanged."/>
 
                     <CheckBox x:Name="ModeBSignCheck" Content="Reverse force direction"
                               Margin="0,0,0,2" Checked="ModeBSign_Changed" Unchecked="ModeBSign_Changed"/>
@@ -3211,7 +3214,7 @@
                         HorizontalAlignment="Left" Click="ModeBReset_Click"
                         ToolTip="Put every Telemetry Based FFB slider and feel toggle back to your wheel's defaults."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="Restores your wheel's defaults for the game you are in, and leaves the other one alone: resetting in Farming Simulator does not touch your Forza setup. The G PRO, RS50, and G923 each get their own strength; the G923 also gets its own damping, and its own floor and strength in Farming Simulator. Your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings are kept."/>
+                           Text="Restores your wheel's defaults for the game you are in and leaves your other games alone."/>
             </StackPanel>
 
             <!-- Wheel outputs rather than force tuning. Rev lights and the
@@ -3336,8 +3339,9 @@
                              it only appears under Transient. -->
                         <StackPanel x:Name="SpikeTamingBody" Margin="0,4,0,0">
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                                       Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip, ruin a racing line, or strain your wrists on a long session. Pick one of the two methods below; it only applies while the box above is checked."/>
-                            <TextBlock Text="Method:" Style="{StaticResource LabelText}" Margin="0,2,0,4"/>
+                                       Text="Some games deliver curb and collision FFB spikes well beyond what's safe or comfortable on stronger wheelbases (Assetto Corsa is the worst offender we've seen). Hits can be sharp enough to wrench the wheel against your grip or strain your wrists on a long session."/>
+                            <TextBlock Text="Method:" Style="{StaticResource LabelText}" Margin="0,2,0,4"
+                                       ToolTip="The method picked below only applies while the box above is checked."/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                 <RadioButton x:Name="SpikeModeTransientRadio" GroupName="SpikeMode"
                                              Content="Transient detector" VerticalAlignment="Center"
@@ -3378,17 +3382,19 @@
                 <TextBlock x:Name="WheelLightsHeaderText" Text="Wheel lights and screen" Style="{StaticResource SectionHeaderText}"/>
             </Border>
             <TextBlock x:Name="WheelLightsNeedNote" Style="{StaticResource HelpText}" Margin="0,4,0,10" TextWrapping="Wrap"
-                       Text="These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them. A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first."/>
+                       ToolTip="A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first."
+                       Text="These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them."/>
             <CheckBox x:Name="ModeBRevLightsCheck" Content="Rev lights"
                       Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6"
-                       Text="Your wheel's rev lights follow the engine: the strip fills as revs climb and flashes at the shift point. Turn this off if a game drives the wheel's lights itself."/>
+                       Text="The rev lights fill as revs climb and flash at the shift point. Turn this off if a game drives the wheel's lights itself."/>
             <!-- Hidden on wheels whose strip has a fixed look (G923): a
                  pattern picker there reads as a feature the owner is
                  missing. Same principle as OledSection above. -->
             <StackPanel x:Name="RevLightPatternRow" Orientation="Horizontal" Margin="22,0,0,4">
                 <TextBlock Text="Pattern:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                 <ComboBox x:Name="RevLightEffectCombo" Width="230" Margin="8,0,0,0"
+                          ToolTip="Colors and direction come from the pattern itself, set in G HUB."
                           SelectionChanged="RevLightEffect_Changed"/>
                 <Button x:Name="RevLightRememberBtn" Content="Remember for this car" Margin="8,0,0,0"
                         Padding="10,2" VerticalAlignment="Center" Click="RevLightRemember_Click"/>
@@ -3396,7 +3402,7 @@
                            FontSize="11" Opacity="0.7" Visibility="Collapsed"><Run x:Name="RevLightRememberRun"/> · <Hyperlink Click="RevLightForget_Click">Forget</Hyperlink></TextBlock>
             </StackPanel>
             <TextBlock x:Name="RevLightPatternHelp" Style="{StaticResource HelpText}" Margin="22,0,0,12" TextWrapping="Wrap"
-                       Text="Picking a pattern sets the wheelbase's selection, exactly like using the wheel's own menu: it applies now and stays. Remember for this car is optional automation on top, re-applying the pattern whenever that car loads. Colors and direction come from the pattern itself (set in G HUB)."/>
+                       Text="Picking a pattern sets the wheelbase's selection, like using the wheel's own menu: it applies now and stays. Remember for this car re-applies it whenever that car loads."/>
             <!-- Wheel-base Dynamic OLED (HID++ feature 0x8130). Shares the rev
                  lights' HID++ pipe, so it shares their Mode B + tap-proven-quiet
                  gate and sits with them here. RefreshFromPlugin hides this
@@ -3407,9 +3413,7 @@
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
                        Text="Puts your speed, gear, lap delta, and more on the little screen in the middle of the wheel, so you can read them without looking away from the road."/>
             <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="It also reports changes as they happen: a preset loading, a gain nudged from a bound button, Auto strength settling on a car, or a warning that the game is still sending its own force feedback. Each shows for a moment, then your driving screen comes back. Set Show to Nothing and those moments are all you get, with the wheel keeping its own display the rest of the time."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="The screen's protocol was reverse engineered; Logitech never documented it for the public."/>
+                       Text="It also reports changes as they happen: a preset loading, a gain nudged from a bound button, Auto strength settling on a car, or a warning that the game is still sending its own force feedback. Each shows for a moment, then your driving screen comes back."/>
             <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
                 <TextBlock Text="Show:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                 <!-- Items are filled from OledScreenModel.ScreenOrder so the
@@ -3426,7 +3430,7 @@
                  whole point of choosing it. -->
             <TextBlock x:Name="OledNoScreenText" Visibility="Collapsed"
                        Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                       Text="The wheel keeps its own display while you drive. A shift, a finished lap, an incident, a value you nudge from a bound button, or a force feedback warning still takes the screen for its moment and then hands it straight back."/>
+                       Text="The wheel keeps its own display while you drive. Shifts, finished laps, incidents and warnings still take the screen for a moment and hand it straight back."/>
             <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
                 <CheckBox x:Name="OledShiftFlashCheck" Content="Flash the gear when I shift"
                           VerticalAlignment="Center"
@@ -3461,10 +3465,11 @@
                  what you choose is a layout and then one field per slot. -->
             <StackPanel x:Name="OledCustomPanel" Visibility="Collapsed" Margin="22,2,0,8">
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" TextWrapping="Wrap"
-                           Text="Pick a layout, then what goes in each of its slots. The wheel decides how big each slot is drawn and where it sits, so the layout is the shape and the slots are the contents. Anything set to Custom text shows exactly what you type."/>
+                           Text="Pick a layout, then what goes in each of its slots. Anything set to Custom text shows exactly what you type."/>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                     <TextBlock Text="Layout:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                     <ComboBox x:Name="OledLayoutCombo" Width="230" Margin="8,0,0,0"
+                              ToolTip="The wheel decides how big each slot is drawn and where it sits, so the layout is the shape and the slots are the contents."
                               SelectionChanged="OledLayout_Changed"/>
                 </StackPanel>
                 <Grid x:Name="OledSlot0Row" Margin="0,0,0,4">
@@ -3652,7 +3657,7 @@
                         </ComboBox>
                     </StackPanel>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="The plugin already checks once each time SimHub starts. This adds background re-checks so a fix released mid-session still shows the update banner without a restart. When one's available, an 'Update to vX.Y.Z' button appears in the header up top."/>
+                               Text="When an update is available, an 'Update to vX.Y.Z' button appears in the header up top."/>
 
                     <!-- Beta (pre-release) updates, open to everyone. Pre-releases
                          are always public on GitHub; this pulls them through the
@@ -3660,11 +3665,11 @@
                     <CheckBox x:Name="BetaUpdatesCheck" Content="Get beta (pre-release) updates in-app"
                               Margin="0,14,0,0"
                               Checked="BetaUpdates_Changed" Unchecked="BetaUpdates_Changed"
-                              ToolTip="Receive pre-release 'beta' builds through the in-app updater, so you can try new effects and fixes before they reach the stable release."/>
+                              ToolTip="Receive pre-release 'beta' builds through the in-app updater, so you can try new effects and fixes before they reach the stable release. Pre-releases are always public on GitHub; this just brings them to the in-app updater. Turn it off to return to the stable release next time one ships."/>
                     <TextBlock x:Name="BetaUpdatesNote" Style="{StaticResource HelpText}" Margin="0,4,0,0"
                                FontSize="12" TextWrapping="Wrap" Visibility="Collapsed" Text=""/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="Beta builds get fixes and new effects first, but are less tested. Pre-releases are always available by hand on GitHub; this just brings them to the in-app updater. Turn it off to return to the stable release next time one ships."/>
+                               Text="Beta builds get fixes and new effects first, but are less tested."/>
                 </StackPanel>
             </Expander>
 
@@ -3696,7 +3701,7 @@
                     Click="DashPhoneAccess_Click"
                     ToolTip="Shows a QR code and link that open TF4ALL Dash on your phone."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                    Text="Control effects, gains, and presets from your phone or tablet while driving. No SimHub setup needed: scan the QR code and the dash opens in your phone's browser."/>
+                    Text="Control effects, gains, and presets from your phone or tablet while driving."/>
 
                     <Expander IsExpanded="True" Margin="0,8,0,0">
                         <Expander.Header>
@@ -3713,10 +3718,8 @@
                             only ENABLED tabs are offered, in the user's order. -->
                             <ComboBox x:Name="RemoteDashDefaultTabCombo" Width="140" Margin="8,0,0,0"
                             SelectionChanged="RemoteDashDefaultTab_Changed"
-                            ToolTip="The tab the dash opens on when 'Remember last used tab' is off."/>
+                            ToolTip="The tab the dash opens on when 'Remember last used tab' is off. Applies at the next SimHub start."/>
                             </StackPanel>
-                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="With remember on, the dash reopens where you left it, even across SimHub restarts. Turn it off to always start on the default tab picked here (applies at the next SimHub start)."/>
 
                             <!-- Tab layout editor: one row per dash tab (enable checkbox
                             + up/down reorder). Rows are built in code
@@ -3725,7 +3728,7 @@
                             <TextBlock Text="Tabs:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
                             <StackPanel x:Name="RemoteDashTabsPanel"/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Untick a tab to hide it on the dash; use the arrows to change the order. Changes apply instantly, no dashboard reload needed. At least one tab always stays on."/>
+                            Text="Untick a tab to hide it on the dash; use the arrows to change the order. At least one tab always stays on."/>
 
                             <!-- Drive tab: which of the four boxes around the gear shows
                             what, plus the one-row / two-row choice. Combo items are
@@ -3761,13 +3764,13 @@
                             <ComboBox   Grid.Row="3" Grid.Column="1" x:Name="RemoteDashDriveSlot3Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
                             </Grid>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="The Drive tab shows the gear and speed in the middle with these boxes around it. Lap times, tire and fuel readouts come from the game, so what they show depends on what that game reports."/>
+                            Text="Lap times, tire and fuel readouts come from the game, so what they show depends on what that game reports."/>
 
                             <CheckBox x:Name="RemoteDashDrivePerGameCheck" Content="Remember box layout per game" Margin="0,14,0,0"
                             Checked="RemoteDashDrivePerGame_Changed" Unchecked="RemoteDashDrivePerGame_Changed"
-                            ToolTip="Each game keeps its own set of four boxes, and switching games loads the one you last used there."/>
+                            ToolTip="Each game keeps its own set of four boxes, and switching games loads the one you last used there. Games report different telemetry, so a layout that fills up in one can be half empty in another."/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="20,2,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Games report different telemetry, so a layout that fills up in one can be half empty in another. With this on, boxes you pick while a game is running are remembered for that game. A game you have not set up yet uses the layout above, and so do changes you make with no game running."/>
+                            Text="With this on, a game you have not set up yet uses the layout above, and so do changes you make with no game running."/>
 
                             <CheckBox x:Name="RemoteDashPedalsCheck" Content="Show pedals and steering around the gear" Margin="0,14,0,0"
                             Checked="RemoteDashPedals_Changed" Unchecked="RemoteDashPedals_Changed"
@@ -3802,19 +3805,17 @@
                             Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
                             ToolTip="A colored band across the top of the dash whenever a flag is out."/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Shows yellow, blue, black, white and chequered flags across whichever tab is open. Only games that report flags can drive it, which the Forza titles do not, so it simply never appears there."/>
+                            Text="Shows yellow, blue, black, white and chequered flags in a band across whichever tab is open. Forza does not report flags, so the band never appears there."/>
 
                             <CheckBox x:Name="RemoteDashSpotterCheck" Content="Show the spotter when a car is alongside" Margin="0,8,0,0"
                             Checked="RemoteDashSpotter_Changed" Unchecked="RemoteDashSpotter_Changed"
-                            ToolTip="A bar down the edge of whichever tab is open while a car is beside you on that side."/>
-                            <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="SimHub works this out from the other cars in the session, so like the flags it only lights up in games that report car positions and simply never appears in the ones that do not."/>
+                            ToolTip="A bar down the edge of whichever tab is open while a car is beside you on that side. Only games that report car positions can drive it; it never appears in the others."/>
 
                             <CheckBox x:Name="RemoteDashIncidentsCheck" Content="Show incident points (iRacing)" Margin="0,8,0,0"
                             Checked="RemoteDashIncidents_Changed" Unchecked="RemoteDashIncidents_Changed"
-                            ToolTip="Your incident count under the speed on the Drive tab, and a band across the top each time it moves."/>
+                            ToolTip="Your incident count sits under the speed on the Drive tab. A band across the top of the dash announces each new incident with what it cost (1x, 4x), and the wheel's screen shows it too. iRacing is the only game that publishes a count, so nothing appears anywhere else."/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Shows the points you have taken against the limit that ends your session, turning amber and then red as you run out of room. Each new incident announces what it cost across the top of the dash and on the wheel base screen, so you know whether it was a 1x or a 4x without waiting for the replay. iRacing is the only game that publishes a count, so nothing appears anywhere else."/>
+                            Text="Shows the points you have taken against the limit that ends your session, turning violet and then red as you run out of room."/>
                         </StackPanel>
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
@@ -3823,9 +3824,8 @@
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
                             <TextBlock Text="Idle mode" FontWeight="SemiBold" Margin="0,18,0,0"/>
-                            <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="With no game running the dash shows an ambient card with your name and number instead of an empty dashboard. It clears the moment a game starts, and there is an Exit button on the card itself."/>
                             <CheckBox x:Name="RemoteDashIdleCheck" Content="Show the idle card when no game is running" Margin="0,8,0,0"
+                            ToolTip="Shows an ambient card with your name and number instead of an empty dashboard. It clears the moment a game starts, and the card has its own Exit button."
                             Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <TextBlock Text="Parked for" VerticalAlignment="Center" Width="94"/>
@@ -3954,7 +3954,7 @@
                     <!-- Intro on its own line; the numbered setup steps render as
                          separate rows below so the option isn't a wall of text. -->
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="11"
-                               Text="Also passes Forza's telemetry to SimHub so its dashboards, bass shakers, and Buttkicker keep working. Forza already points at this plugin; this just relays a copy on to SimHub. Setup:"/>
+                               Text="Forza already points at this plugin; this just relays a copy on to SimHub. Setup:"/>
                     <StackPanel Margin="10,0,0,6">
                         <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,0,0,3"
                                    Text="1. In SimHub, click the Home button at the top of the left sidebar. It should show Forza Horizon as the active game (if not, click Change game). Click Game config and note the UDP port it shows (often 8000). Just read it, do not change anything here."/>
@@ -4033,9 +4033,9 @@
                              Synced with the FFBX access code. -->
                         <CheckBox x:Name="ExperimentalFfbCheck" Content="Enable experimental FFB detection"
                                   Margin="0,4,0,2" Checked="ExperimentalFfbDetection_Changed" Unchecked="ExperimentalFfbDetection_Changed"
-                                  ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). After enabling, load the game and drive for a few seconds. Turn it back off if it causes any trouble."/>
+                                  ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). Load the game and drive for a few seconds after turning it on. Leave it off if your force feedback already works. Turn it back off if it causes any trouble."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
-                                   Text="Try this if you are not getting force feedback in a game that should have it. Load the game and drive for a few seconds after turning it on. Leave it off if your force feedback already works."/>
+                                   Text="Try this if you are not getting force feedback in a game that should have it."/>
 
                         <!-- Hand the wheel back to the game while paused (NOLOCK
                              access code). When on, the plugin fully leaves Trueforce
@@ -4074,7 +4074,7 @@
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                            Text="Smaller ring buffers = less latency between game and wheel, but require Windows to wake our threads on time. Auto starts at the smallest sizes and ratchets up if dropouts occur (one-way; survived size persists across sessions). Manual locks specific sizes (useful for streamers who want guaranteed-stable behavior, or to force-test the lowest values)."/>
+                            Text="Smaller ring buffers = less latency between game and wheel, but require Windows to wake our threads on time."/>
 
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -4122,7 +4122,7 @@
                                 <TextBlock x:Name="PerfCountersText" FontSize="11" Opacity="0.8"
                                            Text="Output ring: 0 underruns/min · Audio ring: 0 glitches/min"/>
                                 <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,2,0,0"
-                                           Text="Counters tally events in a rolling 60-second window. If they're going up, your machine is glitching at the current ring size; Auto mode will bump it up."/>
+                                           Text="Counters tally events in a rolling 60-second window. If they are going up, your machine is glitching at the current ring size."/>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -4256,13 +4256,11 @@
                     <CheckBox x:Name="ShowFeedbackBoxCheck" Content="Show TF4ALL gain tile on SimHub's home screen"
                               Margin="0,0,0,2" Checked="ShowFeedbackBox_Changed" Unchecked="ShowFeedbackBox_Changed"
                               ToolTip="Adds a TF4ALL master + audio gain box to SimHub's home 'Feedback' section, next to Motors and Wind, for quick access without opening this panel."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
-                               Text="Quick master + audio gain control from SimHub's home screen. Turn off to remove the tile."/>
                     <CheckBox x:Name="ShowPerGearRedlineEditorCheck" Content="Show per-gear redlines in the Car facts panel"
                               Margin="0,8,0,2" Checked="ShowPerGearRedlineEditor_Changed" Unchecked="ShowPerGearRedlineEditor_Changed"
-                              ToolTip="Shows the per-gear redline editor in the Car facts panel, for cars where you shift at a different point in specific gears."/>
+                              ToolTip="Shows the per-gear redline editor in the Car facts panel, for cars where you shift at a different point in specific gears. Cars whose current engine already has per-gear redlines saved keep showing the editor, and saved values keep working either way."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
-                               Text="Off by default to keep the Car facts panel small. Cars whose current engine already has per-gear redlines saved keep showing the editor, and saved values keep working either way."/>
+                               Text="Off by default to keep the Car facts panel small."/>
                 </StackPanel>
             </Expander>
 
@@ -4309,8 +4307,6 @@
                     <CheckBox x:Name="UseCommunityCarFactsCheck" Content="Use community car facts (names, engine types, redlines)"
                               Margin="0,0,0,2" Checked="UseCommunityCarFacts_Changed" Unchecked="UseCommunityCarFacts_Changed"
                               ToolTip="Apply community-sourced car facts to your cars: human-readable names, engine types, and redlines. Uses a local cache, so it keeps working offline and only refreshes from the server every few days (or when you hit the refresh icon). Turn off to ignore community car facts entirely and use only your own values."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
-                               Text="Cached locally and refreshed at most weekly per car, so it works offline and keeps server traffic low."/>
                     <!-- Car-data sharing. ON by default (opt-out posture; the welcome
                          modal is the disclosure). This checkbox is the opt-out; gated by
                          the community master toggle; no sign-in needed (signed-out
@@ -4335,8 +4331,6 @@
                     <CheckBox x:Name="EffectsTabShareButtonsCheck" Content="Show preset Share buttons on the active car/game card"
                               Margin="0,0,0,2" Checked="EffectsTabShareButtons_Changed" Unchecked="EffectsTabShareButtons_Changed"
                               ToolTip="Adds a Share button to the active game and car on the header card so you can share the preset you're driving. Turn off to keep the Effects tab clean; the Preset Manager is still the place to share. Doesn't affect community car facts."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
-                               Text="Off hides the card's Share buttons. You can still share anytime from the Preset Manager."/>
                     <!-- Auto-update downloaded community presets. Off by default; only fires on
                          presets you haven't locally edited since download. -->
                     <CheckBox x:Name="AutoUpdateDownloadedPresetsCheck"
@@ -4346,7 +4340,7 @@
                               Unchecked="AutoUpdateDownloadedPresets_Changed"
                               ToolTip="When a curator publishes a new version of a preset you downloaded, apply it silently. Only runs when you haven't edited your local copy since download."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
-                               Text="Only runs on downloads you haven't edited locally. If you've changed your local copy, those changes are kept; the curator's update is offered through the updates-available chip instead."/>
+                               Text="If you've changed your local copy, those changes are kept; the curator's update is offered through the updates-available chip instead."/>
 
                     <!-- Message of the day: how much of the top strip the user wants.
                          Gated by the community master above (the strip is hidden when
@@ -4408,7 +4402,7 @@
                               Margin="0,0,0,2" Checked="AutoSyncBackup_Changed" Unchecked="AutoSyncBackup_Changed"
                               ToolTip="Automatically uploads your setup to the cloud as you change it, and pulls those changes down on your other signed-in devices. Sign-in required."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8" FontSize="12"
-                               Text="Real-time sync across your devices: changes you make on one device flow to the others automatically. Off = back up only when you click 'Back up now'."/>
+                               Text="Off = back up only when you click 'Back up now'."/>
                     <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
                         <TextBlock Text="FFB tuning from a different wheel model:" VerticalAlignment="Center" FontSize="12"/>
                         <ComboBox x:Name="CrossWheelFfbModeCombo" Width="140" Margin="8,0,0,0"
@@ -4420,7 +4414,7 @@
                         </ComboBox>
                     </StackPanel>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                               Text="Your FFB tuning always backs up. This only controls whether it is applied on a device with a different wheel model. 'Ask me' prompts once per change; you can tick 'remember my choice' on that prompt to stop being asked."/>
+                               Text="'Ask me' prompts once per change; you can tick 'remember my choice' on that prompt to stop being asked."/>
                     <!-- Cross-wheel FFB notice: shown from code (RefreshCrossWheelFfbNotice) when a
                          restore/sync held back FFB tuning built on a different wheel model. -->
                     <Border x:Name="CrossWheelFfbNotice" Visibility="Collapsed"
@@ -4465,7 +4459,7 @@
                         <TextBlock Text="Backup to file" Style="{StaticResource SectionHeaderText}"/>
                     </Border>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Bundle your full Trueforce For All state (settings, every preset, every default, every car tuning) into one archive for moving to a new machine. To share individual presets or car tunings with other users, use Import / Export in the Preset Manager (Presets tab) instead."/>
+                               Text="Bundle your full setup into one archive for moving to a new machine. To share individual presets or car tunings, use Import / Export in the Preset Manager instead."/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <Button x:Name="BackupButton" Content="Backup…" Width="140" Height="28" Margin="0,0,8,0" Click="Backup_Click"
                                 ToolTip="Save settings + every user preset + every default + every car tuning to a single .zip you can carry to another machine."/>

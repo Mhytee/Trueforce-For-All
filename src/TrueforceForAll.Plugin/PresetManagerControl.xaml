@@ -250,7 +250,7 @@
                     Background="#3A6BBE" CornerRadius="3">
                 <TextBlock Foreground="#FFFFFFFF" FontSize="11" FontWeight="SemiBold"
                            TextWrapping="Wrap"
-                           Text="Developer mode is active. Per-row Set as built-in buttons + the Developer toolbar at the bottom are unlocked. Type DEV again in Settings to turn it off."/>
+                           Text="Developer mode is active. Type DEV again in Settings to turn it off."/>
             </Border>
             <!-- Segmented selector in place of an inner tab strip. The one
                  refresh icon docked right is context-aware: in a Library
@@ -324,7 +324,7 @@
                  buttons, then details above them. LastChildFill: list. -->
             <DockPanel x:Name="GamePanel">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Select a preset to see what it contains; or Edit to open it on the Effects tab. You can rename, duplicate, delete, and choose which games auto-load each preset. Built-ins can't be renamed or deleted; saving over one forks a copy."/>
+                               Text="Select a preset to see what it contains. Built-ins can't be renamed or deleted; saving over one forks a copy."/>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
                                    Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
@@ -414,7 +414,7 @@
                  above them), list last (LastChildFill). -->
             <DockPanel x:Name="CarPanel" Visibility="Collapsed">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Every car preset, grouped by game then car. A car can have several presets; the ★ in Default marks the one that loads for that car. Rename, duplicate, delete, or set a preset as the car's default."/>
+                               Text="A car can have several presets; the ★ in Default marks the one that loads for that car."/>
                     <!-- Per-game filter chips. Rebuilt from the loaded rows on
                          every ReloadCars; click a chip to narrow to that game. -->
                     <WrapPanel DockPanel.Dock="Top" x:Name="CarGameChips" Margin="0,0,0,6"/>
@@ -507,7 +507,7 @@
             <!-- ===================== Custom engines ===================== -->
             <DockPanel x:Name="CustomPanel" Visibility="Collapsed">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Your saved custom engines. Edit or delete them here; if you delete one a preset uses, that preset falls back to the Auto engine mode until you pick a new one. Built-in layouts (V8, Rotary, etc.) aren't listed."/>
+                               Text="Engines you've created. Built-in layouts (V8, Rotary, etc.) aren't listed."/>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
                                    Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
@@ -574,7 +574,7 @@
                  PackManagerWindow has, plus the new Create button. -->
             <DockPanel x:Name="PacksPanel" Visibility="Collapsed">
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="A pack bundles several presets at once. Pick an installed pack to set every preset it includes as a default in one go, or to remove the whole bundle (preserving any entries you've edited). Browse the Community view to find packs other drivers have shared."/>
+                           Text="A pack bundles several presets at once. Find shared packs in the Community view."/>
                 <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <Button x:Name="PacksCreateBtn"      Content="Create a pack…"   Style="{StaticResource RowButton}" Width="120" Click="CreatePack_Click"
@@ -613,7 +613,7 @@
                  the segment strip above, not by an in-panel switch. -->
             <DockPanel x:Name="CommunityPanel" Visibility="Collapsed">
                 <TextBlock x:Name="CommunityHelpText" DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="Browse + download community presets for the car you're driving. Pick a row and Download to import; you'll get a section picker so you can take just the parts you want."/>
+                           Text="Browse and download community presets for the car you're driving."/>
                 <!-- Gated empty-state. Community presets need online features turned
                      on AND an account (browse is account-required). When either is
                      missing, ApplyCommunityGate shows this in place of the browser
@@ -672,7 +672,7 @@
                         <Button x:Name="CommunityReportBtn"   Content="Report"   Style="{StaticResource RowButton}" Click="CommunityReport_Click"   IsEnabled="False"
                                 ToolTip="Flag inappropriate content for moderator review."/>
                         <Button x:Name="CommunityEditBtn"     Content="Edit…"    Style="{StaticResource RowButton}" Click="CommunityEdit_Click"     IsEnabled="False" Visibility="Collapsed"
-                                ToolTip="Edit one of your own uploads (name, description, body). Visible only on rows you uploaded while signed in."/>
+                                ToolTip="Edit one of your own uploads (name, description, body) without resetting its votes and downloads. Visible only on rows you uploaded while signed in."/>
                         <Button x:Name="CommunityDeleteBtn"   Content="Delete"   Style="{StaticResource DangerButton}" Click="CommunityDelete_Click"   IsEnabled="False" Visibility="Collapsed"
                                 ToolTip="Soft-delete one of your own uploads. Visible only on rows you uploaded while signed in."/>
                         <Button x:Name="CommunityDownloadBtn" Content="Download…" Style="{StaticResource SharePrimaryButton}" Click="CommunityDownload_Click" IsEnabled="False"
