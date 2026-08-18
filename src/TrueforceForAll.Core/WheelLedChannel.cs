@@ -21,8 +21,8 @@
 //     issue #20, 2026-08-11): a G923 has ten LEDs but lights them outside-in
 //     in fixed symmetric pairs, so only five steps are addressable. The level
 //     is a fraction of THIS length, so we read it instead of assuming 10.
-//   * fn1 = GET_CAPS (the supported-effect list; we send it for burst parity
-//     and ignore the reply).
+//   * fn1 = GET_CAPS (the supported-effect list). No longer sent: it existed
+//     only for parity with the old arm burst and its reply was ignored.
 //   * fn2 = GET_STATE. Reply param 0 = the live effect. 0 = displaying
 //     nothing, and in that state the wheel REFUSES every fn6 level with
 //     HID++ error 5 (LogitechInternal) - dark lights that look like success
@@ -31,7 +31,35 @@
 //     fn2 answered 0 (our capture); with the wheel already displaying, no
 //     fn3 is sent (PeposCJ's first-party captures, spec 12.4). mescon's RS50
 //     result says an unconditional fn3 stomps the user's chosen effect, so
-//     we now query first and skip it when the wheel is already lit.
+//     we query first and skip it when the wheel is already lit.
+//
+// WHEN, not just what. mescon's two live G HUB captures (issue #20,
+// 2026-08-14: a full AC EVO session and an iRacing LED bring-up) show the
+// fn0/fn1/fn2 reads happening ONCE at wheel attach and then nothing but the
+// bare fn2 + fn6 level pair, with no fn3/fn4/fn7 in any session; an arm
+// sequence fired mid-session killed the wheel's input path on his hardware,
+// and fired at SDK session init left the session open but never streaming.
+// That squares with the load-bearing fn3 above if the effect selection is
+// persistent firmware state which his wheels already had set. So ALL
+// discovery and any fn3 happen once in TryOpenGroup, at attach, before a
+// session exists; after that this class only ever sends the fn2 + fn6 pair.
+// We used to re-run the whole burst on the first rev level, which is in
+// game, mid-session, the exact case he measured.
+//
+// THIS IS ALIGNMENT AND DEAD-TRAFFIC REMOVAL, NOT A FIX FOR A BUG WE HAVE.
+// The discriminating experiment already ran here (owner rig, FH6 on a G PRO,
+// 2026-08-14): with Mode B on and our self-armed ep3 stream carrying force,
+// mid-drive pattern switches (fn3 + fn6 + fn7, plus a preview sweep) produced
+// NO force blip. Our own ep3 stream is immune to a mid-session fn3 on
+// G PRO/Windows. mescon's kill was against a NATIVE, driver-armed stream on
+// his Linux stack: same endpoint and wire format, different arming path, so
+// his result is not refuted by ours and ours is not explained by his. What
+// the re-burst cost us was three reads whose answers TryOpenGroup already
+// had, on a pipe we know is sensitive, at the worst available moment. That
+// is reason enough to stop sending it, and it keeps us honest against a
+// second implementation's captures, but do not write this up as a fix. The
+// G923 Xbox 0x807A path is still unvalidated on hardware, and that is where
+// an untested divergence would have bitten.
 //   * Per update + keepalive: SHORT fn2 `10 ff IDX 2d 00 00 00` then LONG
 //     fn6 `11 ff IDX 6d 00 01 00 <len> 00 LL 00..` where byte 7 = strip
 //     length and byte 9 (LL) = rev level 0..len = how many steps light. The
@@ -80,7 +108,6 @@ namespace TrueforceForAll.Core
         // and skip even that whenever a real change-write already refreshed
         // it within the interval.
         private const int KeepAliveMs = 1000;
-        private const int ArmGapMs    = 4;          // pace the one-time arm burst
         // Minimum gap between level-pair writes. The captured host sends the
         // pair at a STEADY ~156 ms regardless of how fast revs change; it
         // never bursts. Sending immediately on every level change (which
@@ -121,6 +148,9 @@ namespace TrueforceForAll.Core
         private volatile int _pendingSelect;
         private bool _ready;
         private volatile bool _armed;
+        // True when the open path found a dark panel (fn2 = 0) and sent the
+        // fn3 that wakes it. Only then is the post-pair fn2 check meaningful.
+        private bool _wokeDarkPanel;
         private volatile int  _level;       // target rev level 0..StripLength (set by SetLevel)
         private int  _sentLevel = -1;       // last level actually written to the wire
         private long _lastWriteMs;          // last time the level pair hit the wire
@@ -288,8 +318,42 @@ namespace TrueforceForAll.Core
                 // Seed the known selection (fn2 = GET_STATE) so the settings
                 // picker can show where the wheel actually is from the first
                 // open, not only after an arm has read it.
-                if (TryQuery(Fn(2), 0x00, info) && info[4] > 0)
-                    _knownSelection = info[4];
+                int openEffect = -1;
+                if (TryQuery(Fn(2), 0x00, info)) openEffect = info[4];
+                if (openEffect > 0) _knownSelection = openEffect;
+
+                // Wake a dark panel HERE, at attach, rather than on the first
+                // rev level. A wheel whose fn2 answers 0 is displaying nothing
+                // and refuses every fn6 level with HID++ error 5, so the fn3
+                // that starts it is load-bearing (mescon, 2026-08-11). Yet
+                // mescon's two live G HUB captures (2026-08-14) contain no
+                // fn3 in any session, and an arm sequence fired mid-session
+                // killed the wheel's input path. Both hold if the effect
+                // selection is persistent firmware state that G HUB's wheels
+                // already had set, which is our reading of it. So the one fn3
+                // we may still need goes out at attach, before a session
+                // exists and before there is any force on the wheel to cut.
+                var openPlan = PlanArmEffect(openEffect, _pendingSelect);
+                if (openPlan.SendFn3)
+                {
+                    if (openPlan.WheelOwnEffect > 0)
+                        ApplyEffectSwitch(openPlan.Fn3Param, 0);
+                    else
+                        WriteShort(new byte[] { RepShort, DevWired, _idxRev,
+                                                Fn(3), openPlan.Fn3Param, 0x00, 0x00 });
+                    _wokeDarkPanel = openEffect <= 0;
+                    _knownSelection = openPlan.Fn3Param;
+                    _pendingSelect = 0;
+                    if (openEffect < 0)
+                        _log("[RPM-LED] fn2 state unreadable at open; sent SET_EFFECT "
+                             + $"{openPlan.Fn3Param} unconditionally (legacy behaviour)");
+                    else if (openEffect == 0)
+                        _log($"[RPM-LED] wheel displaying nothing; sent SET_EFFECT "
+                             + $"{openPlan.Fn3Param} at open so level writes are accepted");
+                    else
+                        _log($"[RPM-LED] applying staged pattern pick at open: effect {openPlan.Fn3Param}");
+                }
+                else _log($"[RPM-LED] wheel displaying effect {openEffect}; selection left alone");
 
                 _ready = true;
                 // Dispose any opened-but-not-kept duplicate streams (a non-standard
@@ -314,6 +378,7 @@ namespace TrueforceForAll.Core
         {
             _short = _long = _veryLong = _cmdShort = _replyStream = null;
             _stripLen = LedCount;
+            _wokeDarkPanel = false;
             _ready = false;
         }
 
@@ -553,93 +618,53 @@ namespace TrueforceForAll.Core
 
         private byte Fn(int fn) => (byte)((fn << 4) | SwId);
 
-        private static void ArmGap() { try { Thread.Sleep(ArmGapMs); } catch { } }
-
         private static long NowMs() => DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
 
-        /// <summary>Run the captured Logitech arm sequence once, then start
-        /// the ~1 Hz keepalive that re-sends the current level (the wheel
-        /// holds it for a good while but reverts eventually if never
-        /// refreshed). fn3 is CONDITIONAL: the wheel is queried first (fn2 =
-        /// GET_STATE) and SET_EFFECT goes out only when it reports 0 =
-        /// displaying nothing, which is the state that refuses level writes
-        /// with HID++ error 5. A wheel already displaying keeps whatever
-        /// effect its user chose; an unconditional fn3 would force effect 2
-        /// over it (mescon's RS50 result). If the state cannot be read we
-        /// fall back to SENDING fn3: that is the pre-2026-08 behaviour, and
-        /// the failure mode of the opposite choice is dark lights.</summary>
+        /// <summary>Start the level pair and its ~1 Hz keepalive. There is NO
+        /// arm burst any more. mescon's two live G HUB captures (2026-08-14, a
+        /// full AC EVO session and an iRacing LED bring-up) show fn0/fn1/fn2
+        /// discovery reads ONCE at wheel attach and then the bare fn2 + fn6
+        /// level pair forever, with no fn3/fn4/fn7 in any session. Our old
+        /// burst re-read fn0/fn1/fn2, which TryOpenGroup had already read, and
+        /// it fired on the FIRST REV LEVEL: in game, mid-session. That is
+        /// precisely the shape and the moment mescon measured killing a
+        /// wheel's input path, so the re-burst is gone and the effect decision
+        /// moved to TryOpenGroup. What is left here is a pattern pick the user
+        /// staged AFTER the channel opened, which is a deliberate action
+        /// rather than a sequence we invent. See the file header for why this
+        /// is protocol alignment rather than a fix: our ep3 stream was tested
+        /// immune to mid-session fn3 on this hardware.</summary>
         private void Arm()
         {
             if (_armed) return;
-            // SHORT fn0, fn1, fn2, [fn3 param 0x02], fn0 - the captured
-            // burst, byte for byte, with the fn2 reply actually read now.
-            // Space the writes a few ms apart so the one-time burst doesn't
-            // monopolise the shared HID++ pipe and hitch FFB at session start.
-            WriteShort(new byte[] { RepShort, DevWired, _idxRev, Fn(0), 0x00, 0x00, 0x00 });
-            ArmGap();
-            WriteShort(new byte[] { RepShort, DevWired, _idxRev, Fn(1), 0x00, 0x00, 0x00 });
-            ArmGap();
 
-            int effect = -1;
-            var resp = new byte[LenVeryLong];
-            if (TryQuery(Fn(2), 0x00, resp)) effect = resp[4];
-            ArmGap();
-
-            var plan = PlanArmEffect(effect, _pendingSelect);
-            if (effect > 0) _knownSelection = effect;
-            bool sentSetEffect = false;
-            if (plan.SendFn3)
+            if (_pendingSelect > 0 && _pendingSelect != _knownSelection)
             {
-                if (plan.WheelOwnEffect > 0)
-                {
-                    // Switching a wheel that is already displaying: a bare
-                    // fn3 only stages, so run the full switch (commit +
-                    // refresh) or the strip keeps rendering the old pattern.
-                    // Level 0: arming always starts from a dark bar.
-                    ApplyEffectSwitch(plan.Fn3Param, 0);
-                }
-                else
-                {
-                    // From a dark panel the captured burst suffices; keep it
-                    // byte-exact with the capture.
-                    WriteShort(new byte[] { RepShort, DevWired, _idxRev, Fn(3), plan.Fn3Param, 0x00, 0x00 });
-                }
-                ArmGap();
-                sentSetEffect = true;
-                _knownSelection = plan.Fn3Param;
-                if (_pendingSelect > 0)
-                    _log($"[RPM-LED] applying pending pattern pick: effect {plan.Fn3Param}");
-                else if (effect < 0)
-                    _log("[RPM-LED] fn2 state unreadable; sent SET_EFFECT unconditionally (legacy behaviour)");
-            }
-            else
-            {
-                _log($"[RPM-LED] wheel displaying effect {effect}; selection left alone");
+                // Staged while the pipe was busy (a game running its own FFB).
+                // Level 0: arming always starts from a dark bar.
+                ApplyEffectSwitch((byte)_pendingSelect, 0);
+                _knownSelection = _pendingSelect;
+                _log($"[RPM-LED] applying pending pattern pick: effect {_pendingSelect}");
             }
             _pendingSelect = 0;
 
-            WriteShort(new byte[] { RepShort, DevWired, _idxRev, Fn(0), 0x00, 0x00, 0x00 });
-            ArmGap();
-
             // Best-effort check on the pair's own fn2 reply: a wheel still
-            // reporting 0 after the burst will refuse every level with error
-            // 5 and the lights stay dark while everything here logs success.
-            // TryMatchReply also surfaces any error frame (the fn6 refusal
-            // included), so this is where a dead strip becomes visible.
-            // Only when the state was actually READ as 0: a wheel that
-            // ignored the arm-time fn2 will ignore the pair's too, and its
-            // late reply (queued from before fn3) would make this check lie
-            // in either direction. Drain first so the match can only be the
-            // pair's own reply, not the fn3 echo / broadcast / fn0 leftovers.
-            bool verify = sentSetEffect && effect == 0;
+            // reporting 0 after the open-time wake will refuse every level
+            // with error 5 and the lights stay dark while everything here
+            // logs success. TryMatchReply also surfaces any error frame (the
+            // fn6 refusal included), so this is where a dead strip becomes
+            // visible. Drain first so the match can only be the pair's own
+            // reply, not a queued echo or broadcast from open.
+            var resp = new byte[LenVeryLong];
+            bool verify = _wokeDarkPanel;
             if (verify) DrainReplies(_replyStream);
             SendPair(0);
             if (verify
                 && TryMatchReply(_replyStream, Fn(2), resp, maxTimeouts: 1)
                 && resp[4] == 0)
             {
-                _log("[RPM-LED] wheel still reports no active effect after arming; "
-                     + "level writes will be refused and the lights may stay dark");
+                _log("[RPM-LED] wheel still reports no active effect after the open-time "
+                     + "wake; level writes will be refused and the lights may stay dark");
             }
 
             _sentLevel = 0;
