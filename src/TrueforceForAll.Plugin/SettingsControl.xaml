@@ -4050,6 +4050,17 @@
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
                                    Text="If the wheel misbehaves around pauses or fast travel, try flipping this."/>
 
+                        <!-- The sibling of the above, for the games its test cannot
+                             reach: one that keeps its car idling in the background
+                             neither raises a pause flag nor stops sending telemetry,
+                             so alt-tabbing left a held force walking the wheel to
+                             its stop (Wreckfest, owner 2026-08-16). -->
+                        <CheckBox x:Name="ReleaseOnFocusLossCheck" Content="Let go of the wheel when you switch away from the game"
+                                  Margin="0,4,0,2" Checked="ReleaseOnFocusLoss_Changed" Unchecked="ReleaseOnFocusLoss_Changed"
+                                  ToolTip="On by default. Alt-tab out of the game and the wheel goes free instead of holding whatever force it had. Some games stop sending force feedback the moment they lose focus without telling anyone, and a held force with no self-aligning torque behind it slowly walks the wheel to full lock. Turn it off if you run the game windowed alongside something else and want force to continue."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
+                                   Text="Force comes back as soon as the game does. Brief interruptions like an overlay or a notification are ignored."/>
+
                         <!-- Driver testing mode. Hidden by default (Collapsed); revealed
                              only after the DRIVER access code is entered, and kept revealed
                              across restarts via Settings.DriverTestingUnlocked (mirrors the

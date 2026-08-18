@@ -204,7 +204,7 @@ namespace TrueforceForAll.Plugin
             // travels, so a supporter restoring onto a second PC is not asked again.
             "SupportPromptCount", "SupportPromptDeclineCount", "SupportPromptLastUtc",
             "ExperimentalSuccessReportDismissed", "LogUsbBytesEnabled", "StopStreamOnPause",
-            "StopStreamOnPauseMigrated",
+            "StopStreamOnPauseMigrated", "ReleaseForceOnFocusLoss",
             // Per-account achievement-celebration baseline + notify-dot (re-seed on PC2).
             "AchievementBaseline", "AchievementUnseen",
             // Preset-manager UI layout.

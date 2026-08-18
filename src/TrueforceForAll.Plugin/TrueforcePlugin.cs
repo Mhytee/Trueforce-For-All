@@ -1003,19 +1003,31 @@ namespace TrueforceForAll.Plugin
                     return $"'{_currentGameName}' is detected but no telemetry is arriving. You may be in a menu or paused.";
                 }
 
-                // 7. All telemetry-driven effects disabled. Engine pulse,
-                //    bumps, traction, gear, ABS, pit limiter, DRS, if all
-                //    seven are off and audio capture is also off, nothing
-                //    can produce output.
+                // 7. All telemetry-driven effects disabled: nothing can produce
+                //    output, so say so.
+                //
+                //    EVERY voice belongs in this list. It used to name seven of
+                //    them and claimed "every effect channel is disabled" while
+                //    axle slip, kerb thump, lockup judder, collision, rev limiter
+                //    and the implement thud were happily running (owner, Wreckfest
+                //    2026-08-16). Airborne is deliberately absent: it ducks the
+                //    others and is not a voice of its own, so a config with only
+                //    Airborne on really does produce nothing.
                 bool anyEffectOn =
-                       (EnginePulse  != null && EnginePulse.Enabled)
-                    || (RoadBumps    != null && RoadBumps.Enabled)
-                    || (TractionLoss != null && TractionLoss.Enabled)
-                    || (GearShift    != null && GearShift.Enabled)
-                    || (AbsClick     != null && AbsClick.Enabled)
-                    || (PitLimiter   != null && PitLimiter.Enabled)
-                    || (Drs          != null && Drs.Enabled)
-                    || (_audio       != null && _audio.Enabled);
+                       (EnginePulse   != null && EnginePulse.Enabled)
+                    || (RoadBumps     != null && RoadBumps.Enabled)
+                    || (TractionLoss  != null && TractionLoss.Enabled)
+                    || (AxleSlip      != null && AxleSlip.Enabled)
+                    || (KerbThump     != null && KerbThump.Enabled)
+                    || (LockupJudder  != null && LockupJudder.Enabled)
+                    || (GearShift     != null && GearShift.Enabled)
+                    || (AbsClick      != null && AbsClick.Enabled)
+                    || (PitLimiter    != null && PitLimiter.Enabled)
+                    || (Drs           != null && Drs.Enabled)
+                    || (Collision     != null && Collision.Enabled)
+                    || (RevLimiter    != null && RevLimiter.Enabled)
+                    || (ImplementThud != null && ImplementThud.Enabled)
+                    || (_audio        != null && _audio.Enabled);
                 if (!anyEffectOn)
                     return "Every effect channel is disabled. Enable at least one effect or turn on audio capture.";
 
@@ -3544,6 +3556,14 @@ namespace TrueforceForAll.Plugin
                     // We do NOT release on the physics proxy alone, since it
                     // also reads inactive at a legitimate standstill (grid,
                     // stall), which would drop FFB mid-session.
+                    // Focus release. Same outcome as the pause release below and
+                    // for the same physical reason, but it catches the games that
+                    // test cannot: it needs an authoritative session flag or
+                    // telemetry to stop, and a title still idling its car in the
+                    // background offers neither, so the tap's last force streamed
+                    // for its full hold and the wheel walked to lock.
+                    if (_gameFocusLost) return (short?)0;
+
                     var src = _telemetrySource;
                     // This zero-return applies to Mode B as well, on every
                     // Forza title: IsRaceOn is "is the player driving" (1 in
@@ -3619,7 +3639,28 @@ namespace TrueforceForAll.Plugin
                     }
                     if (!chosen.HasValue)
                     {
-                        chosen = _ffbTap?.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
+                        // SHORT window, for the same reason the AC path above
+                        // uses one, and it is the exe-independent half of the
+                        // full-lock fix. FfbTargetMaxAgeMs is 10 s because it
+                        // answers a DIFFERENT question, "has this game produced
+                        // any force lately", which arbitrates active vs keepalive
+                        // mode in TrueforceDevice. Asking it "is this value still
+                        // current" was the bug: the tap re-timestamps only on a
+                        // captured packet, so a game that stops sending, on a
+                        // pause it never announces or on losing focus, left us
+                        // streaming its last force for ten seconds with no
+                        // self-aligning torque to oppose it, and the wheel walked
+                        // to its rotational stop (Wreckfest alt-tab, owner
+                        // 2026-08-16; same class as issue #13).
+                        //
+                        // 500 ms is generous: real force feedback updates tens to
+                        // hundreds of times a second, so anything quieter than
+                        // 2 Hz is not driving the wheel. The failure mode of a
+                        // short window is emitting zero where the game wanted a
+                        // HELD non-zero force, and games do not hold force
+                        // without resending it.
+                        const int pcapStreamMaxAgeMs = 500;
+                        chosen = _ffbTap?.TryGetFreshFfbTarget(pcapStreamMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "pcap";
                     }
                     // Farming Simulator streams NO real force values on any
@@ -5649,6 +5690,9 @@ namespace TrueforceForAll.Plugin
             // then fired on whatever car was loaded the next time Mode B ran,
             // wiping a calibration the user never asked to lose.
             ConsumeGripCalResetRequest();
+            // Foreground tracking for the focus release. Telemetry thread, rate
+            // limited internally; the FFB thread only reads the resulting flag.
+            UpdateGameFocusState();
             // Mode B synthesis inputs: longitudinal accel for the weight-
             // transfer term, and the front-pair combined slip as the grip
             // utilization source. Written here (telemetry thread), read on
@@ -26175,6 +26219,133 @@ namespace TrueforceForAll.Plugin
         /// SimHub named earlier this session (the only thing a pause can be
         /// "paused from"), which also keeps an idle SimHub from walking the
         /// process table forever. Result cached ~2 s.</summary>
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+        // Set by the telemetry thread, read by the FFB thread. Never poll the
+        // foreground window from the 1 kHz path: it is a syscall plus a process
+        // lookup, and the FFB thread cannot afford either.
+        private volatile bool _gameFocusLost;
+        // Has the game window EVER been the foreground one? Arms the feature.
+        private bool _focusEverIdentified;
+        private long _focusLostSinceTicks;
+        private long _focusCheckedAtTicks;
+        private uint _focusCachedPid;
+        private bool _focusCachedIsGame;
+        // Focus has to be gone for this long before we act. Overlays, toasts and
+        // the Steam notifier all steal foreground for a few frames, and dropping
+        // the wheel for those would be worse than the bug being fixed.
+        private const double FocusLossGraceMs = 250.0;
+
+        /// <summary>Forget that any game window was identified. Called on a game
+        /// change so the release can never fire on a title we have not recognised
+        /// while focused at least once.</summary>
+        private void ResetGameFocusIdentification()
+        {
+            _focusEverIdentified = false;
+            _gameFocusLost = false;
+            _focusLostSinceTicks = 0;
+            _focusCheckedAtTicks = 0;
+            _focusCachedPid = 0;
+        }
+
+        /// <summary>Track whether the game still owns the foreground window.
+        /// Called from the telemetry thread. Cheap: the window handle is checked
+        /// a few times a second and the pid to process-name resolution is cached
+        /// per pid, so a stable foreground costs one syscall.</summary>
+        private void UpdateGameFocusState()
+        {
+            if (Settings == null || !Settings.ReleaseForceOnFocusLoss
+                || string.IsNullOrEmpty(_lastNamedGame))
+            {
+                _gameFocusLost = false;
+                _focusLostSinceTicks = 0;
+                return;
+            }
+
+            long now = Stopwatch.GetTimestamp();
+            if (_focusCheckedAtTicks != 0
+                && (now - _focusCheckedAtTicks) < Stopwatch.Frequency / 5) return;   // 5 Hz
+            _focusCheckedAtTicks = now;
+
+            bool isGame;
+            try
+            {
+                IntPtr hwnd = GetForegroundWindow();
+                if (hwnd == IntPtr.Zero) return;   // nothing focused: say nothing
+                uint pid;
+                GetWindowThreadProcessId(hwnd, out pid);
+                if (pid == 0) return;
+                if (pid == _focusCachedPid) isGame = _focusCachedIsGame;
+                else
+                {
+                    isGame = PidLooksLikeGame(pid);
+                    _focusCachedPid = pid;
+                    _focusCachedIsGame = isGame;
+                }
+            }
+            catch { return; }   // never let a focus probe disturb the wheel
+
+            if (isGame)
+            {
+                // Positive identification. Until this happens once, the feature
+                // stays inert: see the guard below.
+                _focusEverIdentified = true;
+                _focusLostSinceTicks = 0;
+                _gameFocusLost = false;
+                return;
+            }
+            // FAIL SAFE. If we have never once seen this game own the foreground,
+            // we cannot tell "the user alt-tabbed" from "we do not recognise this
+            // exe", and the second reading would release the wheel for the whole
+            // session on an unmapped title. Doing nothing is the only honest
+            // answer, so an unknown game simply does not get this feature rather
+            // than getting a dead wheel.
+            if (!_focusEverIdentified) { _gameFocusLost = false; return; }
+            if (_focusLostSinceTicks == 0) { _focusLostSinceTicks = now; return; }
+            double awayMs = (now - _focusLostSinceTicks) * 1000.0 / Stopwatch.Frequency;
+            if (awayMs >= FocusLossGraceMs && !_gameFocusLost)
+            {
+                _gameFocusLost = true;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Game lost focus: releasing the wheel until it comes back. "
+                    + "A held force with no self-aligning torque walks the wheel to full lock.");
+            }
+        }
+
+        /// <summary>Does this pid belong to the running game? Reuses the same
+        /// matching rules as the process rescue: the curated exe map first, then
+        /// a fuzzy match against the last game SimHub named.</summary>
+        private bool PidLooksLikeGame(uint pid)
+        {
+            try
+            {
+                using (var p = Process.GetProcessById((int)pid))
+                {
+                    string pn = p.ProcessName;
+                    if (string.IsNullOrEmpty(pn)) return false;
+                    if (ExeLabels.ContainsKey(pn)) return true;
+                    // The audio-capture exe override is the user telling us which
+                    // process this game is. It exists for exactly the case that
+                    // defeats the two rules below, so honour it here too rather
+                    // than making them set the same thing twice.
+                    string ovr = ActiveCaptureExeOverride;
+                    if (!string.IsNullOrEmpty(ovr))
+                    {
+                        string want = ovr.Trim();
+                        if (want.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                            want = want.Substring(0, want.Length - 4);
+                        if (string.Equals(pn, want, StringComparison.OrdinalIgnoreCase)) return true;
+                    }
+                    return !string.IsNullOrEmpty(_lastNamedGame)
+                           && ProcessMatchesGameName(pn, _lastNamedGame);
+                }
+            }
+            catch { return false; }
+        }
+
         public bool IsKnownGameProcessRunning(out string label)
         {
             label = null;
@@ -27003,6 +27174,20 @@ namespace TrueforceForAll.Plugin
             if (Settings != null) Settings.StopStreamOnPause = on;
             PersistSettings();
             SimHub.Logging.Current.Info($"[TF4ALL] StopStreamOnPause {(on ? "ON" : "OFF")}.");
+        }
+
+        public void SetReleaseForceOnFocusLoss(bool on)
+        {
+            if (Settings != null) Settings.ReleaseForceOnFocusLoss = on;
+            // Clear the latch either way: turning it off must hand force back
+            // immediately rather than leaving the wheel released until the game
+            // is clicked, and turning it on should not act on a stale timer.
+            _gameFocusLost = false;
+            _focusLostSinceTicks = 0;
+            _focusCheckedAtTicks = 0;
+            _focusCachedPid = 0;
+            PersistSettings();
+            SimHub.Logging.Current.Info($"[TF4ALL] ReleaseForceOnFocusLoss {(on ? "ON" : "OFF")}.");
         }
 
         public bool DebugToggleStopStreamOnPause()

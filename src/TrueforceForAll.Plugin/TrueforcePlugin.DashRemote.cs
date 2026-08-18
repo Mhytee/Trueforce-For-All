@@ -322,6 +322,9 @@ namespace TrueforceForAll.Plugin
                 _capSec = 0; _capUnflushedSec = 0; _capLastTick = 0;
                 _dashSlipSeen = false;   // the new game earns its own latch
                 _axleFeedSeen = false; _axleFeedFrames = 0;
+                // The focus feature re-arms per game: one title's identification
+                // must not license releasing the wheel in an unrecognised next one.
+                ResetGameFocusIdentification();
             }
 
             // Driving time only. A car sitting in the pits reports no lap

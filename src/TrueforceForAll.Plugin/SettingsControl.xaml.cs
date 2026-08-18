@@ -563,6 +563,8 @@ namespace TrueforceForAll.Plugin
                 SpikeTamingEnabledCheck.IsChecked  = _plugin.Settings?.FfbSpikeTamingEnabled  ?? false;
                 if (StopStreamOnPauseCheck != null)
                     StopStreamOnPauseCheck.IsChecked = _plugin.Settings?.StopStreamOnPause ?? false;
+                if (ReleaseOnFocusLossCheck != null)
+                    ReleaseOnFocusLossCheck.IsChecked = _plugin.Settings?.ReleaseForceOnFocusLoss ?? true;
                 if (SpringTerrainCheck != null)
                     SpringTerrainCheck.IsChecked = _plugin.Settings?.SpringModeTerrainEnabled ?? false;
                 if (SpringTerrainStrengthSlider != null)
@@ -4982,6 +4984,12 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetStopStreamOnPause(StopStreamOnPauseCheck.IsChecked == true);
+        }
+
+        private void ReleaseOnFocusLoss_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetReleaseForceOnFocusLoss(ReleaseOnFocusLossCheck.IsChecked == true);
         }
 
         // ---- Telemetry based FFB (Mode B) handlers. Global settings (not

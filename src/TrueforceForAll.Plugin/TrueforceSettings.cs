@@ -841,6 +841,16 @@ namespace TrueforceForAll.Plugin
         // turns it off afterward stays off.
         public bool  StopStreamOnPauseMigrated { get; set; } = false;
 
+        // Release the wheel when the game is no longer the foreground window.
+        // Sibling of StopStreamOnPause, for the games its test cannot reach.
+        // That one needs an authoritative session flag or telemetry to stop; a
+        // title that keeps its car idling in the background satisfies neither,
+        // so alt-tabbing out of Wreckfest left the tap's last captured force
+        // streaming for its full 10 s hold with no self-aligning torque to
+        // oppose it, and the wheel walked to its rotational stop (owner,
+        // 2026-08-16). Same full-lock class as issue #13, different trigger.
+        public bool  ReleaseForceOnFocusLoss  { get; set; } = true;
+
         // Optional absolute path to USBPcapCMD.exe, set when the user picks a
         // custom USBPcap location via the "Browse..." action in the diagnostics
         // panel. Empty = use the standard auto-probe (env var, Program Files,
