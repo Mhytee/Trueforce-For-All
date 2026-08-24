@@ -13858,16 +13858,47 @@ namespace TrueforceForAll.Plugin
         };
 
         // Fill a pattern combo with effects 1-9 (Tag = effect number).
+        /// <summary>Build the pattern picker.
+        ///
+        /// Three groups, and which of them appear depends on the tab. Locked, it
+        /// is the wheel's own nine effects and nothing else. Unlocked, the five
+        /// slots stop being listed as CUSTOM 1 to 5, because the library lists
+        /// them by name instead, and listing both would show every slot twice.
+        ///
+        /// Tags carry identity: an int for one of the wheel's effects, a pattern
+        /// id for a library row, and "*auto*" for the car's own colours. Nothing
+        /// keys off position.</summary>
         private void FillPatternCombo(ComboBox combo, System.Windows.Input.MouseButtonEventHandler onItemClick)
         {
-            for (int i = 1; i < RevLightEffectLabels.Length; i++)
+            combo.Items.Clear();
+
+            void Add(object content, object tag, bool enabled = true)
             {
-                var it = new ComboBoxItem { Content = RevLightEffectLabels[i], Tag = i };
+                var it = new ComboBoxItem { Content = content, Tag = tag, IsEnabled = enabled };
                 // Re-picking the SELECTED item raises no SelectionChanged;
                 // the click handler replays the preview for that case.
-                it.PreviewMouseLeftButtonUp += onItemClick;
+                if (enabled) it.PreviewMouseLeftButtonUp += onItemClick;
                 combo.Items.Add(it);
             }
+
+            if (_plugin != null && _plugin.AutoCarColorsAvailable())
+                Add("Auto (this car's own colours)", "*auto*");
+
+            bool unlocked = _plugin?.Settings?.LightsyncTabUnlocked == true;
+
+            // Unlocked, only the four firmware sweeps: slots 5 to 9 are the
+            // library's top five and are listed below under their own names.
+            int last = unlocked ? 4 : RevLightEffectLabels.Length - 1;
+            for (int i = 1; i <= last; i++) Add(RevLightEffectLabels[i], i);
+
+            if (!unlocked) return;
+
+            var lib = _plugin.LightPatterns;
+            if (lib?.Patterns == null || lib.Patterns.Count == 0) return;
+
+            Add("- your patterns -", null, enabled: false);
+            foreach (var p in lib.Patterns)
+                Add(p.OnWheel ? p.Name + "   (CUSTOM " + (p.Slot + 1) + ")" : p.Name, p.Id);
         }
 
         /// <summary>Sync one pattern combo to the wheel's known selection.
