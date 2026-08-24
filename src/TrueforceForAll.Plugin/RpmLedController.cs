@@ -36,6 +36,11 @@ namespace TrueforceForAll.Plugin
         private const int OpenMaxAttempts = 5;
         private int _lastBucket = -1;  // last LED count pushed (0..10), -1 = none
         private bool _lastRedline;
+
+        /// <summary>When the current redline burst began, so the flash can be
+        /// ANCHORED to it rather than to the wall clock. Zero means not at
+        /// redline.</summary>
+        private long _redlineStartMs;
         private long _lastPushTicks;
         /// <summary>Who currently owns the strip. One token instead of a pair of
         /// booleans that had to be read together: every guard used to spell out
@@ -214,13 +219,25 @@ namespace TrueforceForAll.Plugin
                 // Peak. Cars whose real dash holds the bar solid do that here
                 // too; the rest blink at their own rate where they publish one,
                 // else iRacing's ~2.7 Hz.
-                if (!RedlineBlinks) return steps;
+                if (!RedlineBlinks) { _redlineStartMs = 0; return steps; }
+
+                // Anchored to the START of this redline burst, not to the wall
+                // clock. Phase is not a detail here: at the right RATE but a free
+                // running clock, the wheel and the sim's own dash are as likely
+                // to be opposite as together, and half a period out reads as the
+                // wheel flashing while the car is dark. Both start their first
+                // phase LIT at the moment redline is reached, which is what puts
+                // them in step.
+                if (_redlineStartMs == 0) _redlineStartMs = nowMs;
                 long half = RedlineBlinkHalfMs > 0 ? RedlineBlinkHalfMs : 185L;
-                bool on = ((nowMs / half) & 1L) == 0L;
+                bool on = (((nowMs - _redlineStartMs) / half) & 1L) == 0L;
                 return on ? steps : 0;
             }
             else
             {
+                // Out of redline: the next burst starts its own phase.
+                _redlineStartMs = 0;
+
                 // Per-car curve first when one is set. It already returns whole
                 // levels derived from the car's own switch-on points, so the
                 // fractional hysteresis below does not apply; a threshold is a
