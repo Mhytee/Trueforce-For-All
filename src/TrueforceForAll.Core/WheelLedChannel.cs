@@ -123,7 +123,7 @@ namespace TrueforceForAll.Core
         // change and never bursts.
         //
         // THE OLD REASON GIVEN HERE WAS WRONG and is recorded because it was
-        // load-bearing for years. It claimed bursting LED writes starved the
+        // load-bearing. It claimed bursting LED writes starved the
         // game's FFB on the shared pipe and caused "FFB goes limp when the
         // lights come on". That is not what did it: the limp came from sending
         // FFB on the LED endpoint at all while Trueforce was driving force over

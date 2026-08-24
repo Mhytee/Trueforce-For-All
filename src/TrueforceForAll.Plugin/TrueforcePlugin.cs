@@ -1169,11 +1169,44 @@ namespace TrueforceForAll.Plugin
         // direction names mirror the settings picker's labels; the strip
         // itself is the primary feedback, this is for the dash bar and the
         // wheel screen.
+        //
+        // 5-9 are the wheel's five slots, and these are only the FACTORY labels
+        // for them. Anything that shows one to the user goes through
+        // RevPatternLabel, which names the pattern actually in the slot.
         private static readonly string[] RevPatternNames =
         {
             "", "INSIDE-OUT", "OUTSIDE-IN", "LEFT TO RIGHT", "RIGHT TO LEFT",
             "CUSTOM 1", "CUSTOM 2", "CUSTOM 3", "CUSTOM 4", "CUSTOM 5",
         };
+
+        /// <summary>Our name for the pattern living in one of the wheel's five
+        /// slots, or null when we have none. Reads the library in memory and
+        /// never touches the wheel, so it is safe on any path.</summary>
+        private string LibraryNameForSlot(int slot)
+        {
+            if (slot < 0 || slot >= WheelLedChannel.CustomSlotCount) return null;
+            var p = _lightPatterns?.Patterns?
+                .FirstOrDefault(x => x != null && x.Slot == slot);
+            return string.IsNullOrWhiteSpace(p?.Name) ? null : p.Name;
+        }
+
+        /// <summary>What to CALL effect 1-9 when showing it to the user.
+        ///
+        /// For the four built-in sweeps that is the fixed direction name. For the
+        /// five slots it is the name of the pattern in the slot, because "CUSTOM
+        /// 3" says nothing: the user named these, and cycling past them on the
+        /// rim read as five anonymous stops even though the plugin knew exactly
+        /// what each one was. The factory label is the fallback for a slot we
+        /// hold no pattern for.</summary>
+        private string RevPatternLabel(int effect)
+        {
+            if (effect >= 5 && effect <= 9)
+            {
+                string name = LibraryNameForSlot(effect - 5);
+                if (name != null) return name.ToUpperInvariant();
+            }
+            return effect >= 0 && effect < RevPatternNames.Length ? RevPatternNames[effect] : "";
+        }
 
         /// <summary>Step the wheel's rev-light pattern from a bound control,
         /// so a rim button switches patterns without leaving the wheel. Same
@@ -1216,7 +1249,7 @@ namespace TrueforceForAll.Plugin
                 stops.Add(new LightCycleStop { Auto = true, Label = "Auto (this car's colours)" });
 
             for (int e = 1; e <= 4; e++)
-                stops.Add(new LightCycleStop { Effect = e, Label = RevPatternNames[e] });
+                stops.Add(new LightCycleStop { Effect = e, Label = RevPatternLabel(e) });
 
             // Then the wheel's own slots, but only the ones that actually hold
             // something. A blank factory slot as a stop is a dark strip and a
@@ -1232,7 +1265,7 @@ namespace TrueforceForAll.Plugin
                 if (slot == stage) continue;
                 if (programmed[slot])
                     stops.Add(new LightCycleStop
-                    { Effect = 5 + slot, Label = RevPatternNames[5 + slot] });
+                    { Effect = 5 + slot, Label = RevPatternLabel(5 + slot) });
             }
 
             // Past the last slot the user has filled, the cycle carries straight
@@ -1409,9 +1442,10 @@ namespace TrueforceForAll.Plugin
             // Idle: one sweep shows the pick, same as the dropdown. Driving:
             // the preview self-suppresses and the live bar is the feedback.
             PickRevLightPattern(next, previewAfter: true);
-            DashReadout("REV PATTERN", RevPatternNames[next]);
+            string label = RevPatternLabel(next);
+            DashReadout("REV PATTERN", label);
             SimHub.Logging.Current.Info(
-                $"[TF4ALL] rev-light pattern -> {next} ({RevPatternNames[next]})");
+                $"[TF4ALL] rev-light pattern -> {next} ({label})");
         }
 
         public void CycleOledScreen(int direction)
@@ -6482,26 +6516,37 @@ namespace TrueforceForAll.Plugin
                             ? (Func<double, int, int?>)((r, steps) => LovelyLevel(gearNow, r, steps))
                             : null;
 
-                        // The blink point is deliberately NOT taken from the
-                        // published data. It comes from RevLimiter's cascade
-                        // (user value, then our own community car facts, then
-                        // telemetry, then the estimate), which is the same value
-                        // the rev-limiter buzz fires at, so the flash and the buzz
-                        // stay one "shift now" signal rather than two that
-                        // disagree. Overriding it here made the lights flash at a
-                        // third party's number while the wheel buzzed at ours.
+                        // The FLASH uses the car's own published redline for the
+                        // gear it is in, where we have one (owner, 2026-08-24).
+                        // The wheel was flashing at our shift point while the
+                        // sim's dash flashed at the car's, a constant offset that
+                        // reads as the two being out of step. This is also the
+                        // only route to a per-gear redline: the M4 GT3 redlines
+                        // at 7150 in first and 7250 in sixth, and no sim reports
+                        // that.
                         //
-                        // Their per-gear redlines are still worth having, and no
-                        // sim reports one, but the way to use them is to feed them
-                        // INTO that cascade below our own community data, so the
-                        // buzz moves with the flash. That is a change to
-                        // RevLimiterEffect, not to this call site.
+                        // KNOWN AND ACCEPTED: the rev-limiter BUZZ still fires at
+                        // RevLimiter's cascade, so on a covered car whose real
+                        // redline differs from ours the flash and the buzz can
+                        // now disagree. Moving the buzz too means changing where
+                        // a shipped, tuned effect fires for every covered car,
+                        // which is a feel change and a separate decision. The
+                        // route when it is taken is to feed these redlines INTO
+                        // that cascade below our own community data, in
+                        // RevLimiterEffect rather than here.
+                        bool flashRedline = redline;
+                        if (_lovelyCar != null && Settings?.LovelyCarDataEnabled == true)
+                        {
+                            var flashRamp = RampFor(_lovelyCar, gearNow);
+                            if (flashRamp != null && flashRamp.RedlineRpm > 0)
+                                flashRedline = frame.Rpms >= flashRamp.RedlineRpm;
+                        }
                         // Hand a borrowed slot back if the user has selected
                         // something else on the base itself.
                         ReleaseBorrowIfWheelMovedAway();
 
                         _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
-                                         redline, modeBLeds);
+                                         flashRedline, modeBLeds);
 
                         // Mirror to the dash. Deliberately outside the gate above:
                         // drawing on screen sends nothing to the wheel, so it works
@@ -6512,10 +6557,14 @@ namespace TrueforceForAll.Plugin
                         // else's to write.
                         PublishDashLights(_rpmLeds.LastLevel, redline, _rpmLeds.MirrorSteps);
 
-                        // Once per wheel, and only in a quiet window: what is the
-                        // wheel actually showing? Until it answers, the mirror
-                        // draws our own ramp.
-                        AdoptDashLightProfileOnce(modeBLeds);
+                        // Whenever the selection moves, and only while the pipe
+                        // is force-free: what is the wheel actually showing? Until
+                        // it answers, the mirror draws our own ramp. The gate is
+                        // ffbQuietProven rather than the LED gate above, because
+                        // this only reads: the narrower gate also demands Mode B
+                        // be armed, which would leave the dash stale for anyone
+                        // whose game lights its own wheel.
+                        SyncDashLightProfile(ffbQuietProven);
                     }
                     catch (Exception ex)
                     {
@@ -10858,6 +10907,13 @@ namespace TrueforceForAll.Plugin
                     if (!_rpmLeds.SelectPatternNow(effect))
                         SimHub.Logging.Current.Info(
                             "[RPM-LED] could not set the wheel selection (see log)");
+                    // The dash follows the pick straight away rather than waiting
+                    // for the telemetry poll to notice, which never happens at all
+                    // for someone cycling patterns in the menus with no game
+                    // running. Not gated on the game's force feedback, for the
+                    // same reason the pick itself is not: we have just written to
+                    // this pipe, so reading the slot back adds no exposure.
+                    PublishDashProfileForSelection(effect, _rpmLeds.MirrorSteps);
                     if (previewAfter) PreviewRevLightPattern();
                 }
                 catch (Exception ex)
