@@ -1223,8 +1223,21 @@ namespace TrueforceForAll.Plugin
             // ran out of room.
             if (stage >= 0)
                 foreach (var p in LightPatterns.Patterns)
+                {
+                    // A pattern that lives in a programmed slot of its own was
+                    // already added above, and adding it again here means every
+                    // one of the top five is visited TWICE on a cycle: once by
+                    // selecting its own slot, where the base shows that slot's
+                    // stored name, and once through the stage under its real
+                    // name. The stage is the exception, since it was skipped
+                    // above precisely so its pattern appears here instead.
+                    if (p == null) continue;
+                    if (p.Slot >= 0 && p.Slot != stage
+                        && p.Slot < WheelLedChannel.CustomSlotCount && programmed[p.Slot]) continue;
+
                     stops.Add(new LightCycleStop
                     { Effect = 5 + stage, Pattern = p, Label = p.Name });
+                }
 
             return stops;
         }
@@ -10857,10 +10870,14 @@ namespace TrueforceForAll.Plugin
                     // that are actually in them. One name write, no colour upload.
                     string wantName = WheelLedChannel.SlotNameFor(p.Name);
                     string haveName = ReadSlotName(slot);
-                    // A name we could not read is not a name we know to be wrong,
-                    // so leave it rather than writing on every single open.
-                    if (haveName != null
-                        && !string.Equals(haveName, wantName, StringComparison.Ordinal)
+                    // A name we cannot read is not a name we know to be RIGHT
+                    // either, and skipping the write on an unreadable name meant
+                    // slots 1 to 4 sat under their factory "CUSTOM n" labels
+                    // forever: the colour branch below is the only other thing
+                    // that names a slot, and it never runs once the colours
+                    // match. A name write is one cheap idempotent packet, far
+                    // less than the colour upload this branch exists to avoid.
+                    if (!string.Equals(haveName ?? string.Empty, wantName, StringComparison.Ordinal)
                         && WriteSlotName(slot, p.Name))
                         renames++;
                     continue;

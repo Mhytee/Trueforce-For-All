@@ -104,9 +104,14 @@ namespace TrueforceForAll.Plugin
         /// (2026-08-23): a nominal white reads R255 G150 B80, so red is the weak
         /// die and the other two come down to meet it. Green settled at 60,
         /// which is where the white-point measurement had already put it (150
-        /// of 255), so two independent routes agree on it. Blue settled well
-        /// above its measured 31, because cutting it that hard cost more in
-        /// brightness than it bought back in neutrality.
+        /// of 255), so two independent routes agree on it. Blue ended far above
+        /// its measured 31, at 65, after the shipped patterns were tuned by eye
+        /// against it: cutting blue hard enough to neutralise white cost more in
+        /// brightness than it bought back.
+        ///
+        /// Most of the shipped patterns in LightPatternLibrary were authored by
+        /// eye at THESE values, so moving them is not a free knob. See the test
+        /// that pins them.
         ///
         /// Applied to every wheel rather than to the G PRO alone. That is a
         /// smaller claim than it sounds: only a wheel that can take a slot
@@ -115,8 +120,8 @@ namespace TrueforceForAll.Plugin
         /// pure colour anyway. Split this per chassis the moment anyone reports
         /// their wheel looking off.</summary>
         public const float ShippedR = 1.00f;
-        public const float ShippedG = 0.60f;
-        public const float ShippedB = 0.38f;
+        public const float ShippedG = 0.606f;
+        public const float ShippedB = 0.649f;
 
         /// <summary>True when these gains are the identity, so callers can skip
         /// the copy and, more importantly, so the comparison sites below stay

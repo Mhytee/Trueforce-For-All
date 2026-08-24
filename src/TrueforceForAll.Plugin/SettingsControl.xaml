@@ -4918,7 +4918,7 @@
                              there with no mental flip. -->
                         <Expander x:Name="PatternMakerExpander" IsExpanded="False" Margin="0,16,0,4">
                             <Expander.Header>
-                                <TextBlock Text="Make your own patterns" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Pattern editor" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             </Expander.Header>
                             <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"

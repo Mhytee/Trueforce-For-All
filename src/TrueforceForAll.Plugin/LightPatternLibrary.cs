@@ -303,11 +303,11 @@ namespace TrueforceForAll.Plugin
             // middle. The classic GT dash look.
             ("Converge",     2, "6AFF006AFF00F8E71C060502FF0C00FF0C00060502F8E71C6AFF006AFF00"),
             // Teal deepening across the bar into blue, ending on magenta.
-            ("Deep Water",   3, "001414002828003C3C005050006464007878008C8C0D12D802034FF907D7"),
+            ("Deep Water",   3, "001414002828003C3C005050006464007878008C8C2F157D02034FF907D7"),
             // Blue and green at the ends, magenta meeting in the middle.
-            ("Neon Mirror",  2, "0000FF00FF33365D30101111FF009EFF009E101111365D3000FF330000FF"),
+            ("Neon Mirror",  2, "0000FF00FFAD00FF6C3916FBFF0037FF00373916FB00FF6C00FFAD0000FF"),
             // Yellow through orange into red: a heat ramp.
-            ("Heat",         3, "FFFF00FFD200FFAA00FF8C00FF7800FF6400FF5000FF3C00FF1E00FF0000"),
+            ("Heat",         3, "FFB400FFA000FF8C00FF7800FF6400FF5000FF3C00FF2800FF1400FF0000"),
             // Magenta into red, finishing green.
             ("Magenta Rush", 3, "FF00FFFF00FFFF00FFFF00FFFF0000FF0000FF0000FF000000FF0000FF00"),
             // Ten distinct colours. Unmistakable, so it shows instantly which end
@@ -321,26 +321,23 @@ namespace TrueforceForAll.Plugin
             // The canonical rev bar: five green, three amber, two red. Only two
             // red, because a ten-LED strip that turns red early reads as angry
             // long before the shift actually matters.
-            ("Classic",      3, "00C80000C80000C80000C80000C800FFA000FFA000FFA000FF0000FF0000"),
+            ("Classic",      3, "00FF0000FF0000FF0000FF0000FF00FFA000FFA000FFA000FF0000FF0000"),
             // The same idea folded in half. A mirrored fill drives the strip in
             // pairs, so the bands have to be even: four green, four amber, two
             // red, rather than the five/three/two that only works in a line.
             ("Classic Mirror", 2, "00C80000C800FFA000FFA000FF0000FF0000FFA000FFA00000C80000C800"),
             // Pale blue deepening to navy.
             //
-            // Stored PRE-TRIMMED on purpose, unlike every other builtin here.
-            // Read as sRGB these look like saturated blues, and they are meant
-            // to: run through the shipped colour trim they come out as the pale
-            // ramp the name promises. Both this and Split looked better with the
-            // trim off, so they were solved backwards from the appearance they
-            // had then (owner, 2026-08-23). Round-trips within one count per
-            // channel; blue cannot do better, since dividing by its 0.38 gain
-            // leaves only about 97 of the 256 levels reachable.
-            ("Ice",          3, "559DFF4995FF3D8EFF3186FF247FFF186FFF125BF00C47E00633C8001EA0"),
+            // Read as sRGB this looks like a set of saturated blues rather than
+            // a pale ramp, and it is meant to: it was tuned BY EYE on the rim at
+            // the shipped colour trim, so what matters is what comes out the far
+            // side of that trim, not how the stored bytes read on a screen. Move
+            // the shipped gains and this pattern needs retuning.
+            ("Ice",          3, "559DFF4995FF3D8EFF3186FF247FFF186FFF125BF00C47E00633E1001EFF"),
             // Warm at the top, cooling into purple as it runs back.
-            ("Sunset",       4, "FFD080FFA850FF8030FF5820F03828D02040A01860701070480C70280860"),
+            ("Sunset",       3, "FFD080FFA850FF8030FF5820F03828D02040A018607010704B0C7A4B0875"),
             // Barely-lit at the ends, white hot where the two halves meet.
-            ("Ember",        1, "401000802000C04000FF7000FFD070FFD070FF7000C04000802000401000"),
+            ("Ember",        1, "FF0200DC0600AF1000FF7000FFD070FFD070FF7000AF1000DC0600FF0200"),
             // Three hard bands with a dark LED between them. The gaps make the
             // moment it crosses from one band to the next unmissable.
             ("Traffic",      3, "00FF0000FF0000FF00000000FFB000FFB000FFB000000000FF0000FF0000"),
@@ -348,8 +345,14 @@ namespace TrueforceForAll.Plugin
             // brightness control, since nothing else is competing for the eye.
             ("Mono",         3, "101010282828404040585858707070888888A0A0A0C0C0C0E0E0E0FFFFFF"),
             // Deep blue at the ends closing on white in the middle.
-            // Pre-trimmed, same as Ice above: see the note there.
-            ("Split",        2, "0029FF0051FF007AFF318EFF61A2FF61A2FF318EFF007AFF0051FF0029FF"),
+            //
+            // Stored PRE-TRIMMED: solved backwards so that running it through
+            // the shipped trim reproduces the untrimmed appearance, which is the
+            // one that looked right (owner, 2026-08-23). Lands within one count
+            // per channel, which is the best available: dividing by a sub-unity
+            // gain leaves whole swathes of the 256 levels unreachable. Re-solve
+            // this if the shipped gains ever move.
+            ("Split",        2, "0045FF0089FF00CEFF53F0FF9BFFEE9BFFEE53F0FF00CEFF0089FF0045FF"),
             // Every other LED lit. Useless as a rev bar and the clearest thing
             // here for seeing which way a strip fills and where it starts.
             ("Chase",        3, "FFA000000000FFA000000000FFA000000000FFA000000000FFA000000000"),

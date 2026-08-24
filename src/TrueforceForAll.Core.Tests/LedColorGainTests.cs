@@ -159,26 +159,36 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0x42, outp[3]);
         }
 
-        [Theory]
-        // Ice and Split are stored PRE-TRIMMED: solved backwards from the
-        // appearance they had before the trim shipped, because they looked
-        // better that way. That makes them the two builtins that break if the
-        // shipped gains ever move, and nothing else would notice.
-        [InlineData("559DFF4995FF3D8EFF3186FF247FFF186FFF125BF00C47E00633C8001EA0",
-                    "E0F8FFC0ECFFA0E0FF80D4FF60C8FF40B0FF3090F02070E01050C80030A0")]
-        [InlineData("0029FF0051FF007AFF318EFF61A2FF61A2FF318EFF007AFF0051FF0029FF",
-                    "0040FF0080FF00C0FF80E0FFFFFFFFFFFFFF80E0FF00C0FF0080FF0040FF")]
-        public void PreTrimmedBuiltinsStillRenderAsTheyWereAuthored(string storedHex, string wantHex)
+        [Fact]
+        public void TheShippedTrimIsPinned()
         {
-            var stored = Hex(storedHex);
-            var want = Hex(wantHex);
+            // Not a tautology. Most of the patterns in LightPatternLibrary were
+            // authored BY EYE against these exact values, so changing them
+            // silently restyles the shipped library and nothing else in the
+            // suite would notice. If this fails on purpose, the shipped patterns
+            // need looking at on a wheel, not just updating to match.
+            Assert.Equal(1.00f, LedColorGain.ShippedR);
+            Assert.Equal(0.606f, LedColorGain.ShippedG);
+            Assert.Equal(0.649f, LedColorGain.ShippedB);
+        }
+
+        [Fact]
+        public void TheOnePreTrimmedBuiltinStillRendersAsAuthored()
+        {
+            // Split is the only builtin stored PRE-TRIMMED: solved backwards so
+            // that running it through the shipped trim reproduces the untrimmed
+            // appearance, which was the one that looked right. Everything else
+            // in the library was tuned by eye at the shipped gains instead, so
+            // Split is the only one with a checkable target.
+            var stored = Hex("0045FF0089FF00CEFF53F0FF9BFFEE9BFFEE53F0FF00CEFF0089FF0045FF");
+            var want = Hex("0040FF0080FF00C0FF80E0FFFFFFFFFFFFFF80E0FF00C0FF0080FF0040FF");
 
             var got = LedColorGain.Apply(stored,
                 LedColorGain.ShippedR, LedColorGain.ShippedG, LedColorGain.ShippedB);
 
-            // One count of slack per channel. Blue cannot do better: dividing by
-            // its shipped gain leaves only about 97 of the 256 levels reachable,
-            // so most targets are simply not addressable exactly.
+            // One count of slack per channel, which is the best available:
+            // dividing by a sub-unity gain leaves whole swathes of the 256
+            // levels unreachable, so most targets are not addressable exactly.
             for (int i = 0; i < want.Length; i++)
                 Assert.InRange(got[i], want[i] - 1, want[i] + 1);
         }
