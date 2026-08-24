@@ -10786,10 +10786,13 @@ namespace TrueforceForAll.Plugin
             if (_rpmLeds.IsDriving) return;
             // Parked, end LIT rather than dark. A sweep that finishes by turning
             // the strip off shows the user nothing, which is the whole reason
-            // they picked something. It does not stay lit forever though: the
-            // hold is re-armed by every further pick or edit, so it goes out a
-            // few seconds after the user stops.
-            _rpmLeds.PreviewPattern(endLevel: WheelLedChannel.LedCount, holdMs: ShowHoldMs);
+            // they picked something.
+            //
+            // On the PICK hold, not the edit one. This path is reached by
+            // choosing a pattern, where the sweep has already shown it and the
+            // full bar afterwards is just confirmation. Editing keeps the long
+            // hold, because there the bar IS the thing being worked on.
+            _rpmLeds.PreviewPattern(endLevel: WheelLedChannel.LedCount, holdMs: PickHoldMs);
         }
 
         /// <summary>Write one of the wheel's OWN slots, because the user is
@@ -10930,11 +10933,21 @@ namespace TrueforceForAll.Plugin
         /// One rule, in one place. The editor used to pass a full bar and the
         /// cycle the live level, which is exactly why clicking a pattern lit up
         /// and cycling to the same pattern did not.</summary>
-        /// <summary>How long a deliberately lit strip stays up before fading, once
-        /// the user stops touching anything. Long enough to look at a pattern and
-        /// compare it with the last one, short enough that a wheel left alone does
-        /// not sit at full brightness. Re-armed by every pick and every edit.</summary>
+        /// <summary>How long a lit strip stays up after an EDIT before fading.
+        /// Long: the user is working on that pattern, each change re-arms it, and
+        /// a bar that drops out between colour picks is the thing they are trying
+        /// to look at going away.</summary>
         private const int ShowHoldMs = 8000;
+
+        /// <summary>How long a lit strip stays up after a PICK. Much shorter than
+        /// an edit's hold, because picking is a glance and not a session: the
+        /// sweep has already shown the pattern and its fill, and holding the full
+        /// bar for another eight seconds afterwards reads as the wheel being
+        /// stuck rather than as an answer.
+        ///
+        /// Not zero. Ending dark would mean a pick shows nothing at the moment it
+        /// finishes, which is the whole reason someone pressed.</summary>
+        private const int PickHoldMs = 2500;
 
         private int ShowLevel =>
             (_rpmLeds?.IsDriving ?? false) ? -1 : WheelLedChannel.LedCount;
