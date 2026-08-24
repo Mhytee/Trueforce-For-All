@@ -13857,13 +13857,18 @@ namespace TrueforceForAll.Plugin
                 bool bound = IsPatternCycleBound();
 
                 string body =
-                    "Your wheel holds five light patterns. This tab lifts that.\n\n"
-                  + "•  As many patterns as you like, not five\n"
-                  + "•  Change pattern from any button on the wheel\n"
-                  + "•  A pattern per car, up the moment you get in\n"
-                  + "•  The real car's own colours, where the data exists\n\n"
-                  + "The lights share a channel with game force feedback, so they need "
-                  + "Telemetry Based FFB on.";
+                    "Your wheel has its own built-in sweeps and five slots you can fill. "
+                  + "This tab goes further.\n\n"
+                  + "•  As many patterns as you like, not just five slots\n"
+                  + "•  Change pattern from anything SimHub can see: a wheel button, "
+                  + "a button box, the keyboard, a pedal\n"
+                  + "•  Give a car its own pattern, so it comes up as you get in\n"
+                  + "•  Match the real car's own lights, where the shared car data "
+                  + "covers it. Best in the serious sims, and it grows as the data does\n"
+                  + "•  Put the gear, your speed and your last lap on the wheel's screen"+
+                    "\n\n"
+                  + "The lights and the screen share a channel with game force feedback, "
+                  + "so they need Telemetry Based FFB on.";
 
                 // The binder itself, in the dialog. Sending someone to another tab
                 // to find a row called "Rev pattern next" is how a feature stays

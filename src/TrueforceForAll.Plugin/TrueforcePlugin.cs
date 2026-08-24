@@ -11005,6 +11005,10 @@ namespace TrueforceForAll.Plugin
                     }
 
                     string msg;
+                    // ALWAYS trimmed: no rawColors here, deliberately. These are
+                    // upstream sRGB colours describing the real car, not bytes
+                    // anyone tuned against this wheel, so they need the same
+                    // correction as anything picked on screen.
                     bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
                     {
                         Slot = (byte)StageSlot(),

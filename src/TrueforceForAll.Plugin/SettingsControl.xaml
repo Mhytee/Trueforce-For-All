@@ -4813,7 +4813,7 @@
                  This tab owns no controls of its own. On unlock the code-behind
                  moves the live WheelLightsBlock into LightsyncTabHost, so the tab is
                  empty in the XAML by design. -->
-            <sh:SHTabItem x:Name="LightsyncTab" Header="LIGHTSYNC" Visibility="Collapsed">
+            <sh:SHTabItem x:Name="LightsyncTab" Header="LIGHTSYNC &amp; OLED" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,12" TextWrapping="Wrap"
