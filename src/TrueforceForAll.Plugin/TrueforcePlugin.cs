@@ -1186,6 +1186,7 @@ namespace TrueforceForAll.Plugin
         {
             public int Effect;              // 1..9
             public LightPattern Pattern;    // null for the wheel's own effects
+            public bool Auto;               // "let this car's own data decide"
             public string Label;
         }
 
@@ -1195,6 +1196,14 @@ namespace TrueforceForAll.Plugin
         private System.Collections.Generic.List<LightCycleStop> BuildLightCycle()
         {
             var stops = new System.Collections.Generic.List<LightCycleStop>();
+
+            // Auto first, where the pickers put it. Without a stop of its own a
+            // user who cycles away from the car's own colours can never get back
+            // to them from the rim: every other stop pins something, and pinning
+            // is precisely what turns Auto off.
+            if (AutoCarColorsAvailable())
+                stops.Add(new LightCycleStop { Auto = true, Label = "Auto (this car's colours)" });
+
             for (int e = 1; e <= 4; e++)
                 stops.Add(new LightCycleStop { Effect = e, Label = RevPatternNames[e] });
 
@@ -1263,7 +1272,16 @@ namespace TrueforceForAll.Plugin
             // same whether the user is looking at their own slot or at one of
             // ours standing in it. Read from memory, not by loading the backup
             // file on every press.
-            if (LibraryPatternShowing)
+            // Auto is checked FIRST. While the car's own colours are showing a
+            // stage slot may well be lent out too, so the library test below
+            // would claim the position and the cycle would step off from the
+            // wrong place.
+            if (AutoColorsShowing && !HasExplicitCarLightChoice()
+                && stops.FindIndex(s => s.Auto) >= 0)
+            {
+                at = stops.FindIndex(s => s.Auto);
+            }
+            else if (LibraryPatternShowing)
             {
                 at = stops.FindIndex(s => s.Pattern != null && s.Pattern.Id == LightPatterns.CurrentId);
                 if (at < 0) at = stops.FindIndex(s => s.Pattern != null);
@@ -1279,7 +1297,18 @@ namespace TrueforceForAll.Plugin
             int n = stops.Count;
             var next = stops[((at + (direction < 0 ? -1 : 1)) % n + n) % n];
 
-            if (next.Pattern != null)
+            if (next.Auto)
+            {
+                // Handing the car back to its own data, so anything we lent for
+                // a library pattern goes back first.
+                if (LibraryPatternShowing) ReleaseBorrowedSlot();
+                if (!UseAutoForActiveCar())
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] light cycle: no car data to hand back to");
+                    return false;
+                }
+            }
+            else if (next.Pattern != null)
             {
                 string msg;
                 // Cycling from the rim is the user choosing, so it sticks.
@@ -10781,9 +10810,14 @@ namespace TrueforceForAll.Plugin
         public void PreviewRevLightPattern()
         {
             if (_rpmLeds == null) return;
-            // Driving, the live bar is already the feedback and a sweep would
-            // only fight it.
-            if (_rpmLeds.IsDriving) return;
+            // Only skip when the live bar is actually LIT, not merely when a
+            // game is loaded. In the pits at idle the strip is dark, the live
+            // feed is showing nothing to fight, and skipping here left a pattern
+            // change with no feedback at all: a flicker from the write, then the
+            // bar reasserting zero. The preview holds for a moment and the live
+            // bar takes over again, which is correct, because the bar belongs to
+            // the revs.
+            if (_rpmLeds.LiveBarIsLit) return;
             // Parked, end LIT rather than dark. A sweep that finishes by turning
             // the strip off shows the user nothing, which is the whole reason
             // they picked something.

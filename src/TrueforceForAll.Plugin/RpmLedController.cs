@@ -80,6 +80,17 @@ namespace TrueforceForAll.Plugin
         /// i.e. the live bar itself will render a pattern change and a
         /// preview sweep would only interrupt it.</summary>
         public bool IsDriving => _lastBucket != -1 && _channel.IsReady;
+
+        /// <summary>The live bar is actually LIT, so a preview would fight
+        /// something the user can see.
+        ///
+        /// Not the same question as IsDriving, which only means a level has been
+        /// pushed at least once since the gate opened. Sitting in a car at idle
+        /// pushes level 0, so IsDriving is true while the strip is dark, and
+        /// gating the preview on it meant switching pattern in the pits gave a
+        /// flicker and then nothing: the write repainted, the live bar reasserted
+        /// zero, and the user never saw what they picked.</summary>
+        public bool LiveBarIsLit => _lastBucket > 0 && _channel.IsReady;
         // The open state used to append WheelLedChannel.ResolvedInfo, i.e. the
         // HID++ feature index and the device path. That is log material, not
         // panel material, and the log already carries the same string from the
@@ -544,7 +555,10 @@ namespace TrueforceForAll.Plugin
         public void HoldLit(int level, int holdMs)
         {
             if (TestOwnsLeds) return;
-            if (IsDriving) return;          // telemetry owns the bar; do not fight it
+            // LIT, not merely "a game is loaded". At idle the strip is dark and
+            // there is nothing to fight, and refusing here meant editing a
+            // colour in the pits showed the user nothing.
+            if (LiveBarIsLit) return;
             if (!_channel.IsReady) return;
             try { _channel.SetLevel(Math.Max(0, Math.Min(level, _channel.StripLength))); } catch { }
             ArmAutoOff(holdMs);
@@ -565,15 +579,15 @@ namespace TrueforceForAll.Plugin
                     // Anything at all happened since: another pick, an edit, the
                     // Test button, or a game started driving the bar.
                     if (_holdGen != gen || _owner != OwnerNone) return;
-                    if (IsDriving || !_channel.IsReady) return;
+                    if (LiveBarIsLit || !_channel.IsReady) return;
 
                     for (int lvl = _channel.StripLength - 1; lvl >= 0; lvl--)
                     {
-                        if (_holdGen != gen || _owner != OwnerNone || IsDriving) return;
+                        if (_holdGen != gen || _owner != OwnerNone || LiveBarIsLit) return;
                         _channel.SetLevel(lvl);
                         Thread.Sleep(70);
                     }
-                    if (_holdGen == gen && _owner == OwnerNone && !IsDriving)
+                    if (_holdGen == gen && _owner == OwnerNone && !LiveBarIsLit)
                     {
                         _channel.TurnOff();
                         _lastBucket = -1;
