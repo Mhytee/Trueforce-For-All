@@ -13602,6 +13602,82 @@ namespace TrueforceForAll.Plugin
             // (issue #17). Power users with a real need (multi-wheel
             // disambiguation, or a USBPcap interface mismatch they want to
             // override) flip it on here; persists across restarts.
+            // Designate which custom slot the plugin may borrow, or 0 for none.
+            if (code.StartsWith("SLOTPICK", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                int n;
+                if (!int.TryParse(code.Substring("SLOTPICK".Length).Trim(), out n) || n < 0 || n > 5)
+                {
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "SLOTPICK<n>: 1-5 to designate CUSTOM n, or 0 for none.";
+                    return;
+                }
+                _plugin.ReleaseBorrowedSlot();
+                _plugin.Settings.LightsyncDynamicSlot = n == 0 ? -1 : n - 1;
+                _plugin.ResetStageSlot();
+                _plugin.PersistSettings();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = n == 0
+                        ? "No slot designated. The plugin will not write any of your slots."
+                        : "CUSTOM " + n + " designated. Its contents are backed up before the first write, "
+                          + "and SLOTRESTORE" + n + " puts them back.";
+                return;
+            }
+
+            // Write an ASYMMETRIC rainbow into a slot, or put the user's own
+            // colours back. Asymmetric on purpose: which end the RED lands on is
+            // what tells us which physical LED the code counts as number 1.
+            if (code.StartsWith("SLOTWRITE", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("SLOTRESTORE", StringComparison.OrdinalIgnoreCase))
+            {
+                bool restore = code.StartsWith("SLOTRESTORE", StringComparison.OrdinalIgnoreCase);
+                int n;
+                if (!int.TryParse(code.Substring(restore ? "SLOTRESTORE".Length : "SLOTWRITE".Length).Trim(), out n)
+                    || n < 1 || n > 5) n = 5;
+                int slot = n - 1;
+                AccessCodeBox.Text = string.Empty;
+
+                bool ok; string msg;
+                if (restore) ok = _plugin.RestoreSlot(slot, out msg);
+                else
+                {
+                    var wheelOrder = new byte[][]
+                    {
+                        new byte[] { 255, 0, 0 },   new byte[] { 255, 96, 0 },  new byte[] { 255, 255, 0 },
+                        new byte[] { 0, 255, 0 },   new byte[] { 0, 255, 128 }, new byte[] { 0, 255, 255 },
+                        new byte[] { 0, 128, 255 }, new byte[] { 0, 0, 255 },   new byte[] { 128, 0, 255 },
+                        new byte[] { 255, 0, 255 },
+                    };
+                    var rgb = new byte[WheelLedChannel.LedCount * 3];
+                    for (int i = 0; i < WheelLedChannel.LedCount; i++)
+                    {
+                        rgb[i * 3 + 0] = wheelOrder[i][0];
+                        rgb[i * 3 + 1] = wheelOrder[i][1];
+                        rgb[i * 3 + 2] = wheelOrder[i][2];
+                    }
+                    ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
+                    { Slot = (byte)slot, DirectionWire = 3, Rgb = rgb }, out msg, WheelLedChannel.LedCount);
+                    if (ok) _plugin.TestRpmLeds();
+                }
+
+                string detail = restore
+                    ? "Check the wheel's own LIGHTSYNC menu: CUSTOM " + n + " should look as it did before."
+                    : "The strip is now sweeping: it fills 0 to 10 and back, twice, then holds the full bar."
+                      + "\n\nColours stored, LED 1 to LED 10: red, orange, yellow, green, spring "
+                      + "green, cyan, azure, blue, violet, magenta."
+                      + "\n\nWhich end does the fill START from, and which colour is there? That says "
+                      + "which physical LED the code counts as number 1."
+                      + "\n\nType SLOTRESTORE" + n + " to put your own colours back.";
+
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    restore ? "Restore light slot" : "Write light slot",
+                    (msg ?? "(no detail)") + "\n\n" + detail,
+                    ok ? DialogKind.Info : DialogKind.Warning);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                return;
+            }
+
             // Read-only: ask the wheel whether it implements per-slot LIGHTSYNC
             // colours and dump what each custom slot holds. Writes nothing.
             if (code.Equals("SLOTPROBE", StringComparison.OrdinalIgnoreCase))
@@ -13797,10 +13873,37 @@ namespace TrueforceForAll.Plugin
         /// <summary>Sync one pattern combo to the wheel's known selection.
         /// Both pickers show the same thing: where the wheel actually is
         /// (empty until the channel has read it once).</summary>
+        /// <summary>Point the combo at whatever the wheel is actually showing.
+        ///
+        /// By TAG rather than by index: the list is no longer a fixed 1..9 of the
+        /// wheel's own effects. It carries an automatic entry and one row per
+        /// library pattern, so position means nothing and only the tag
+        /// identifies a row.
+        ///
+        /// Three cases, most specific first. The car's own colours are showing
+        /// and the user has not overridden them; a library pattern is in a slot,
+        /// where the borrowed slot means "whatever we last wrote there" and any
+        /// other slot means the pattern that lives in it; or it is one of the
+        /// wheel's own nine effects.</summary>
         private void SyncPatternCombo(ComboBox combo)
         {
-            int v = _plugin.GetWheelPatternSelection();
-            combo.SelectedIndex = (v >= 1 && v <= 9) ? v - 1 : -1;
+            int sel = _plugin.GetWheelPatternSelection();
+
+            if (_plugin.AutoCarColorsAvailable() && !_plugin.HasExplicitCarLightChoice()
+                && _plugin.AutoColorsShowing && PointComboAtTag(combo, "*auto*"))
+                return;
+
+            if (_plugin.Settings?.LightsyncTabUnlocked == true && sel >= 5 && sel <= 9)
+            {
+                var lib = _plugin.LightPatterns;
+                int slot = sel - 5;
+                string tag = _plugin.BorrowedSlot == slot
+                    ? lib?.CurrentId
+                    : lib?.Patterns.FirstOrDefault(p => p != null && p.Slot == slot)?.Id;
+                if (PointComboAtTag(combo, tag)) return;
+            }
+
+            PointComboAtTag(combo, (sel >= 1 && sel <= 9) ? (object)sel : null);
         }
 
         /// <summary>Sync a row's Remember button + status line to the active
@@ -13810,14 +13913,27 @@ namespace TrueforceForAll.Plugin
         private void SyncRememberControls(ComboBox combo, System.Windows.Controls.Button btn,
             TextBlock status, System.Windows.Documents.Run run)
         {
+            // Two kinds of thing can be remembered for a car now: one of the
+            // wheel's own nine effects (an int tag) or a library pattern (a
+            // string id tag). Both have to be handled, or Remember reads as
+            // broken for exactly the patterns this tab exists to make.
             bool hasCar = !string.IsNullOrEmpty(_plugin.ActiveCarId);
-            int sel = (combo?.SelectedItem as ComboBoxItem)?.Tag is int t ? t : 0;
-            int? rem = hasCar ? _plugin.GetCarRememberedPattern() : null;
+            object tag = (combo?.SelectedItem as ComboBoxItem)?.Tag;
+            int selEffect = tag is int t ? t : 0;
+            string selPatternId = tag as string;
+
+            int? remEffect = hasCar ? _plugin.GetCarRememberedPattern() : null;
+            LightPattern remPattern = hasCar ? _plugin.GetCarRememberedLightPattern() : null;
+
             if (btn != null)
             {
-                btn.IsEnabled = hasCar && sel >= 1 && sel <= 9 && rem != sel;
-                btn.Content = (rem.HasValue && rem.Value == sel)
-                    ? "Remembered" : "Remember for this car";
+                bool already = selPatternId != null
+                    ? remPattern?.Id == selPatternId
+                    : remEffect.HasValue && remEffect.Value == selEffect;
+                btn.IsEnabled = hasCar && (selPatternId != null
+                    ? remPattern?.Id != selPatternId
+                    : selEffect >= 1 && selEffect <= 9 && remEffect != selEffect);
+                btn.Content = already ? "Remembered" : "Remember for this car";
                 btn.ToolTip = hasCar
                     ? "Optional: re-apply this pattern whenever this car loads. "
                       + "Your pick is already on the wheel either way."
@@ -13825,10 +13941,13 @@ namespace TrueforceForAll.Plugin
             }
             if (status != null)
             {
-                bool show = rem.HasValue && rem.Value >= 1 && rem.Value <= 9;
-                status.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-                if (show && run != null)
-                    run.Text = $"Remembered: {RevLightEffectLabels[rem.Value]}";
+                string what = remPattern != null
+                    ? remPattern.Name
+                    : (remEffect.HasValue && remEffect.Value >= 1 && remEffect.Value <= 9)
+                        ? RevLightEffectLabels[remEffect.Value]
+                        : null;
+                status.Visibility = what == null ? Visibility.Collapsed : Visibility.Visible;
+                if (what != null && run != null) run.Text = "Remembered: " + what;
             }
         }
 
