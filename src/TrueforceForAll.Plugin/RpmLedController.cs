@@ -225,12 +225,18 @@ namespace TrueforceForAll.Plugin
                 // clock. Phase is not a detail here: at the right RATE but a free
                 // running clock, the wheel and the sim's own dash are as likely
                 // to be opposite as together, and half a period out reads as the
-                // wheel flashing while the car is dark. Both start their first
-                // phase LIT at the moment redline is reached, which is what puts
-                // them in step.
+                // wheel flashing while the car is dark.
+                //
+                // The first phase is DARK, which looks backwards written down.
+                // Coming up on redline the bar is already fully lit by the rev
+                // ramp, so the first thing that CHANGES on the sim's dash at the
+                // redline is it going out. Starting our own burst lit repeats a
+                // state the driver is already looking at and puts us half a
+                // period behind for the rest of the burst (owner, 2026-08-24:
+                // "when one is off, the other is on").
                 if (_redlineStartMs == 0) _redlineStartMs = nowMs;
                 long half = RedlineBlinkHalfMs > 0 ? RedlineBlinkHalfMs : 185L;
-                bool on = (((nowMs - _redlineStartMs) / half) & 1L) == 0L;
+                bool on = (((nowMs - _redlineStartMs) / half) & 1L) == 1L;
                 return on ? steps : 0;
             }
             else

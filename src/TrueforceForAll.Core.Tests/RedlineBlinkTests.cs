@@ -30,21 +30,23 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void TheFlashStartsLitSoItLinesUpWithTheSimsOwnDash()
+        public void TheFlashStartsDarkSoItLinesUpWithTheSimsOwnDash()
         {
             var c = Make();
 
-            // The very first frame of a redline burst must be LIT. A free running
-            // clock made this a coin toss, and landing on the off phase put the
-            // wheel exactly opposite the car's dash: dark while the sim was lit.
+            // The very first frame of a redline burst must be DARK. Approaching
+            // redline the bar is already fully lit by the rev ramp, so the first
+            // thing that CHANGES on the sim's dash is it going out; opening our
+            // own burst lit repeats a state the driver already sees and leaves us
+            // half a period behind for the rest of it.
             c.OnFrame(1.0, 8000, 8000, redline: true, gateOpen: true);
-            Assert.True(c.LastLevel > 0);
+            Assert.Equal(0, c.LastLevel);
 
             // And again after dropping out of redline: each burst gets its own
             // phase rather than inheriting whatever the clock was doing.
             c.OnFrame(0.5, 4000, 8000, redline: false, gateOpen: true);
             c.OnFrame(1.0, 8000, 8000, redline: true, gateOpen: true);
-            Assert.True(c.LastLevel > 0);
+            Assert.Equal(0, c.LastLevel);
         }
 
         [Fact]

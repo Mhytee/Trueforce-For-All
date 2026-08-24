@@ -65,6 +65,15 @@
     <Compile Include="..\TrueforceForAll.Plugin\LightSlotBackup.cs">
       <Link>Linked\LightSlotBackup.cs</Link>
     </Compile>
+    <!-- Rev-level decision. Links cleanly because the controller talks to
+         WheelLedChannel (Core) and nothing else, and an unopened channel is
+         inert, so the level maths can be exercised with no wheel present.
+         Worth pinning because the dash mirror reads LastLevel and the whole
+         point of computing it apart from the write is that it stays honest in
+         the frames where the write does not happen. -->
+    <Compile Include="..\TrueforceForAll.Plugin\RpmLedController.cs">
+      <Link>Linked\RpmLedController.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

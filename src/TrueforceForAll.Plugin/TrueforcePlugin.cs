@@ -6516,37 +6516,23 @@ namespace TrueforceForAll.Plugin
                             ? (Func<double, int, int?>)((r, steps) => LovelyLevel(gearNow, r, steps))
                             : null;
 
-                        // The FLASH uses the car's own published redline for the
-                        // gear it is in, where we have one (owner, 2026-08-24).
-                        // The wheel was flashing at our shift point while the
-                        // sim's dash flashed at the car's, a constant offset that
-                        // reads as the two being out of step. This is also the
-                        // only route to a per-gear redline: the M4 GT3 redlines
-                        // at 7150 in first and 7250 in sixth, and no sim reports
-                        // that.
-                        //
-                        // KNOWN AND ACCEPTED: the rev-limiter BUZZ still fires at
-                        // RevLimiter's cascade, so on a covered car whose real
-                        // redline differs from ours the flash and the buzz can
-                        // now disagree. Moving the buzz too means changing where
-                        // a shipped, tuned effect fires for every covered car,
-                        // which is a feel change and a separate decision. The
-                        // route when it is taken is to feed these redlines INTO
-                        // that cascade below our own community data, in
-                        // RevLimiterEffect rather than here.
-                        bool flashRedline = redline;
-                        if (_lovelyCar != null && Settings?.LovelyCarDataEnabled == true)
-                        {
-                            var flashRamp = RampFor(_lovelyCar, gearNow);
-                            if (flashRamp != null && flashRamp.RedlineRpm > 0)
-                                flashRedline = frame.Rpms >= flashRamp.RedlineRpm;
-                        }
+                        // The FLASH deliberately does NOT resolve its own
+                        // redline here. It rides `redline`, which upstream takes
+                        // from RevLimiter.EffectiveRedlineRpm, so the flash, the
+                        // fill onset and the limiter buzz are one "shift now"
+                        // signal by construction rather than by three call sites
+                        // agreeing. The published per-gear redlines that make the
+                        // wheel line up with the sim's own dash are fed INTO that
+                        // cascade (RevLimiterEffect.ResolveEffectiveRedline), not
+                        // spliced in at this call site: doing it here once made
+                        // the lights flash at the car's redline while the wheel
+                        // buzzed at ours (owner, 2026-08-24).
                         // Hand a borrowed slot back if the user has selected
                         // something else on the base itself.
                         ReleaseBorrowIfWheelMovedAway();
 
                         _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
-                                         flashRedline, modeBLeds);
+                                         redline, modeBLeds);
 
                         // Mirror to the dash. Deliberately outside the gate above:
                         // drawing on screen sends nothing to the wheel, so it works
