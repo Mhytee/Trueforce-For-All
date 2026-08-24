@@ -7311,8 +7311,21 @@ namespace TrueforceForAll.Plugin
             _lovelyGear = null;
             PublishLovelyRedlines();
 
-            if (Settings?.LovelyCarDataEnabled != true) return;
-            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+            // Both early returns below skip ApplyCarColorsOnLoad, which is the
+            // only thing that hands the lights back. Without this, colours we
+            // borrowed for the PREVIOUS car survive switching to a car with no
+            // id (an unrecognised car) or turning the feature off mid-session,
+            // and the wheel keeps showing a car the user is no longer in.
+            if (Settings?.LovelyCarDataEnabled != true
+                || string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId))
+            {
+                if (_autoAppliedColors)
+                {
+                    _autoAppliedColors = false;
+                    ApplyStickyPattern();
+                }
+                return;
+            }
 
             try
             {
@@ -7385,9 +7398,10 @@ namespace TrueforceForAll.Plugin
         /// Deliberately routed through that cascade rather than applied at the
         /// LED call site: the flash, the fill onset and the limiter buzz all read
         /// EffectiveRedlineRpm, so going through it keeps them one "shift now"
-        /// signal, and the cascade already ranks our own community consensus
-        /// above any outside dataset. Null when the feature is off or the car has
-        /// no entry, which restores the previous behaviour exactly.</summary>
+        /// signal. The cascade ranks these above the game's own telemetry redline,
+        /// because telemetry reports the engine limiter while these record where
+        /// the real car's dash lights up. Null when the feature is off or the car
+        /// has no entry, which restores the previous behaviour exactly.</summary>
         private void PublishLovelyRedlines()
         {
             bool have = Settings?.LovelyCarDataEnabled == true && _lovelyCar != null;
@@ -11205,7 +11219,20 @@ namespace TrueforceForAll.Plugin
                     // Remember that the lights are OURS now, so the next car
                     // without data knows to put the user's pattern back. Set only
                     // on a write that landed.
-                    if (ok) _autoAppliedColors = true;
+                    if (ok)
+                    {
+                        _autoAppliedColors = true;
+                        // CurrentId means "the library pattern currently on the
+                        // wheel", and after this write there is not one. Leaving
+                        // it pointing at the pattern we just painted over made
+                        // ApplyStickyPattern's "already showing" shortcut fire on
+                        // the NEXT car: it compared the sticky id against a stale
+                        // CurrentId, matched, and returned without writing, so a
+                        // car the dataset knows nothing about kept the previous
+                        // car's colours instead of restoring the user's pick.
+                        LightPatterns.CurrentId = null;
+                        LibraryPatternShowing = false;
+                    }
 
                     // The dash mirrors the car's colours whether or not the wheel
                     // write landed: on screen there is nothing to refuse us.
