@@ -213,6 +213,58 @@ namespace TrueforceForAll.Plugin.Effects
         /// contributed.</summary>
         public bool IsRedlineGuessed { get; private set; }
 
+        /// <summary>Per-gear redlines from a published car-data set, keyed by
+        /// forward gear number. Null or empty (the default, and every car with no
+        /// published entry) leaves the cascade exactly as it was.
+        ///
+        /// Sits below the game's telemetry redline AND below our own community
+        /// consensus, above only the 0.85 estimate. Named for the kind of source
+        /// rather than the project supplying it, so swapping or adding datasets
+        /// never reaches into this effect.</summary>
+        public System.Collections.Generic.Dictionary<int, int> PublishedGearRedlines { get; set; }
+
+        /// <summary>Apply the published per-gear SHAPE around an absolute anchor
+        /// that came from a more trusted source.
+        ///
+        /// The case this exists for: our community agrees one redline for a car
+        /// while the published dataset carries a complete per-gear set. Taking
+        /// the dataset's absolute would override our own users; ignoring it
+        /// throws away the only per-gear information anyone has. So we keep our
+        /// number as the anchor and adopt only the dataset's DEVIATIONS around
+        /// its own mean. Our community still decides where the redline is; the
+        /// dataset only says how it moves between gears.
+        ///
+        /// Inert by construction where the data says nothing: on a car whose
+        /// published gears are all equal (665 of 717) every deviation is zero, so
+        /// this returns the anchor untouched. It only ever acts on the cars where
+        /// the variation is real.
+        ///
+        /// Skipped entirely when the anchor is ALREADY per-gear (the user's own
+        /// per-gear values, our community's per-gear consensus): a more specific
+        /// source must never be reshaped by a less trusted one.</summary>
+        private int ApplyPublishedShape(int anchor, bool anchorIsPerGear, double maxRpm)
+        {
+            if (anchorIsPerGear || _currentGear < 1) return anchor;
+            var map = PublishedGearRedlines;
+            if (map == null || map.Count < 2) return anchor;
+
+            int mine;
+            if (!map.TryGetValue(_currentGear, out mine) || mine <= MinEngineRpm) return anchor;
+
+            double sum = 0; int n = 0;
+            foreach (var kv in map)
+                if (kv.Key >= 1 && kv.Value > MinEngineRpm) { sum += kv.Value; n++; }
+            if (n < 2) return anchor;
+
+            int shaped = (int)Math.Round(anchor + (mine - sum / n));
+
+            // A deviation big enough to push the cue outside the plausible band
+            // says the two sources disagree about more than shape, so keep ours.
+            if (shaped <= MinEngineRpm) return anchor;
+            if (maxRpm > MinEngineRpm && shaped > maxRpm * 1.05) return anchor;
+            return shaped;
+        }
+
         private int? ResolveEffectiveRedline(double redlineRpm, double maxRpm)
         {
             // The cascade is per-variant and DERIVED LIVE every frame: the
@@ -258,7 +310,9 @@ namespace TrueforceForAll.Plugin.Effects
                     || (redlineRpm <= maxRpm * 1.02 && redlineRpm >= maxRpm * 0.5)))
             {
                 IsRedlineGuessed = false;
-                return (int)Math.Round(redlineRpm);
+                // One figure for the whole car, so the published per-gear shape
+                // can move it between gears without contradicting the game.
+                return ApplyPublishedShape((int)Math.Round(redlineRpm), anchorIsPerGear: false, maxRpm);
             }
 
             // Community per-gear consensus for the CURRENT gear (each gear was
@@ -292,7 +346,37 @@ namespace TrueforceForAll.Plugin.Effects
                     CarFactsRedline.Value, maxRpm, MinEngineRpm))
             {
                 IsRedlineGuessed = false;
-                return CarFactsRedline.Value;
+                // THE CASE THIS BLEND EXISTS FOR: our community agreed one value
+                // for the car, the dataset has a full per-gear set. Ours stays the
+                // anchor; theirs only bends it per gear.
+                return ApplyPublishedShape(CarFactsRedline.Value, anchorIsPerGear: false, maxRpm);
+            }
+
+            // Published per-car dataset, keyed by forward gear (currently the
+            // lovely-car-data project; the field is named for the KIND of source
+            // so this effect never has to know which one).
+            //
+            // Deliberately the lowest real tier, below both the game's own
+            // telemetry and our community consensus. Our users agreeing a value
+            // for THIS car in THIS game outranks an outside dataset, and the game
+            // reporting one outranks both. But a published figure comfortably
+            // beats a fraction of MaxRpm, which is the only thing left below.
+            //
+            // Landing it HERE rather than at the LED call site is the point: the
+            // rev-light flash, the fill onset and the limiter buzz all read
+            // EffectiveRedlineRpm, so they move together instead of the lights
+            // flashing at one number while the wheel buzzes at another.
+            //
+            // Forward gears only: _currentGear is 0 for reverse and neutral, and
+            // a published reverse ramp says nothing about a shift point. Same
+            // sanity clamp as the community per-gear tier.
+            if (_currentGear >= 1 && PublishedGearRedlines != null
+                && PublishedGearRedlines.TryGetValue(_currentGear, out int pubGear)
+                && pubGear > MinEngineRpm
+                && (maxRpm <= MinEngineRpm || pubGear <= maxRpm * 1.05))
+            {
+                IsRedlineGuessed = false;
+                return pubGear;
             }
 
             // Default fallback: 0.85 of MaxRpm so games without any
@@ -320,7 +404,14 @@ namespace TrueforceForAll.Plugin.Effects
             //      the community consensus below.
             //   c. Community consensus (CarFactsRedline; mainly the no-
             //      telemetry-redline / Forza case).
-            //   d. Default fallback: 0.85 x MaxRpm (the guess; badged).
+            //   d. Published per-car dataset, per forward gear
+            //      (PublishedGearRedlines) - an outside source, so it ranks
+            //      below our own community's agreed value.
+            //   e. Default fallback: 0.85 x MaxRpm (the guess; badged).
+            //   Across (b) and (c), which give ONE figure for the whole car, the
+            //   published set also contributes its per-gear SHAPE around that
+            //   anchor (ApplyPublishedShape). (a) and the per-gear community
+            //   tier are already gear-specific and are never reshaped.
             //   (EVs stay silent after (a) unless the user opted that gear in.)
             int? effectiveRedline = ResolveEffectiveRedline(redlineRpm, maxRpm);
             EffectiveRedlineRpm = effectiveRedline;

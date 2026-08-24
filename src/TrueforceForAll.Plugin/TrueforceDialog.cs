@@ -59,9 +59,14 @@ namespace TrueforceForAll.Plugin
             // button) so the affirmative reads as the obvious path. For
             // offers where declining costs the user something and accepting
             // costs nothing. Off by default.
-            bool quietCancel = false)
+            bool quietCancel = false,
+            // Opt-in: a live control dropped between the body and the buttons,
+            // so a dialog can carry the thing it is talking about (a key binder,
+            // for instance) instead of describing where to find it.
+            UIElement extraContent = null)
         {
-            var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk, quietCancel);
+            var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk, quietCancel,
+                                          extraContent);
             if (owner != null)
             {
                 dlg.Owner = owner;
@@ -265,9 +270,20 @@ namespace TrueforceForAll.Plugin
         }
 
         private TrueforceDialog(string title, string body, DialogKind kind,
-            string okLabel, string cancelLabel, bool goldOk = false, bool quietCancel = false)
+            string okLabel, string cancelLabel, bool goldOk = false, bool quietCancel = false,
+            UIElement extraContent = null)
         {
             var btnRow = BuildChrome(title, body, kind);
+
+            // Optional live control between the body and the buttons, for a
+            // dialog that should let the user DO the thing it is describing
+            // rather than sending them off to find it. Same insertion point the
+            // checkbox variant uses.
+            if (extraContent != null)
+            {
+                var root = btnRow.Parent as StackPanel;
+                if (root != null) root.Children.Insert(root.Children.Count - 1, extraContent);
+            }
 
             bool isDestructive = kind == DialogKind.Destructive;
             // A cancel button is shown for the two-choice kinds (Confirm /

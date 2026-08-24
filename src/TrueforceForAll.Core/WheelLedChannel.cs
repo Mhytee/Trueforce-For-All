@@ -92,6 +92,16 @@ namespace TrueforceForAll.Core
         private const byte RootGetFn  = 0x0B;  // root getFeature: fn0 | sw-id 0x0B
 
         private const ushort PageRevLights = 0x807A; // LIGHTSYNC effect / rev level
+        // Per-slot RGB config (Logitech: RPM_LED_PATTERN). Where a custom
+        // LIGHTSYNC slot's colours and animation direction live. Documented from
+        // mescon's Linux driver, which verified it on an RS50; whether a G PRO
+        // implements it is exactly what ProbeSlotFeature exists to find out.
+        private const ushort PageSlotConfig = 0x807B;
+        // Standard HID++ brightness control. A DEVICE-level setting, not part of a
+        // slot: mescon's driver stomped users' stored profile brightness by
+        // writing it during slot applies (his issue #29), which is why our slot
+        // writes never touch it and this lives on its own.
+        private const ushort PageBrightness = 0x8040;
         private const byte SwId            = 0x0D;   // fn-byte sw-id nibble of the captured host
 
         /// <summary>Default / maximum strip length. The real per-wheel length
@@ -380,6 +390,12 @@ namespace TrueforceForAll.Core
             _stripLen = LedCount;
             _wokeDarkPanel = false;
             _ready = false;
+            // Feature indices are per-connection. _idxRev is re-resolved on every
+            // open, but these short-circuit on a cached non-zero value, so a
+            // reconnect (or a different base) would otherwise send a persistent
+            // 32-byte slot write to whatever feature now sits at the old index.
+            _idxSlot = 0;
+            _idxBrightness = 0;
         }
 
         private static void DisposeAll(List<HidStream> streams)
@@ -540,11 +556,45 @@ namespace TrueforceForAll.Core
                 var buf = new byte[LenVeryLong];
                 for (int i = 0; i < 64; i++)
                 {
-                    try { if (s.Read(buf, 0, buf.Length) <= 0) break; }
+                    int n;
+                    try { n = s.Read(buf, 0, buf.Length); if (n <= 0) break; }
                     catch { break; }
+                    // Frames we were going to discard anyway. Reading the wheel's
+                    // own change notifications out of them costs nothing and adds
+                    // no traffic; see NoteEffectBroadcast.
+                    NoteEffectBroadcast(buf, n);
                 }
             }
             finally { try { s.ReadTimeout = old; } catch { } }
+        }
+
+        /// <summary>Learn the wheel's selection from an UNSOLICITED effect-change
+        /// notification, which is how a change made on the base's own menu reaches
+        /// us. Without this our idea of the selection only ever reflects what WE
+        /// last wrote, so a user turning the knob themselves is invisible.
+        ///
+        /// Deliberately read-only and free: these frames already arrive on the
+        /// input endpoint and were being thrown away. Polling the wheel instead
+        /// would put real traffic on the pipe it shares with the game's force,
+        /// which is not worth it for this.
+        ///
+        /// Strict about what it accepts. A broadcast is our feature index with a
+        /// ZERO function byte (no function nibble, no software id, which is what
+        /// makes it a notification rather than a reply to something we asked), and
+        /// an effect in the range the device actually uses. Anything else is left
+        /// alone, because guessing here would move our idea of the selection to a
+        /// slot the user is not on.</summary>
+        private void NoteEffectBroadcast(byte[] frame, int n)
+        {
+            if (frame == null || n < 5) return;
+            if (_idxRev == 0 || frame[2] != _idxRev) return;
+            if (frame[3] != 0x00) return;               // a reply, not a notification
+            int effect = frame[4];
+            if (effect < 1 || effect > 9) return;
+            if (_knownSelection == effect) return;
+
+            _knownSelection = effect;
+            _log($"[RPM-LED] wheel reports its selection changed to effect {effect}");
         }
 
         // Every observed reply arrives in ~3 ms (mescon measured a ~2.5 ms
@@ -556,19 +606,484 @@ namespace TrueforceForAll.Core
         /// reply into <paramref name="respOut"/>. False on write failure, no
         /// usable reply, or an error frame echoing this request.</summary>
         private bool TryQuery(byte fnByte, byte param0, byte[] respOut)
+            => TryQueryOn(_idxRev, fnByte, param0, respOut);
+
+        /// <summary>Same, against an arbitrary resolved feature index. Split out
+        /// so a second feature page can be questioned without the rev-light
+        /// index being assumed.</summary>
+        private bool TryQueryOn(byte featureIdx, byte fnByte, byte param0, byte[] respOut)
         {
             var s = _replyStream;
-            if (s == null) return false;
+            if (s == null || featureIdx == 0) return false;
             DrainReplies(s);
-            try { WriteShort(new byte[] { RepShort, DevWired, _idxRev, fnByte, param0, 0x00, 0x00 }); }
+            try { WriteShort(new byte[] { RepShort, DevWired, featureIdx, fnByte, param0, 0x00, 0x00 }); }
             catch (Exception ex) { _log($"[RPM-LED] query write failed: {ex.Message}"); return false; }
-            return TryMatchReply(s, fnByte, respOut, maxTimeouts: 2);
+            return TryMatchReply(s, featureIdx, fnByte, respOut, maxTimeouts: 2);
+        }
+
+        /// <summary>Number of custom LIGHTSYNC slots. Effects 5..9 ARE these
+        /// slots (5 = CUSTOM 1), which is how a slot is selected.</summary>
+        public const int CustomSlotCount = 5;
+
+        /// <summary>One stored LIGHTSYNC slot: which way it fills and what colour
+        /// each LED is.
+        ///
+        /// <see cref="Rgb"/> is 30 bytes in PHYSICAL LED order, LED 1 first. The
+        /// wire carries it reversed (LED 10 first); that is handled inside the
+        /// channel so nothing above it has to remember.</summary>
+        public sealed class WheelLedSlot
+        {
+            public byte Slot;
+
+            /// <summary>Device direction value, 1..4: 1 inside-out, 2 outside-in,
+            /// 3 left-to-right, 4 right-to-left. The firmware rejects anything
+            /// else, so callers must map their own enum onto these.</summary>
+            public byte DirectionWire;
+
+            /// <summary>3 bytes per LED, LED 1 first.</summary>
+            public byte[] Rgb;
+
+            public WheelLedSlot Clone() => new WheelLedSlot
+            {
+                Slot = Slot,
+                DirectionWire = DirectionWire,
+                Rgb = Rgb == null ? null : (byte[])Rgb.Clone(),
+            };
+        }
+
+        /// <summary>Resolve the per-slot RGB config page, or 0 if this wheel does
+        /// not implement it. Cached after the first successful resolve: feature
+        /// indices are fixed for the life of a connection.</summary>
+        private byte SlotFeatureIndex()
+        {
+            if (_idxSlot != 0) return _idxSlot;
+            _idxSlot = TryGetFeature(PageSlotConfig);
+            return _idxSlot;
+        }
+        private byte _idxSlot;
+
+        /// <summary>Read a stored slot's direction and colours.
+        ///
+        /// Colours come back in PHYSICAL LED order (LED 1 first). The wire order
+        /// is reversed (LED 10 first), and that reversal is handled here so no
+        /// caller has to think about it.</summary>
+        public bool TryReadSlot(int slot, out WheelLedSlot config)
+        {
+            config = null;
+            if (slot < 0 || slot >= CustomSlotCount) return false;
+
+            lock (_io)
+            {
+                if (!IsReady) return false;
+                if (_stripLen != LedCount) return false;   // see TryWriteSlot
+                byte idx = SlotFeatureIndex();
+                if (idx == 0) return false;
+
+                var resp = new byte[LenVeryLong];
+                _lastReplyLength = 0;
+                if (!TryQueryOn(idx, (byte)(0x10 | SwId), (byte)slot, resp)) return false;
+                if (resp[4] != slot) { _log($"[RPM-LED] slot {slot} read: echo mismatch"); return false; }
+
+                // REFUSE a reply too short to hold all thirty colour bytes.
+                //
+                // The reply buffer is 64 zeroed bytes, so a shorter frame (this
+                // page's wiring is not byte-verified on every wheel, and replies
+                // can land on the 20-byte LONG collection) leaves a tail of zeros
+                // that looks exactly like black LEDs. Accepting that would save a
+                // half-black pattern as the user's ORIGINAL, and the restore would
+                // later paint their slot black. Refusing is safe: the caller
+                // declines to write a slot it could not read.
+                const int needed = 6 + LedCount * 3;
+                if (_lastReplyLength < needed)
+                {
+                    _log($"[RPM-LED] slot {slot + 1} read: reply was {_lastReplyLength} bytes, "
+                         + $"needs {needed}; refusing rather than reading zeros as black LEDs");
+                    return false;
+                }
+
+                var rgb = new byte[LedCount * 3];
+                for (int i = 0; i < LedCount; i++)
+                {
+                    int src = 6 + (LedCount - 1 - i) * 3;   // 4 = slot, 5 = direction, then colours
+                    if (src + 2 >= resp.Length) return false;
+                    rgb[i * 3 + 0] = resp[src + 0];
+                    rgb[i * 3 + 1] = resp[src + 1];
+                    rgb[i * 3 + 2] = resp[src + 2];
+                }
+                config = new WheelLedSlot { Slot = (byte)slot, DirectionWire = resp[5], Rgb = rgb };
+                return true;
+            }
+        }
+
+        /// <summary>Write a slot's direction and colours, then select and repaint
+        /// it. Colours are given in PHYSICAL LED order and reversed onto the wire
+        /// here.
+        ///
+        /// THIS PERSISTS ON THE WHEEL. A slot is a saved preset, so this
+        /// overwrites whatever the user had stored there until something writes it
+        /// back. Callers must have taken a backup first.
+        ///
+        /// The sequence follows mescon's driver, which drives this page on both an
+        /// RS50 and a G PRO: select the slot's effect on 0x807A, a pre-config
+        /// level, the colour upload on 0x807B, a commit level, then enable. The
+        /// level is deliberately the CURRENT rev level rather than a full bar:
+        /// committing at full length flashes every LED (observed on this wheel
+        /// 2026-08-12), and our own testing showed fn7 promotes the staged effect
+        /// at any level. It is floored at 1 because a level of 0 blanks the strip
+        /// before the colours land, which is the bug that made mescon's uploads
+        /// look like they had done nothing.</summary>
+        /// <param name="displayLevel">How many steps to light once the colours
+        /// land. -1 (the default) keeps the current rev level, which is what
+        /// automatic use wants. Pass the strip length to show the whole pattern,
+        /// which is what a human verifying a write wants.</param>
+        public bool TryWriteSlot(WheelLedSlot config, int displayLevel = -1)
+        {
+            if (config == null || config.Rgb == null || config.Rgb.Length < LedCount * 3) return false;
+            if (config.Slot >= CustomSlotCount) return false;
+            byte dir = config.DirectionWire;
+            if (dir < 1 || dir > 4) dir = 3;    // firmware rejects anything else
+
+            lock (_io)
+            {
+                if (!IsReady) return false;
+                // The payload is a fixed ten-LED, thirty-byte block. A strip that
+                // is not ten steps (a G923 addresses five) would be sent a
+                // wrong-sized persistent write, so refuse rather than guess.
+                if (_stripLen != LedCount)
+                {
+                    _log($"[RPM-LED] slot write: this wheel has a {_stripLen}-step strip, "
+                         + $"not {LedCount}; refusing rather than writing a wrong-sized payload");
+                    return false;
+                }
+                if (_veryLong == null)
+                {
+                    // The colour upload needs the 64-byte collection. Finding out
+                    // AFTER the effect switch has gone out would leave the wheel
+                    // on the target slot showing its old colours.
+                    _log("[RPM-LED] slot write: no 64-byte collection on this wheel");
+                    return false;
+                }
+                byte idx = SlotFeatureIndex();
+                if (idx == 0) { _log("[RPM-LED] slot write: 0x807B not present"); return false; }
+
+                var resp = new byte[LenVeryLong];
+                try
+                {
+                    // 1. Select this slot's effect (5 + slot) on the rev page.
+                    if (!TryQuery(Fn(3), (byte)(0x05 + config.Slot), resp))
+                        _log($"[RPM-LED] slot write: SET_EFFECT {5 + config.Slot} not acknowledged, continuing");
+
+                    // 2. Pre-config level. Never 0 during the sequence itself: a
+                    // level of 0 switches the strip off before the colours land,
+                    // so they never appear. The level is put BACK afterwards.
+                    int wanted = displayLevel >= 0 ? displayLevel : _level;
+                    int lvl = Math.Max(1, Math.Min(_stripLen, wanted));
+                    SendFn6(lvl);
+
+                    // 3. The colour upload itself: [slot][direction][30 RGB, LED10 first].
+                    var pkt = new byte[LenVeryLong];
+                    pkt[0] = RepVeryLong; pkt[1] = DevWired; pkt[2] = idx; pkt[3] = (byte)(0x20 | SwId);
+                    pkt[4] = config.Slot;
+                    pkt[5] = dir;
+                    for (int i = 0; i < LedCount; i++)
+                    {
+                        int src = (LedCount - 1 - i) * 3;
+                        pkt[6 + i * 3 + 0] = config.Rgb[src + 0];
+                        pkt[6 + i * 3 + 1] = config.Rgb[src + 1];
+                        pkt[6 + i * 3 + 2] = config.Rgb[src + 2];
+                    }
+                    DrainReplies(_replyStream);
+                    WriteVeryLong(pkt);
+                    // Report failure rather than optimism. A caller that treats an
+                    // unacknowledged write as success can mark a backup settled
+                    // while the wheel still holds our colours, and the next borrow
+                    // then captures those as "the original".
+                    if (!TryMatchReply(_replyStream, idx, (byte)(0x20 | SwId), resp, maxTimeouts: 2))
+                    {
+                        _log("[RPM-LED] slot write: SET_CONFIG was not acknowledged");
+                        return false;
+                    }
+
+                    // 4. Commit + enable so the strip repaints with the new colours.
+                    SendFn6(lvl);
+                    TryQuery(Fn(7), 0x00, resp);
+
+                    // Step 1 changed which effect the wheel is on, so record it.
+                    // Leaving it stale made the settings picker keep naming the
+                    // OLD pattern, and worse, SelectPatternNow early-returns true
+                    // without writing when the cache already names the effect
+                    // asked for, so picking the one it wrongly named did nothing
+                    // at all and there was no way back through the UI.
+                    _knownSelection = 5 + config.Slot;
+
+                    // 5. Put the level back where it belongs. The floor above is a
+                    // requirement of the UPLOAD, not a state to leave behind: a
+                    // caller that asked for no particular level (the restore on
+                    // exit, an apply while parked) wants the strip as it was,
+                    // which is usually dark. Skipping this left exactly one LED
+                    // lit after SimHub closed.
+                    int settle = Math.Max(0, Math.Min(_stripLen, wanted));
+                    if (settle != lvl) SendFn6(settle);
+
+                    _log($"[RPM-LED] slot {config.Slot + 1} written (direction {dir})");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    _log($"[RPM-LED] slot write failed: {ex.Message}");
+                    return false;
+                }
+            }
+        }
+
+        private byte _idxBrightness;
+
+        /// <summary>Bytes in the last matched reply. Only meaningful immediately
+        /// after a successful query, under the same lock.</summary>
+        private int _lastReplyLength;
+
+        /// <summary>Read the wheel's overall LED brightness as a percentage, or -1
+        /// if this wheel does not expose it.
+        ///
+        /// fn0 reports the maximum the device uses and fn1 the current value; the
+        /// two are combined so a device counting to 100 and one counting to 255
+        /// both come back as a percentage.</summary>
+        public int TryReadBrightnessPercent()
+        {
+            lock (_io)
+            {
+                if (!IsReady) return -1;
+                if (_idxBrightness == 0) _idxBrightness = TryGetFeature(PageBrightness);
+                if (_idxBrightness == 0) return -1;
+
+                var resp = new byte[LenVeryLong];
+                int max = 100;
+                if (TryQueryOn(_idxBrightness, (byte)(0x00 | SwId), 0x00, resp))
+                {
+                    int reported = (resp[4] << 8) | resp[5];
+                    if (reported > 0) max = reported;
+                }
+                if (!TryQueryOn(_idxBrightness, (byte)(0x10 | SwId), 0x00, resp)) return -1;
+
+                int current = (resp[4] << 8) | resp[5];
+                if (max <= 0) return -1;
+                int pct = (int)Math.Round(100.0 * current / max);
+                return Math.Max(0, Math.Min(100, pct));
+            }
+        }
+
+        /// <summary>Set the wheel's overall LED brightness, as a percentage.
+        ///
+        /// ONLY ever called because the user moved the control. Nothing writes
+        /// this on load, on shutdown, or as part of showing a pattern: it is a
+        /// setting of theirs that happens to live on the wheel, and quietly
+        /// rewriting it would be taking something that was not offered.</summary>
+        public bool TryWriteBrightnessPercent(int percent)
+        {
+            if (percent < 0) percent = 0; else if (percent > 100) percent = 100;
+            lock (_io)
+            {
+                if (!IsReady) return false;
+                if (_idxBrightness == 0) _idxBrightness = TryGetFeature(PageBrightness);
+                if (_idxBrightness == 0) { _log("[RPM-LED] brightness feature (0x8040) not present"); return false; }
+
+                var resp = new byte[LenVeryLong];
+                int max = 100;
+                if (TryQueryOn(_idxBrightness, (byte)(0x00 | SwId), 0x00, resp))
+                {
+                    int reported = (resp[4] << 8) | resp[5];
+                    if (reported > 0) max = reported;
+                }
+
+                int value = (int)Math.Round(max * percent / 100.0);
+                var pkt = new byte[LenLong];
+                pkt[0] = RepLong; pkt[1] = DevWired; pkt[2] = _idxBrightness; pkt[3] = (byte)(0x20 | SwId);
+                pkt[4] = (byte)((value >> 8) & 0xFF);
+                pkt[5] = (byte)(value & 0xFF);
+
+                try
+                {
+                    DrainReplies(_replyStream);
+                    WriteLong(pkt);
+                    if (!TryMatchReply(_replyStream, _idxBrightness, (byte)(0x20 | SwId), resp, maxTimeouts: 2))
+                    {
+                        _log("[RPM-LED] brightness write was not acknowledged");
+                        return false;
+                    }
+                    _log($"[RPM-LED] brightness set to {percent}% ({value}/{max})");
+                    return true;
+                }
+                catch (Exception ex) { _log($"[RPM-LED] brightness write failed: {ex.Message}"); return false; }
+            }
+        }
+
+        /// <summary>Longest slot name the wire carries. The wheel's own menu shows
+        /// these, so a name set here is visible on the base itself.</summary>
+        public const int SlotNameMaxLength = 8;
+
+        /// <summary>Read a slot's stored name, or null. fn3 on the slot page is
+        /// GET_NAME (it is a read despite the number sitting where a "set" would
+        /// on the other page).</summary>
+        public string TryReadSlotName(int slot)
+        {
+            if (slot < 0 || slot >= CustomSlotCount) return null;
+            lock (_io)
+            {
+                if (!IsReady) return null;
+                byte idx = SlotFeatureIndex();
+                if (idx == 0) return null;
+
+                var resp = new byte[LenVeryLong];
+                if (!TryQueryOn(idx, (byte)(0x30 | SwId), (byte)slot, resp)) return null;
+
+                // Printable ASCII only, stopping at the first terminator: the
+                // buffer is fixed width and the tail is whatever was there before.
+                var sb = new System.Text.StringBuilder();
+                for (int i = 5; i < Math.Min(resp.Length, 5 + SlotNameMaxLength + 2); i++)
+                {
+                    byte c = resp[i];
+                    if (c == 0x00) break;
+                    if (c >= 0x20 && c < 0x7F) sb.Append((char)c);
+                }
+                return sb.ToString().Trim();
+            }
+        }
+
+        /// <summary>Name a slot, as shown in the wheel's own LIGHTSYNC menu.
+        /// Truncated to <see cref="SlotNameMaxLength"/> and to plain ASCII, which
+        /// is all the wire carries.</summary>
+        /// <summary>What a name becomes once the wheel has it: trimmed, plain
+        /// ASCII, and no longer than the field. Exposed so a caller can tell
+        /// whether a slot ALREADY carries a name without writing it to find out,
+        /// and so that comparison uses the same rules as the write rather than a
+        /// second copy of them that could drift.</summary>
+        public static string SlotNameFor(string name)
+        {
+            var ascii = new System.Text.StringBuilder();
+            foreach (char c in (name ?? string.Empty).Trim())
+            {
+                if (ascii.Length >= SlotNameMaxLength) break;
+                ascii.Append(c >= 0x20 && c < 0x7F ? c : '?');
+            }
+            return ascii.ToString();
+        }
+
+        public bool TryWriteSlotName(int slot, string name)
+        {
+            if (slot < 0 || slot >= CustomSlotCount) return false;
+            lock (_io)
+            {
+                if (!IsReady) return false;
+                byte idx = SlotFeatureIndex();
+                if (idx == 0) return false;
+
+                string ascii = SlotNameFor(name);
+
+                var pkt = new byte[LenVeryLong];
+                pkt[0] = RepVeryLong; pkt[1] = DevWired; pkt[2] = idx; pkt[3] = (byte)(0x40 | SwId);
+                pkt[4] = (byte)slot;
+                pkt[5] = (byte)ascii.Length;
+                for (int i = 0; i < ascii.Length; i++) pkt[6 + i] = (byte)ascii[i];
+
+                try
+                {
+                    DrainReplies(_replyStream);
+                    WriteVeryLong(pkt);
+                    var resp = new byte[LenVeryLong];
+                    if (!TryMatchReply(_replyStream, idx, (byte)(0x40 | SwId), resp, maxTimeouts: 2))
+                    {
+                        _log($"[RPM-LED] slot {slot + 1} name was not acknowledged");
+                        return false;
+                    }
+                    _log($"[RPM-LED] slot {slot + 1} named '{ascii}'");
+                    return true;
+                }
+                catch (Exception ex) { _log($"[RPM-LED] slot name write failed: {ex.Message}"); return false; }
+            }
+        }
+
+        /// <summary>READ-ONLY probe of the per-slot RGB config page (0x807B).
+        ///
+        /// Everything known about slot programming comes from mescon's Linux
+        /// driver, which verified it on an RS50; his own notes say the G PRO's
+        /// wiring is not byte-verified. This asks the wheel directly and writes
+        /// what it says to the log. It only ever READS: it resolves the feature
+        /// and requests each slot's stored config. Nothing is written to a slot,
+        /// no effect is selected, and the rev-light state is untouched, so it is
+        /// safe to run at any time, including with a game running.
+        ///
+        /// Returns a human-readable report; the caller logs and/or shows it.</summary>
+        public string ProbeSlotFeature()
+        {
+            // Open on demand so the probe works with no game running, the same
+            // way the LED test button does. Otherwise this would only be usable
+            // mid-session, which is exactly when poking the wheel is least wise.
+            if (!IsReady)
+            {
+                try { OpenAndResolve(); } catch (Exception ex) { _log($"[RPM-LED] probe open threw: {ex.Message}"); }
+            }
+
+            var sb = new System.Text.StringBuilder();
+            lock (_io)
+            {
+                if (!IsReady)
+                {
+                    return "Could not open the wheel's HID++ channel, so there was nothing to ask. "
+                         + "Check the wheel is connected and powered on, then try again.";
+                }
+
+                sb.AppendLine("Wheel: " + (_devName ?? "(unnamed)"));
+                sb.AppendLine($"Rev page 0x807A resolved at index 0x{_idxRev:X2}, strip length {_stripLen}.");
+
+                byte idxSlot = TryGetFeature(PageSlotConfig);
+                if (idxSlot == 0)
+                {
+                    sb.AppendLine("Slot page 0x807B: NOT PRESENT on this wheel.");
+                    sb.AppendLine("This wheel does not expose the per-slot colour feature over HID++, "
+                                + "so custom colours cannot be written by us the way they can on an RS50.");
+                    string none = sb.ToString();
+                    _log("[RPM-LED] slot probe:\n" + none);
+                    return none;
+                }
+
+                sb.AppendLine($"Slot page 0x807B: PRESENT at index 0x{idxSlot:X2}.");
+                sb.AppendLine("Stored slot configs (fn1 GET_CONFIG), raw reply bytes:");
+
+                for (byte slot = 0; slot < 5; slot++)
+                {
+                    var resp = new byte[LenVeryLong];
+                    // fn1 with the same sw-id nibble the rest of this channel uses.
+                    bool ok = TryQueryOn(idxSlot, (byte)(0x10 | SwId), slot, resp);
+                    if (!ok)
+                    {
+                        sb.AppendLine($"  CUSTOM {slot + 1}: no reply (feature present but this call refused).");
+                        continue;
+                    }
+
+                    var hex = new System.Text.StringBuilder();
+                    for (int i = 4; i < Math.Min(resp.Length, 36); i++) hex.Append(resp[i].ToString("X2")).Append(' ');
+                    sb.AppendLine($"  CUSTOM {slot + 1}: {hex.ToString().TrimEnd()}");
+                    // Expected shape per mescon: [slot echo][direction 1..4][30 bytes RGB, LED10 first].
+                    if (resp[4] == slot)
+                        sb.AppendLine($"      slot echo OK, direction byte = {resp[5]} "
+                                    + "(1=inside-out 2=outside-in 3=left-to-right 4=right-to-left)");
+                    else
+                        sb.AppendLine($"      slot echo MISMATCH (got {resp[4]}), so the reply shape differs from the RS50's.");
+                }
+
+                string report = sb.ToString();
+                _log("[RPM-LED] slot probe:\n" + report);
+                return report;
+            }
         }
 
         /// <summary>Read frames off <paramref name="s"/> until one matches our
         /// feature + full fn byte, skipping foreign traffic. Error frames for
         /// our feature are always logged; one echoing THIS request fails it.</summary>
         private bool TryMatchReply(HidStream s, byte fnByte, byte[] respOut, int maxTimeouts)
+            => TryMatchReply(s, _idxRev, fnByte, respOut, maxTimeouts);
+
+        private bool TryMatchReply(HidStream s, byte featureIdx, byte fnByte, byte[] respOut, int maxTimeouts)
         {
             if (s == null) return false;
             int oldTimeout = 250;
@@ -595,9 +1110,19 @@ namespace TrueforceForAll.Core
                     }
                     catch (Exception ex) { _log($"[RPM-LED] reply read failed: {ex.Message}"); return false; }
 
-                    switch (ClassifyFnReply(resp, n, _idxRev, fnByte))
+                    // Foreign frames are skipped below; a notification among them
+                    // still tells us what the wheel is showing.
+                    NoteEffectBroadcast(resp, n);
+
+                    switch (ClassifyFnReply(resp, n, featureIdx, fnByte))
                     {
                         case FnReply.Match:
+                            // Record how many bytes ACTUALLY arrived. The buffer is
+                            // 64 bytes of zeros, so a shorter frame leaves a tail of
+                            // zeros that reads as real data. For a slot config that
+                            // means black LEDs saved as the user's "original", so
+                            // callers that index deep into a reply must check this.
+                            _lastReplyLength = n;
                             Array.Copy(resp, respOut, Math.Min(respOut.Length, resp.Length));
                             return true;
                         case FnReply.Error:
@@ -893,6 +1418,17 @@ namespace TrueforceForAll.Core
         private void WriteLong(byte[] r)
         {
             if (_long != null) _long.Write(r); else _cmdShort.Write(r);
+        }
+
+        // The 0x807B slot config needs 32 parameter bytes, which only the 64-byte
+        // VERY_LONG report can carry. Falls back to the LONG collection if the
+        // wheel exposes no VERY_LONG one, where it will simply fail rather than
+        // silently truncate the colours.
+        private void WriteVeryLong(byte[] r)
+        {
+            if (_veryLong != null) _veryLong.Write(r);
+            else if (_long != null) _long.Write(r);
+            else _cmdShort.Write(r);
         }
 
         // Pad a SHORT (7-byte) payload up to the command stream's output length.

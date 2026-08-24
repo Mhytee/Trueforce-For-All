@@ -1179,9 +1179,146 @@ namespace TrueforceForAll.Plugin
         /// so a rim button switches patterns without leaving the wheel. Same
         /// semantics as the dropdown pick: sets the wheelbase's selection,
         /// exactly like the base's own menu. Mirrors CycleOledScreen.</summary>
+        /// <summary>One stop on the unified cycle: either one of the wheel's own
+        /// effects, or one pattern from the library showing through the lent
+        /// slot.</summary>
+        private sealed class LightCycleStop
+        {
+            public int Effect;              // 1..9
+            public LightPattern Pattern;    // null for the wheel's own effects
+            public string Label;
+        }
+
+        /// <summary>The full running order, wheel-first: effects 1-4, then the
+        /// five slots in order, with the lent slot expanded into every pattern in
+        /// the library at its own position.</summary>
+        private System.Collections.Generic.List<LightCycleStop> BuildLightCycle()
+        {
+            var stops = new System.Collections.Generic.List<LightCycleStop>();
+            for (int e = 1; e <= 4; e++)
+                stops.Add(new LightCycleStop { Effect = e, Label = RevPatternNames[e] });
+
+            // Then the wheel's own slots, but only the ones that actually hold
+            // something. A blank factory slot as a stop is a dark strip and a
+            // press that reads as broken.
+            var programmed = SlotProgrammedMap();
+            int stage = StageSlot();
+            for (int slot = 0; slot < WheelLedChannel.CustomSlotCount; slot++)
+            {
+                // The stage is left out. Whatever it held is in the library
+                // already (imported on first use), so it still appears below
+                // under its own name, and leaving it out means the running order
+                // does not change the moment we borrow it.
+                if (slot == stage) continue;
+                if (programmed[slot])
+                    stops.Add(new LightCycleStop
+                    { Effect = 5 + slot, Label = RevPatternNames[5 + slot] });
+            }
+
+            // Past the last slot the user has filled, the cycle carries straight
+            // on into the library. Those patterns are not on the wheel, so each
+            // is shown by writing it into the borrow slot: the next free one, or
+            // the last slot once all five are in use. From the rim it is one
+            // unbroken list and the user never has to know where the hardware
+            // ran out of room.
+            if (stage >= 0)
+                foreach (var p in LightPatterns.Patterns)
+                    stops.Add(new LightCycleStop
+                    { Effect = 5 + stage, Pattern = p, Label = p.Name });
+
+            return stops;
+        }
+
+        /// <summary>Step one place along the unified cycle. Returns false if it
+        /// could not work out where we are, so the caller falls back to the plain
+        /// effect cycle rather than jumping somewhere arbitrary.</summary>
+        private bool CycleThroughEverything(int direction)
+        {
+            // Reading the slots and writing one both need the channel, and parked
+            // with no game it is closed. Without this the first press of a cold
+            // session decides the running order from five failed reads.
+            EnsureLedChannelOpen();
+
+            var stops = BuildLightCycle();
+            if (stops.Count == 0) return false;
+
+            int current = _rpmLeds.KnownSelection;
+
+            int at;
+            // A slot is borrowed ONLY while a library pattern is showing, so that
+            // is what tells the two apart. The effect number cannot: it is the
+            // same whether the user is looking at their own slot or at one of
+            // ours standing in it. Read from memory, not by loading the backup
+            // file on every press.
+            if (LibraryPatternShowing)
+            {
+                at = stops.FindIndex(s => s.Pattern != null && s.Pattern.Id == LightPatterns.CurrentId);
+                if (at < 0) at = stops.FindIndex(s => s.Pattern != null);
+            }
+            else
+            {
+                at = stops.FindIndex(s => s.Pattern == null && s.Effect == current);
+            }
+            // Selection never read yet: start from an end so the first press still
+            // lands somewhere sensible.
+            if (at < 0) at = direction < 0 ? 0 : stops.Count - 1;
+
+            int n = stops.Count;
+            var next = stops[((at + (direction < 0 ? -1 : 1)) % n + n) % n];
+
+            if (next.Pattern != null)
+            {
+                string msg;
+                // Cycling from the rim is the user choosing, so it sticks.
+                if (!ApplyLightPattern(next.Pattern, out msg, userChose: true))
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] light cycle failed: " + msg);
+                    return false;
+                }
+            }
+            else
+            {
+                // Leaving the library section for something that genuinely lives
+                // on the wheel, so the stage has done its job and goes back
+                // before we switch away from it. Conditional: a backup also
+                // exists while the user edits one of their OWN slots, and
+                // releasing that would undo the edit they just made.
+                if (LibraryPatternShowing) ReleaseBorrowedSlot();
+                // idle: show the pick, same as the dropdown
+                PickRevLightPattern(next.Effect, previewAfter: true);
+            }
+
+            DashReadout("LIGHT PATTERN", next.Label);
+            SimHub.Logging.Current.Info($"[TF4ALL] light cycle -> {next.Label}"
+                                      + (next.Pattern != null ? " (in the lent slot)" : ""));
+            return true;
+        }
+
         public void CycleRevLightPattern(int direction)
         {
             if (_rpmLeds == null) return;
+
+            // One continuous walk through everything the wheel can show, in the
+            // order the wheel itself lists them: the four built-in sweeps, then
+            // the five custom slots. The difference is that the LENT slot expands
+            // into the whole library instead of being one stop, so cycling runs
+            // built-ins, CUSTOM 1, CUSTOM 2, then every pattern in the folder,
+            // then CUSTOM 4, CUSTOM 5, and round again. The wheel's five slots
+            // stop being a limit without the user having to think about where
+            // one list ends and another begins.
+            // The unlock check MUST come first, and not only for the obvious
+            // reason. Reading LightPatterns builds the library on first touch and
+            // writes light-patterns.json, so even asking whether it has any
+            // patterns would put a file on the disk of a user who never entered
+            // the code. With that ordering, a locked install takes the old path
+            // and this branch is dead.
+            if (Settings?.LightsyncTabUnlocked == true
+                && WheelHasSelectableLightPattern
+                && LightPatterns.Patterns.Count > 0)
+            {
+                if (CycleThroughEverything(direction)) return;
+            }
+
             if (!WheelHasSelectableLightPattern)
             {
                 // A bound button that silently does nothing reads as broken;
@@ -1197,11 +1334,10 @@ namespace TrueforceForAll.Plugin
                 next = cur + (direction < 0 ? -1 : 1);
                 if (next > 9) next = 1; else if (next < 1) next = 9;
             }
-            PickRevLightPattern(next);
-            DashReadout("REV PATTERN", RevPatternNames[next]);
             // Idle: one sweep shows the pick, same as the dropdown. Driving:
             // the preview self-suppresses and the live bar is the feedback.
-            PreviewRevLightPattern();
+            PickRevLightPattern(next, previewAfter: true);
+            DashReadout("REV PATTERN", RevPatternNames[next]);
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] rev-light pattern -> {next} ({RevPatternNames[next]})");
         }
@@ -3932,6 +4068,29 @@ namespace TrueforceForAll.Plugin
             _rpmLeds = new RpmLedController(msg => SimHub.Logging.Current.Info(msg));
             _oledDash = new OledDashController(msg => SimHub.Logging.Current.Info(msg));
 
+            // Repay a light slot a CRASHED session left borrowed. Backgrounded
+            // because it may have to open the HID++ channel, and plugin init must
+            // not block on the wheel. A normal launch answers this from disk with
+            // nothing owed and never touches the hardware at all.
+            Task.Run(() =>
+            {
+                try
+                {
+                    // Bring the channel up now when lighting is in use, so the
+                    // first pattern pick or bound button press acts immediately
+                    // instead of being the one that quietly opens it.
+                    if (Settings?.LovelyCarDataEnabled == true || Settings?.LightsyncTabUnlocked == true)
+                        EnsureLedChannelOpen();
+
+                    string restored = RestoreOwedSlots();
+                    if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] owed-slot restore at launch failed: " + ex.Message);
+                }
+            });
+
             // EXPERIMENTAL: open the kernel-driver IOCTL channel ONLY when the
             // user has opted in via ExperimentalDriverIntercept (hidden DRIVER
             // access code). Wrapped in try/catch so a missing or misbehaving
@@ -4686,6 +4845,23 @@ namespace TrueforceForAll.Plugin
 
         public void End(PluginManager pluginManager)
         {
+            // Give back any borrowed light slot FIRST, while the HID++ channel is
+            // still up. A slot write persists on the wheel, so leaving one held
+            // means the user's own colours stay overwritten after we exit. Runs
+            // before the teardown below closes the streams this needs.
+            try
+            {
+                string restored = RestoreOwedSlots();
+                if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
+
+                // Leave the strip dark. Writing a slot has to light it briefly to
+                // land the colours, and whatever we were showing is ours, not the
+                // user's: a lit LED sitting there after SimHub closes looks like
+                // the wheel is stuck.
+                try { _rpmLeds?.Channel?.Clear(); } catch { }
+            }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] slot restore on exit failed: " + ex.Message); }
+
             _shuttingDown = true;
 
             // Stop the direct reader FIRST. It owns a background thread holding a
@@ -6193,13 +6369,62 @@ namespace TrueforceForAll.Plugin
                         if (carKey != null && carKey != _revCarKeyApplied)
                         {
                             _revCarKeyApplied = carKey;
-                            if (Settings?.CarRevLightEffect != null
+                            // A remembered PATTERN of ours wins over a remembered
+                            // wheel effect: picking one of our patterns for a car
+                            // is the more specific choice, and the two are kept
+                            // mutually exclusive when either is saved.
+                            var rememberedPattern = GetCarRememberedLightPattern();
+                            if (rememberedPattern != null)
+                            {
+                                var p = rememberedPattern;
+                                Task.Run(() =>
+                                {
+                                    string msg;
+                                    if (!ApplyLightPattern(p, out msg))
+                                        SimHub.Logging.Current.Info("[TF4ALL] remembered pattern not applied: " + msg);
+                                });
+                            }
+                            else if (Settings?.CarRevLightEffect != null
                                 && Settings.CarRevLightEffect.TryGetValue(carKey, out int remembered)
                                 && remembered > 0)
                                 _rpmLeds.ApplyRemembered(remembered, ffbQuietProven);
+                            OnLovelyCarChanged(_activeGame, _activeCarId);
                         }
+
+                        // Per-car published data, when the user has turned it on
+                        // and we hold some for this car. Null curve = today's
+                        // behaviour, unchanged.
+                        string gearNow = frame.Gear;
+                        _rpmLeds.LevelCurve = _lovelyCar != null
+                            ? (Func<double, int, int?>)((r, steps) => LovelyLevel(gearNow, r, steps))
+                            : null;
+
+                        // The blink point is deliberately NOT taken from the
+                        // published data. It comes from RevLimiter's cascade
+                        // (user value, then our own community car facts, then
+                        // telemetry, then the estimate), which is the same value
+                        // the rev-limiter buzz fires at, so the flash and the buzz
+                        // stay one "shift now" signal rather than two that
+                        // disagree. Overriding it here made the lights flash at a
+                        // third party's number while the wheel buzzed at ours.
+                        //
+                        // Their per-gear redlines are still worth having, and no
+                        // sim reports one, but the way to use them is to feed them
+                        // INTO that cascade below our own community data, so the
+                        // buzz moves with the flash. That is a change to
+                        // RevLimiterEffect, not to this call site.
+                        // Hand a borrowed slot back if the user has selected
+                        // something else on the base itself.
+                        ReleaseBorrowIfWheelMovedAway();
+
                         _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
                                          redline, modeBLeds);
+
+                        // Mirror to the dash. Deliberately outside the gate above:
+                        // drawing on screen sends nothing to the wheel, so it works
+                        // in games where writing an LED would cut the game's force,
+                        // and in the ones the plugin disables itself for.
+                        PublishDashLights(_rpmLeds.LastLevel, redline);
                     }
                     catch (Exception ex)
                     {
@@ -6876,6 +7101,210 @@ namespace TrueforceForAll.Plugin
         private volatile bool _oledHidppFree;     // last computed gate, for the settings panel
         private volatile bool _ffbQuietNow;       // just the FFB-quiet term, for one-shot writes
         private string _revCarKeyApplied;         // last car whose remembered pattern was applied
+
+        // ---- per-car rev-light data (lovely-car-data) ----
+        private LovelyCarDataStore _lovelyStore;
+        private LovelyCarProfile   _lovelyCar;    // active car's published data, null when none
+        private string             _lovelyGear;   // gear the ramp below was picked for
+        private LovelyGearRamp     _lovelyRamp;   // ramp in force, re-picked on gear change
+
+        /// <summary>Cache for per-car rev-light data, created on first use. Lives
+        /// beside the preset library so a backup of that folder carries it, and so
+        /// a user can delete it by hand without touching anything else.</summary>
+        private LovelyCarDataStore LovelyStore
+        {
+            get
+            {
+                if (_lovelyStore == null)
+                {
+                    _lovelyStore = new LovelyCarDataStore(
+                        Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-Library", "lovely-cache"))
+                    {
+                        Log = m => SimHub.Logging.Current.Info(m)
+                    };
+                }
+                return _lovelyStore;
+            }
+        }
+
+        /// <summary>The per-car data switch was flipped. Turning it ON adopts the
+        /// active car immediately rather than waiting for the next car change;
+        /// turning it OFF drops what is loaded so the lights fall back to the
+        /// built-in ramp on the very next frame.</summary>
+        public void OnLovelyEnabledChanged()
+        {
+            if (Settings?.LovelyCarDataEnabled == true)
+            {
+                OnLovelyCarChanged(_activeGame, _activeCarId);
+            }
+            else
+            {
+                _lovelyCar  = null;
+                _lovelyRamp = null;
+                _lovelyGear = null;
+                _lovelyStore?.ForgetMemory();
+                PublishLovelyRedlines();
+                if (_rpmLeds != null) _rpmLeds.LevelCurve = null;
+
+                // Switching the feature off should mean OFF, not "off from the
+                // next restart": give the slot straight back rather than sitting
+                // on the user's colours until shutdown.
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        string restored = RestoreOwedSlots();
+                        if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info("[TF4ALL] slot restore on disable failed: " + ex.Message);
+                    }
+                });
+            }
+        }
+
+        /// <summary>Car-load edge: adopt whatever published rev-light data we hold
+        /// for this car, then refresh it in the background. Cache first so a car
+        /// we already know lights correctly on lap one rather than after a round
+        /// trip, and so the telemetry thread never waits on a network call.</summary>
+        private void OnLovelyCarChanged(string game, string carId)
+        {
+            _lovelyCar  = null;
+            _lovelyRamp = null;
+            _lovelyGear = null;
+            PublishLovelyRedlines();
+
+            if (Settings?.LovelyCarDataEnabled != true) return;
+            if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
+
+            try
+            {
+                var store = LovelyStore;
+                _lovelyCar = store.GetCached(game, carId);
+                PublishLovelyRedlines();
+                // Cached cars light correctly on lap one rather than after a
+                // round trip; the refresh below covers a car we have not seen.
+                ApplyCarColorsOnLoad(game, carId);
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        var fresh = store.Refresh(game, carId);
+                        // Only adopt if the car has not changed again underneath us.
+                        if (string.Equals(_activeGame, game, StringComparison.Ordinal)
+                            && string.Equals(_activeCarId, carId, StringComparison.Ordinal))
+                        {
+                            _lovelyCar  = fresh;
+                            _lovelyRamp = null;
+                            _lovelyGear = null;
+                            PublishLovelyRedlines();
+                            // A car seen for the first time has no cached data at
+                            // the car-load edge, so this is where its colours
+                            // become available.
+                            ApplyCarColorsOnLoad(game, carId);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info("[TF4ALL] lovely refresh failed: " + ex.Message);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] lovely lookup failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>The active car's fill curve, or null when we have no data for
+        /// it. Runs on the telemetry thread, so it only reads already-loaded state
+        /// and re-picks the gear ramp when the gear actually changes.</summary>
+        private int? LovelyLevel(string gear, double rpms, int steps)
+        {
+            var car = _lovelyCar;
+            if (car == null || Settings?.LovelyCarDataEnabled != true) return null;
+
+            var ramp = RampFor(car, gear);
+            if (ramp == null || !ramp.IsUsable) return null;
+
+            return LovelyLightMath.LevelForRpm(ramp, rpms, steps);
+        }
+
+        /// <summary>Ramp for this gear, re-picked only when the gear actually
+        /// changes. Called per frame, so the dictionary lookup is cached.</summary>
+        private LovelyGearRamp RampFor(LovelyCarProfile car, string gear)
+        {
+            if (!string.Equals(gear, _lovelyGear, StringComparison.Ordinal) || _lovelyRamp == null)
+            {
+                _lovelyGear = gear;
+                _lovelyRamp = car.RampForGear(gear);
+            }
+            return _lovelyRamp;
+        }
+
+        /// <summary>Hand the active car's published per-gear redlines to the
+        /// rev-limiter, which owns the one redline cascade everything reads.
+        ///
+        /// Deliberately routed through that cascade rather than applied at the
+        /// LED call site: the flash, the fill onset and the limiter buzz all read
+        /// EffectiveRedlineRpm, so going through it keeps them one "shift now"
+        /// signal, and the cascade already ranks our own community consensus
+        /// above any outside dataset. Null when the feature is off or the car has
+        /// no entry, which restores the previous behaviour exactly.</summary>
+        private void PublishLovelyRedlines()
+        {
+            bool have = Settings?.LovelyCarDataEnabled == true && _lovelyCar != null;
+
+            var rl = RevLimiter;
+            if (rl != null)
+                rl.PublishedGearRedlines = have ? _lovelyCar.ForwardGearRedlines() : null;
+
+            PublishCarBlinkRate(have ? _lovelyCar.RedlineBlinkIntervalMs : 0);
+        }
+
+        /// <summary>Hand the active car's own blink rate to the two things that
+        /// can express it.
+        ///
+        /// The LED flash takes it directly: it IS the redline blink, so a car that
+        /// flashes fast now flashes fast. The pit-limiter HAPTIC takes it as a
+        /// pulse rate, which is how a per-car cadence reaches the driver at all in
+        /// games where we never touch the lights. Flashing needs a stream of level
+        /// writes and that cuts the game's force on the shared pipe; a rate is
+        /// just a number, and the wheel can pulse it for free.
+        ///
+        /// 0 means the car publishes no blink (470 of 717 do not), which restores
+        /// the built-in rate and the user's own pulse setting.</summary>
+        private void PublishCarBlinkRate(int intervalMs)
+        {
+            // The published figure is a full PERIOD, so the LED's half-period is
+            // half of it. It used to be assigned straight across, which made every
+            // car flash at half its own rate: the BMW M4 GT4 publishes 250 ms and
+            // was flashing on a 500 ms cycle. The pit limiter was already reading
+            // it as a period (1000/interval Hz), so the two disagreed about the
+            // same number; they now agree.
+            int half = intervalMs > 0 ? Math.Max(1, intervalMs / 2) : 185;
+            if (_rpmLeds != null) _rpmLeds.RedlineBlinkHalfMs = half;
+
+            if (PitLimiter != null)
+                PitLimiter.PublishedPulseHz = intervalMs > 0 ? (float?)(1000.0f / intervalMs) : null;
+
+            // Logged because the difference between 4 Hz and 5.4 Hz is not
+            // something anyone can judge by eye, so without this the only honest
+            // answer to "did the flash rate sync" is a shrug.
+            if (intervalMs != _lastBlinkIntervalMs)
+            {
+                _lastBlinkIntervalMs = intervalMs;
+                SimHub.Logging.Current.Info(intervalMs > 0
+                    ? $"[TF4ALL] car blink rate: {intervalMs} ms period "
+                      + $"({1000.0 / intervalMs:0.0} Hz), LED half-period {half} ms"
+                    : "[TF4ALL] car blink rate: none published, using the built-in 185 ms half-period");
+            }
+        }
+
+        /// <summary>Last blink period we announced, so the log carries a line per
+        /// CHANGE rather than one per car-data refresh.</summary>
+        private int _lastBlinkIntervalMs = -1;
         private volatile float _shBrake01, _shClutch01, _shHandbrake01;
 
         // RESETGRIP access code. The learner and the calibration dict are
@@ -10288,9 +10717,19 @@ namespace TrueforceForAll.Plugin
         /// channel open can take seconds). Whether the firmware keeps the
         /// selection across a power cycle is untested; the base's own menu
         /// shows it either way.</summary>
-        public void PickRevLightPattern(int effect)
+        /// <param name="previewAfter">Sweep the strip once the selection has
+        /// actually landed. The sweep used to be started by the caller on its own
+        /// thread, which raced this one: the first steps drew the OLD pattern and
+        /// it changed part-way through, so a quick walk down a list never showed
+        /// the thing that had just been picked.</param>
+        public void PickRevLightPattern(int effect, bool previewAfter = false)
         {
             if (_rpmLeds == null || effect < 1 || effect > 9) return;
+            // Whatever we were standing in the stage slot is no longer what the
+            // wheel is showing, and neither are the car's own colours.
+            LibraryPatternShowing = false;
+            _autoAppliedColors = false;
+            NoteLightSelectionChanged();
             _rpmLeds.StagePattern(effect);   // arm applies it even if the live write loses
             Task.Run(() =>
             {
@@ -10299,6 +10738,7 @@ namespace TrueforceForAll.Plugin
                     if (!_rpmLeds.SelectPatternNow(effect))
                         SimHub.Logging.Current.Info(
                             "[RPM-LED] could not set the wheel selection (see log)");
+                    if (previewAfter) PreviewRevLightPattern();
                 }
                 catch (Exception ex)
                 {
@@ -10317,8 +10757,1203 @@ namespace TrueforceForAll.Plugin
         public void PreviewRevLightPattern()
         {
             if (_rpmLeds == null) return;
+            // Driving, the live bar is already the feedback and a sweep would
+            // only fight it.
             if (_rpmLeds.IsDriving) return;
-            _rpmLeds.PreviewPattern();
+            // Parked, end LIT rather than dark. A sweep that finishes by turning
+            // the strip off shows the user nothing, which is the whole reason
+            // they picked something. It does not stay lit forever though: the
+            // hold is re-armed by every further pick or edit, so it goes out a
+            // few seconds after the user stops.
+            _rpmLeds.PreviewPattern(endLevel: WheelLedChannel.LedCount, holdMs: ShowHoldMs);
+        }
+
+        /// <summary>Write one of the wheel's OWN slots, because the user is
+        /// editing that slot itself rather than showing a pattern on the stage.
+        /// The slot keeps its own name: they are changing their slot, and what it
+        /// is called is theirs to set.</summary>
+        public bool WriteOwnSlot(int slot, LightPattern pattern, out string message, bool sweep = true)
+        {
+            message = null;
+            if (pattern == null || slot < 0 || slot >= WheelLedChannel.CustomSlotCount)
+            { message = "No slot to write."; return false; }
+
+            byte[] rgb = pattern.Rgb();
+            if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
+            { message = "That pattern's colours are unreadable."; return false; }
+
+            bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
+            {
+                Slot = (byte)slot,
+                DirectionWire = pattern.DirectionWire,
+                Rgb = rgb,
+            }, out message, displayLevel: ShowLevel, slotName: null, permanent: true,
+               rawColors: pattern.TrimExempt);
+
+            // The user's own slot, not one of ours standing in for a pattern.
+            if (ok) LibraryPatternShowing = false;
+            if (ok)
+            {
+                if (sweep) PreviewRevLightPattern();
+                else _rpmLeds.HoldLit(WheelLedChannel.LedCount, ShowHoldMs);
+            }
+            return ok;
+        }
+
+        /// <summary>Make the wheel's five slots hold the first five patterns in
+        /// the list, in order. That list position IS where a pattern lives, so
+        /// this is what turns a move up or down into something that reaches the
+        /// hardware.
+        ///
+        /// Only differences are written: each slot is read first and left alone
+        /// when it already holds the right thing, so dragging one pattern up does
+        /// not rewrite all five. Nothing is lost by a write, because whatever a
+        /// slot held is still a pattern in the list, just lower down.</summary>
+        public int SyncSlotsToWheel(out string message)
+        {
+            message = null;
+            if (_rpmLeds?.Channel == null) { message = "No supported wheel detected."; return 0; }
+            if (!EnsureLedChannelOpen())
+            { message = "Could not reach the wheel. Check it is connected and powered on."; return 0; }
+
+            var want = LightPatterns.Patterns;
+            // A slot on loan is holding something we put there on purpose, so
+            // leave it alone. The caller decides whether the loan should end
+            // first: a reorder says yes, opening the tab to look at what you
+            // cycled to says no.
+            int onLoan = BorrowedSlot;
+            int writes = 0, renames = 0, failed = 0;
+            string lastError = null;
+
+            for (int slot = 0; slot < WheelLedChannel.CustomSlotCount && slot < want.Count; slot++)
+            {
+                if (slot == onLoan) continue;
+                var p = want[slot];
+                if (p == null) continue;
+                byte[] rgb = p.Rgb();
+                if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3) continue;
+
+                var have = ReadSlot(slot);
+                // Compare against what we WOULD send, not against what the
+                // library stores. The library holds sRGB intent; the wheel
+                // holds that intent after the colour trim. Comparing the two
+                // directly would never match on a calibrated wheel, so
+                // coloursRight would be permanently false and this loop would
+                // re-upload all five slots on every LIGHTSYNC tab open, which
+                // is five flash writes down the pipe force feedback shares.
+                string wireHex = ToWireHex(p);
+                bool coloursRight = have?.Rgb != null
+                    && have.DirectionWire == p.DirectionWire
+                    && string.Equals(LightSlotBackupStore.ToHex(have.Rgb), wireHex,
+                                     StringComparison.OrdinalIgnoreCase);
+
+                if (coloursRight)
+                {
+                    // The colours are right but the NAME may not be. Slots keep
+                    // whatever they were called before the plugin ever ran, and
+                    // adopting the wheel's order matches on colour alone, so the
+                    // first five would sit there under their old names forever.
+                    // Scrolling the base's own menu should read as the patterns
+                    // that are actually in them. One name write, no colour upload.
+                    string wantName = WheelLedChannel.SlotNameFor(p.Name);
+                    string haveName = ReadSlotName(slot);
+                    // A name we could not read is not a name we know to be wrong,
+                    // so leave it rather than writing on every single open.
+                    if (haveName != null
+                        && !string.Equals(haveName, wantName, StringComparison.Ordinal)
+                        && WriteSlotName(slot, p.Name))
+                        renames++;
+                    continue;
+                }
+
+                string msg;
+                bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
+                {
+                    Slot = (byte)slot,
+                    DirectionWire = p.DirectionWire,
+                    Rgb = rgb,
+                }, out msg, displayLevel: ShowLevel, slotName: p.Name, permanent: true,
+                   rawColors: p.TrimExempt);
+
+                if (ok) writes++;
+                else { failed++; lastError = msg; }
+            }
+
+            LightPatternStore.NormalizeSlots(LightPatterns);
+            SaveLightPatterns();
+
+            message = failed > 0
+                ? "The wheel refused " + failed + " of the writes. " + (lastError ?? string.Empty)
+                : writes == 0 && renames == 0 ? "The wheel already matches your list."
+                : writes == 0 ? "Renamed " + renames + (renames == 1 ? " slot" : " slots") + " on the wheel."
+                : writes == 1 ? "Updated one slot on the wheel."
+                : "Updated " + writes + " slots on the wheel.";
+            if (writes > 0 || renames > 0)
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] slots synced: {writes} written, {renames} renamed");
+            return writes;
+        }
+
+        /// <summary>The level to write with when we put something on the strip
+        /// deliberately. Driving, keep the live rev level: the bar IS the display
+        /// and overriding it fights the telemetry. Parked, light the whole strip,
+        /// or the pick lands correctly and looks like it failed.
+        ///
+        /// One rule, in one place. The editor used to pass a full bar and the
+        /// cycle the live level, which is exactly why clicking a pattern lit up
+        /// and cycling to the same pattern did not.</summary>
+        /// <summary>How long a deliberately lit strip stays up before fading, once
+        /// the user stops touching anything. Long enough to look at a pattern and
+        /// compare it with the last one, short enough that a wheel left alone does
+        /// not sit at full brightness. Re-armed by every pick and every edit.</summary>
+        private const int ShowHoldMs = 8000;
+
+        private int ShowLevel =>
+            (_rpmLeds?.IsDriving ?? false) ? -1 : WheelLedChannel.LedCount;
+
+        /// <summary>Ask this wheel whether it implements the per-slot colour
+        /// feature, and what it currently holds. READ-ONLY: nothing is written to
+        /// a slot and no effect is selected. Answers the one question blocking
+        /// every colour and layout feature, which mescon could only verify on an
+        /// RS50.</summary>
+        public string ProbeLedSlotFeature()
+        {
+            var ch = _rpmLeds?.Channel;
+            if (ch == null) return "Rev-light channel not created (no supported wheel detected).";
+            try { return ch.ProbeSlotFeature(); }
+            catch (Exception ex) { return "Slot probe failed: " + ex.Message; }
+        }
+
+        /// <summary>Show the ACTIVE car's own light pattern on the wheel: compose
+        /// its colours and fill direction from the published data and write them
+        /// into the designated slot.
+        ///
+        /// Manual for now, on purpose. The composition and the slot write are both
+        /// proven, but an automatic per-car write fires unattended and possibly
+        /// mid-session, on a pipe shared with the game's force feedback, so it
+        /// wants its own gate before it runs on its own.</summary>
+        /// <summary>Car-load edge: put THIS car's own colours and fill direction
+        /// into the lent slot, so the wheel matches the car's dash without anyone
+        /// touching a setting.
+        ///
+        /// Deliberately quiet about failure. This fires unattended on every car
+        /// change, so a car with no published data, no lent slot, or a wheel that
+        /// will not answer must simply leave the lights exactly as they are. The
+        /// previous pattern stays, which is the right outcome: it is the user's
+        /// own, or the last car's, and either beats blanking the strip.
+        ///
+        /// Runs on a background task off the telemetry thread because a slot write
+        /// is several HID++ reports with reply waits.</summary>
+        private void ApplyCarColorsOnLoad(string game, string carId)
+        {
+            if (string.IsNullOrEmpty(carId)) return;
+
+            // A pattern the user pinned to THIS car is applied by the car-load
+            // edge, which runs before this. Nothing to do here but stand down;
+            // applying the sticky pattern as well would fight it for the slot.
+            if (HasExplicitCarLightChoice()) { _autoAppliedColors = false; return; }
+
+            // ONE switch. There used to be a second flag here that only the
+            // checkbox's change handler ever set, so a settings file where the two
+            // disagreed (restored from a backup, or written by a build before the
+            // handler slaved them) gave a ticked box that did nothing until it was
+            // toggled off and on. Reading the flag the control actually drives
+            // makes that state impossible rather than merely unlikely.
+            bool haveData = Settings?.LovelyCarDataEnabled == true && _lovelyCar != null;
+
+            if (!haveData)
+            {
+                // Nothing to say about this car.
+                //
+                // Only put the user's own pattern back if WE were the ones who
+                // moved it, i.e. a previous car's colours are still showing.
+                // Restoring unconditionally meant that in a game the dataset does
+                // not cover at all (every Forza title), each car change rewrote a
+                // slot and switched the wheel, for no reason and without anyone
+                // asking. Leaving the lights alone is the correct answer when we
+                // have nothing to contribute.
+                if (_autoAppliedColors)
+                {
+                    _autoAppliedColors = false;
+                    ApplyStickyPattern();
+                }
+                return;
+            }
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    // Only act on the car that is STILL active: a background
+                    // refresh or a quick car switch must not paint the wrong car's
+                    // colours onto the wheel.
+                    if (!string.Equals(_activeGame, game, StringComparison.Ordinal)
+                        || !string.Equals(_activeCarId, carId, StringComparison.Ordinal)) return;
+
+                    var car = _lovelyCar;
+                    if (car == null) return;
+
+                    var ramp = car.RampForGear("1") ?? car.HighestForwardGear();
+                    var profile = LovelyLightMath.BuildProfile(car, ramp, WheelLedChannel.LedCount);
+
+                    var rgb = new byte[WheelLedChannel.LedCount * 3];
+                    for (int i = 0; i < WheelLedChannel.LedCount && i < profile.Colors.Length; i++)
+                    {
+                        rgb[i * 3 + 0] = profile.Colors[i].R;
+                        rgb[i * 3 + 1] = profile.Colors[i].G;
+                        rgb[i * 3 + 2] = profile.Colors[i].B;
+                    }
+
+                    string msg;
+                    bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
+                    {
+                        Slot = (byte)StageSlot(),
+                        DirectionWire = profile.DirectionWire,
+                        Rgb = rgb,
+                    }, out msg,
+                       displayLevel: -1,                       // keep the live rev level
+                       slotName: car.CarName ?? carId);        // the base's menu names the car
+
+                    // Remember that the lights are OURS now, so the next car
+                    // without data knows to put the user's pattern back. Set only
+                    // on a write that landed.
+                    if (ok) _autoAppliedColors = true;
+
+                    // The dash mirrors the car's colours whether or not the wheel
+                    // write landed: on screen there is nothing to refuse us.
+                    PublishDashLightProfile(rgb, profile.Layout, car.CarName ?? carId);
+
+                    SimHub.Logging.Current.Info(ok
+                        ? $"[TF4ALL] car colours applied for {carId}: {profile.Layout}, "
+                          + (profile.UsedCarColors ? "the car's own colours" : "standard ramp")
+                        : "[TF4ALL] car colours not applied: " + msg);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] car-colour apply failed: " + ex.Message);
+                }
+            });
+        }
+
+        public bool ShowActiveCarColors(out string message)
+        {
+            message = null;
+
+            int slot = Settings?.LightsyncDynamicSlot ?? -1;
+            if (slot < 0 || slot >= WheelLedChannel.CustomSlotCount)
+            {
+                message = "No slot is designated yet. Pick one with SLOTPICK<n> (1-5), "
+                        + "and the plugin will back up its contents before ever writing to it.";
+                return false;
+            }
+            if (Settings?.LovelyCarDataEnabled != true)
+            {
+                message = "Per-car light data is switched off, so there is no pattern to show. "
+                        + "Turn it on in the LIGHTSYNC tab first.";
+                return false;
+            }
+
+            var car = _lovelyCar;
+            if (car == null)
+            {
+                message = string.IsNullOrEmpty(_activeCarId)
+                    ? "No car is active yet. Load into a car first."
+                    : $"No published light data for this car ({_activeGame}/{_activeCarId}). "
+                      + "Its lights keep working exactly as they do now.";
+                return false;
+            }
+
+            var ramp = car.RampForGear("1") ?? car.HighestForwardGear();
+            var profile = LovelyLightMath.BuildProfile(car, ramp, WheelLedChannel.LedCount);
+
+            var rgb = new byte[WheelLedChannel.LedCount * 3];
+            for (int i = 0; i < WheelLedChannel.LedCount && i < profile.Colors.Length; i++)
+            {
+                rgb[i * 3 + 0] = profile.Colors[i].R;
+                rgb[i * 3 + 1] = profile.Colors[i].G;
+                rgb[i * 3 + 2] = profile.Colors[i].B;
+            }
+
+            string detail;
+            bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
+            {
+                Slot = (byte)slot,
+                DirectionWire = profile.DirectionWire,
+                Rgb = rgb,
+            }, out detail, displayLevel: WheelLedChannel.LedCount);
+
+            string layout = profile.Layout.ToString();
+            message = ok
+                ? $"{car.CarName ?? _activeCarId}: {layout}, "
+                  + (profile.UsedCarColors ? "the car's own colours" : "no colours published, so the standard ramp")
+                  + ". " + detail
+                : detail;
+            return ok;
+        }
+
+        // ---- LIGHTSYNC slot borrow / restore ----
+
+        /// <summary>Where the user's light-pattern library lives. Beside the
+        /// preset library so a folder backup carries it.</summary>
+        public string LightPatternFilePath => Path.Combine(TfPaths.CommonRoot,
+            "TrueforceForAll-Library", "light-patterns.json");
+
+        // The library lives HERE rather than in the settings UI because a bound
+        // button has to cycle it with no window open. The editor reads and writes
+        // the same instance.
+        private LightPatternStore _lightPatternStore;
+        private LightPatternLibrary _lightPatterns;
+        private readonly object _lightPatternGate = new object();
+
+        public LightPatternStore LightPatternStoreInstance
+        {
+            get
+            {
+                lock (_lightPatternGate)
+                {
+                    if (_lightPatternStore == null)
+                        _lightPatternStore = new LightPatternStore(LightPatternFilePath)
+                        { Log = m => SimHub.Logging.Current.Info(m) };
+                    return _lightPatternStore;
+                }
+            }
+        }
+
+        public LightPatternLibrary LightPatterns
+        {
+            get
+            {
+                lock (_lightPatternGate)
+                {
+                    if (_lightPatterns == null)
+                    {
+                        _lightPatterns = LightPatternStoreInstance.Load();
+                        if (LightPatternStore.AddBuiltins(_lightPatterns) > 0)
+                            LightPatternStoreInstance.Save(_lightPatterns);
+                    }
+                    return _lightPatterns;
+                }
+            }
+        }
+
+        public void SaveLightPatterns() => LightPatternStoreInstance.Save(LightPatterns);
+
+        /// <summary>The slot to borrow, worked out rather than asked for.
+        ///
+        /// Pinned wins if the user set one. Otherwise: the slot the wheel is
+        /// ALREADY displaying, when that is a custom one, because borrowing what
+        /// is on screen means the adopt-on-lend step leaves the wheel looking
+        /// exactly as it did. Failing that, the last slot, on the reasoning that
+        /// a user who has filled slots tends to fill from the front.
+        ///
+        /// Always a real slot, never "none": asking to show a pattern IS the
+        /// permission to put it somewhere, and the contents are backed up and
+        /// restored either way.</summary>
+        public int StageSlot()
+        {
+            if (_stageSlot >= 0) return _stageSlot;
+
+            // An unreturned backup means a slot is already on loan, from earlier
+            // in this session or from one that died holding it. THAT is the stage:
+            // taking a different one would strand our colours in theirs and hold
+            // two slots at once.
+            int held = HeldBorrowedSlot();
+            if (held >= 0) return _stageSlot = held;
+
+            // The user may name one outright. Almost nobody does.
+            int pinned = Settings?.LightsyncDynamicSlot ?? -1;
+            if (pinned >= 0 && pinned < WheelLedChannel.CustomSlotCount) return _stageSlot = pinned;
+
+            // Otherwise the first slot they have never programmed. An all-black
+            // slot is a factory slot nobody has touched, so borrowing it costs
+            // them nothing, where taking one they built means overwriting real
+            // work (saved and restored, but still a change they did not ask for).
+            int spare = FirstUnprogrammedSlot();
+            if (spare >= 0) return _stageSlot = spare;
+
+            // Every slot is in use. Take the last one, but only LATCH that answer
+            // if we could actually read the wheel: a map built over five failed
+            // reads also says "all in use", and latching it would fix the stage
+            // to a guess for the rest of the session.
+            if (_slotProgrammed == null) return WheelLedChannel.CustomSlotCount - 1;
+            return _stageSlot = WheelLedChannel.CustomSlotCount - 1;
+        }
+
+        /// <summary>The slot on loan for this session, or -1 before one has been
+        /// chosen. Latched: see <see cref="StageSlot"/>.</summary>
+        private int _stageSlot = -1;
+
+        /// <summary>Forget the chosen stage so the next request picks again. Only
+        /// for changes that genuinely invalidate it, i.e. the user pinning a
+        /// different slot. Callers must release any live borrow FIRST, or the
+        /// backup would be left pointing at a slot nothing considers the stage
+        /// any more.</summary>
+        internal void ResetStageSlot() { _stageSlot = -1; }
+
+        /// <summary>The first custom slot that has never been programmed (every
+        /// LED black), or -1 if they are all in use. Only consulted on the rare
+        /// fallback path, since it costs one read per slot.</summary>
+        /// <summary>Which custom slots hold something. Cached, because a rim
+        /// button must not wait on five HID++ round trips.
+        ///
+        /// The stage slot's answer here is meaningless while it is on loan, since
+        /// what it holds is ours. Nothing asks: the cycle leaves the stage out of
+        /// its slot list entirely, so the answer never has to be un-borrowed
+        /// first.</summary>
+        private bool[] _slotProgrammed;
+
+        internal void InvalidateSlotProgrammedCache() { _slotProgrammed = null; }
+
+        private bool[] SlotProgrammedMap()
+        {
+            var cached = _slotProgrammed;
+            if (cached != null) return cached;
+
+            var map = new bool[WheelLedChannel.CustomSlotCount];
+            bool unreadable = false;
+
+            for (int slot = 0; slot < map.Length; slot++)
+            {
+                byte[] rgb = ReadSlot(slot)?.Rgb;
+
+                // Unreadable counts as IN USE. Never hand out a slot we could not
+                // look at: that is exactly how someone's work gets written over
+                // with no backup standing behind it.
+                if (rgb == null) { map[slot] = true; unreadable = true; continue; }
+                bool blank = true;
+                foreach (byte b in rgb) if (b != 0) { blank = false; break; }
+                map[slot] = !blank;
+            }
+
+            // Only remember an answer we actually got. A map built while the
+            // channel was down says "all five in use" for the wrong reason, and
+            // caching that would fix the cycle's running order to a guess for
+            // the rest of the session.
+            if (!unreadable) _slotProgrammed = map;
+            return map;
+        }
+
+        private int FirstUnprogrammedSlot()
+        {
+            var map = SlotProgrammedMap();
+            for (int slot = 0; slot < map.Length; slot++)
+                if (!map[slot]) return slot;
+            return -1;
+        }
+
+        /// <summary>Hand back any borrowed slot, because the user has chosen
+        /// something REAL on the wheel: one of its built-in sweeps, or one of its
+        /// own stored slots.
+        ///
+        /// There is no permanent slot of ours. We only ever occupy one while a
+        /// pattern that is not on the wheel is being shown, so the moment the user
+        /// picks something that IS on the wheel, the borrow has served its purpose
+        /// and their slot goes back to them. At most one slot is ever borrowed,
+        /// and only for as long as it is doing something.</summary>
+        /// <summary>Notice when the user has moved the wheel off the slot we
+        /// borrowed, using the base's own menu rather than the plugin, and give it
+        /// back. Otherwise we would sit on their slot indefinitely while showing
+        /// nothing, and keep writing into a slot they are no longer looking at.
+        ///
+        /// Cheap enough to call per frame: the common case is no borrow at all,
+        /// which is one field read.</summary>
+        private void ReleaseBorrowIfWheelMovedAway()
+        {
+            if (_rpmLeds == null) return;
+            int showing = _rpmLeds.KnownSelection;
+            if (showing < 1) return;                 // never read: say nothing
+
+            if (_borrowedSlotCache < 0) return;      // nothing borrowed
+            if (showing == 5 + _borrowedSlotCache) return;   // still on ours
+
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] wheel moved to effect {showing}; giving CUSTOM {_borrowedSlotCache + 1} back");
+            ReleaseBorrowedSlot();
+        }
+
+        /// <summary>Which slot we believe is borrowed, kept in memory so the
+        /// per-frame check above never touches the disk. Set when a borrow is
+        /// taken, cleared when it is returned.</summary>
+        private int _borrowedSlotCache = -1;
+
+        /// <summary>Bumped every time WE change what the wheel is showing. The
+        /// settings UI watches it so a pattern changed from a rim button moves the
+        /// picker and the library list too, instead of them sitting on a selection
+        /// that stopped being true the moment the button was pressed.
+        ///
+        /// A counter rather than an event: the UI already ticks, and an event
+        /// raised from a background task would have to be marshalled onto the
+        /// dispatcher by every subscriber.</summary>
+        public int LightSelectionGeneration => _lightSelectionGen;
+        private int _lightSelectionGen;
+
+        private void NoteLightSelectionChanged()
+            => System.Threading.Interlocked.Increment(ref _lightSelectionGen);
+
+        /// <summary>The slot currently on loan, or -1. Exposed so the editor can
+        /// leave it out when reconciling which pattern lives where: while it is
+        /// lent, what that slot holds is ours and says nothing about the user's
+        /// arrangement.</summary>
+        public int BorrowedSlot => _borrowedSlotCache;
+
+        /// <summary>Whether what the wheel is showing is one of OUR library
+        /// patterns standing in the stage slot, as opposed to something the wheel
+        /// itself holds. In memory and authoritative: the cycle used to answer
+        /// this by loading the backup file from disk on every single press.
+        ///
+        /// Set where the showing happens rather than derived from "is a slot
+        /// backed up", because that is also true while the user edits one of
+        /// their OWN slots, and treating that as ours would let a cycle press
+        /// restore their edit out from under them.</summary>
+        private bool LibraryPatternShowing { get; set; }
+
+        /// <summary>The device's 1..4 direction value back to our enum. The two
+        /// are numbered differently, so this is written out rather than cast.</summary>
+        internal static LightDirection DirectionFromWire(byte wire)
+        {
+            switch (wire)
+            {
+                case 1:  return LightDirection.InsideOut;
+                case 2:  return LightDirection.OutsideIn;
+                case 4:  return LightDirection.RightToLeft;
+                default: return LightDirection.LeftToRight;
+            }
+        }
+
+        public void ReleaseBorrowedSlot()
+        {
+            LibraryPatternShowing = false;
+            NoteLightSelectionChanged();
+            int held = HeldBorrowedSlot();
+            if (held < 0) return;
+            string msg;
+            if (RestoreSlot(held, out msg))
+                SimHub.Logging.Current.Info($"[TF4ALL] gave CUSTOM {held + 1} back: {msg}");
+        }
+
+        /// <summary>The slot we hold an unreturned backup for, or -1. That IS the
+        /// definition of "currently borrowed".</summary>
+        private int HeldBorrowedSlot()
+        {
+            try
+            {
+                var map = SlotBackups.Load();
+                foreach (var kv in map)
+                    if (kv.Value != null && !kv.Value.Restored
+                        && kv.Value.Slot < WheelLedChannel.CustomSlotCount)
+                        return kv.Value.Slot;
+            }
+            catch { }
+            return -1;
+        }
+
+        /// <summary>Tag for the "let the car's own data decide" choice. Not a
+        /// pattern id: it means the absence of an override, which is why choosing
+        /// it CLEARS the per-car entries rather than storing something.</summary>
+        public const string AutoPatternTag = "*auto*";
+
+        /// <summary>True when the user has pinned a specific pattern or effect to
+        /// the active car. Their explicit choice outranks the database, so the
+        /// automatic per-car apply stands down when this is true. Without this the
+        /// two would both fire at car load and fight over the slot.</summary>
+        public bool HasExplicitCarLightChoice()
+        {
+            var s = Settings;
+            if (s == null || string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            string key = _activeGame + "/" + _activeCarId;
+            if (s.CarLightPattern != null && s.CarLightPattern.ContainsKey(key)) return true;
+            if (s.CarRevLightEffect != null
+                && s.CarRevLightEffect.TryGetValue(key, out int e) && e > 0) return true;
+            return false;
+        }
+
+        /// <summary>Whether the active car would be driven by its published data
+        /// if nothing were pinned. Drives the "Auto" entry in the pickers.</summary>
+        public bool AutoCarColorsAvailable()
+            => Settings?.LovelyCarDataEnabled == true && _lovelyCar != null;
+
+        /// <summary>Hand this car back to its own data by clearing any pinned
+        /// choice, then apply it now so the change is visible immediately rather
+        /// than at the next car load.</summary>
+        public bool UseAutoForActiveCar()
+        {
+            var s = Settings;
+            if (s == null || string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            string key = _activeGame + "/" + _activeCarId;
+            bool changed = (s.CarLightPattern?.Remove(key) ?? false)
+                         | (s.CarRevLightEffect?.Remove(key) ?? false);
+            if (changed) { try { PersistSettingsCore(); } catch { } }
+            ApplyCarColorsOnLoad(_activeGame, _activeCarId);
+            return true;
+        }
+
+        /// <summary>Put the user's own chosen pattern back on the wheel.
+        ///
+        /// Their pick is meant to STICK: choosing a pattern is a standing choice,
+        /// not a one-car one. Without this, driving a car the database knows and
+        /// then one it does not would leave the first car's colours on the wheel,
+        /// which reads as the plugin having wandered off on its own.
+        ///
+        /// Silent and best-effort: nothing chosen yet means leave the wheel be.</summary>
+        /// <summary>True while the lights are showing a CAR'S colours that we
+        /// applied, rather than whatever the user chose. The only thing that
+        /// justifies moving them back on the next car.</summary>
+        private bool _autoAppliedColors;
+
+        /// <summary>Whether the car's OWN colours are what the wheel is showing
+        /// right now, as opposed to something the user has since picked.
+        ///
+        /// The pickers used to display "Auto" whenever a car had data and nothing
+        /// was pinned to it, which is a statement about the CAR rather than about
+        /// the wheel. Cycling with a rim button then changed the lights while the
+        /// dropdown went on insisting they were automatic.</summary>
+        public bool AutoColorsShowing => _autoAppliedColors;
+
+        private void ApplyStickyPattern()
+        {
+            var lib = LightPatterns;
+            string id = lib?.StickyId;
+            if (string.IsNullOrEmpty(id)) return;
+            if (string.Equals(lib.CurrentId, id, StringComparison.Ordinal)) return;   // already showing
+
+            var p = lib.Patterns.FirstOrDefault(x => x.Id == id);
+            if (p == null) return;
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    string msg;
+                    if (!ApplyLightPattern(p, out msg))
+                        SimHub.Logging.Current.Info("[TF4ALL] sticky pattern not applied: " + msg);
+                }
+                catch { }
+            });
+        }
+
+        /// <summary>The library pattern remembered for the active car, or null.</summary>
+        public LightPattern GetCarRememberedLightPattern()
+        {
+            var s = Settings;
+            if (s?.CarLightPattern == null) return null;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return null;
+            string id;
+            if (!s.CarLightPattern.TryGetValue(_activeGame + "/" + _activeCarId, out id)) return null;
+            return LightPatterns.Patterns.FirstOrDefault(p => p.Id == id);
+        }
+
+        /// <summary>Remember one of our patterns for the active car. Clears any
+        /// remembered wheel EFFECT for the same car, because two remembered
+        /// answers for one question is how a car ends up flickering between them
+        /// at load.</summary>
+        public bool RememberLightPatternForActiveCar(string patternId)
+        {
+            var s = Settings;
+            if (s == null || string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (string.IsNullOrEmpty(patternId)) return false;
+
+            string key = _activeGame + "/" + _activeCarId;
+            if (s.CarLightPattern == null) s.CarLightPattern = new Dictionary<string, string>();
+            s.CarLightPattern[key] = patternId;
+            s.CarRevLightEffect?.Remove(key);
+            try { PersistSettingsCore(); } catch { }
+            return true;
+        }
+
+        public bool ForgetLightPatternForActiveCar()
+        {
+            var s = Settings;
+            if (s?.CarLightPattern == null) return false;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (!s.CarLightPattern.Remove(_activeGame + "/" + _activeCarId)) return false;
+            try { PersistSettingsCore(); } catch { }
+            return true;
+        }
+
+        /// <summary>Write a library pattern into the lent slot and mark it as the
+        /// one showing. The single path everything uses to put one of OUR
+        /// patterns on the wheel, so cycling, clicking and the per-car apply all
+        /// behave identically.</summary>
+        /// <param name="userChose">True when this came from the user picking or
+        /// cycling, which makes it their standing choice. False for automatic
+        /// applies, which must not redefine what they picked.</param>
+        /// <param name="sweep">Play the fill animation as well as lighting the
+        /// bar. Right for a deliberate pick, wrong for a live colour edit, where
+        /// restarting the sweep on every slider tick would flicker instead of
+        /// showing the colour the user is choosing.</param>
+        public bool ApplyLightPattern(LightPattern pattern, out string message,
+                                      bool userChose = false, bool sweep = true)
+        {
+            message = null;
+            if (pattern == null) { message = "No pattern."; return false; }
+            int slot = StageSlot();
+
+            byte[] rgb = pattern.Rgb();
+            if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
+            {
+                message = "That pattern's colours are unreadable.";
+                return false;
+            }
+
+            bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
+            {
+                Slot = (byte)slot,
+                DirectionWire = pattern.DirectionWire,
+                Rgb = rgb,
+            }, out message,
+               displayLevel: ShowLevel,
+               slotName: pattern.Name,
+               rawColors: pattern.TrimExempt);
+
+            if (ok)
+            {
+                LightPatterns.CurrentId = pattern.Id;
+                if (userChose) LightPatterns.StickyId = pattern.Id;
+                SaveLightPatterns();
+                PublishDashLightProfile(rgb, DirectionFromWire(pattern.DirectionWire), pattern.Name);
+                LibraryPatternShowing = true;
+                // A deliberate pick replaces the car's own colours, so they are no
+                // longer what is on the wheel and nothing should claim they are.
+                _autoAppliedColors = false;
+                NoteLightSelectionChanged();
+                // Sweeping is part of showing something, not an extra step every
+                // caller has to remember. Forgetting it here is what made cycled
+                // patterns invisible while parked. An edit does not sweep, but it
+                // still lights the bar and re-arms the fade, so the strip stays up
+                // for as long as the user keeps working on it.
+                if (sweep) PreviewRevLightPattern();
+                else _rpmLeds.HoldLit(WheelLedChannel.LedCount, ShowHoldMs);
+            }
+            return ok;
+        }
+
+        private LightSlotBackupStore _slotBackups;
+        private LightSlotBackupStore SlotBackups => _slotBackups ?? (_slotBackups =
+            new LightSlotBackupStore(Path.Combine(TfPaths.CommonRoot,
+                "TrueforceForAll-Library", "lightsync-slot-backup.json"))
+            { Log = m => SimHub.Logging.Current.Info(m) });
+
+        /// <summary>Identity of the attached wheel, so a backup taken on one base
+        /// is never written onto a different one.</summary>
+        private string SlotWheelId => WheelStatus ?? "wheel";
+
+        /// <summary>Read a stored slot, or null if it cannot be read. Used when
+        /// lending a slot so the pattern already in it can be adopted rather than
+        /// replaced.</summary>
+        /// <summary>Make sure the HID++ channel is up before a lighting action.
+        ///
+        /// The channel normally opens on the first telemetry frame with the gate
+        /// open, which means that parked in the settings panel with no game
+        /// running it is CLOSED. Every slot read, slot write and effect select
+        /// then fails quietly: the pick gets staged for later and the user sees
+        /// nothing happen. The Test button has always forced it open for exactly
+        /// this reason; anything the user drives from the panel needs the same.</summary>
+        public bool EnsureLedChannelOpen()
+        {
+            var ch = _rpmLeds?.Channel;
+            if (ch == null) return false;
+            if (ch.IsReady) return true;
+            try { return ch.OpenAndResolve(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] LED channel open failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        public WheelLedChannel.WheelLedSlot ReadSlot(int slot)
+        {
+            var ch = _rpmLeds?.Channel;
+            if (ch == null) return null;
+            try
+            {
+                WheelLedChannel.WheelLedSlot s;
+                return ch.TryReadSlot(slot, out s) ? s : null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Wheel LED brightness as a percentage, or -1 when the wheel
+        /// does not offer it. Read-only, so it is safe to call whenever.</summary>
+        public int ReadLedBrightness()
+        {
+            if (!EnsureLedChannelOpen()) return -1;
+            try { return _rpmLeds?.Channel?.TryReadBrightnessPercent() ?? -1; }
+            catch { return -1; }
+        }
+
+        /// <summary>Set wheel LED brightness. Only ever called from the user
+        /// moving the control: nothing writes this on load or shutdown.</summary>
+        public bool WriteLedBrightness(int percent)
+        {
+            if (!EnsureLedChannelOpen()) return false;
+            try { return _rpmLeds?.Channel?.TryWriteBrightnessPercent(percent) == true; }
+            catch { return false; }
+        }
+
+        public string ReadSlotName(int slot)
+        {
+            try { return _rpmLeds?.Channel?.TryReadSlotName(slot); }
+            catch { return null; }
+        }
+
+        /// <summary>Name a slot as the wheel's own menu shows it. Capped at eight
+        /// characters by the wire.</summary>
+        public bool WriteSlotName(int slot, string name)
+        {
+            try { return _rpmLeds?.Channel?.TryWriteSlotName(slot, name) == true; }
+            catch { return false; }
+        }
+
+        /// <summary>Write a pattern into ANY custom slot, not just the lent one.
+        /// This is the user deliberately editing one of their own slots, so it is
+        /// their intent rather than us borrowing, but it still takes a backup
+        /// first so the original is recoverable.</summary>
+        public bool WriteUserSlot(int slot, byte direction, byte[] rgb, out string message)
+            => BorrowSlot(new WheelLedChannel.WheelLedSlot
+               { Slot = (byte)slot, DirectionWire = direction, Rgb = rgb },
+               out message, displayLevel: WheelLedChannel.LedCount);
+
+        /// <summary>Take a backup of <paramref name="slot"/> if we do not already
+        /// hold an unrestored one, then write <paramref name="want"/> into it.
+        ///
+        /// Order is the whole point: the original is read and COMMITTED TO DISK
+        /// before the wheel is written. A crash between the two loses nothing; a
+        /// crash after leaves a backup marked unrestored, which the next launch
+        /// can act on.</summary>
+        /// <param name="displayLevel">-1 keeps the current rev level; pass 10 to
+        /// light the whole strip so a person can see what landed.</param>
+        /// <param name="slotName">What to call the slot on the wheel while we are
+        /// using it. The pattern's own name, so the base's menu reads as the thing
+        /// being shown rather than as our branding.</param>
+        /// <param name="permanent">The user means this write to STAY. No backup
+        /// is taken and no restore is owed, and any loan already outstanding on
+        /// that slot is settled rather than honoured, because handing back an old
+        /// copy at shutdown would undo the change they just asked for. This is
+        /// the whole difference between editing your own slot and lending one to
+        /// the plugin.</param>
+        /// <summary>The hex that a pattern's stored colours become on the wire
+        /// once the LED colour trim is applied.
+        ///
+        /// The library stores sRGB INTENT and the wheel holds that intent after
+        /// trimming, so after calibration the two genuinely differ byte for
+        /// byte, by design. Any code that compares what is on the wheel against
+        /// what the library holds must therefore compare in THIS space, and
+        /// must never try to divide the trim back out: division does not
+        /// round-trip at 8 bits and would miss by a count or two. Three sites
+        /// depend on this (SyncSlotsToWheel, AdoptSlotContentsAsPattern,
+        /// LightPatternLibrary.AdoptWheelOrder); a fourth added later and left
+        /// comparing raw hex would silently re-upload slots forever.</summary>
+        /// <summary>The trim actually in force: the user's own numbers wherever
+        /// they set them, the shipped tuning wherever they have not.
+        ///
+        /// Resolved at read rather than written to disk once, so retuning the
+        /// shipped values later reaches everyone who never had an opinion, and
+        /// never touches anyone who did. A stored 1.0 is a deliberate opt-out
+        /// and stays.</summary>
+        public void EffectiveLedTrim(out float r, out float g, out float b)
+        {
+            r = Settings?.LedTrimR ?? LedColorGain.ShippedR;
+            g = Settings?.LedTrimG ?? LedColorGain.ShippedG;
+            b = Settings?.LedTrimB ?? LedColorGain.ShippedB;
+        }
+
+        public string ToWireHex(byte[] intentRgb)
+        {
+            float r, g, b; EffectiveLedTrim(out r, out g, out b);
+            return LightSlotBackupStore.ToHex(LedColorGain.Apply(intentRgb, r, g, b));
+        }
+
+        /// <summary>The hex a PATTERN becomes on the wire. An exempt pattern is
+        /// already in the wheel's own space, so its wire form is its stored
+        /// form. This is the ONLY place that decision is made, and every site
+        /// that compares the wheel against the library must come through here.
+        ///
+        /// Normalised through ToHex rather than returning RgbHex directly:
+        /// RgbHex is a hand-editable file field that may carry lowercase or
+        /// stray whitespace, while ToHex always emits uppercase and FromHex
+        /// returns null on anything malformed, so a corrupt entry matches
+        /// nothing rather than matching by accident.</summary>
+        public string ToWireHex(LightPattern p)
+            => p == null ? string.Empty
+             : p.TrimExempt ? LightSlotBackupStore.ToHex(p.Rgb())
+             : ToWireHex(p.Rgb());
+
+        /// <param name="rawColors">The caller's colours are already in the
+        /// wheel's own space (a pattern the user tuned by eye on the rim, or one
+        /// imported out of the wheel's slots), so they go out untouched by the
+        /// LED colour trim. Anything that later compares this slot against that
+        /// pattern must compare RAW too, which ToWireHex(LightPattern) handles
+        /// as the single place that decision lives.</param>
+        public bool BorrowSlot(WheelLedChannel.WheelLedSlot want, out string message,
+                               int displayLevel = -1, string slotName = null,
+                               bool permanent = false, bool rawColors = false)
+        {
+            message = null;
+            var ch = _rpmLeds?.Channel;
+            if (ch == null) { message = "No supported wheel detected."; return false; }
+            if (want == null) { message = "Nothing to write."; return false; }
+            // Parked with no game running the channel is closed, and every read
+            // and write below would fail quietly.
+            if (!EnsureLedChannelOpen())
+            {
+                message = "Could not reach the wheel. Check it is connected and powered on.";
+                return false;
+            }
+
+            // A preview sweep drives the level on its own timer, so it would keep
+            // stepping over the level this write sets and the pattern that just
+            // landed would flicker or stay dark. Stand it down first; it is only
+            // ever showing a previous pick, which this write supersedes.
+            _rpmLeds.CancelPreview();
+
+            // Everything upstream of here deals in sRGB intent: #FFFF00 means
+            // yellow. This is the one place that turns intent into what THIS
+            // wheel has to be sent to render it. `want` itself must not be
+            // touched, because the code below keeps reading want.Slot and
+            // callers hold the same object.
+            //
+            // Anything that later compares the wheel's bytes against a stored
+            // pattern has to compare in this same corrected space. There are
+            // three such sites (SyncSlotsToWheel, AdoptSlotContentsAsPattern,
+            // LightPatternLibrary.AdoptWheelOrder) and all three run the stored
+            // value through LedColorGain rather than trying to divide the gain
+            // back out, which does not round-trip at 8 bits.
+            // Clone() already deep-copies the array, so the caller's own bytes
+            // are never handed to the channel even on the raw path.
+            var wire = want.Clone();
+            if (rawColors) wire.Rgb = want.Rgb;
+            else
+            {
+                float tr, tg, tb; EffectiveLedTrim(out tr, out tg, out tb);
+                wire.Rgb = LedColorGain.Apply(want.Rgb, tr, tg, tb);
+            }
+
+            try
+            {
+                var store = SlotBackups;
+                var map = store.Load();
+
+                if (permanent)
+                {
+                    // Settle any loan outstanding on this slot. What the user just
+                    // chose is what belongs there now, and putting the old copy
+                    // back at shutdown would quietly throw the edit away.
+                    string owedKey;
+                    var owed = LightSlotBackupStore.Find(map, SlotWheelId, want.Slot, out owedKey);
+                    if (owed != null && !owed.Restored)
+                    {
+                        owed.Restored = true;
+                        store.Save(map);
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] CUSTOM {want.Slot + 1} was written on purpose, so the loan on it is "
+                            + "settled and nothing will be put back at shutdown");
+                    }
+                    if (_borrowedSlotCache == want.Slot) _borrowedSlotCache = -1;
+
+                    if (!ch.TryWriteSlot(wire, displayLevel))
+                    { message = "The wheel refused the write (see SimHub.txt)."; return false; }
+                    if (!string.IsNullOrWhiteSpace(slotName)) WriteSlotName(want.Slot, slotName);
+                    InvalidateSlotProgrammedCache();
+                    message = $"Saved into CUSTOM {want.Slot + 1}. It stays on the wheel with SimHub closed.";
+                    return true;
+                }
+
+                // A backup file we could not parse is NOT the same as no backup.
+                // Carrying on would re-read the slot, capture whatever is on it
+                // (possibly our own colours from a previous borrow) and record
+                // that as "the original", destroying the last trace of theirs.
+                if (store.LastLoadCorrupt)
+                {
+                    message = "The slot backup file could not be read, so nothing was written. "
+                            + "The unreadable file has been kept alongside it; your wheel is untouched.";
+                    return false;
+                }
+
+                string key;
+                var existing = LightSlotBackupStore.Find(map, SlotWheelId, want.Slot, out key);
+                bool holdBackup = existing != null && !existing.Restored;
+
+                if (!holdBackup)
+                {
+                    WheelLedChannel.WheelLedSlot original;
+                    if (!ch.TryReadSlot(want.Slot, out original))
+                    {
+                        message = "Could not read the slot's current contents, so nothing was written. "
+                                + "Refusing to overwrite something we cannot put back.";
+                        return false;
+                    }
+                    var entry = LightSlotBackupStore.FromSlot(original, SlotWheelId, DateTime.UtcNow);
+                    // Keep the slot's own name too, so giving it back restores how
+                    // the wheel's menu reads, not just the colours.
+                    entry.OriginalName = ReadSlotName(want.Slot);
+                    map[LightSlotBackupStore.KeyFor(SlotWheelId, want.Slot)] = entry;
+
+                    // The save MUST land before the wheel is touched. Reporting
+                    // "backed up first" while the write silently failed was the
+                    // worst bug in this path: the user would believe their colours
+                    // were safe when the only copy had just been discarded.
+                    if (!store.Save(map))
+                    {
+                        message = "Could not save a backup of your slot, so nothing was written. "
+                                + "Your wheel is untouched. Check the SimHub folder is writable.";
+                        return false;
+                    }
+                }
+
+                if (!ch.TryWriteSlot(wire, displayLevel)) { message = "The wheel refused the write (see SimHub.txt)."; return false; }
+
+                // Name the slot after what is IN it. Scrolling the base's own
+                // LIGHTSYNC menu then reads as the pattern being shown, which is
+                // the useful thing to see there; the original name is saved and
+                // written back when the slot is handed over.
+                if (!string.IsNullOrWhiteSpace(slotName)) WriteSlotName(want.Slot, slotName);
+                _borrowedSlotCache = want.Slot;
+                // A slot's contents just changed, so what the cycle believes about
+                // which slots are filled is now one write out of date.
+                InvalidateSlotProgrammedCache();
+
+                message = holdBackup
+                    ? $"Wrote CUSTOM {want.Slot + 1}. Your original is already backed up from earlier."
+                    : $"Wrote CUSTOM {want.Slot + 1}. Your original was backed up first.";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = "Slot borrow failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        /// <summary>Put a borrowed slot back exactly as we found it and mark the
+        /// backup settled. Safe to call when nothing is owed: it says so.</summary>
+        public bool RestoreSlot(int slot, out string message)
+        {
+            message = null;
+            var ch = _rpmLeds?.Channel;
+            if (ch == null) { message = "No supported wheel detected."; return false; }
+            if (!EnsureLedChannelOpen())
+            {
+                message = "Could not reach the wheel, so the restore was not attempted. "
+                        + "The backup is kept and will be applied when it can be.";
+                return false;
+            }
+
+            try
+            {
+                var store = SlotBackups;
+                var map = store.Load();
+
+                string key;
+                var entry = LightSlotBackupStore.Find(map, SlotWheelId, slot, out key);
+                if (entry == null)
+                {
+                    message = $"No backup held for CUSTOM {slot + 1}; nothing to restore.";
+                    return false;
+                }
+                if (entry.Restored)
+                {
+                    message = $"CUSTOM {slot + 1} was already restored.";
+                    return false;
+                }
+
+                var original = LightSlotBackupStore.ToSlot(entry);
+                if (original == null)
+                {
+                    message = "The stored backup is unreadable, so nothing was written.";
+                    return false;
+                }
+                // Write the slot we were ASKED to restore, not the number stored
+                // in the file. The two are independent fields in a plain-text file
+                // the header invites people to read, and on divergence the stored
+                // one would send a restore into a slot nobody asked about.
+                original.Slot = (byte)slot;
+                if (!ch.TryWriteSlot(original)) { message = "The wheel refused the restore (see SimHub.txt)."; return false; }
+                InvalidateSlotProgrammedCache();
+
+                // Read it back and compare before calling the debt settled. A
+                // write we merely believe landed is not proof: marking Restored
+                // on an unconfirmed write would let the NEXT borrow re-read the
+                // slot, still holding our colours, and record those as "the
+                // original", losing the user's real ones for good.
+                WheelLedChannel.WheelLedSlot after;
+                bool verified = ch.TryReadSlot(slot, out after)
+                                && after?.Rgb != null
+                                && after.DirectionWire == original.DirectionWire
+                                && after.Rgb.Length >= original.Rgb.Length
+                                && !after.Rgb.Where((b, i) => i < original.Rgb.Length && b != original.Rgb[i]).Any();
+
+                if (!verified)
+                {
+                    message = $"CUSTOM {slot + 1} was written back, but reading it returned something else, "
+                            + "so the backup has been KEPT and can be applied again.";
+                    return false;
+                }
+
+                // Put the slot's own name back too, so the wheel's menu stops
+                // saying TF4ALL once it is theirs again.
+                if (!string.IsNullOrWhiteSpace(entry.OriginalName))
+                    WriteSlotName(slot, entry.OriginalName);
+
+                entry.Restored = true;
+                store.Save(map);
+                if (_borrowedSlotCache == slot) _borrowedSlotCache = -1;
+                message = $"CUSTOM {slot + 1} restored to what it was.";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = "Slot restore failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        /// <summary>Any slot a previous session borrowed and never gave back.
+        ///
+        /// Called from End() so a clean exit settles the debt, and again after the
+        /// wheel comes up so a session that CRASHED holding a slot is repaid at
+        /// the next launch. Both matter: a slot write persists on the wheel, so
+        /// without this the user's own colours stay overwritten indefinitely and
+        /// only a hidden dev code could bring them back.</summary>
+        public string RestoreOwedSlots()
+        {
+            try
+            {
+                var store = SlotBackups;
+                var map = store.Load();
+                var owed = new List<int>();
+                foreach (var kv in map)
+                    if (kv.Value != null && !kv.Value.Restored
+                        && string.Equals(kv.Value.WheelId, SlotWheelId, StringComparison.OrdinalIgnoreCase))
+                        owed.Add(kv.Value.Slot);
+
+                // Nothing owed is the overwhelmingly common case, and it is
+                // answered from disk, so a normal launch never touches the wheel.
+                if (owed.Count == 0) return null;
+
+                // Something IS owed, so the channel has to be open to give it
+                // back. Only reached after a session died holding a slot.
+                var ch = _rpmLeds?.Channel;
+                if (ch != null && !ch.IsReady)
+                {
+                    try { ch.OpenAndResolve(); } catch { }
+                }
+
+                var done = new List<string>();
+                foreach (int slot in owed)
+                {
+                    string msg;
+                    if (RestoreSlot(slot, out msg)) done.Add("CUSTOM " + (slot + 1));
+                }
+                return done.Count > 0
+                    ? "Restored a light slot a previous session left borrowed: " + string.Join(", ", done)
+                    : null;
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] owed-slot restore failed: " + ex.Message);
+                return null;
+            }
         }
 
         public string RpmLedStatus => _rpmLeds?.Status ?? "(n/a)";

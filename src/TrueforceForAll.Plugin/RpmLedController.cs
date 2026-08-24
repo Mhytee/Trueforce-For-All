@@ -25,6 +25,10 @@ namespace TrueforceForAll.Plugin
         private readonly Action<string> _log;
         private readonly WheelLedChannel _channel;
 
+        /// <summary>The underlying HID++ channel, for read-only diagnostics that
+        /// need to question the wheel directly (the slot-feature probe).</summary>
+        public WheelLedChannel Channel => _channel;
+
         private int _openState;        // 0=idle 1=opening 2=open-ok 3=open-failed
         private int _openFails;        // completed failed open attempts (auto path only)
         private long _nextOpenRetryMs; // no automatic re-probe before this
@@ -33,8 +37,30 @@ namespace TrueforceForAll.Plugin
         private int _lastBucket = -1;  // last LED count pushed (0..10), -1 = none
         private bool _lastRedline;
         private long _lastPushTicks;
-        private volatile bool _testing;
+        /// <summary>Who currently owns the strip. One token instead of a pair of
+        /// booleans that had to be read together: every guard used to spell out
+        /// its own combination of them, and each time one was wrong it showed up
+        /// as a separate bug (a pattern pick refused mid-preview, a preview
+        /// dropped mid-pick). Priority runs None, then Preview, then Test.</summary>
+        private volatile int _owner;      // OwnerNone / OwnerPreview / OwnerTest
+        private volatile bool _testing;   // mirrors _owner != OwnerNone for the status poll
         private volatile string _testStatus = "";
+        /// <summary>Bumped by every preview so a running one can tell it has been
+        /// superseded and stand down.</summary>
+        private volatile int _previewGen;
+        private const int OwnerNone = 0, OwnerPreview = 1, OwnerTest = 2;
+
+        /// <summary>The Test sweep is a hardware check the user asked for and is
+        /// watching, so it keeps the strip until it ends. A preview exists only
+        /// to show a pick, so it gives way to the next one.</summary>
+        private bool TestOwnsLeds => _owner == OwnerTest;
+
+        /// <summary>Bumped by every deliberate lighting action so a pending
+        /// auto-off knows it has been superseded and stands down.</summary>
+        private volatile int _holdGen;
+
+        private void TakeStrip(int owner) { _owner = owner; _testing = owner != OwnerNone; }
+        private void DropStrip()          { _owner = OwnerNone; _testing = false; }
 
         // Don't pound the wheel: at most ~50 Hz, and only when the visible
         // state changed. A full rev sweep is ~10 discrete steps so this is
@@ -69,6 +95,31 @@ namespace TrueforceForAll.Plugin
         /// <summary>Called every telemetry frame. <paramref name="gateOpen"/>
         /// is the iRacing + setting-enabled gate. Off-gate releases the LEDs
         /// once (so a stale bar doesn't linger) and does nothing else.</summary>
+        /// <summary>Optional per-car fill curve. Given the raw revs and this
+        /// wheel's step count, returns the level to light, or null to say nothing
+        /// about this frame. Set by the plugin when the active car has published
+        /// rev-light data and the user has turned that on; null the rest of the
+        /// time, which leaves every existing behaviour untouched.
+        ///
+        /// Takes revs rather than the percentage because the whole point is the
+        /// car's own switch-on RPMs: a percentage has already been flattened
+        /// through somebody else's rev-band model and cannot be un-flattened.</summary>
+        public Func<double, int, int?> LevelCurve { get; set; }
+
+        /// <summary>Half-period of the redline flash in milliseconds, i.e. how
+        /// long the bar stays on before it goes off. 185 ms (about 2.7 Hz) is the
+        /// default and matches iRacing's shift blink.
+        ///
+        /// Set from the active car's own published blink rate when it has one, so
+        /// a car that flashes fast flashes fast here. Unlike the pulse rate this
+        /// is an exact match for the published figure: it IS the redline blink.</summary>
+        public int RedlineBlinkHalfMs { get; set; } = 185;
+
+        /// <summary>The level most recently computed, whether or not it reached
+        /// the wheel. The dash mirror reads this: it wants what the strip WOULD
+        /// show, including in games where nothing is written to the hardware.</summary>
+        public int LastLevel { get; private set; }
+
         public void OnFrame(double rpmPercent, double rpms, double maxRpm, bool redline, bool gateOpen)
         {
             if (_testing) return;   // test sweep owns the LEDs while it runs
@@ -100,12 +151,12 @@ namespace TrueforceForAll.Plugin
             // (below shift-light onset = lights off); the old "pct<=0 ->
             // rpm/maxRpm" fallback clobbered that, lighting ~1 LED at idle
             // and looping at low revs. Do not second-guess the source.
-            Push(rpmPercent, redline, force: false);
+            Push(rpmPercent, redline, force: false, rpms: rpms);
         }
 
         private int _hystLevel = -1;
 
-        private void Push(double pct, bool redline, bool force)
+        private void Push(double pct, bool redline, bool force, double rpms = double.NaN)
         {
             long nowMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
             // Per-wheel step count from fn0: 10 on the G PRO/RS50, 5 on a
@@ -115,13 +166,36 @@ namespace TrueforceForAll.Plugin
             int target;
             if (redline)
             {
-                // Peak: blink the full bar (~2.7 Hz) like iRacing's shift
-                // blink, instead of holding it solid.
-                bool on = ((nowMs / 185L) & 1L) == 0L;
+                // Peak: blink the full bar instead of holding it solid. The rate
+                // is the car's own where it publishes one, else iRacing's ~2.7 Hz.
+                long half = RedlineBlinkHalfMs > 0 ? RedlineBlinkHalfMs : 185L;
+                bool on = ((nowMs / half) & 1L) == 0L;
                 target = on ? steps : 0;
             }
             else
             {
+                // Per-car curve first when one is set. It already returns whole
+                // levels derived from the car's own switch-on points, so the
+                // fractional hysteresis below does not apply; a threshold is a
+                // hard edge, and the push-rate limit further down still absorbs
+                // jitter around one. Any failure falls through to the ramp rather
+                // than dropping the frame.
+                int? curved = null;
+                var curve = LevelCurve;
+                if (curve != null && !double.IsNaN(rpms))
+                {
+                    try { curved = curve(rpms, steps); }
+                    catch { curved = null; }
+                }
+                if (curved.HasValue)
+                {
+                    int cl = curved.Value;
+                    if (cl < 0) cl = 0; else if (cl > steps) cl = steps;
+                    _hystLevel = cl;
+                    Commit(cl, redline, force, nowMs);
+                    return;
+                }
+
                 double scaled = pct * steps;
                 int lvl = (int)Math.Floor(scaled + 0.5);
                 if (lvl < 0) lvl = 0;
@@ -138,6 +212,17 @@ namespace TrueforceForAll.Plugin
                 target = lvl;
             }
 
+            Commit(target, redline, force, nowMs);
+        }
+
+        /// <summary>Write a level to the wheel, subject to the change and rate
+        /// gates. Shared by the ramp and the per-car curve so both take exactly
+        /// the same path onto the wire.</summary>
+        private void Commit(int target, bool redline, bool force, long nowMs)
+        {
+            // Recorded before the gates below, so the dash still mirrors the bar
+            // in a game where the write itself never happens.
+            LastLevel = target;
             bool changed = target != _lastBucket || redline != _lastRedline;
             if (!force && !changed) return;
             if (!force && (nowMs - _lastPushTicks) < MinPushIntervalMs && !redline) return;
@@ -196,7 +281,11 @@ namespace TrueforceForAll.Plugin
         /// the total duration in ms (0 if the channel can't be opened).</summary>
         public int RunTest()
         {
-            if (_testing) return 0;
+            if (TestOwnsLeds) return 0;
+            // A preview is only showing a pick, so the Test button takes the
+            // strip off it. Cancelling first also stops the superseded sweep
+            // clearing _testing out from under the test.
+            CancelPreview();
 
             // Rev-level sweep using the real (captured) G PRO protocol: walk
             // the level 0..10..0 a couple of times, then a brief redline hold.
@@ -213,7 +302,7 @@ namespace TrueforceForAll.Plugin
 
             // Mark testing BEFORE returning so the UI's status-poll timer sees the
             // test immediately (it self-stops ~1 s after RpmLedIsTesting clears).
-            _testing = true;
+            TakeStrip(OwnerTest);
             Task.Run(() =>
             {
                 bool opened = _channel.IsReady;
@@ -276,7 +365,7 @@ namespace TrueforceForAll.Plugin
                         _testStatus = "test finished - LEDs off";
                         _log("[RPM-LED] Test: finished, LEDs off (level 0).");
                     }
-                    _testing = false;
+                    DropStrip();
                 }
             });
             return total;
@@ -298,7 +387,12 @@ namespace TrueforceForAll.Plugin
         /// off the UI thread. Caller decides the pipe is safe.</summary>
         public bool SelectPatternNow(int effect)
         {
-            if (_testing) return false;   // never mid-sweep
+            // Never mid-TEST. A preview is a different matter: picking down a
+            // list is exactly when previews run, so refusing here meant the
+            // cycle binding silently dropped presses until the sweep ended.
+            // The pick is NOT cancelled into the preview, it lands through the
+            // channel's live switch path and shows up mid-sweep.
+            if (TestOwnsLeds) return false;
             if (!_channel.IsReady)
             {
                 bool ok;
@@ -339,12 +433,39 @@ namespace TrueforceForAll.Plugin
         /// wheel's own selection, so the preview leaves no trace. A pick made
         /// while a preview is still sweeping applies live mid-sweep through
         /// the channel's own switch path, so no re-entry is needed.</summary>
-        public int PreviewPattern()
+        /// <summary>Stand down any running preview WITHOUT blanking the strip.
+        /// For callers that are about to drive the LEDs themselves (a slot
+        /// write): the preview's level loop would otherwise keep stepping and
+        /// stomp the level the write just set. Deliberately does not TurnOff,
+        /// because the caller wants what it is about to write to be visible.
+        /// Harmless when no preview is running.</summary>
+        public void CancelPreview()
         {
-            if (_testing) return 0;
+            if (_owner != OwnerPreview) return;
+            System.Threading.Interlocked.Increment(ref _previewGen);
+            DropStrip();
+            _testStatus = "";
+        }
+
+        /// <param name="endLevel">How many LEDs to leave lit when the sweep
+        /// finishes, or -1 to turn the strip off. Parked, a pick that ends dark
+        /// shows the user nothing, which is the whole reason they pressed.</param>
+        /// <param name="holdMs">How long to leave the strip lit after the sweep
+        /// before fading it out, or 0 to leave it lit indefinitely.</param>
+        public int PreviewPattern(int endLevel = -1, int holdMs = 0)
+        {
             const int stepMs = 180;   // just above the channel's 160 ms change floor
 
-            _testing = true;
+            // The Test sweep keeps the strip; a preview does not.
+            if (TestOwnsLeds) return 0;
+
+            // A new preview INTERRUPTS the one running. Clicking down a list of
+            // patterns is the normal way to use this, and dropping the request
+            // because the previous sweep had not finished meant you watched the
+            // OLD pattern play while the new one was already selected. Each run
+            // takes a generation number and stops as soon as it is superseded.
+            int gen = System.Threading.Interlocked.Increment(ref _previewGen);
+            TakeStrip(OwnerPreview);
             Task.Run(() =>
             {
                 bool opened = _channel.IsReady;
@@ -365,13 +486,13 @@ namespace TrueforceForAll.Plugin
                     }
 
                     int steps = _channel.StripLength;
-                    for (int lvl = 0; lvl <= steps && _channel.IsReady; lvl++)
+                    for (int lvl = 0; lvl <= steps && _channel.IsReady && _previewGen == gen; lvl++)
                     {
                         _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
                         _channel.SetLevel(lvl);
                         Thread.Sleep(stepMs);
                     }
-                    for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady; lvl--)
+                    for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady && _previewGen == gen; lvl--)
                     {
                         _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
                         _channel.SetLevel(lvl);
@@ -381,18 +502,85 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { _log($"[RPM-LED] preview error: {ex.Message}"); }
                 finally
                 {
-                    if (opened)
+                    // Only the CURRENT run tidies up. A superseded one must not
+                    // blank the strip or drop the testing flag, or it would put
+                    // the lights out from under the preview that replaced it.
+                    if (_previewGen == gen)
                     {
-                        try { _channel.TurnOff(); } catch { }
-                        _lastBucket = -1;
-                        _testStatus = "";
+                        if (opened)
+                        {
+                            // Settle where the caller asked. A pick made from the
+                            // settings tab wants the bar left LIT so the colours
+                            // can be looked at; the Test button wants the wheel
+                            // handed back dark.
+                            try
+                            {
+                                if (endLevel >= 0) _channel.SetLevel(Math.Min(endLevel, _channel.StripLength));
+                                else _channel.TurnOff();
+                            }
+                            catch { }
+                            _lastBucket = -1;
+                            _testStatus = "";
+                        }
+                        DropStrip();
+                        // Armed AFTER the owner is dropped, so the auto-off can
+                        // see that nothing else has taken the strip.
+                        if (endLevel >= 0) ArmAutoOff(holdMs);
                     }
-                    _testing = false;
                 }
             });
 
             int stepsGuess = _channel.IsReady ? _channel.StripLength : WheelLedChannel.LedCount;
             return (2 * stepsGuess + 1) * stepMs + 300;
+        }
+
+        /// <summary>Light the strip for a deliberate action and start the clock on
+        /// putting it out again.
+        ///
+        /// Re-arming is the whole point: keep working and it stays lit, stop and it
+        /// goes out by itself a few seconds later. A parked wheel holding a full
+        /// bar indefinitely is wrong, but going dark while someone is choosing
+        /// colours is worse.</summary>
+        public void HoldLit(int level, int holdMs)
+        {
+            if (TestOwnsLeds) return;
+            if (IsDriving) return;          // telemetry owns the bar; do not fight it
+            if (!_channel.IsReady) return;
+            try { _channel.SetLevel(Math.Max(0, Math.Min(level, _channel.StripLength))); } catch { }
+            ArmAutoOff(holdMs);
+        }
+
+        /// <summary>Fade the strip out after a quiet period. The fade is a level
+        /// ramp rather than a brightness ramp: brightness is the user's own
+        /// setting and dimming it here would leave their wheel changed.</summary>
+        private void ArmAutoOff(int holdMs)
+        {
+            if (holdMs <= 0) return;
+            int gen = System.Threading.Interlocked.Increment(ref _holdGen);
+            Task.Run(() =>
+            {
+                try
+                {
+                    Thread.Sleep(holdMs);
+                    // Anything at all happened since: another pick, an edit, the
+                    // Test button, or a game started driving the bar.
+                    if (_holdGen != gen || _owner != OwnerNone) return;
+                    if (IsDriving || !_channel.IsReady) return;
+
+                    for (int lvl = _channel.StripLength - 1; lvl >= 0; lvl--)
+                    {
+                        if (_holdGen != gen || _owner != OwnerNone || IsDriving) return;
+                        _channel.SetLevel(lvl);
+                        Thread.Sleep(70);
+                    }
+                    if (_holdGen == gen && _owner == OwnerNone && !IsDriving)
+                    {
+                        _channel.TurnOff();
+                        _lastBucket = -1;
+                    }
+                }
+                catch (Exception ex) { _log($"[RPM-LED] auto-off error: {ex.Message}"); }
+            });
         }
 
         /// <summary>Explicitly turn the rim LEDs off now. Called when the

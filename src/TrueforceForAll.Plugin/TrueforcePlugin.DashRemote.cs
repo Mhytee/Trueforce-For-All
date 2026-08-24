@@ -39,6 +39,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using SimHub.Plugins;
+using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
@@ -925,6 +926,84 @@ namespace TrueforceForAll.Plugin
         // dash itself sits next to a tile showing its value, so announcing
         // those as well is noise, and every press of a stepper putting a card
         // over the middle of the screen is worse than saying nothing.
+        // ---------- rev-light mirror for the dash ----------
+        //
+        // Deliberately independent of whether we drive the wheel. The level comes
+        // from the same maths the strip would use, so the dash shows what the
+        // wheel WOULD show even in a game where writing an LED is off the table.
+        // Nothing here touches the hardware.
+
+        private volatile int _dashLightLevel;
+        private volatile bool _dashLightRedline;
+        private LovelyLightMath.LightProfileSnapshot _dashLightProfile;
+
+        public int DashLightCount => WheelLedChannel.LedCount;
+        public int DashLightLevel => _dashLightLevel;
+        public bool DashLightRedline => _dashLightRedline;
+
+        public string DashLightPatternName
+        {
+            get
+            {
+                var snap = _dashLightProfile;
+                if (!string.IsNullOrEmpty(snap?.Name)) return snap.Name;
+                var lib = _lightPatterns;   // avoid building the library just to answer a poll
+                var cur = lib?.Patterns?.FirstOrDefault(p => p.Id == lib.CurrentId);
+                return cur?.Name ?? "";
+            }
+        }
+
+        /// <summary>Colour of one LED as "#RRGGBB", for a dash to bind straight to
+        /// a rectangle's fill.</summary>
+        public string DashLightColor(int led)
+        {
+            var snap = _dashLightProfile;
+            if (snap?.Rgb == null || snap.Rgb.Length < (led + 1) * 3) return "#000000";
+            return string.Format("#{0:X2}{1:X2}{2:X2}",
+                snap.Rgb[led * 3], snap.Rgb[led * 3 + 1], snap.Rgb[led * 3 + 2]);
+        }
+
+        /// <summary>Whether this LED is lit right now, accounting for the fill
+        /// direction: a mirrored pattern lights in pairs from the ends or the
+        /// middle, so position alone does not answer it.</summary>
+        public bool DashLightOn(int led)
+        {
+            var snap = _dashLightProfile;
+            if (_dashLightRedline) return true;              // redline lights the whole bar
+            int level = _dashLightLevel;
+            if (level <= 0) return false;
+
+            var dir = snap?.Direction ?? LightDirection.LeftToRight;
+            int step = LovelyLightMath.StepIndexForLed(led, dir, WheelLedChannel.LedCount);
+            int steps = LovelyLightMath.StepCount(dir, WheelLedChannel.LedCount);
+            if (steps <= 0) return false;
+
+            // level is 0..LedCount; scale it onto this layout's step count so a
+            // mirrored pattern lights the right number of PAIRS.
+            int litSteps = (int)Math.Round((double)level * steps / WheelLedChannel.LedCount);
+            return step < litSteps;
+        }
+
+        /// <summary>Called from the telemetry path with what the strip is doing,
+        /// so the dash mirrors it whether or not the wheel is being written.</summary>
+        internal void PublishDashLights(int level, bool redline)
+        {
+            _dashLightLevel = level;
+            _dashLightRedline = redline;
+        }
+
+        /// <summary>Called when the shown pattern changes, so the dash's colours
+        /// follow. Cheap: a snapshot rather than a live read.</summary>
+        internal void PublishDashLightProfile(byte[] rgb, LightDirection direction, string name)
+        {
+            _dashLightProfile = new LovelyLightMath.LightProfileSnapshot
+            {
+                Rgb = rgb == null ? null : (byte[])rgb.Clone(),
+                Direction = direction,
+                Name = name,
+            };
+        }
+
         private void DashReadout(string label, string value)
         {
             _dashReadoutAtTick = Environment.TickCount;
@@ -1699,6 +1778,40 @@ namespace TrueforceForAll.Plugin
                     && System.Threading.Volatile.Read(ref _recoveryInProgress) == 0;
             });
             this.AttachDelegate("Dash.WheelStatus",  () => StreamStatus);
+
+            // ---------- properties: rev lights, for a dash to mirror ----------
+            //
+            // The wheel's rev strip, published so a dashboard can draw the same
+            // thing on screen. This is the ONE lighting path with no hardware
+            // caveat attached: it sends nothing to the wheel, so it cannot cut a
+            // game's force feedback, and it works in every title including the
+            // ones where we never drive an LED and the ones the plugin disables
+            // itself for. A user whose game lights its own wheel still gets the
+            // car's real pattern on their dash.
+            //
+            // Per-LED rather than one blob so a dash can bind ten rectangles
+            // directly, with no string parsing in a formula.
+            //
+            // Registered only when the feature is unlocked. They are harmless to
+            // evaluate, but SimHub polls every attached delegate on its update
+            // tick and this project already knows dashboards are sensitive to
+            // binding count, so a user who never entered the code should not
+            // carry twenty-four more entries in the property tree.
+            if (Settings?.LightsyncTabUnlocked == true)
+            {
+                this.AttachDelegate("Dash.Lights.Count",   () => DashLightCount);
+                this.AttachDelegate("Dash.Lights.Level",   () => DashLightLevel);
+                this.AttachDelegate("Dash.Lights.Redline", () => DashLightRedline);
+                this.AttachDelegate("Dash.Lights.Pattern", () => DashLightPatternName);
+                for (int i = 0; i < WheelLedChannel.LedCount; i++)
+                {
+                    int led = i;   // captured per delegate
+                    this.AttachDelegate("Dash.Lights.Led" + (led + 1).ToString("00") + "Color",
+                                        () => DashLightColor(led));
+                    this.AttachDelegate("Dash.Lights.Led" + (led + 1).ToString("00") + "On",
+                                        () => DashLightOn(led));
+                }
+            }
             this.AttachDelegate("Dash.Game",         () => DashSnap().Game);
             this.AttachDelegate("Dash.CarName",      () => DashSnap().CarName);
             // Built-ins are stored " (default)" but display " (built-in)"

@@ -263,6 +263,10 @@ namespace TrueforceForAll.Plugin
             MotdStripHost.Content = _motdStrip;
 
             ApplyDevModeVisibility();
+            // Restores the unlocked layout on a dev machine before the first
+            // RefreshFromPlugin, so the block is already in its tab by the time
+            // any visibility pass runs over the controls inside it.
+            ApplyLightsyncTabVisibility();
 
             // Header version readout. Read once at construction; doesn't change
             // at runtime within a session. ToString(3) drops the build/revision
@@ -1222,9 +1226,23 @@ namespace TrueforceForAll.Plugin
                 if (OledSection != null)
                     OledSection.Visibility = _plugin.WheelHasOledScreen
                         ? Visibility.Visible : Visibility.Collapsed;
+                // The gate above sits on the inner section, so on a wheel with no
+                // screen the LIGHTSYNC wrapper would render a "Wheel screen"
+                // header above nothing. Hide the whole expander with it.
+                if (LightsyncScreenExpander != null)
+                    LightsyncScreenExpander.Visibility = _plugin.WheelHasOledScreen
+                        ? Visibility.Visible : Visibility.Collapsed;
+                // "and screen" is right on the Telemetry FFB tab, where the lights
+                // and the screen sit back to back under one header. On LIGHTSYNC
+                // the screen has its own named section, so the header should stop
+                // claiming it.
                 if (WheelLightsHeaderText != null)
-                    WheelLightsHeaderText.Text = _plugin.WheelHasOledScreen
+                    WheelLightsHeaderText.Text = (_plugin.WheelHasOledScreen
+                                                  && _plugin.Settings?.LightsyncTabUnlocked != true)
                         ? "Wheel lights and screen" : "Wheel lights";
+                if (LovelyCarDataCheck != null)
+                    LovelyCarDataCheck.IsChecked = _plugin.Settings?.LovelyCarDataEnabled == true;
+                RefreshLightsyncCycleHint();
                 if (ModeBOledCheck != null)
                     ModeBOledCheck.IsChecked = _plugin.Settings?.ModeBOledEnabled == true;
                 // The screen picker is filled and selected by Tag in
@@ -1830,8 +1848,34 @@ namespace TrueforceForAll.Plugin
         private int _tickProbeCount;
         private double _tickProbeWorstGapMs;
 
+        /// <summary>The selection generation this UI has already caught up with.
+        /// Anything else means the pattern changed somewhere we were not looking,
+        /// which in practice means a rim button.</summary>
+        private int _seenLightSelectionGen;
+
+        /// <summary>Follow a pattern change made from outside this window. Both
+        /// pickers and the LIGHTSYNC list all show which pattern is current, and
+        /// none of them were being told when a bound button moved it.</summary>
+        private void FollowExternalLightSelection()
+        {
+            if (_plugin?.Settings?.LightsyncTabUnlocked != true) return;
+            int gen = _plugin.LightSelectionGeneration;
+            if (gen == _seenLightSelectionGen) return;
+            _seenLightSelectionGen = gen;
+
+            // The combos read the wheel's selection themselves, so they only need
+            // to be told to look again.
+            try { RefreshRevLightPicker(); } catch { }
+            try { RefreshCarRevLightRow(); } catch { }
+            // The list carries the current-pattern marker and its own selection,
+            // so it has to be rebuilt rather than merely re-read.
+            try { SyncPatternListToCurrent(); } catch { }
+        }
+
         private void MeterTimer_Tick(object sender, EventArgs e)
         {
+            FollowExternalLightSelection();
+
             // Dev-gated: measure the timer's REAL cadence and log it every
             // ~10 s. One line per 10 s, only with dev mode unlocked.
             if (_plugin?.Settings?.DevModeUnlocked == true)
@@ -6670,6 +6714,30 @@ namespace TrueforceForAll.Plugin
         internal const string PrivacyPolicyUrl = "https://github.com/Mhytee/Trueforce-For-All/blob/beta/PRIVACY.md";
         private void PrivacyPolicy_Click(object sender, RoutedEventArgs e) => OpenUrl(PrivacyPolicyUrl);
 
+        // Attribution for the light-pattern data. Its licence requires the credit,
+        // so this link is a condition of using the data, not decoration. Keep the
+        // wording scoped to light patterns: our own community car facts supply
+        // redlines, engine data and car names, including for the many games this
+        // project does not cover, and a broader credit would misstate that.
+        private void LovelyCredit_Click(object sender, RoutedEventArgs e)
+            => OpenUrl("https://github.com/Lovely-Sim-Racing/lovely-car-data");
+
+        // Per-car rev-light data master switch. Networked and third-party, so it
+        // is off until asked for. Turning it off drops the in-memory copies at
+        // once so the lights revert this frame rather than at the next car.
+        private void LovelyCarData_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            // One switch, and now literally one field. Filling at the car's own
+            // points needs no permission (no extra traffic, nothing of the user's
+            // touched), so it is simply what the data is for; the same switch
+            // decides whether the COLOURS and pattern follow too, which is the
+            // part that writes a slot.
+            _plugin.Settings.LovelyCarDataEnabled = LovelyCarDataCheck?.IsChecked == true;
+            _plugin.PersistSettings();
+            _plugin.OnLovelyEnabledChanged();
+        }
+
         private static void OpenUrl(string url)
         {
             try
@@ -8907,6 +8975,13 @@ namespace TrueforceForAll.Plugin
                 // Opening the Effects view counts toward auto-retiring NEW badges the
                 // user keeps ignoring; refresh the chrome if any badge just cleared.
                 if (_plugin.NoteEffectsViewOpened()) RefreshNewBadges();
+            }
+            else if (LightsyncTab != null && ReferenceEquals(MainTabs.SelectedItem, LightsyncTab))
+            {
+                // Deferred so the tab paints behind the dialog rather than after
+                // it, same as the Mode B intro.
+                Dispatcher.BeginInvoke(new Action(MaybeShowLightsyncIntro),
+                                       System.Windows.Threading.DispatcherPriority.Background);
             }
             else if (TelemetryFfbTab != null && ReferenceEquals(MainTabs.SelectedItem, TelemetryFfbTab))
             {
@@ -12452,6 +12527,12 @@ namespace TrueforceForAll.Plugin
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
+            "SLOTWRITE<n>   Write a rainbow (red, orange, yellow, green, spring green, cyan, azure, blue, violet, magenta) into LIGHTSYNC custom slot n (1-5, default 5) and light the whole bar. BACKS THE SLOT UP FIRST and refuses to write if it cannot read the original. Asymmetric on purpose: which end the RED lands on tells us which physical LED is index 1. PERSISTS on the wheel until restored.\n" +
+            "SLOTRESTORE<n> Put your own colours back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
+            "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colours (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colours are possible on this wheel at all.\n" +
+            "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
+            "LIGHTSYNC      In development: reveal the LIGHTSYNC tab and move the wheel lights + screen controls onto it (they leave the Telemetry FFB tab; nothing is duplicated). Type again to move them back and hide the tab. Persists. Toggle.\n" +
+            "CYCLEHINT      Re-arm the LIGHTSYNC intro modal and force the cycle-binding hint on screen even though the pattern cycle action is already bound. For testing them, since anyone working on them has it bound. Session only. Toggle.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
@@ -13521,6 +13602,76 @@ namespace TrueforceForAll.Plugin
             // (issue #17). Power users with a real need (multi-wheel
             // disambiguation, or a USBPcap interface mismatch they want to
             // override) flip it on here; persists across restarts.
+            // Read-only: ask the wheel whether it implements per-slot LIGHTSYNC
+            // colours and dump what each custom slot holds. Writes nothing.
+            if (code.Equals("SLOTPROBE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string body = _plugin.ProbeLedSlotFeature();
+                TrueforceDialog.Show(Window.GetWindow(this), "Wheel slot-feature probe (read-only)", body);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Slot probe done. Full detail is in the dialog and in SimHub.txt.";
+                return;
+            }
+
+            // Show what the ACTIVE car resolves to, and sweep the strip so the
+            // fill is visible rather than just described.
+            if (code.Equals("CARCOLORS", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string message;
+                bool ok = _plugin.ShowActiveCarColors(out message);
+                if (ok) _plugin.TestRpmLeds();
+                TrueforceDialog.Show(Window.GetWindow(this), "This car's light pattern",
+                    (message ?? "(no detail)")
+                    + (ok ? "\n\nThe strip is sweeping so you can see it fill. Select the designated slot on the wheel if it is not already showing." : ""),
+                    ok ? DialogKind.Info : DialogKind.Warning);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = message;
+                return;
+            }
+
+            // Move the wheel lights + screen controls onto their own tab and
+            // reveal it. Nothing is duplicated: the blocks are reparented.
+            if (code.Equals("LIGHTSYNC", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.LightsyncTabUnlocked = !_plugin.Settings.LightsyncTabUnlocked;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                ApplyLightsyncTabVisibility();
+                if (_plugin.Settings.LightsyncTabUnlocked && MainTabs != null && LightsyncTab != null)
+                    MainTabs.SelectedItem = LightsyncTab;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = _plugin.Settings.LightsyncTabUnlocked
+                        ? "LIGHTSYNC tab ON: the wheel lights and screen controls moved there. Type LIGHTSYNC again to put them back on the Telemetry FFB tab."
+                        : "LIGHTSYNC tab OFF: the wheel lights and screen controls are back on the Telemetry FFB tab.";
+                return;
+            }
+
+            // Dev-only: re-arm the LIGHTSYNC intro modal and force the inline
+            // cycle-binding hint on screen even though the action is bound. Both
+            // normally stay quiet once bound, which is right for users and useless
+            // for testing. Session-only; lapses on restart.
+            if (code.Equals("CYCLEHINT", StringComparison.OrdinalIgnoreCase))
+            {
+                _forceCycleHint = !_forceCycleHint;
+                if (_forceCycleHint)
+                {
+                    _plugin.Settings.LightsyncCycleHintDismissed = false;
+                    _plugin.Settings.HasSeenLightsyncIntro = false;
+                }
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                RefreshLightsyncCycleHint();
+                if (_forceCycleHint && MainTabs != null && LightsyncTab != null
+                    && _plugin.Settings.LightsyncTabUnlocked)
+                    MainTabs.SelectedItem = LightsyncTab;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = _forceCycleHint
+                        ? "Cycle hint and intro FORCED ON for this session. Open LIGHTSYNC to see them. Type CYCLEHINT again for normal behaviour."
+                        : "Cycle hint back to normal: it shows only when the pattern cycle action is unbound.";
+                return;
+            }
+
             if (code.Equals("MANUALPIN", StringComparison.OrdinalIgnoreCase))
             {
                 bool on = !(_plugin.Settings.ShowManualOverrideUi);
@@ -13686,6 +13837,238 @@ namespace TrueforceForAll.Plugin
         /// kick a background channel open (safe-gated in the plugin) and
         /// poll briefly so the value fills in by itself instead of waiting
         /// for a game or the Test button to open the channel.</summary>
+        /// <summary>One-time explainer on first LIGHTSYNC open: what this tab
+        /// lifts off the wheel's own five-pattern menu, with the binder in it so
+        /// the one thing it asks for can be done on the spot.
+        ///
+        /// Fired on navigation INTO the tab, deferred so the tab paints first,
+        /// and latched on ANY outcome so it never re-nags.</summary>
+        private void MaybeShowLightsyncIntro()
+        {
+            var set = _plugin?.Settings;
+            if (set == null || !set.LightsyncTabUnlocked) return;
+            if (set.HasSeenLightsyncIntro && !_forceCycleHint) return;
+            var owner = Window.GetWindow(this);
+            if (owner == null) return;
+            if (_lightsyncIntroShowing) return;
+            _lightsyncIntroShowing = true;
+            try
+            {
+                bool bound = IsPatternCycleBound();
+
+                string body =
+                    "Your wheel holds five light patterns. This tab lifts that.\n\n"
+                  + "•  As many patterns as you like, not five\n"
+                  + "•  Change pattern from any button on the wheel\n"
+                  + "•  A pattern per car, up the moment you get in\n"
+                  + "•  The real car's own colours, where the data exists\n\n"
+                  + "The lights share a channel with game force feedback, so they need "
+                  + "Telemetry Based FFB on.";
+
+                // The binder itself, in the dialog. Sending someone to another tab
+                // to find a row called "Rev pattern next" is how a feature stays
+                // undiscovered. Skipped when it is already bound, and wrapped
+                // because ControlsEditor is only proven to render from XAML.
+                UIElement binder = null;
+                if (!bound)
+                {
+                    try
+                    {
+                        var row = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                        var lbl = new TextBlock
+                        {
+                            Text = "Next pattern",
+                            Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0)),
+                            FontSize = 12,
+                            VerticalAlignment = VerticalAlignment.Center,
+                        };
+                        Grid.SetColumn(lbl, 0);
+                        var ed = new SimHub.Plugins.UI.ControlsEditor
+                        {
+                            ActionName = "TrueforcePlugin.RevLightPatternNext",
+                            FriendlyName = "TF4ALL: rev-light pattern next",
+                        };
+                        Grid.SetColumn(ed, 1);
+                        row.Children.Add(lbl);
+                        row.Children.Add(ed);
+                        binder = row;
+                    }
+                    catch { binder = null; }
+                }
+
+                TrueforceDialog.Show(owner, "What your wheel can do from here", body,
+                    DialogKind.Info, okLabel: "Got it", cancelLabel: null,
+                    goldOk: true, extraContent: binder);
+
+                // One-time on ANY outcome. Nothing here is a decision, so there is
+                // no version of this worth asking twice.
+                set.HasSeenLightsyncIntro = true;
+                _plugin.PersistSettings();
+                RefreshLightsyncCycleHint();
+            }
+            finally { _lightsyncIntroShowing = false; }
+        }
+
+        private bool _lightsyncIntroShowing;
+
+        // Session-only, set by the CYCLEHINT dev code. Never persisted.
+        private bool _forceCycleHint;
+
+        /// <summary>Is the pattern cycle action bound to anything? ControlsEditorModel's
+        /// constructor filters PluginManager's mapping list by target, so its Triggers
+        /// count answers this with public API and no reflection.</summary>
+        private static bool IsPatternCycleBound()
+        {
+            try
+            {
+                var m = new SimHub.Plugins.UI.ControlsEditorModel(
+                    "TrueforcePlugin.RevLightPatternNext", "TF4ALL: rev-light pattern next");
+                return m?.Triggers != null && m.Triggers.Count > 0;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Show the inline cycle-binding hint, or hide it for good. It is
+        /// the durable mention once the intro modal has been read: hidden when the
+        /// action is bound, so whoever already sorted it is never nagged, and hidden
+        /// once dismissed.</summary>
+        private void RefreshLightsyncCycleHint()
+        {
+            if (LightsyncCycleHint == null) return;
+            var set = _plugin?.Settings;
+            if (set == null || !set.LightsyncTabUnlocked
+                || (set.LightsyncCycleHintDismissed && !_forceCycleHint))
+            {
+                LightsyncCycleHint.Visibility = Visibility.Collapsed;
+                return;
+            }
+            if (_forceCycleHint) { LightsyncCycleHint.Visibility = Visibility.Visible; return; }
+            LightsyncCycleHint.Visibility = IsPatternCycleBound()
+                ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        private void LightsyncCycleHintDismiss_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin?.Settings == null) return;
+            _plugin.Settings.LightsyncCycleHintDismissed = true;
+            _plugin.PersistSettings();
+            if (LightsyncCycleHint != null) LightsyncCycleHint.Visibility = Visibility.Collapsed;
+        }
+
+        // Signatures of what the two pattern combos were last filled from, so a
+        // repeated refresh does not rebuild an unchanged list underneath the user.
+        private string _revComboSig;
+        private string _carComboSig;
+
+        /// <summary>Reparent a block rather than duplicating it. The wheel-lights and
+        /// wheel-screen groups live on the Telemetry FFB tab when LIGHTSYNC is locked
+        /// and on the LIGHTSYNC tab when it is not, and there is only ever ONE of
+        /// each, so the controls keep their state and their x:Name bindings.
+        /// Idempotent: a block already in the right panel is left alone.</summary>
+        private static void MoveBlock(FrameworkElement block, Panel wanted)
+        {
+            if (block == null || wanted == null) return;
+            var from = block.Parent as Panel;
+            if (from == wanted) return;
+            if (from != null) from.Children.Remove(block);
+            wanted.Children.Add(block);
+        }
+
+        /// <summary>Select the combo item whose Tag equals <paramref name="tag"/>,
+        /// comparing ints as ints and strings as strings. Clears the selection and
+        /// returns false when nothing matches, so a caller can tell "pointed at it"
+        /// from "that entry is gone".</summary>
+        private static bool PointComboAtTag(ComboBox combo, object tag)
+        {
+            if (combo == null) return false;
+            if (tag != null)
+            {
+                for (int i = 0; i < combo.Items.Count; i++)
+                {
+                    object t = (combo.Items[i] as ComboBoxItem)?.Tag;
+                    if (t == null) continue;
+
+                    bool hit;
+                    if (t is int ti && tag is int wi) hit = ti == wi;
+                    else if (t is string ts && tag is string ws) hit = string.Equals(ts, ws, StringComparison.Ordinal);
+                    else continue;
+
+                    if (hit) { combo.SelectedIndex = i; return true; }
+                }
+            }
+            combo.SelectedIndex = -1;
+            return false;
+        }
+
+        /// <summary>What the pattern combos are built FROM: the auto-colours
+        /// capability plus every pattern's id, slot and name. Comparing this against
+        /// the last one is how a refresh avoids rebuilding an identical list, which
+        /// would drop the user's selection mid-interaction.</summary>
+        private string PatternComboSignature()
+        {
+            if (_plugin?.Settings?.LightsyncTabUnlocked != true) return "locked";
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append(_plugin.AutoCarColorsAvailable() ? "auto|" : "noauto|");
+            var lib = _plugin.LightPatterns;
+            if (lib?.Patterns != null)
+            {
+                foreach (var p in lib.Patterns)
+                {
+                    if (p == null) continue;
+                    sb.Append(p.Id).Append(':').Append(p.Slot).Append(':').Append(p.Name).Append('|');
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Refill both pattern combos and put their selections back.
+        /// Events are suppressed across the whole rebuild, because clearing and
+        /// refilling a ComboBox raises SelectionChanged twice and each one would
+        /// otherwise read as the user picking something.</summary>
+        private void RebuildPatternCombos()
+        {
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (RevLightEffectCombo != null) FillPatternCombo(RevLightEffectCombo, RevLightItem_Clicked);
+                if (CarRevLightCombo != null) FillPatternCombo(CarRevLightCombo, CarRevLightItem_Clicked);
+                if (RevLightEffectCombo != null) SyncPatternCombo(RevLightEffectCombo);
+                if (CarRevLightCombo != null) SyncPatternCombo(CarRevLightCombo);
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        /// <summary>Put the wheel-lights and wheel-screen blocks on whichever tab
+        /// owns them right now, show or hide the LIGHTSYNC tab, and never leave the
+        /// selection stranded on a tab that just went away.</summary>
+        private void ApplyLightsyncTabVisibility()
+        {
+            bool on = _plugin?.Settings?.LightsyncTabUnlocked == true;
+
+            MoveBlock(WheelLightsBlock, on ? LightsyncTabHost : ModeBSupportedPanel);
+            MoveBlock(WheelScreenBlock, on ? LightsyncScreenHost : ModeBSupportedPanel);
+
+            if (LightsyncTab != null)
+            {
+                // Hiding the tab the user is standing on would leave an empty pane,
+                // so move them off it first.
+                if (!on && MainTabs != null && ReferenceEquals(MainTabs.SelectedItem, LightsyncTab))
+                    MainTabs.SelectedItem = TelemetryFfbTab ?? MainTabs.Items[0];
+                LightsyncTab.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (on)
+            {
+                try { EnsurePatternUi(); }
+                catch (Exception ex)
+                { SimHub.Logging.Current.Info("[TF4ALL] pattern UI init failed: " + ex.Message); }
+            }
+        }
+
         private void RefreshRevLightPicker()
         {
             if (RevLightEffectCombo == null || _plugin?.Settings == null) return;
@@ -13696,14 +14079,24 @@ namespace TrueforceForAll.Plugin
                 RevLightPatternRow.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
             if (RevLightPatternHelp != null)
                 RevLightPatternHelp.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            // Same reasoning for the pattern maker: a library of custom slots is
+            // no use on a strip that cannot hold one. The three PIDs behind this
+            // flag are exactly the wheels WheelLedChannel will write a slot to,
+            // so it is the right gate rather than a proxy.
+            if (PatternMakerExpander != null)
+                PatternMakerExpander.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
             if (!selectable) return;
             if (RevLightEffectCombo.IsDropDownOpen) return;
             bool prev = _suppressEvents;
             _suppressEvents = true;
             try
             {
-                if (RevLightEffectCombo.Items.Count == 0)
+                string sig = PatternComboSignature();
+                if (RevLightEffectCombo.Items.Count == 0 || sig != _revComboSig)
+                {
                     FillPatternCombo(RevLightEffectCombo, RevLightItem_Clicked);
+                    _revComboSig = sig;
+                }
                 SyncPatternCombo(RevLightEffectCombo);
                 SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
                     RevLightRememberStatus, RevLightRememberRun);
@@ -13765,8 +14158,12 @@ namespace TrueforceForAll.Plugin
             _suppressEvents = true;
             try
             {
-                if (CarRevLightCombo.Items.Count == 0)
+                string sig = PatternComboSignature();
+                if (CarRevLightCombo.Items.Count == 0 || sig != _carComboSig)
+                {
                     FillPatternCombo(CarRevLightCombo, CarRevLightItem_Clicked);
+                    _carComboSig = sig;
+                }
                 SyncPatternCombo(CarRevLightCombo);
                 SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
                     CarRevLightRememberStatus, CarRevLightRememberRun);
@@ -13778,12 +14175,10 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             var picked = CarRevLightCombo.SelectedItem as ComboBoxItem;
-            if (!(picked?.Tag is int v)) return;
-            _plugin.PickRevLightPattern(v);
+            if (!ApplyPickedComboItem(picked)) return;
             RefreshRevLightPicker();   // the other remote for the same selector
             SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
                 CarRevLightRememberStatus, CarRevLightRememberRun);
-            _plugin.PreviewRevLightPattern();
         }
 
         private void CarRevLightItem_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -13809,8 +14204,15 @@ namespace TrueforceForAll.Plugin
             if (_plugin?.Settings == null) return;
             var combo = ReferenceEquals(sender, CarRevLightRememberBtn)
                 ? CarRevLightCombo : RevLightEffectCombo;
-            if (!((combo?.SelectedItem as ComboBoxItem)?.Tag is int v) || v < 1) return;
-            _plugin.RememberPatternForActiveCar(v);
+            object tag = (combo?.SelectedItem as ComboBoxItem)?.Tag;
+
+            // Remembering "Auto" means the opposite of storing something: it
+            // CLEARS the pinned choice and hands the car back to its own data.
+            if (tag as string == TrueforcePlugin.AutoPatternTag) _plugin.UseAutoForActiveCar();
+            else if (tag is string patternId) _plugin.RememberLightPatternForActiveCar(patternId);
+            else if (tag is int v && v >= 1) _plugin.RememberPatternForActiveCar(v);
+            else return;
+
             RefreshRevLightPicker();
             RefreshCarRevLightRow();
         }
@@ -13822,6 +14224,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin?.Settings == null) return;
             _plugin.ForgetPatternForActiveCar();
+            _plugin.ForgetLightPatternForActiveCar();   // either kind may be pinned
             RefreshRevLightPicker();
             RefreshCarRevLightRow();
         }
@@ -13830,15 +14233,55 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             var picked = RevLightEffectCombo.SelectedItem as ComboBoxItem;
-            if (!(picked?.Tag is int v)) return;
-            // Sets the wheelbase's selection, exactly like the base's own
-            // menu (staged with a log line while a game's own FFB holds the
-            // pipe). Then one preview cycle wherever that is safe.
-            _plugin.PickRevLightPattern(v);
+            if (!ApplyPickedComboItem(picked)) return;
             RefreshCarRevLightRow();
             SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
                 RevLightRememberStatus, RevLightRememberRun);
-            _plugin.PreviewRevLightPattern();
+        }
+
+        /// <summary>Act on whichever kind of entry was picked. Both pattern combos
+        /// now mix three things: the wheel's own effects (an int tag), one of our
+        /// library patterns (its id), and Auto (a sentinel meaning "no override").
+        /// Returns false when the item is not actionable, e.g. the disabled
+        /// group heading.</summary>
+        private bool ApplyPickedComboItem(ComboBoxItem picked)
+        {
+            object tag = picked?.Tag;
+
+            if (tag as string == TrueforcePlugin.AutoPatternTag)
+            {
+                _plugin.UseAutoForActiveCar();
+                return true;
+            }
+            if (tag is string patternId)
+            {
+                var p = _plugin.LightPatterns?.Patterns?.FirstOrDefault(x => x.Id == patternId);
+                if (p == null) return false;
+                string msg;
+                _plugin.ApplyLightPattern(p, out msg);
+                return true;
+            }
+            if (tag is int v && v >= 1)
+            {
+                // These two are part of the gated feature and this handler is on
+                // an ALWAYS-VISIBLE control, so they must not run for a locked
+                // user: opening the channel is HID++ traffic that picking a
+                // pattern never used to cause, and the release check is a disk
+                // read for a backup that cannot exist.
+                if (_plugin.Settings?.LightsyncTabUnlocked == true)
+                {
+                    // A real thing on the wheel, so any slot we were borrowing has
+                    // done its job and goes back to the user before we switch.
+                    _plugin.EnsureLedChannelOpen();
+                    _plugin.ReleaseBorrowedSlot();
+                }
+                // Sets the wheelbase's selection, exactly like the base's own
+                // menu (staged with a log line while a game's own FFB holds the
+                // pipe). Then one preview cycle wherever that is safe.
+                _plugin.PickRevLightPattern(v, previewAfter: true);
+                return true;
+            }
+            return false;
         }
 
         // ---- Wheel-base Dynamic OLED (experimental) ----------------------

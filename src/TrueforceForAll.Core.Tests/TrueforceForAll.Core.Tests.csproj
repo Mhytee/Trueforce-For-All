@@ -37,6 +37,34 @@
     <Compile Include="..\TrueforceForAll.Plugin\SafeJson.cs">
       <Link>Linked\SafeJson.cs</Link>
     </Compile>
+    <!-- Lovely car-data parsing + the light math built on it. Same rationale as
+         InstalledPacksStore: no WPF / SimHub dependencies, only Newtonsoft, and
+         the logic is worth testing precisely because the slot-write path it
+         feeds cannot be exercised on hardware yet. -->
+    <Compile Include="..\TrueforceForAll.Plugin\LovelyCarData.cs">
+      <Link>Linked\LovelyCarData.cs</Link>
+    </Compile>
+    <Compile Include="..\TrueforceForAll.Plugin\LovelyLightMath.cs">
+      <Link>Linked\LovelyLightMath.cs</Link>
+    </Compile>
+    <Compile Include="..\TrueforceForAll.Plugin\LovelyCarDataStore.cs">
+      <Link>Linked\LovelyCarDataStore.cs</Link>
+    </Compile>
+    <!-- Per-channel LED colour trim. BCL only. Worth pinning because three
+         separate comparison sites depend on it being deterministic, and a
+         rounding change would make them re-upload slots forever. -->
+    <Compile Include="..\TrueforceForAll.Plugin\LedColorGain.cs">
+      <Link>Linked\LedColorGain.cs</Link>
+    </Compile>
+    <!-- Light layout library + slot backup: ordering, naming, cycling and the
+         backup round-trip are pure logic, and the backup guards a user's saved
+         wheel colours, so they are worth pinning. -->
+    <Compile Include="..\TrueforceForAll.Plugin\LightPatternLibrary.cs">
+      <Link>Linked\LightPatternLibrary.cs</Link>
+    </Compile>
+    <Compile Include="..\TrueforceForAll.Plugin\LightSlotBackup.cs">
+      <Link>Linked\LightSlotBackup.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

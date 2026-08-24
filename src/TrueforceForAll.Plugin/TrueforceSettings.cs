@@ -65,6 +65,17 @@ namespace TrueforceForAll.Plugin
         public Dictionary<string, int> CarRevLightEffect { get; set; }
             = new Dictionary<string, int>();
 
+        // Per-car choice of one of OUR light patterns, keyed "game/carId" to the
+        // pattern's id. Separate from CarRevLightEffect above rather than
+        // overloading its int: the two name different things (a wheel effect
+        // number versus a pattern in our library), and keeping them apart means
+        // every existing remembered effect keeps working untouched. A car with an
+        // entry here wins, since choosing one of our patterns is the more
+        // specific act. Same rule as above: default EMPTY, never null, because
+        // the settings loader appends onto whatever is here.
+        public Dictionary<string, string> CarLightPattern { get; set; }
+            = new Dictionary<string, string>();
+
         // Drive the Dynamic OLED on the wheel's base (G PRO / RS50 only) while
         // Telemetry Based FFB (Mode B) is on. Same pipe and therefore the same
         // rule as the rev lights above: a non-force write to HID++ cuts any
@@ -1273,6 +1284,79 @@ namespace TrueforceForAll.Plugin
         // Developer panel + built-in export/import/reseed/validate buttons.
         // Persisted so it stays on across restarts on a dev machine.
         public bool DevModeUnlocked { get; set; } = false;
+
+        // LIGHTSYNC tab unlock. Set by the LIGHTSYNC access code while the
+        // lighting rework is in development. Locked (the default, and what any
+        // release shipped mid-rework carries) leaves the wheel-lights controls
+        // exactly where they have always been, on the Telemetry FFB tab; the
+        // new tab does not exist for the user. Unlocked reveals the tab and
+        // MOVES that one block into it, so there is only ever one copy of the
+        // controls and one set of handlers.
+        public bool LightsyncTabUnlocked { get; set; } = false;
+
+        // Per-car rev-light data from the community lovely-car-data project
+        // (CC BY-NC-SA 4.0). When on, a car we have data for lights on its own
+        // switch-on points and per-gear redlines instead of our one-size ramp.
+        // Reaches a third-party host (raw.githubusercontent.com) and caches per
+        // machine, so it is off until the user asks for it. Doubly gated for now:
+        // the control lives on the LIGHTSYNC tab, which is itself behind the
+        // access code while the lighting rework is in development.
+        public bool LovelyCarDataEnabled { get; set; } = false;
+
+        // Which LIGHTSYNC custom slot the plugin borrows: 0..4 to pin CUSTOM 1..5,
+        // or -1 (the default) to work it out itself.
+        //
+        // Automatic is the default because WHICH slot gets borrowed is plumbing,
+        // not a decision anyone wants to make. Asked to show a pattern, the
+        // plugin uses the slot the wheel is already displaying when that is a
+        // custom one, so nothing visibly moves; otherwise it takes the last slot.
+        // Either way the contents are read and saved before the first write and
+        // handed back on exit, so borrowing stays reversible. Portable: the five
+        // slots exist on any of these wheelbases, so the preference travels.
+        public int LightsyncDynamicSlot { get; set; } = -1;
+
+        // Per-channel trim for what the LEDs actually emit. See LedColorGain.
+        // The colours we store are sRGB intent; these three say how far each
+        // channel has to be cut for this particular wheel to render that intent
+        // correctly, because the red die is typically the weak one and a
+        // nominal yellow arrives looking like lime.
+        //
+        // NULL MEANS NEVER CHOSEN: this install has no opinion, so the trim
+        // resolves from the shipped values in LedColorGain via
+        // TrueforcePlugin.EffectiveLedTrim. A concrete value is a DELIBERATE
+        // choice made on the sliders, 1.0 included, and no default overwrites
+        // it again.
+        //
+        // That is the whole reason these are nullable. A plain float cannot
+        // tell "never touched" from "turned the correction off on purpose",
+        // and those two must behave differently on the next launch and on any
+        // future retune of the shipped numbers. It also means Reset can put a
+        // user back on the shipped tuning rather than stranding them on
+        // identity, which is a much easier button to press by accident.
+        //
+        // Three scalars rather than a float?[3] on purpose: SimHub's loader
+        // deserialises with ObjectCreationHandling.Auto and APPENDS onto a
+        // pre-populated collection instead of replacing it, so an array with a
+        // default would load back with six entries. See the same warning on
+        // DashTabOrder and IRacingMaxForceByCar. Auto does not affect a
+        // Nullable<T>: there is no instance to reuse and no Add to call.
+        // One-time hint on the LIGHTSYNC tab explaining that a bound button
+        // walks the whole pattern library, with SimHub's binder embedded in it.
+        // Set only when the user dismisses it for good; it also self-suppresses
+        // once the action is actually bound, so this latch only covers the
+        // "I read it and I am not binding anything" case. Nag state, so it is
+        // Excluded from backup: it re-shows harmlessly on a second PC.
+        // One-time modal on first LIGHTSYNC open, explaining what the tab lifts
+        // off the wheel's own five-pattern menu. Latched on ANY outcome so it
+        // never re-nags, same as HasSeenModeBIntro. Nag state, so Excluded from
+        // backup: it re-shows harmlessly on a second PC.
+        public bool HasSeenLightsyncIntro { get; set; } = false;
+
+        public bool LightsyncCycleHintDismissed { get; set; } = false;
+
+        public float? LedTrimR { get; set; }
+        public float? LedTrimG { get; set; }
+        public float? LedTrimB { get; set; }
 
         // Escape hatch for the import preview modal. Toggled by the PREVIEWOFF
         // access code. When true, RunImportFlow falls back to today's silent
