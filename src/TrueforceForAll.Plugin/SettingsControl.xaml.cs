@@ -12529,6 +12529,7 @@ namespace TrueforceForAll.Plugin
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "SLOTWRITE<n>   Write a rainbow (red, orange, yellow, green, spring green, cyan, azure, blue, violet, magenta) into LIGHTSYNC custom slot n (1-5, default 5) and light the whole bar. BACKS THE SLOT UP FIRST and refuses to write if it cannot read the original. Asymmetric on purpose: which end the RED lands on tells us which physical LED is index 1. PERSISTS on the wheel until restored.\n" +
             "SLOTRESTORE<n> Put your own colours back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
+            "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up first and PERSISTS across a restart, which is the point. SLOTRESTORE<n> puts it back.\n" +
             "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colours (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colours are possible on this wheel at all.\n" +
             "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
             "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
@@ -13602,6 +13603,50 @@ namespace TrueforceForAll.Plugin
             // (issue #17). Power users with a real need (multi-wheel
             // disambiguation, or a USBPcap interface mismatch they want to
             // override) flip it on here; persists across restarts.
+            // Dev-only: make a slot read as NEVER PROGRAMMED, so the first-run
+            // path for a factory wheel can be tested at all. Adoption skips a
+            // slot whose bytes are all zero, and there is otherwise no way to
+            // produce one without going back to G HUB.
+            //
+            // Two writes on purpose. The first is a normal borrow, which is what
+            // captures the backup; the second settles the loan so the zeros
+            // survive a restart, which they must, since the test is what happens
+            // on the NEXT launch. SLOTRESTORE<n> puts the slot back.
+            if (code.StartsWith("SLOTBLANK", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                int n;
+                if (!int.TryParse(code.Substring("SLOTBLANK".Length).Trim(), out n) || n < 1 || n > 5)
+                {
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "SLOTBLANK<n>: 1-5.";
+                    return;
+                }
+                int slot = n - 1;
+                var zeros = new byte[WheelLedChannel.LedCount * 3];
+
+                string msg;
+                bool ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
+                { Slot = (byte)slot, DirectionWire = 3, Rgb = zeros }, out msg,
+                  displayLevel: 0);
+                if (ok)
+                    ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
+                    { Slot = (byte)slot, DirectionWire = 3, Rgb = zeros }, out msg,
+                      displayLevel: 0, slotName: null, permanent: true);
+
+                TrueforceDialog.Show(Window.GetWindow(this), "Blank a light slot",
+                    (msg ?? "(no detail)") + "\n\n"
+                    + (ok
+                       ? "CUSTOM " + n + " now reads as never programmed, and stays that way "
+                         + "across a restart." + "\n\n"
+                         + "Delete light-patterns.json and relaunch to test the factory-wheel "
+                         + "first run. Type SLOTRESTORE" + n + " to put your own colours back."
+                       : "Nothing was written, so the slot is untouched."),
+                    ok ? DialogKind.Info : DialogKind.Warning);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                return;
+            }
+
             // Designate which custom slot the plugin may borrow, or 0 for none.
             if (code.StartsWith("SLOTPICK", StringComparison.OrdinalIgnoreCase))
             {
