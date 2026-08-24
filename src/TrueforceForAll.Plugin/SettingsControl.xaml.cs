@@ -505,11 +505,18 @@ namespace TrueforceForAll.Plugin
                     BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
                     RefreshBetaUpdateNote();
                 }
-                if (RemoteRevLtrRadio != null && RemoteRevOutsideInRadio != null)
+                if (RemoteRevLtrRadio != null && RemoteRevOutsideInRadio != null
+                    && RemoteRevAutoRadio != null)
                 {
+                    // Auto and a direction are two settings, not three states:
+                    // the direction is remembered underneath Auto so switching
+                    // Auto off puts the user's own pick back rather than a
+                    // default. Only one of the three is ever checked.
+                    bool auto = _plugin.Settings?.DashRevStripAuto != false;
                     bool outsideIn = _plugin.Settings?.DashRevStripOutsideIn == true;
-                    RemoteRevOutsideInRadio.IsChecked = outsideIn;
-                    RemoteRevLtrRadio.IsChecked = !outsideIn;
+                    RemoteRevAutoRadio.IsChecked = auto;
+                    RemoteRevOutsideInRadio.IsChecked = !auto && outsideIn;
+                    RemoteRevLtrRadio.IsChecked = !auto && !outsideIn;
                 }
                 if (RemoteDashRememberTabCheck != null)
                     RemoteDashRememberTabCheck.IsChecked = _plugin.Settings?.DashRememberLastTab != false;
@@ -806,22 +813,31 @@ namespace TrueforceForAll.Plugin
 
                     // Tab name. "Telemetry FFB" is wrong for iRacing, where the
                     // force is not built FROM telemetry but is the sim's own
-                    // force reshaped. Plain "FFB" was wrong too, just
-                    // differently: this tab also owns the rev lights and the
-                    // wheel screen, so naming it after one of the three
-                    // undersells the other two.
+                    // force reshaped. So on those games it is plain "FFB", which
+                    // is now accurate again: the lights and the wheel screen have
+                    // their own tab, and this one is back to owning exactly one
+                    // thing. It was only ever "Wheel (FFB, LED, OLED)" because
+                    // naming a tab after one of three things it owned undersold
+                    // the other two.
                     //
-                    // The parenthesised list follows the HARDWARE. Only the
-                    // G PRO, RS50 and the G923 Xbox have a base screen, and
-                    // advertising OLED to someone whose wheel has none is a
-                    // promise the tab cannot keep: they would open it looking
-                    // for a section that is (correctly) hidden. Same source of
+                    // That name is kept for the case where the LIGHTSYNC tab is
+                    // turned off and the two blocks reparent back onto this tab
+                    // (ApplyLightsyncTabVisibility), because then it really does
+                    // own all three again. The parenthesised list follows the
+                    // HARDWARE: only the G PRO, RS50 and the G923 Xbox have a
+                    // base screen, and advertising OLED to someone whose wheel
+                    // has none is a promise the tab cannot keep. Same source of
                     // truth the OLED section itself uses, so the two can never
                     // disagree.
                     if (TelemetryFfbTab != null)
                     {
+                        bool lightsHaveTheirOwnTab =
+                            _plugin?.Settings?.LightsyncTabUnlocked == true;
                         TelemetryFfbTab.Header = reshapeGame
-                            ? (_plugin.WheelHasOledScreen ? "Wheel (FFB, LED, OLED)" : "Wheel (FFB, LED)")
+                            ? (lightsHaveTheirOwnTab
+                                ? "FFB"
+                                : (_plugin.WheelHasOledScreen
+                                    ? "Wheel (FFB, LED, OLED)" : "Wheel (FFB, LED)"))
                             : "Telemetry FFB";
                     }
                     // Spring-mode enhancements show ONLY in spring games; in
@@ -7786,12 +7802,16 @@ namespace TrueforceForAll.Plugin
         }
 
         // Remote dash rev-strip direction radios (Settings tab). Persists the
-        // flag; the dash reads it live via Dash.RevOutsideIn each poll, so
-        // the strip flips without reloading the dashboard.
+        // flags; the dash reads them live via Dash.RevAuto and Dash.RevOutsideIn
+        // each poll, so the strip flips without reloading the dashboard.
         private void RemoteRevDirection_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.DashRevStripOutsideIn = RemoteRevOutsideInRadio?.IsChecked == true;
+            _plugin.Settings.DashRevStripAuto = RemoteRevAutoRadio?.IsChecked == true;
+            // Left alone while Auto is the pick, so it still holds the direction
+            // the user chose the last time they were choosing one.
+            if (!_plugin.Settings.DashRevStripAuto)
+                _plugin.Settings.DashRevStripOutsideIn = RemoteRevOutsideInRadio?.IsChecked == true;
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
@@ -13784,6 +13804,10 @@ namespace TrueforceForAll.Plugin
                 _plugin.PersistSettings();
                 AccessCodeBox.Text = string.Empty;
                 ApplyLightsyncTabVisibility();
+                // The FFB tab's own name depends on whether it still owns the
+                // lights, so re-run the pass that sets it rather than leaving a
+                // stale header until the next game-context refresh.
+                try { RefreshFromPlugin(); } catch { }
                 if (_plugin.Settings.LightsyncTabUnlocked && MainTabs != null && LightsyncTab != null)
                     MainTabs.SelectedItem = LightsyncTab;
                 if (AccessCodeStatus != null)

@@ -364,20 +364,11 @@ namespace TrueforceForAll.Plugin
         { "Inside out", "Outside in", "Right to left", "Left to right" };
 
         /// <summary>Device direction value for built-in sweep <paramref name="index"/>
-        /// (0-based, effect index + 1). The effect IS the direction, but the two
-        /// lists are numbered differently, which is why this is written out rather
-        /// than computed: effect 1 is inside-out (direction 1), 2 outside-in (2),
-        /// 3 right-to-left (4), 4 left-to-right (3).</summary>
+        /// (0-based, effect index + 1). One definition, in TrueforcePlugin: the
+        /// dash mirror needs the same table to draw a built-in sweep the way the
+        /// wheel fills it.</summary>
         private static byte BuiltinEffectDirection(int index)
-        {
-            switch (index)
-            {
-                case 0: return 1;   // Inside out
-                case 1: return 2;   // Outside in
-                case 2: return 4;   // Right to left
-                default: return 3;  // Left to right
-            }
-        }
+            => TrueforcePlugin.BuiltinEffectDirectionWire(index + 1);
 
         /// <summary>Whether the thing being edited is something the user can
         /// actually change. Built-in sweeps are firmware, so their controls are
