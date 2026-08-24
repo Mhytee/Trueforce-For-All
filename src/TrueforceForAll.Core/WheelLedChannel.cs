@@ -118,14 +118,31 @@ namespace TrueforceForAll.Core
         // and skip even that whenever a real change-write already refreshed
         // it within the interval.
         private const int KeepAliveMs = 1000;
-        // Minimum gap between level-pair writes. The captured host sends the
-        // pair at a STEADY ~156 ms regardless of how fast revs change; it
-        // never bursts. Sending immediately on every level change (which
-        // happens rapidly near the shift point) delayed the game's FFB
-        // packets on the shared HID++ pipe enough that the wheel decayed
-        // force -> "FFB goes limp when the lights come on". One fixed-cadence
-        // sender, no bursts, matches that proven-safe footprint.
-        private const int ChangeMinMs = 160;
+        // Minimum gap between level-pair writes, matching the captured host,
+        // which sends the pair at a STEADY ~156 ms regardless of how fast revs
+        // change and never bursts.
+        //
+        // THE OLD REASON GIVEN HERE WAS WRONG and is recorded because it was
+        // load-bearing for years. It claimed bursting LED writes starved the
+        // game's FFB on the shared pipe and caused "FFB goes limp when the
+        // lights come on". That is not what did it: the limp came from sending
+        // FFB on the LED endpoint at all while Trueforce was driving force over
+        // ep3, and it was fixed by zeroing FFB on that endpoint (owner,
+        // 2026-08-24). Write RATE was never shown to be the cause.
+        //
+        // So this floor is now only "match what G HUB does", which is a
+        // reasonable default and not a proven constraint. It costs up to ~160 ms
+        // of latency on a bar that moves in ten steps, which is visible near the
+        // shift point. LEDRATE<ms> changes it live so the real limit can be
+        // found on hardware instead of guessed at; the default stays here until
+        // someone has driven a faster one and watched the force.
+        private static volatile int _changeMinMs = 160;
+        public static int ChangeMinMsValue
+        {
+            get { return _changeMinMs; }
+            set { _changeMinMs = value < 10 ? 10 : (value > 1000 ? 1000 : value); }
+        }
+        private static int ChangeMinMs { get { return _changeMinMs; } }
 
         private readonly Action<string> _log;
         private readonly object _io = new object();

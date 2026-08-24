@@ -12529,6 +12529,7 @@ namespace TrueforceForAll.Plugin
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "SLOTWRITE<n>   Write a rainbow (red, orange, yellow, green, spring green, cyan, azure, blue, violet, magenta) into LIGHTSYNC custom slot n (1-5, default 5) and light the whole bar. BACKS THE SLOT UP FIRST and refuses to write if it cannot read the original. Asymmetric on purpose: which end the RED lands on tells us which physical LED is index 1. PERSISTS on the wheel until restored.\n" +
             "SLOTRESTORE<n> Put your own colours back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
+            "LEDRATE<ms>    DEV: how often the rev lights may update, 10 to 1000 ms (default 160, which is G HUB's own cadence). Live only, resets on restart. For finding whether a faster bar costs anything on the shared HID++ pipe: drive it and watch the FORCE.\n" +
             "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up first and PERSISTS across a restart, which is the point. SLOTRESTORE<n> puts it back.\n" +
             "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colours (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colours are possible on this wheel at all.\n" +
             "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
@@ -13603,6 +13604,30 @@ namespace TrueforceForAll.Plugin
             // (issue #17). Power users with a real need (multi-wheel
             // disambiguation, or a USBPcap interface mismatch they want to
             // override) flip it on here; persists across restarts.
+            // Live rev-light cadence, so the real limit can be found on the
+            // wheel instead of guessed at. The 160 ms default is only "what
+            // G HUB does": the FFB-limp bug it was long credited with avoiding
+            // turned out to be FFB on the LED endpoint, not write rate.
+            if (code.StartsWith("LEDRATE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                int ms;
+                if (!int.TryParse(code.Substring("LEDRATE".Length).Trim(), out ms))
+                {
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "LEDRATE<ms>: 10 to 1000. Currently "
+                            + WheelLedChannel.ChangeMinMsValue + " ms.";
+                    return;
+                }
+                WheelLedChannel.ChangeMinMsValue = ms;
+                int now = WheelLedChannel.ChangeMinMsValue;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Rev lights now update at most every " + now
+                        + " ms (about " + (1000 / Math.Max(now, 1)) + " Hz). Live only, back to 160 on restart. "
+                        + "Drive it and watch the FORCE, not just the lights.";
+                return;
+            }
+
             // Dev-only: make a slot read as NEVER PROGRAMMED, so the first-run
             // path for a factory wheel can be tested at all. Adoption skips a
             // slot whose bytes are all zero, and there is otherwise no way to
