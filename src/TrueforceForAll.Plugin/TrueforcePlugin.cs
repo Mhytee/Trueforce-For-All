@@ -1182,6 +1182,17 @@ namespace TrueforceForAll.Plugin
         /// <summary>One stop on the unified cycle: either one of the wheel's own
         /// effects, or one pattern from the library showing through the lent
         /// slot.</summary>
+        /// <summary>Where the cycle last landed, so it can find itself again
+        /// when the wheel cannot be read. Not persisted: a session that starts
+        /// cold asks the wheel, which is the right answer when it works.</summary>
+        private string _lastCycleKey;
+
+        private static string CycleKey(LightCycleStop s)
+            => s == null ? null
+             : s.Auto ? "auto"
+             : s.Pattern != null ? "p:" + s.Pattern.Id
+             : "e:" + s.Effect;
+
         private sealed class LightCycleStop
         {
             public int Effect;              // 1..9
@@ -1295,7 +1306,20 @@ namespace TrueforceForAll.Plugin
                 // up as toggling between Auto and the first sweep.
                 at = stops.FindIndex(s => s.Pattern == null && !s.Auto && s.Effect == current);
             }
-            // Selection never read yet: start from an end so the first press still
+            // Everything above asks the WHEEL where we are, and in a car it
+            // cannot answer: the game's FFB owns the pipe, so a pick is staged
+            // rather than written and KnownSelection never moves off whatever it
+            // last managed to read. The search then failed, at fell back to an
+            // end, and the next press wrapped to index 0. That is why cycling in
+            // a car toggled between one stop and Auto instead of stepping.
+            //
+            // So fall back to where WE last landed before falling back to an
+            // end. The wheel is still asked first, because the user may have
+            // moved it from the base's own menu.
+            if (at < 0 && _lastCycleKey != null)
+                at = stops.FindIndex(s => CycleKey(s) == _lastCycleKey);
+
+            // Nothing known at all: start from an end so a first press still
             // lands somewhere sensible.
             if (at < 0) at = direction < 0 ? 0 : stops.Count - 1;
 
@@ -1335,6 +1359,7 @@ namespace TrueforceForAll.Plugin
                 PickRevLightPattern(next.Effect, previewAfter: true);
             }
 
+            _lastCycleKey = CycleKey(next);
             DashReadout("LIGHT PATTERN", next.Label);
             SimHub.Logging.Current.Info($"[TF4ALL] light cycle -> {next.Label}"
                                       + (next.Pattern != null ? " (in the lent slot)" : ""));
@@ -6481,8 +6506,16 @@ namespace TrueforceForAll.Plugin
                         // Mirror to the dash. Deliberately outside the gate above:
                         // drawing on screen sends nothing to the wheel, so it works
                         // in games where writing an LED would cut the game's force,
-                        // and in the ones the plugin disables itself for.
-                        PublishDashLights(_rpmLeds.LastLevel, redline);
+                        // and in the ones the plugin disables itself for. OnFrame
+                        // decides LastLevel before it consults any of those gates,
+                        // so this is the live bar even while the wheel is somebody
+                        // else's to write.
+                        PublishDashLights(_rpmLeds.LastLevel, redline, _rpmLeds.MirrorSteps);
+
+                        // Once per wheel, and only in a quiet window: what is the
+                        // wheel actually showing? Until it answers, the mirror
+                        // draws our own ramp.
+                        AdoptDashLightProfileOnce(modeBLeds);
                     }
                     catch (Exception ex)
                     {
@@ -6494,6 +6527,16 @@ namespace TrueforceForAll.Plugin
                     // G923 PS (C266): legacy F8-12 rev bar, 5 LEDs. The G923 Xbox
                     // is NOT here; it takes the HID++ 0x807A path above.
                     DriveG923Leds(pct, redline, modeBLeds);
+                    // Not mirrored: this path never builds a level or a colour
+                    // profile, so there is nothing for the dash to follow and it
+                    // should draw its own strip instead of a frozen one.
+                    ClearDashLights();
+                }
+                else
+                {
+                    // A wheel we do not light. Same reasoning: better the dash's
+                    // own strip than the last one we happened to publish.
+                    ClearDashLights();
                 }
 
                 // Wheel-base Dynamic OLED (feature 0x8130), G PRO / RS50 only.
@@ -7318,7 +7361,9 @@ namespace TrueforceForAll.Plugin
             if (rl != null)
                 rl.PublishedGearRedlines = have ? _lovelyCar.ForwardGearRedlines() : null;
 
-            PublishCarBlinkRate(have ? _lovelyCar.RedlineBlinkIntervalMs : 0);
+            // null means we know nothing about this car, which is NOT the same
+            // as the car publishing zero. Zero is an answer: it does not blink.
+            PublishCarBlinkRate(have ? (int?)_lovelyCar.RedlineBlinkIntervalMs : null);
         }
 
         /// <summary>Hand the active car's own blink rate to the two things that
@@ -7333,15 +7378,32 @@ namespace TrueforceForAll.Plugin
         ///
         /// 0 means the car publishes no blink (470 of 717 do not), which restores
         /// the built-in rate and the user's own pulse setting.</summary>
-        private void PublishCarBlinkRate(int intervalMs)
+        private void PublishCarBlinkRate(int? published)
         {
-            // The published figure is a full PERIOD, so the LED's half-period is
-            // half of it. It used to be assigned straight across, which made every
-            // car flash at half its own rate: the BMW M4 GT4 publishes 250 ms and
-            // was flashing on a 500 ms cycle. The pit limiter was already reading
-            // it as a period (1000/interval Hz), so the two disagreed about the
-            // same number; they now agree.
-            int half = intervalMs > 0 ? Math.Max(1, intervalMs / 2) : 185;
+            // Three states, not two. No data at all leaves everything at the
+            // built-in behaviour; a published zero means this car holds the bar
+            // solid at redline; anything else is its own rate.
+            int intervalMs = published ?? 0;
+            if (_rpmLeds != null) _rpmLeds.RedlineBlinks = !published.HasValue || published.Value > 0;
+
+            // Straight across: the published figure is how long each state
+            // LASTS, not a full on-plus-off cycle.
+            //
+            // This was halved for a while, on the reading that it was a full
+            // period. Their README does not say either way, its whole spec being
+            // "The Speed at which the redline blinks in ms" (checked 2026-08-24),
+            // so it came down to observation: halved, the wheel blinks visibly
+            // faster than the same car does in iRacing, which is exactly what
+            // halving a half-period looks like. The same dataset's zeros match
+            // iRacing's non-blinking cars precisely, so the sim is a fair
+            // reference for the rate too.
+            //
+            // The pit limiter reads the same number as a PERIOD (1000/interval
+            // Hz) and keeps doing so. That is not an inconsistency: a haptic
+            // pulse is one event per cycle, where a light has an on phase and an
+            // off phase, so the same figure means a full pulse there and one
+            // state here.
+            int half = intervalMs > 0 ? Math.Max(1, intervalMs) : 185;
             if (_rpmLeds != null) _rpmLeds.RedlineBlinkHalfMs = half;
 
             if (PitLimiter != null)
@@ -11390,6 +11452,22 @@ namespace TrueforceForAll.Plugin
         /// their OWN slots, and treating that as ours would let a cycle press
         /// restore their edit out from under them.</summary>
         private bool LibraryPatternShowing { get; set; }
+
+        /// <summary>Direction value for one of the wheel's four built-in sweeps,
+        /// given its 1-based effect number. The effect IS the direction, but the
+        /// two lists are numbered differently, which is why this is written out
+        /// rather than computed: effect 1 is inside-out (direction 1), 2 outside-in
+        /// (2), 3 right-to-left (4), 4 left-to-right (3).</summary>
+        internal static byte BuiltinEffectDirectionWire(int effect)
+        {
+            switch (effect)
+            {
+                case 1: return 1;   // Inside out
+                case 2: return 2;   // Outside in
+                case 3: return 4;   // Right to left
+                default: return 3;  // Left to right
+            }
+        }
 
         /// <summary>The device's 1..4 direction value back to our enum. The two
         /// are numbered differently, so this is written out rather than cast.</summary>

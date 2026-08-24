@@ -126,14 +126,41 @@ namespace TrueforceForAll.Plugin
         /// is an exact match for the published figure: it IS the redline blink.</summary>
         public int RedlineBlinkHalfMs { get; set; } = 185;
 
+        /// <summary>Whether the redline FLASHES at all.
+        ///
+        /// A third state, and it has to be: the published data distinguishes
+        /// "blinks every N ms" from "does not blink", and 470 of its 717 cars are
+        /// the second. Folding that into the rate meant zero read as "no rate
+        /// given, use the default", so a car the data explicitly says holds
+        /// steady flashed at iRacing's 2.7 Hz. A Formula Vee whose real dash does
+        /// not flash flashed on the rim.
+        ///
+        /// True for anything we have no data about, which keeps every uncovered
+        /// car exactly as it was.</summary>
+        public bool RedlineBlinks { get; set; } = true;
+
         /// <summary>The level most recently computed, whether or not it reached
         /// the wheel. The dash mirror reads this: it wants what the strip WOULD
         /// show, including in games where nothing is written to the hardware.</summary>
         public int LastLevel { get; private set; }
 
+        /// <summary>How many levels <see cref="LastLevel"/> is counted in: the
+        /// wheel's own strip length once the channel has resolved one, else the
+        /// family default of ten. Published beside the level so a mirror scales
+        /// to the same bar we do rather than assuming ten and drawing a G923's
+        /// full strip as a half-full one.</summary>
+        public int MirrorSteps => _channel.StripLength;
+
         public void OnFrame(double rpmPercent, double rpms, double maxRpm, bool redline, bool gateOpen)
         {
             if (_testing) return;   // test sweep owns the LEDs while it runs
+
+            // Decide the level FIRST, before any of the gates below, because the
+            // dash mirror wants what the strip WOULD show and none of those gates
+            // are about what it should read. They are about whether we may touch
+            // the wheel.
+            int level = ComputeLevel(rpmPercent, redline, rpms, _channel.StripLength);
+            LastLevel = level;
 
             if (!gateOpen)
             {
@@ -156,41 +183,50 @@ namespace TrueforceForAll.Plugin
             if (!EnsureOpening()) return;
             if (!_channel.IsReady) return;
 
-            // Trust rpmPercent as-is. The SimHub source already computes the
-            // sim-matched rev-band fill AND owns the fallback chain (shift
-            // band -> displayed% -> rpm/max). 0 is a LEGITIMATE value here
-            // (below shift-light onset = lights off); the old "pct<=0 ->
-            // rpm/maxRpm" fallback clobbered that, lighting ~1 LED at idle
-            // and looping at low revs. Do not second-guess the source.
-            Push(rpmPercent, redline, force: false, rpms: rpms);
+            Commit(level, redline, force: false, NowMs());
         }
 
         private int _hystLevel = -1;
 
-        private void Push(double pct, bool redline, bool force, double rpms = double.NaN)
+        /// <summary>What the bar should read right now, in whole levels. No
+        /// hardware, no rate limit, no write: only the latch the hysteresis
+        /// needs.
+        ///
+        /// Split out of the old Push so the dash mirror can have the number in
+        /// the frames where we are not allowed to touch the wheel. It used to be
+        /// a by-product of the write, which meant every early return in OnFrame
+        /// froze the mirror at whatever had last reached the wheel: a closed
+        /// gate held the on-screen strip lit at the level it had when the game
+        /// took its lights back, and a wheel whose channel never opened left it
+        /// dark for the session.
+        ///
+        /// Trust rpmPercent as-is. The SimHub source already computes the
+        /// sim-matched rev-band fill AND owns the fallback chain (shift
+        /// band -> displayed% -> rpm/max). 0 is a LEGITIMATE value here
+        /// (below shift-light onset = lights off); the old "pct<=0 ->
+        /// rpm/maxRpm" fallback clobbered that, lighting ~1 LED at idle
+        /// and looping at low revs. Do not second-guess the source.</summary>
+        private int ComputeLevel(double pct, bool redline, double rpms, int steps)
         {
-            long nowMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
-            // Per-wheel step count from fn0: 10 on the G PRO/RS50, 5 on a
-            // G923. Scaling to the wheel's own range keeps a 50% fill half a
-            // bar on every wheel instead of clipping at the channel.
-            int steps = _channel.StripLength;
-            int target;
+            long nowMs = NowMs();
             if (redline)
             {
-                // Peak: blink the full bar instead of holding it solid. The rate
-                // is the car's own where it publishes one, else iRacing's ~2.7 Hz.
+                // Peak. Cars whose real dash holds the bar solid do that here
+                // too; the rest blink at their own rate where they publish one,
+                // else iRacing's ~2.7 Hz.
+                if (!RedlineBlinks) return steps;
                 long half = RedlineBlinkHalfMs > 0 ? RedlineBlinkHalfMs : 185L;
                 bool on = ((nowMs / half) & 1L) == 0L;
-                target = on ? steps : 0;
+                return on ? steps : 0;
             }
             else
             {
                 // Per-car curve first when one is set. It already returns whole
                 // levels derived from the car's own switch-on points, so the
                 // fractional hysteresis below does not apply; a threshold is a
-                // hard edge, and the push-rate limit further down still absorbs
-                // jitter around one. Any failure falls through to the ramp rather
-                // than dropping the frame.
+                // hard edge, and Commit's push-rate limit still absorbs jitter
+                // around one. Any failure falls through to the ramp rather than
+                // dropping the frame.
                 int? curved = null;
                 var curve = LevelCurve;
                 if (curve != null && !double.IsNaN(rpms))
@@ -203,8 +239,7 @@ namespace TrueforceForAll.Plugin
                     int cl = curved.Value;
                     if (cl < 0) cl = 0; else if (cl > steps) cl = steps;
                     _hystLevel = cl;
-                    Commit(cl, redline, force, nowMs);
-                    return;
+                    return cl;
                 }
 
                 double scaled = pct * steps;
@@ -220,20 +255,20 @@ namespace TrueforceForAll.Plugin
                     else if (lvl < _hystLevel && scaled > _hystLevel - 0.55) lvl = _hystLevel;
                 }
                 _hystLevel = lvl;
-                target = lvl;
+                return lvl;
             }
-
-            Commit(target, redline, force, nowMs);
         }
 
         /// <summary>Write a level to the wheel, subject to the change and rate
-        /// gates. Shared by the ramp and the per-car curve so both take exactly
-        /// the same path onto the wire.</summary>
+        /// gates. Every LIVE level reaches the wire through here, from the ramp
+        /// and the per-car curve alike; the test and preview sweeps drive the
+        /// channel directly because they own the strip while they run.
+        ///
+        /// Deliberately does NOT record LastLevel: the mirror is what the strip
+        /// should read, and these gates drop frames (unchanged level, rate limit)
+        /// without changing that. OnFrame records it before calling in.</summary>
         private void Commit(int target, bool redline, bool force, long nowMs)
         {
-            // Recorded before the gates below, so the dash still mirrors the bar
-            // in a game where the write itself never happens.
-            LastLevel = target;
             bool changed = target != _lastBucket || redline != _lastRedline;
             if (!force && !changed) return;
             if (!force && (nowMs - _lastPushTicks) < MinPushIntervalMs && !redline) return;
