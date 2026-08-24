@@ -11700,6 +11700,18 @@ namespace TrueforceForAll.Plugin
              : p.TrimExempt ? LightSlotBackupStore.ToHex(p.Rgb())
              : ToWireHex(p.Rgb());
 
+        /// <summary>The same answer as <see cref="ToWireHex(LightPattern)"/> but
+        /// as bytes, for the identity checks that compare with a tolerance
+        /// rather than as text.</summary>
+        public byte[] ToWireBytes(LightPattern p)
+        {
+            if (p == null) return null;
+            var rgb = p.Rgb();
+            if (p.TrimExempt || rgb == null) return rgb;
+            float r, g, b; EffectiveLedTrim(out r, out g, out b);
+            return LedColorGain.Apply(rgb, r, g, b);
+        }
+
         /// <param name="rawColors">The caller's colours are already in the
         /// wheel's own space (a pattern the user tuned by eye on the rim, or one
         /// imported out of the wheel's slots), so they go out untouched by the

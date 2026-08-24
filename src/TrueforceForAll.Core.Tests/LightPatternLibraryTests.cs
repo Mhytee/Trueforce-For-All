@@ -69,12 +69,12 @@ namespace TrueforceForAll.Core.Tests
             var lib = new LightPatternLibrary();
             LightPatternStore.Add(lib, "mine", 2, Rgb(10, 200, 100), "user", trimExempt: true);
 
-            Func<LightPattern, string> wire = p => p.TrimExempt
-                ? LightSlotBackupStore.ToHex(p.Rgb())
-                : LightSlotBackupStore.ToHex(LedColorGain.Apply(p.Rgb(), 1f, 0.5f, 0.5f));
+            Func<LightPattern, byte[]> wire = p => p.TrimExempt
+                ? p.Rgb()
+                : LedColorGain.Apply(p.Rgb(), 1f, 0.5f, 0.5f);
 
             int added = LightPatternStore.AdoptWheelOrder(
-                lib, Slots(Rgb(10, 200, 100)), 5, allowAdd: true, wireHex: wire);
+                lib, Slots(Rgb(10, 200, 100)), 5, allowAdd: true, wireBytes: wire);
 
             Assert.Equal(0, added);
             Assert.Single(lib.Patterns);
@@ -227,6 +227,29 @@ namespace TrueforceForAll.Core.Tests
         {
             var names = LightPatternStore.Builtins.Select(b => b.Name).ToList();
             Assert.Equal(names.Count, names.Distinct(System.StringComparer.OrdinalIgnoreCase).Count());
+        }
+
+        [Fact]
+        public void SamePatternToleratesRoundingButNotADifferentPattern()
+        {
+            var a = new byte[] { 100, 150, 200, 10, 20, 30 };
+
+            // A trim nudged by a fraction of a count rounds some bytes the other
+            // way. That is the same pattern and must still match: this exact case
+            // re-adopted four of five wheel slots as "CUSTOM n" and pushed the
+            // named originals off the wheel.
+            Assert.True(LightPatternStore.SamePattern(a, new byte[] { 101, 149, 200, 10, 21, 29 }));
+            Assert.True(LightPatternStore.SamePattern(a, new byte[] { 102, 148, 202, 12, 22, 32 }));
+
+            // Three counts is past the tolerance, and a genuinely different
+            // pattern is nowhere near it.
+            Assert.False(LightPatternStore.SamePattern(a, new byte[] { 103, 150, 200, 10, 20, 30 }));
+            Assert.False(LightPatternStore.SamePattern(a, new byte[] { 0, 255, 0, 255, 0, 255 }));
+
+            // Nulls and length mismatches are never a match rather than throwing.
+            Assert.False(LightPatternStore.SamePattern(a, null));
+            Assert.False(LightPatternStore.SamePattern(null, a));
+            Assert.False(LightPatternStore.SamePattern(a, new byte[] { 100, 150, 200 }));
         }
 
         [Fact]
@@ -408,8 +431,11 @@ namespace TrueforceForAll.Core.Tests
             Func<int, WheelLedChannel.WheelLedSlot> throwing = slot =>
             {
                 if (slot == 1) throw new System.IO.IOException("wheel busy");
+                // Well apart per slot: adoption matches with a tolerance now, so
+                // a fixture whose "different" slots sit two counts apart would
+                // have them collapse into one pattern and test nothing.
                 return new WheelLedChannel.WheelLedSlot
-                    { Slot = (byte)slot, DirectionWire = 3, Rgb = Rgb((byte)(7 + slot), 7, 7) };
+                    { Slot = (byte)slot, DirectionWire = 3, Rgb = Rgb((byte)(20 + slot * 60), 7, 7) };
             };
 
             int added = LightPatternStore.AdoptWheelOrder(lib, throwing, 3, allowAdd: true);

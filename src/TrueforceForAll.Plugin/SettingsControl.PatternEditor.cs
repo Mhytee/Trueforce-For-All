@@ -77,9 +77,9 @@ namespace TrueforceForAll.Plugin
             {
                 LightPatternStore.AdoptWheelOrder(_patternLib, sl => _plugin?.ReadSlot(sl),
                                                   WheelLedChannel.CustomSlotCount, allowAdd: true,
-                                                  wireHex: p => _plugin != null
-                                                      ? _plugin.ToWireHex(p)
-                                                      : LightSlotBackupStore.ToHex(p.Rgb()));
+                                                  wireBytes: p => _plugin != null
+                                                      ? _plugin.ToWireBytes(p)
+                                                      : p.Rgb());
                 _patternLib.ImportedFromWheel = true;
             }
             LightPatternStore.NormalizeSlots(_patternLib);
@@ -886,15 +886,15 @@ namespace TrueforceForAll.Plugin
             var onWheel = _plugin?.ReadSlot(slot);
             if (onWheel?.Rgb == null || onWheel.Rgb.Length < WheelLedChannel.LedCount * 3) return null;
 
-            string hex = LightSlotBackupStore.ToHex(onWheel.Rgb);
-            // Match against each pattern's TRIMMED hex, because that is what we
-            // would have written. Comparing raw would find nothing on a
-            // calibrated wheel, and the library would then acquire an
-            // already-trimmed copy of a pattern it already has, which gets
-            // trimmed a second time on the next show.
+            // Match against each pattern's TRIMMED bytes, because that is what
+            // we would have written, and with a tolerance, because this asks
+            // "is this the same pattern" rather than "is this byte-identical".
+            // Comparing raw would find nothing on a calibrated wheel, and
+            // comparing exactly breaks the moment the trim moves by a fraction
+            // of a count. Either way the library would acquire a duplicate.
             var existing = _patternLib.Patterns.FirstOrDefault(p =>
-                string.Equals(_plugin != null ? _plugin.ToWireHex(p) : LightSlotBackupStore.ToHex(p.Rgb()), hex,
-                              StringComparison.OrdinalIgnoreCase)
+                LightPatternStore.SamePattern(
+                    _plugin != null ? _plugin.ToWireBytes(p) : p.Rgb(), onWheel.Rgb)
                 && p.DirectionWire == onWheel.DirectionWire);
 
             // Bytes that match nothing were authored by the user or by G HUB,

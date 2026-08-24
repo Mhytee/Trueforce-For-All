@@ -386,23 +386,49 @@ namespace TrueforceForAll.Plugin
         /// adding a copy, which is what keeps one pattern to one entry. The
         /// shipped built-ins are copies of real slots, so without that every user
         /// would start with a duplicate of each.</summary>
-        /// <param name="wireHex">Turns a PATTERN into the hex it becomes on the
-        /// wire. Patterns normally hold sRGB intent, so on a calibrated wheel
-        /// the bytes in a slot are the trimmed form and matching on raw hex
-        /// would adopt nothing and add a duplicate of every pattern. It takes
-        /// the pattern rather than its bytes because the decision is per
+        /// <summary>Do these two strips hold the same pattern? Compared with a
+        /// tolerance, NOT byte for byte.
+        ///
+        /// The question being asked is "is this the same pattern", and the
+        /// colour trim stands between a stored pattern and the bytes that
+        /// reached the wheel. Nudge the trim by a fraction of one count and
+        /// every byte can round differently, so an exact test answers "no" for a
+        /// pattern that is obviously the same one. That really happened: moving
+        /// green from 0.60557 to 0.606 made four of five slots fail to match,
+        /// and they were re-adopted as CUSTOM 2 to CUSTOM 5 while the named
+        /// originals were pushed off the wheel.
+        ///
+        /// Two counts is safe. Two genuinely different patterns do not sit
+        /// within two counts on all thirty bytes; two roundings of the same
+        /// pattern always do.
+        ///
+        /// Note this is the opposite of what SyncSlotsToWheel wants, and
+        /// deliberately so: that asks "is the wheel already holding exactly what
+        /// we would send", where any difference is a real reason to write.</summary>
+        public static bool SamePattern(byte[] a, byte[] b, int tolerance = 2)
+        {
+            if (a == null || b == null || a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++)
+                if (Math.Abs(a[i] - b[i]) > tolerance) return false;
+            return true;
+        }
+
+        /// <param name="wireBytes">Turns a PATTERN into the bytes it becomes on
+        /// the wire. Patterns normally hold sRGB intent, so on a calibrated
+        /// wheel the bytes in a slot are the trimmed form and matching on raw
+        /// values would adopt nothing and add a duplicate of every pattern. It
+        /// takes the pattern rather than its bytes because the decision is per
         /// pattern: an exempt one goes out untrimmed, so its wire form IS its
-        /// stored form. Defaults to plain hex, which is exactly right for an
-        /// uncalibrated wheel and keeps this class free of any dependency on
+        /// stored form. Defaults to the stored bytes, which is exactly right for
+        /// an uncalibrated wheel and keeps this class free of any dependency on
         /// settings so it still link-compiles into the tests.</param>
         public static int AdoptWheelOrder(LightPatternLibrary lib,
                                           Func<int, WheelLedChannel.WheelLedSlot> readSlot,
                                           int slotCount, bool allowAdd,
-                                          Func<LightPattern, string> wireHex = null)
+                                          Func<LightPattern, byte[]> wireBytes = null)
         {
             if (lib == null || readSlot == null) return 0;
-            if (wireHex == null)
-                wireHex = p => p == null ? string.Empty : LightSlotBackupStore.ToHex(p.Rgb());
+            if (wireBytes == null) wireBytes = p => p?.Rgb();
             int added = 0;
 
             for (int slot = 0; slot < slotCount; slot++)
@@ -412,9 +438,8 @@ namespace TrueforceForAll.Plugin
                 if (s?.Rgb == null || s.Rgb.Length < 3) continue;   // unreadable: leave the order alone
                 if (s.Rgb.All(b => b == 0)) continue;               // never programmed: holds no pattern
 
-                string hex = LightSlotBackupStore.ToHex(s.Rgb);
                 var match = lib.Patterns.FirstOrDefault(p => p != null
-                    && string.Equals(wireHex(p), hex, StringComparison.OrdinalIgnoreCase)
+                    && SamePattern(wireBytes(p), s.Rgb)
                     && p.DirectionWire == s.DirectionWire);
 
                 if (match == null)
