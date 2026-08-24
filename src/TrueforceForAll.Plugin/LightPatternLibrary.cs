@@ -289,19 +289,21 @@ namespace TrueforceForAll.Plugin
         /// <summary>Patterns everyone gets, so the library is never empty and a
         /// new user has something to cycle on day one.
         ///
-        /// The first five are the owner's own slots, read off his G PRO with
-        /// SLOTPROBE on 2026-08-18 and stored here in PHYSICAL order (LED 1, the
-        /// leftmost, first). The last is the rainbow the write path was proven
-        /// with, which turns out to be genuinely useful for seeing at a glance
-        /// which way a strip fills.
+        /// Stored in PHYSICAL order (LED 1, the leftmost, first). Every one of
+        /// these has been looked at on a G PRO and kept because it earned a
+        /// place; three earlier entries were dropped rather than shipped. So
+        /// treat the list as curated: adding one means putting it on a wheel
+        /// first, not just liking the hex.
+        ///
+        /// Most of them were tuned BY EYE at the shipped colour trim, so the
+        /// stored bytes are not meant to read correctly as sRGB. What matters is
+        /// what comes out the far side of LedColorGain, and moving the shipped
+        /// gains means retuning these rather than just recompiling.
         ///
         /// Direction values are the device's own: 1 inside-out, 2 outside-in,
         /// 3 left-to-right, 4 right-to-left.</summary>
         public static readonly (string Name, byte Direction, string Hex)[] Builtins =
         {
-            // Green out at the ends, yellow, a dark gap, red meeting in the
-            // middle. The classic GT dash look.
-            ("Converge",     2, "6AFF006AFF00F8E71C060502FF0C00FF0C00060502F8E71C6AFF006AFF00"),
             // Teal deepening across the bar into blue, ending on magenta.
             ("Deep Water",   3, "001414002828003C3C005050006464007878008C8C2F157D02034FF907D7"),
             // Blue and green at the ends, magenta meeting in the middle.
@@ -344,18 +346,8 @@ namespace TrueforceForAll.Plugin
             // Dim through to full white. The one to reach for when checking the
             // brightness control, since nothing else is competing for the eye.
             ("Mono",         3, "101010282828404040585858707070888888A0A0A0C0C0C0E0E0E0FFFFFF"),
-            // Deep blue at the ends closing on white in the middle.
-            //
-            // Stored PRE-TRIMMED: solved backwards so that running it through
-            // the shipped trim reproduces the untrimmed appearance, which is the
-            // one that looked right (owner, 2026-08-23). Lands within one count
-            // per channel, which is the best available: dividing by a sub-unity
-            // gain leaves whole swathes of the 256 levels unreachable. Re-solve
-            // this if the shipped gains ever move.
-            ("Split",        2, "0045FF0089FF00CEFF53F0FF9BFFEE9BFFEE53F0FF00CEFF0089FF0045FF"),
-            // Every other LED lit. Useless as a rev bar and the clearest thing
-            // here for seeing which way a strip fills and where it starts.
-            ("Chase",        3, "FFA000000000FFA000000000FFA000000000FFA000000000FFA000000000"),
+            // Ice's blues split at the ends and meeting in the middle.
+            ("Ice Split",    2, "0040FF0080FF00C0FF80E0FFFFFFFFFFFFFF80E0FF00C0FF0080FF0040FF"),
         };
 
         /// <summary>Put the shipped patterns into an empty library. Only ever

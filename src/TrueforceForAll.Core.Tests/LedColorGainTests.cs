@@ -173,35 +173,6 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void TheOnePreTrimmedBuiltinStillRendersAsAuthored()
-        {
-            // Split is the only builtin stored PRE-TRIMMED: solved backwards so
-            // that running it through the shipped trim reproduces the untrimmed
-            // appearance, which was the one that looked right. Everything else
-            // in the library was tuned by eye at the shipped gains instead, so
-            // Split is the only one with a checkable target.
-            var stored = Hex("0045FF0089FF00CEFF53F0FF9BFFEE9BFFEE53F0FF00CEFF0089FF0045FF");
-            var want = Hex("0040FF0080FF00C0FF80E0FFFFFFFFFFFFFF80E0FF00C0FF0080FF0040FF");
-
-            var got = LedColorGain.Apply(stored,
-                LedColorGain.ShippedR, LedColorGain.ShippedG, LedColorGain.ShippedB);
-
-            // One count of slack per channel, which is the best available:
-            // dividing by a sub-unity gain leaves whole swathes of the 256
-            // levels unreachable, so most targets are not addressable exactly.
-            for (int i = 0; i < want.Length; i++)
-                Assert.InRange(got[i], want[i] - 1, want[i] + 1);
-        }
-
-        private static byte[] Hex(string h)
-        {
-            var b = new byte[h.Length / 2];
-            for (int i = 0; i < b.Length; i++)
-                b[i] = System.Convert.ToByte(h.Substring(i * 2, 2), 16);
-            return b;
-        }
-
-        [Fact]
         public void NullIsPassedThrough()
         {
             Assert.Null(LedColorGain.Apply(null, 1f, 0.5f, 0.5f));
