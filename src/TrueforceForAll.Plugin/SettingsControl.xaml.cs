@@ -13854,7 +13854,11 @@ namespace TrueforceForAll.Plugin
             _lightsyncIntroShowing = true;
             try
             {
-                bool bound = IsPatternCycleBound();
+                // CYCLEHINT pretends the action is unbound as well as re-arming
+                // the modal, so the dev code shows the whole first-run flow
+                // including the binder rather than the shortened already-sorted
+                // version. Nobody testing this has it unbound.
+                bool bound = !_forceCycleHint && IsPatternCycleBound();
 
                 string body =
                     "Your wheel has its own built-in sweeps and five slots you can fill. "
