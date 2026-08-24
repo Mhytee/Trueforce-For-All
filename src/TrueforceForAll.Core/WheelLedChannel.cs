@@ -130,13 +130,20 @@ namespace TrueforceForAll.Core
         // ep3, and it was fixed by zeroing FFB on that endpoint (owner,
         // 2026-08-24). Write RATE was never shown to be the cause.
         //
-        // So this floor is now only "match what G HUB does", which is a
-        // reasonable default and not a proven constraint. It costs up to ~160 ms
-        // of latency on a bar that moves in ten steps, which is visible near the
-        // shift point. LEDRATE<ms> changes it live so the real limit can be
-        // found on hardware instead of guessed at; the default stays here until
-        // someone has driven a faster one and watched the force.
-        private static volatile int _changeMinMs = 160;
+        // MEASURED 2026-08-24 on a G PRO: 40 ms (25 Hz) drives the bar visibly
+        // more responsively with NO force cutout, in a car, with the game's own
+        // FFB running. So the 160 ms floor was costing latency for nothing, and
+        // the default is now the number that was actually driven rather than the
+        // one G HUB happens to use.
+        //
+        // 40 is not a proven ceiling either: nobody has tried faster. It is the
+        // fastest value with evidence behind it, which is the bar for changing
+        // this. LEDRATE<ms> still moves it live if someone wants to push further.
+        //
+        // Note the floor only caps BURSTS. A rev bar has ten steps, so real
+        // traffic is bounded by how often the level actually changes, not by
+        // this number.
+        private static volatile int _changeMinMs = 40;
         public static int ChangeMinMsValue
         {
             get { return _changeMinMs; }

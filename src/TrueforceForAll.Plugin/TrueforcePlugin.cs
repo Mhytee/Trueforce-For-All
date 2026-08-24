@@ -1288,7 +1288,12 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                at = stops.FindIndex(s => s.Pattern == null && s.Effect == current);
+                // !s.Auto matters. The Auto stop also has a null Pattern, and its
+                // Effect is 0, so without this it matches whenever the wheel's
+                // known selection reads 0. The cycle then resets to position 0
+                // on every press and can only ever step one place, which showed
+                // up as toggling between Auto and the first sweep.
+                at = stops.FindIndex(s => s.Pattern == null && !s.Auto && s.Effect == current);
             }
             // Selection never read yet: start from an end so the first press still
             // lands somewhere sensible.
