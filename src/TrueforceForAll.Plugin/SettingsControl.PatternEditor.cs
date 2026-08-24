@@ -1121,7 +1121,10 @@ namespace TrueforceForAll.Plugin
                 // the plugin now calls something else.
                 if (row.Pattern.OnWheel)
                 {
-                    bool ok = _plugin.WriteSlotName(row.Pattern.Slot, name);
+                    // What LANDED, not what was typed: Rename de-duplicates, so
+                    // a colliding name picks up a "(2)" and the wheel should say
+                    // the same thing the list does.
+                    bool ok = _plugin.WriteSlotName(row.Pattern.Slot, row.Pattern.Name);
                     RefreshSlotNames();
                     SetPatternStatus(ok
                         ? "Renamed, on the wheel too."
@@ -1270,28 +1273,44 @@ namespace TrueforceForAll.Plugin
             string name = (PatternNameBox?.Text ?? string.Empty).Trim();
             if (name.Length == 0) { PatternNameBox.Text = _editing.Name; return; }
 
-            // Naming a WHEEL slot writes the name onto the wheel, where its own
-            // menu shows it. The wire only carries eight characters, so say so
-            // rather than silently truncating.
-            if (_editingSlot >= 0)
+            // Rename the PATTERN first, always. This used to write the name
+            // straight onto the wheel and return for anything sitting in a slot,
+            // never touching the library, so the next list refresh put the old
+            // name back and renaming a slot pattern looked like it did nothing.
+            // The wheel is a second place the name has to land, not the only one.
+            if (!LightPatternStore.Rename(_patternLib, _editing.Id, name))
             {
-                bool ok = _plugin.WriteSlotName(_editingSlot, name);
-                RefreshSlotNames();
-                RefreshPatternList();
-                SetPatternStatus(ok
-                    ? (name.Length > WheelLedChannel.SlotNameMaxLength
-                        ? "Named on the wheel as \"" + name.Substring(0, WheelLedChannel.SlotNameMaxLength)
-                          + "\"; the wheel only stores " + WheelLedChannel.SlotNameMaxLength + " characters."
-                        : "Named on the wheel.")
-                    : "The wheel would not accept that name.");
+                // Rename declines only when nothing would change, so just put
+                // the box back to the real name and say nothing.
+                if (PatternNameBox != null) PatternNameBox.Text = _editing.Name;
                 return;
             }
+            _patternStore.Save(_patternLib);
 
-            if (LightPatternStore.Rename(_patternLib, _editing.Id, name))
+            // Rename de-duplicates, so what landed may not be what was typed.
+            // The wheel must be given what the library actually holds.
+            string landed = _editing.Name;
+
+            // A pattern living in a slot is named in BOTH places, or the base's
+            // own menu keeps showing the old name for something the plugin now
+            // calls something else. The wire carries only eight characters, so
+            // say so rather than truncating silently.
+            if (_editingSlot >= 0)
             {
-                _patternStore.Save(_patternLib);
-                RefreshPatternList();
+                bool ok = _plugin.WriteSlotName(_editingSlot, landed);
+                RefreshSlotNames();
+                SetPatternStatus(ok
+                    ? (landed.Length > WheelLedChannel.SlotNameMaxLength
+                        ? "Renamed. The wheel's own menu shows \""
+                          + landed.Substring(0, WheelLedChannel.SlotNameMaxLength)
+                          + "\", since it only stores " + WheelLedChannel.SlotNameMaxLength + " characters."
+                        : "Renamed, on the wheel too.")
+                    : "Renamed here, but the wheel would not accept the name for CUSTOM "
+                      + (_editingSlot + 1) + ".");
             }
+            else SetPatternStatus("Renamed.");
+
+            RefreshPatternList();
         }
 
         private void PatternName_KeyDown(object sender, KeyEventArgs e)
