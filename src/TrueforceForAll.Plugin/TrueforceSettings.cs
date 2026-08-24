@@ -534,7 +534,21 @@ namespace TrueforceForAll.Plugin
         // most cars with center-converge shift lights do.
         // Surfaced in the Settings tab's "Remote dashboard" section; the dash
         // reads it live (Dash.RevOutsideIn) so a change applies instantly.
+        //
+        // Read only when DashRevStripAuto is off, or when it is on and there is
+        // no wheel to follow. Kept as its own field rather than folded into a
+        // three-way mode so turning Auto off returns the user to the direction
+        // they had picked instead of a default.
         public bool DashRevStripOutsideIn { get; set; } = true;
+
+        // TF4ALL Remote dash: let the rev strip follow the wheel instead of
+        // drawing its own. On (default) the strip takes its colours, its fill
+        // direction and its switch-on points from the wheel's live rev lights
+        // (Dash.Lights.*), so the phone shows the rim, per-car published light
+        // data included. Falls back to the strip's own green-amber-red ramp on
+        // any rig with no level-capable Logitech wheel, so this costs nothing to
+        // leave on.
+        public bool DashRevStripAuto { get; set; } = true;
 
         // TF4ALL Remote dash: which tab the dash opens on when SimHub starts.
         // Remember-last wins while on (the dash reopens where it was left,

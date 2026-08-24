@@ -38,6 +38,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using SimHub.Plugins;
 using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
@@ -935,9 +937,25 @@ namespace TrueforceForAll.Plugin
 
         private volatile int _dashLightLevel;
         private volatile bool _dashLightRedline;
+        private volatile int _dashLightSteps;
         private LovelyLightMath.LightProfileSnapshot _dashLightProfile;
+        /// <summary>The published profile is the ramp we synthesized, not colours
+        /// anyone chose, so a strip-length change rebuilds it at the new size.
+        /// Set ONLY by PublishFallbackLightProfile: a profile read off the wheel
+        /// carries the wheel's own ten entries whatever the strip length, so
+        /// treating it as rebuildable threw it away on a five-step wheel one
+        /// frame after adopting it.</summary>
+        private volatile bool _dashLightProfileIsFallback;
 
-        public int DashLightCount => WheelLedChannel.LedCount;
+        /// <summary>LEDs to mirror, or 0 when there is nothing to mirror: no
+        /// level-capable wheel on this rig, or one that has gone away. The dash
+        /// reads this as the "is there a wheel to follow" test and falls back to
+        /// its own computed strip at 0, so it must NOT report a hopeful ten.
+        ///
+        /// The live strip length rather than the family constant: a G923 runs a
+        /// five-step bar, and mirroring it against ten drew a full strip as a
+        /// half-full one.</summary>
+        public int DashLightCount => _dashLightSteps;
         public int DashLightLevel => _dashLightLevel;
         public bool DashLightRedline => _dashLightRedline;
 
@@ -965,36 +983,174 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Whether this LED is lit right now, accounting for the fill
         /// direction: a mirrored pattern lights in pairs from the ends or the
-        /// middle, so position alone does not answer it.</summary>
+        /// middle, so position alone does not answer it.
+        ///
+        /// The redline is NOT special-cased here. The level already carries it:
+        /// a blinking car alternates full bar and dark, and a car whose real dash
+        /// holds steady (470 of the 717 published cars) stays at full. Lighting
+        /// the whole bar on the redline flag instead meant the flash had to come
+        /// from somewhere else, and that somewhere else did not know which cars
+        /// hold steady, so the dash blinked while the rim beside it did not.
+        /// </summary>
         public bool DashLightOn(int led)
         {
             var snap = _dashLightProfile;
-            if (_dashLightRedline) return true;              // redline lights the whole bar
             int level = _dashLightLevel;
             if (level <= 0) return false;
 
+            int leds = _dashLightSteps;
+            if (leds <= 0 || led >= leds) return false;
+
             var dir = snap?.Direction ?? LightDirection.LeftToRight;
-            int step = LovelyLightMath.StepIndexForLed(led, dir, WheelLedChannel.LedCount);
-            int steps = LovelyLightMath.StepCount(dir, WheelLedChannel.LedCount);
+            int step = LovelyLightMath.StepIndexForLed(led, dir, leds);
+            int steps = LovelyLightMath.StepCount(dir, leds);
             if (steps <= 0) return false;
 
-            // level is 0..LedCount; scale it onto this layout's step count so a
+            // level is 0..leds; scale it onto this layout's step count so a
             // mirrored pattern lights the right number of PAIRS.
-            int litSteps = (int)Math.Round((double)level * steps / WheelLedChannel.LedCount);
+            int litSteps = (int)Math.Round((double)level * steps / leds);
             return step < litSteps;
         }
 
         /// <summary>Called from the telemetry path with what the strip is doing,
-        /// so the dash mirrors it whether or not the wheel is being written.</summary>
-        internal void PublishDashLights(int level, bool redline)
+        /// so the dash mirrors it whether or not the wheel is being written.
+        /// <paramref name="steps"/> is the wheel's own strip length, which is
+        /// also what tells the dash there is a wheel to follow at all.</summary>
+        internal void PublishDashLights(int level, bool redline, int steps)
         {
+            if (steps < 0) steps = 0;
             _dashLightLevel = level;
             _dashLightRedline = redline;
+            _dashLightSteps = steps;
+
+            // Colours, if nobody has supplied any. A profile only arrives when
+            // the user picks a pattern or the car data paints one, so without
+            // this the common case (a wheel showing whatever it was already set
+            // to, which we never read back) mirrored as ten black LEDs. The
+            // conventional ramp is the honest answer there: it is what the level
+            // means, in the colours everyone expects, and a real pattern
+            // replaces it the moment one is chosen.
+            if (steps > 0 && (_dashLightProfile == null
+                              || (_dashLightProfileIsFallback && _dashLightProfile.Rgb?.Length != steps * 3)))
+                PublishFallbackLightProfile(steps, LightDirection.LeftToRight);
+        }
+
+        /// <summary>Our own green-amber-red ramp as the published profile, sized
+        /// to this wheel's strip and laid out for <paramref name="direction"/>.
+        /// </summary>
+        private void PublishFallbackLightProfile(int steps, LightDirection direction,
+                                                 string name = "")
+        {
+            var colors = LovelyLightMath.DefaultRampColors(direction, steps);
+            var rgb = new byte[steps * 3];
+            for (int i = 0; i < steps && i < colors.Length; i++)
+            {
+                rgb[i * 3 + 0] = colors[i].R;
+                rgb[i * 3 + 1] = colors[i].G;
+                rgb[i * 3 + 2] = colors[i].B;
+            }
+            PublishDashLightProfile(rgb, direction, name, isFallback: true);
+        }
+
+        // The selection whose colours are published, so a change is noticed.
+        // -1 = nothing published yet.
+        private volatile int _dashLightSelPublished = -1;
+
+        /// <summary>Keep the dash's colours pointed at whatever the wheel is
+        /// showing NOW.
+        ///
+        /// Polled rather than pushed from the places that change the selection,
+        /// because they are not the only ones that change it: the base's own menu
+        /// does too, and the channel learns about that from an unsolicited
+        /// notification. One read of a cached int per frame catches every route.
+        ///
+        /// Three cases:
+        ///   * a slot we lent is showing something WE put there, so whoever lent
+        ///     it published the colours and the name already. Nothing to read.
+        ///   * one of the wheel's own five slots: read it back in full, colours
+        ///     and direction, under our name for the pattern in it.
+        ///   * one of the four built-in sweeps: the colours are firmware and
+        ///     cannot be read, so keep the ramp and take the direction, which is
+        ///     the part of a sweep the dash can honestly reproduce.
+        ///
+        /// Gated on <paramref name="ffbQuiet"/> because reading a slot is HID++
+        /// traffic on the same endpoint the game's force feedback uses, and this
+        /// project's settled rule is that we only touch it while the game's FFB is
+        /// PROVEN quiet. A selection changed during a loud stretch is picked up at
+        /// the next quiet frame, since nothing records it as published until it
+        /// has been.</summary>
+        private void SyncDashLightProfile(bool ffbQuiet)
+        {
+            var leds = _rpmLeds;
+            if (leds == null || !leds.IsReady) return;
+
+            int sel = leds.KnownSelection;
+            if (sel == _dashLightSelPublished) return;
+            if (sel < 1 || sel > 9) return;          // never read the wheel yet
+
+            int slot = sel - 5;
+            // Ours, standing in a lent slot: ApplyLightPattern or the car-colour
+            // apply published it, under a better name than the slot carries.
+            if (slot >= 0 && slot == BorrowedSlot)
+            {
+                _dashLightSelPublished = sel;
+                return;
+            }
+
+            if (!ffbQuiet) return;
+            // Claimed before the read so a slow read is not started twice. A
+            // selection that changes again re-arms this on its own.
+            _dashLightSelPublished = sel;
+            int steps = leds.MirrorSteps;
+            Task.Run(() => PublishDashProfileForSelection(sel, steps));
+        }
+
+        /// <summary>Read what selection <paramref name="sel"/> looks like and
+        /// publish it as the dash's colours. BLOCKING (it talks to the wheel), so
+        /// every caller is already off SimHub's update thread.
+        ///
+        /// Called both from the poll and straight from the pick, because the poll
+        /// lives in the telemetry path and a user cycling patterns in the menus
+        /// with no game running is not in it. The pick is the responsive route;
+        /// the poll is the backstop that also catches the base's own menu.</summary>
+        private void PublishDashProfileForSelection(int sel, int steps)
+        {
+            try
+            {
+                _dashLightSelPublished = sel;
+                int slot = sel - 5;
+                if (slot >= 0 && slot < WheelLedChannel.CustomSlotCount)
+                {
+                    var s = ReadSlot(slot);
+                    bool programmed = s?.Rgb != null && s.Rgb.Length >= steps * 3
+                                      && Array.Exists(s.Rgb, b => b != 0);
+                    if (programmed)
+                    {
+                        // Straight out of the wheel, so already in the wheel's own
+                        // colour space: published as read, never trimmed. Our name
+                        // for it first: the slot's own label is whatever it was
+                        // called before the plugin ever ran.
+                        PublishDashLightProfile(s.Rgb, DirectionFromWire(s.DirectionWire),
+                                                LibraryNameForSlot(slot) ?? ReadSlotName(slot) ?? "");
+                        return;
+                    }
+                }
+
+                if (sel >= 1 && sel <= 4)
+                    PublishFallbackLightProfile(steps,
+                        DirectionFromWire(BuiltinEffectDirectionWire(sel)),
+                        RevPatternLabel(sel));
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] dash light sync failed: " + ex.Message);
+            }
         }
 
         /// <summary>Called when the shown pattern changes, so the dash's colours
         /// follow. Cheap: a snapshot rather than a live read.</summary>
-        internal void PublishDashLightProfile(byte[] rgb, LightDirection direction, string name)
+        internal void PublishDashLightProfile(byte[] rgb, LightDirection direction, string name,
+                                              bool isFallback = false)
         {
             _dashLightProfile = new LovelyLightMath.LightProfileSnapshot
             {
@@ -1002,6 +1158,19 @@ namespace TrueforceForAll.Plugin
                 Direction = direction,
                 Name = name,
             };
+            _dashLightProfileIsFallback = isFallback;
+        }
+
+        /// <summary>The level-capable wheel has gone away, so there is nothing to
+        /// mirror and the dash should go back to drawing its own strip.</summary>
+        internal void ClearDashLights()
+        {
+            _dashLightLevel = 0;
+            _dashLightRedline = false;
+            _dashLightSteps = 0;
+            // A different wheel may be next, so its selection is worth asking
+            // about again.
+            _dashLightSelPublished = -1;
         }
 
         private void DashReadout(string label, string value)
@@ -2136,6 +2305,12 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
 
+            // Auto hands the strip to the wheel: colours, direction and fill all
+            // come from Dash.Lights.*, so the dash draws the rim. The dash falls
+            // back to its own strip (and to RevOutsideIn for its direction)
+            // whenever Dash.Lights.Count reads 0, which is every rig without a
+            // level-capable Logitech wheel, so this is safe to default on.
+            this.AttachDelegate("Dash.RevAuto", () => Settings?.DashRevStripAuto != false);
             this.AttachDelegate("Dash.RevOutsideIn", () => Settings?.DashRevStripOutsideIn == true);
             this.AttachDelegate("Dash.Rpm", () => _telemetryStalled ? 0 : (int)_dashLiveRpm);
             this.AttachDelegate("Dash.RpmPct", () =>

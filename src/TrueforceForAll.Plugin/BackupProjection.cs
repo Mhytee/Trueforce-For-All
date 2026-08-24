@@ -73,7 +73,8 @@ namespace TrueforceForAll.Plugin
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
             "MotdLevel", "ShowEffectsTabShareButtons", "ShowPerGearRedlineEditor",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
-            "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
+            "DashRevStripOutsideIn", "DashRevStripAuto",
+            "DashRememberLastTab", "DashDefaultTab",
             "DashDriveSlots", "DashDriveTwoRows", "DashFlagsEnabled",
             // Per-game Drive layouts travel with the shared one: same kind of
             // choice, and the games they are keyed to are the same games on

@@ -500,11 +500,30 @@ function KeyboardOverlay([string]$P) {
     $items
 }
 
-# Rev LED strip (topmost, every screen): 16 thin segments across the top,
-# lighting progressively from 50% to ~97% of the plugin's EFFECTIVE redline
-# (Dash.RpmPct: user pin > community > telemetry > estimate). Green,
-# amber, red zones; goes dark when telemetry stalls. Lets a wheel-mounted
-# remote double as rev lights in race.
+# Rev LED strip (topmost, every screen). TWO strips share the space, and
+# exactly one of them is up at a time:
+#
+#   * AUTO (Dash.RevAuto, the default): the wheel's own rev lights, mirrored.
+#     One rectangle per rim LED taking its colour and its fill order from
+#     Dash.Lights.*, so the phone shows the rim: the user's chosen LIGHTSYNC
+#     pattern, or the real car's published colours, filling in the car's own
+#     direction at the car's own switch-on RPMs. The plugin does the direction
+#     maths, so all four wheel directions arrive here as a plain per-LED
+#     on/off and this end never has to know which one is set.
+#
+#   * The DRAWN strip: 16 thin segments lighting progressively from 50% to
+#     ~97% of the plugin's EFFECTIVE redline (Dash.RpmPct: user pin >
+#     community > telemetry > estimate), in green, amber and red zones, with
+#     the fill direction from Dash.RevOutsideIn.
+#
+# Auto needs a wheel whose lights we can read, so it falls back to the drawn
+# strip whenever Dash.Lights.Count reads 0: no level-capable Logitech wheel on
+# the rig, a wheel we do not light, or the property absent entirely because
+# the user has the LIGHTSYNC feature locked. `1*null` is 0, so the absent case
+# takes the same branch as the no-wheel one with no extra test.
+#
+# Both go dark when telemetry stalls. Lets a wheel-mounted remote double as
+# rev lights in race.
 function RevStrip([string]$P, [bool]$driveTab = $false) {
     $items = [System.Collections.Generic.List[object]]::new()
     # Narrowing belongs to the Drive tab and nowhere else. There it is the
@@ -527,6 +546,10 @@ function RevStrip([string]$P, [bool]$driveTab = $false) {
     # Hidden behind the idle card: the card is the screen when it is up, and
     # a rev strip over it is chrome from a dashboard nobody is looking at.
     $notIdle = '!$prop("' + $P + '.Idle.On")'
+    # Mirroring the wheel, so the drawn strip stands down. Both halves are
+    # required: the setting AND something to follow.
+    $ledN = '(1*$prop("' + $P + '.Lights.Count"))'
+    $auto = '($prop("' + $P + '.RevAuto") && ' + $ledN + '>0)'
     $bg.Bindings['Visible'] = BindJS 'Visible' ('return ' + $notIdle)
     $items.Add($bg)
 
@@ -543,7 +566,7 @@ function RevStrip([string]$P, [bool]$driveTab = $false) {
             $sock.Bindings['Width'] = BindJS 'Width' ('return ' + $rc + '?10:46')
             $sock.Bindings['Top']   = BindJS 'Top'   ('return ' + $rc + '?' + ($cenY + 1) + ':1')
         }
-        $sock.Bindings['Visible'] = BindJS 'Visible' ('return ' + $notIdle)
+        $sock.Bindings['Visible'] = BindJS 'Visible' ('return ' + $notIdle + ' && !' + $auto)
         $sock.BorderStyle.BorderColor = $script:LINE
         $sock.BorderStyle.BorderTop = 1; $sock.BorderStyle.BorderBottom = 1
         $sock.BorderStyle.BorderLeft = 1; $sock.BorderStyle.BorderRight = 1
@@ -573,8 +596,59 @@ function RevStrip([string]$P, [bool]$driveTab = $false) {
             $seg.Bindings['Top']   = BindJS 'Top'   ('return ' + $rc + '?' + ($cenY + 1) + ':1')
         }
         # RevFlash: steady true below redline, wheel-synced blink at/above.
-        $seg.Bindings['Visible'] = BindJS 'Visible' ('var t=$prop("' + $P + '.RevOutsideIn")?' + $tOut + ':' + $tLtr + ';return ' + $notIdle + ' && (1*$prop("' + $P + '.RpmPct"))>=t && $prop("' + $P + '.RevFlash")')
+        $seg.Bindings['Visible'] = BindJS 'Visible' ('var t=$prop("' + $P + '.RevOutsideIn")?' + $tOut + ':' + $tLtr + ';return ' + $notIdle + ' && !' + $auto + ' && (1*$prop("' + $P + '.RpmPct"))>=t && $prop("' + $P + '.RevFlash")')
         $items.Add($seg)
+    }
+
+    # The mirrored strip. Ten rectangles because that is the G PRO / RS50
+    # strip; a five-step wheel (the G923 Xbox) hides the last five and the
+    # geometry below widens the rest to fill the same span, which is why Left
+    # and Width are bound rather than baked. Every division is done at RUNTIME
+    # from integer literals: a pitch computed here would be written into JS
+    # source with the build machine's decimal separator.
+    #
+    # ONE rectangle per LED rather than the socket-plus-segment pair the drawn
+    # strip uses. An unlit LED is its own colour at low alpha, so the strip
+    # shows the pattern you are about to fill before you fill it, which is
+    # both more useful than an empty outline and half the items.
+    for ($i = 0; $i -lt 10; $i++) {
+        $ledKey = $P + '.Lights.Led' + ($i + 1).ToString('00')
+        $x = 2 + $i * 80          # the n=10 geometry, for the pre-binding value
+        $cx = 301 + $i * 20
+        $led = New-Rect "rev-led$i" $x 1 76 10 $script:GREEN $null 2
+        # Lit is the colour at full alpha, unlit the same colour at low alpha.
+        # No RevFlash term: the redline blink is already in the LED's own on/off,
+        # at the wheel's rate, and only for the cars that really do blink. The
+        # drawn strip above still uses RevFlash because it has no such signal.
+        # Taking the last six characters accepts both #RRGGBB and #AARRGGBB, and
+        # a colour that is missing or malformed falls back to transparent: a
+        # value SimHub cannot read as a colour fails the whole dashboard load,
+        # so this must never return anything else.
+        $led.Bindings['BackgroundColor'] = BindJS 'BackgroundColor' (
+            'var c=$prop("' + $ledKey + 'Color");' +
+            'if(!c||c.length<7)return "' + $script:CLEAR + '";' +
+            'return ($prop("' + $ledKey + 'On")?"#FF":"#33")+c.substring(c.length-6)')
+        # n>i hides the LEDs a shorter strip does not have, and doubles as the
+        # "is there a wheel to follow" test for LED 0 (n>0).
+        $led.Bindings['Visible'] = BindJS 'Visible' (
+            'return ' + $notIdle + ' && $prop("' + $P + '.RevAuto") && ' + $ledN + '>' + $i)
+        if ($driveTab) {
+            $led.Left = [double]$cx; $led.Width = 18.0; $led.Top = [double]($cenY + 1)
+            $led.Bindings['Left'] = BindJS 'Left' (
+                'var n=' + $ledN + ';if(n<1)return 0;' +
+                'return $prop("' + $P + '.RevCentered")?(' + $cenX + '+1+' + $i + '*(' + $cenW + '/n)):(2+' + $i + '*(800/n))')
+            $led.Bindings['Width'] = BindJS 'Width' (
+                'var n=' + $ledN + ';if(n<1)return 0;' +
+                'return $prop("' + $P + '.RevCentered")?((' + $cenW + '/n)-2):((800/n)-4)')
+            $led.Bindings['Top'] = BindJS 'Top' (
+                'return $prop("' + $P + '.RevCentered")?' + ($cenY + 1) + ':1')
+        } else {
+            $led.Bindings['Left'] = BindJS 'Left' (
+                'var n=' + $ledN + ';if(n<1)return 0;return 2+' + $i + '*(800/n)')
+            $led.Bindings['Width'] = BindJS 'Width' (
+                'var n=' + $ledN + ';if(n<1)return 0;return (800/n)-4')
+        }
+        $items.Add($led)
     }
     $items
 }
