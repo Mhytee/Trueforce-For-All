@@ -159,6 +159,38 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0x42, outp[3]);
         }
 
+        [Theory]
+        // Ice and Split are stored PRE-TRIMMED: solved backwards from the
+        // appearance they had before the trim shipped, because they looked
+        // better that way. That makes them the two builtins that break if the
+        // shipped gains ever move, and nothing else would notice.
+        [InlineData("559DFF4995FF3D8EFF3186FF247FFF186FFF125BF00C47E00633C8001EA0",
+                    "E0F8FFC0ECFFA0E0FF80D4FF60C8FF40B0FF3090F02070E01050C80030A0")]
+        [InlineData("0029FF0051FF007AFF318EFF61A2FF61A2FF318EFF007AFF0051FF0029FF",
+                    "0040FF0080FF00C0FF80E0FFFFFFFFFFFFFF80E0FF00C0FF0080FF0040FF")]
+        public void PreTrimmedBuiltinsStillRenderAsTheyWereAuthored(string storedHex, string wantHex)
+        {
+            var stored = Hex(storedHex);
+            var want = Hex(wantHex);
+
+            var got = LedColorGain.Apply(stored,
+                LedColorGain.ShippedR, LedColorGain.ShippedG, LedColorGain.ShippedB);
+
+            // One count of slack per channel. Blue cannot do better: dividing by
+            // its shipped gain leaves only about 97 of the 256 levels reachable,
+            // so most targets are simply not addressable exactly.
+            for (int i = 0; i < want.Length; i++)
+                Assert.InRange(got[i], want[i] - 1, want[i] + 1);
+        }
+
+        private static byte[] Hex(string h)
+        {
+            var b = new byte[h.Length / 2];
+            for (int i = 0; i < b.Length; i++)
+                b[i] = System.Convert.ToByte(h.Substring(i * 2, 2), 16);
+            return b;
+        }
+
         [Fact]
         public void NullIsPassedThrough()
         {

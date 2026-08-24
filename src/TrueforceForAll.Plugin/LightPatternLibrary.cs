@@ -327,7 +327,16 @@ namespace TrueforceForAll.Plugin
             // red, rather than the five/three/two that only works in a line.
             ("Classic Mirror", 2, "00C80000C800FFA000FFA000FF0000FF0000FFA000FFA00000C80000C800"),
             // Pale blue deepening to navy.
-            ("Ice",          3, "E0F8FFC0ECFFA0E0FF80D4FF60C8FF40B0FF3090F02070E01050C80030A0"),
+            //
+            // Stored PRE-TRIMMED on purpose, unlike every other builtin here.
+            // Read as sRGB these look like saturated blues, and they are meant
+            // to: run through the shipped colour trim they come out as the pale
+            // ramp the name promises. Both this and Split looked better with the
+            // trim off, so they were solved backwards from the appearance they
+            // had then (owner, 2026-08-23). Round-trips within one count per
+            // channel; blue cannot do better, since dividing by its 0.38 gain
+            // leaves only about 97 of the 256 levels reachable.
+            ("Ice",          3, "559DFF4995FF3D8EFF3186FF247FFF186FFF125BF00C47E00633C8001EA0"),
             // Warm at the top, cooling into purple as it runs back.
             ("Sunset",       4, "FFD080FFA850FF8030FF5820F03828D02040A01860701070480C70280860"),
             // Barely-lit at the ends, white hot where the two halves meet.
@@ -339,7 +348,8 @@ namespace TrueforceForAll.Plugin
             // brightness control, since nothing else is competing for the eye.
             ("Mono",         3, "101010282828404040585858707070888888A0A0A0C0C0C0E0E0E0FFFFFF"),
             // Deep blue at the ends closing on white in the middle.
-            ("Split",        2, "0040FF0080FF00C0FF80E0FFFFFFFFFFFFFF80E0FF00C0FF0080FF0040FF"),
+            // Pre-trimmed, same as Ice above: see the note there.
+            ("Split",        2, "0029FF0051FF007AFF318EFF61A2FF61A2FF318EFF007AFF0051FF0029FF"),
             // Every other LED lit. Useless as a rev bar and the clearest thing
             // here for seeing which way a strip fills and where it starts.
             ("Chase",        3, "FFA000000000FFA000000000FFA000000000FFA000000000FFA000000000"),

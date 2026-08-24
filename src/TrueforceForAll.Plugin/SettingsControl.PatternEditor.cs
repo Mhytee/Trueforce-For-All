@@ -1171,20 +1171,69 @@ namespace TrueforceForAll.Plugin
         /// <summary>Copy the left half onto the right. The two mirrored fills drive
         /// the strip in pairs, so a pattern for them has to be symmetric or the
         /// halves disagree.</summary>
+        /// <summary>Copy the selected LED's colour onto the one opposite it, so
+        /// LED 2 pairs with LED 9 and so on. Per LED rather than per half: a
+        /// mirrored bar is usually built one pair at a time, and copying the whole
+        /// left half over the right threw away work every time it was pressed.</summary>
         private void PatternMirror_Click(object sender, RoutedEventArgs e)
         {
             if (_editing == null) return;
-            byte[] rgb = _editing.Rgb();
-            if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3) return;
             int n = WheelLedChannel.LedCount;
-            for (int i = 0; i < n / 2; i++)
+            if (_selectedLed < 0 || _selectedLed >= n)
             {
-                int j = n - 1 - i;
-                rgb[j * 3] = rgb[i * 3]; rgb[j * 3 + 1] = rgb[i * 3 + 1]; rgb[j * 3 + 2] = rgb[i * 3 + 2];
+                SetPatternStatus("Click an LED first, then Mirror copies it to the one opposite.");
+                return;
             }
+            byte[] rgb = _editing.Rgb();
+            if (rgb == null || rgb.Length < n * 3) return;
+
+            int i = _selectedLed, j = n - 1 - i;
+            if (i == j)
+            {
+                SetPatternStatus("That LED is its own opposite, so there is nothing to mirror.");
+                return;
+            }
+            rgb[j * 3 + 0] = rgb[i * 3 + 0];
+            rgb[j * 3 + 1] = rgb[i * 3 + 1];
+            rgb[j * 3 + 2] = rgb[i * 3 + 2];
+
             _editing.RgbHex = LightSlotBackupStore.ToHex(rgb);
             _patternStore.Save(_patternLib);
             PaintLedCells();
+            ShowOnWheelThrottled();
+            SetPatternStatus("LED " + (i + 1) + " copied to LED " + (j + 1) + ".");
+        }
+
+        /// <summary>Turn the whole strip back to front: LED 1 takes LED 10's
+        /// colour, LED 2 takes LED 9's, and so on. Useful when a ramp was built
+        /// from the wrong end, which is easy to do given the fill direction is a
+        /// separate setting.</summary>
+        private void PatternReverse_Click(object sender, RoutedEventArgs e)
+        {
+            if (_editing == null) return;
+            int n = WheelLedChannel.LedCount;
+            byte[] rgb = _editing.Rgb();
+            if (rgb == null || rgb.Length < n * 3) return;
+
+            for (int i = 0; i < n / 2; i++)
+            {
+                int j = n - 1 - i;
+                for (int c = 0; c < 3; c++)
+                {
+                    byte t = rgb[i * 3 + c];
+                    rgb[i * 3 + c] = rgb[j * 3 + c];
+                    rgb[j * 3 + c] = t;
+                }
+            }
+
+            _editing.RgbHex = LightSlotBackupStore.ToHex(rgb);
+            _patternStore.Save(_patternLib);
+            PaintLedCells();
+            // Follow the colour the user was looking at to its new position,
+            // rather than leaving the selection pointing at a different colour.
+            if (_selectedLed >= 0 && _selectedLed < n) SelectLed(n - 1 - _selectedLed);
+            ShowOnWheelThrottled();
+            SetPatternStatus("Strip reversed.");
         }
 
         private void PatternDirection_Changed(object sender, SelectionChangedEventArgs e)

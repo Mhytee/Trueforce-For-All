@@ -5051,7 +5051,9 @@
                                     <Button x:Name="PatternFillAllBtn" Content="Fill all" Margin="8,0,0,0" Padding="10,5"
                                             Click="PatternFillAll_Click" ToolTip="Set every LED to the current colour."/>
                                     <Button x:Name="PatternMirrorBtn" Content="Mirror" Margin="6,0,0,0" Padding="10,5"
-                                            Click="PatternMirror_Click" ToolTip="Copy the left half onto the right, for the fills that work in pairs."/>
+                                            Click="PatternMirror_Click" ToolTip="Copy the LED you have selected onto the one opposite it, so LED 2 pairs with LED 9. For the fills that work in pairs."/>
+                                    <Button x:Name="PatternReverseBtn" Content="Reverse" Margin="6,0,0,0" Padding="10,5"
+                                            Click="PatternReverse_Click" ToolTip="Turn the whole strip back to front, so the first LED takes the last one's colour. For a ramp built from the wrong end."/>
                                 </StackPanel>
                                 <TextBlock x:Name="PatternStatusText" FontSize="11" Opacity="0.8" TextWrapping="Wrap"/>
 
