@@ -2828,6 +2828,17 @@ namespace TrueforceForAll.Plugin
             // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\import}
             // layout. Idempotent; skipped once stamped. Runs BEFORE the stores
             // load so they read from the new location on the first new launch.
+            // The lighting tab shipped. An install from before that has
+            // LightsyncTabUnlocked stored false, and a new default cannot reach
+            // a value already written, so flip it once and stamp it. Latched, so
+            // a user who then turns it off again is left alone.
+            if (!Settings.LightsyncReleasedMigrated)
+            {
+                Settings.LightsyncTabUnlocked = true;
+                Settings.LightsyncReleasedMigrated = true;
+                try { PersistSettingsCore(); } catch { }
+            }
+
             if (!Settings.FoldersRestructuredV3)
             {
                 RestructureFoldersIfNeeded();

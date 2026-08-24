@@ -12531,7 +12531,7 @@ namespace TrueforceForAll.Plugin
             "SLOTRESTORE<n> Put your own colours back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
             "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colours (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colours are possible on this wheel at all.\n" +
             "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
-            "LIGHTSYNC      In development: reveal the LIGHTSYNC tab and move the wheel lights + screen controls onto it (they leave the Telemetry FFB tab; nothing is duplicated). Type again to move them back and hide the tab. Persists. Toggle.\n" +
+            "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
             "CYCLEHINT      Re-arm the LIGHTSYNC intro modal and force the cycle-binding hint on screen even though the pattern cycle action is already bound. For testing them, since anyone working on them has it bound. Session only. Toggle.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
@@ -13718,8 +13718,8 @@ namespace TrueforceForAll.Plugin
                     MainTabs.SelectedItem = LightsyncTab;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = _plugin.Settings.LightsyncTabUnlocked
-                        ? "LIGHTSYNC tab ON: the wheel lights and screen controls moved there. Type LIGHTSYNC again to put them back on the Telemetry FFB tab."
-                        : "LIGHTSYNC tab OFF: the wheel lights and screen controls are back on the Telemetry FFB tab.";
+                        ? "LIGHTSYNC & OLED tab ON. Type LIGHTSYNC again to put the wheel lights and screen controls back on the Telemetry FFB tab."
+                        : "LIGHTSYNC & OLED tab OFF: the wheel lights and screen controls are back on the Telemetry FFB tab.";
                 return;
             }
 

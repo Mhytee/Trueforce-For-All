@@ -1292,7 +1292,17 @@ namespace TrueforceForAll.Plugin
         // new tab does not exist for the user. Unlocked reveals the tab and
         // MOVES that one block into it, so there is only ever one copy of the
         // controls and one set of handlers.
-        public bool LightsyncTabUnlocked { get; set; } = false;
+        // Ships ON. The lighting work is released, so the tab is simply part
+        // of the plugin now, and this survives only as the toggle that puts the
+        // controls back on the Telemetry FFB tab for anyone who preferred them
+        // there. The LIGHTSYNC access code still flips it.
+        public bool LightsyncTabUnlocked { get; set; } = true;
+
+        // One-time: an install that predates the release has this stored FALSE,
+        // and a changed default never reaches a value already on disk, so those
+        // users would silently keep the tab hidden. Flipped once, then latched,
+        // so anyone who deliberately turns it off afterwards stays off.
+        public bool LightsyncReleasedMigrated { get; set; } = false;
 
         // Per-car rev-light data from the community lovely-car-data project
         // (CC BY-NC-SA 4.0). When on, a car we have data for lights on its own

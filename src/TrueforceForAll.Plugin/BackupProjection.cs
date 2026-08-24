@@ -201,6 +201,8 @@ namespace TrueforceForAll.Plugin
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
             "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed", "LightsyncCycleHintDismissed", "HasSeenLightsyncIntro",
+            // Migration latch: PC2 needs to run its own, so this must not travel.
+            "LightsyncReleasedMigrated",
             // MOTD client state: re-fetchable cache + transient per-message dismiss bookkeeping.
             "MotdCache", "MotdDismissedIds", "MotdPoolDismissedOn", "MotdRecurringDismissedOcc",
             // MOTD audience / nag pacing: contribution-recency timestamps + nag cooldown.

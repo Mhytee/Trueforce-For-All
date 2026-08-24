@@ -4817,7 +4817,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,12" TextWrapping="Wrap"
-                                   Text="In development. Your wheel's lights and screen live here, because lighting belongs to the wheel rather than to any one game or preset. Type LIGHTSYNC in the access box again to put these controls back on the Telemetry FFB tab."/>
+                                   Text="Your wheel's lights and screen live here, because lighting belongs to the wheel rather than to any one game or preset."/>
 
                         <!-- One-time hint about the cycle binding. The library's whole
                              promise is more patterns than the wheel's five slots, and
