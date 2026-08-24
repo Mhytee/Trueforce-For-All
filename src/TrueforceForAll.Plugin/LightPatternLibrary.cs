@@ -306,12 +306,14 @@ namespace TrueforceForAll.Plugin
         {
             // Teal deepening across the bar into blue, ending on magenta.
             ("Deep Water",   3, "001414002828003C3C005050006464007878008C8C2F157D02034FF907D7"),
-            // Blue and green at the ends, magenta meeting in the middle.
-            ("Neon Mirror",  2, "0000FF00FFAD00FF6C3916FBFF0037FF00373916FB00FF6C00FFAD0000FF"),
-            // Yellow through orange into red: a heat ramp.
-            ("Heat",         3, "FFB400FFA000FF8C00FF7800FF6400FF5000FF3C00FF2800FF1400FF0000"),
             // Magenta into red, finishing green.
             ("Magenta Rush", 3, "FF00FFFF00FFFF00FFFF00FFFF0000FF0000FF0000FF000000FF0000FF00"),
+            // Yellow through orange into red: a heat ramp.
+            ("Heat",         3, "FFB400FFA000FF8C00FF7800FF6400FF5000FF3C00FF2800FF1400FF0000"),
+            // Warm at the top, cooling into purple as it runs back.
+            ("Sunset",       3, "FFD080FFA850FF8030FF5820F03828D02040A018607010704B0C7A4B0875"),
+            // Blue and green at the ends, magenta meeting in the middle.
+            ("Neon Mirror",  2, "0000FF00FFAD00FF6C3916FBFF0037FF00373916FB00FF6C00FFAD0000FF"),
             // Ten distinct colours. Unmistakable, so it shows instantly which end
             // a strip starts from and which way it fills.
             ("Rainbow",      3, "FF0000FF6000FFFF0000FF0000FF8000FFFF0080FF0000FF8000FFFF00FF"),
@@ -336,8 +338,6 @@ namespace TrueforceForAll.Plugin
             // side of that trim, not how the stored bytes read on a screen. Move
             // the shipped gains and this pattern needs retuning.
             ("Ice",          3, "559DFF4995FF3D8EFF3186FF247FFF186FFF125BF00C47E00633E1001EFF"),
-            // Warm at the top, cooling into purple as it runs back.
-            ("Sunset",       3, "FFD080FFA850FF8030FF5820F03828D02040A018607010704B0C7A4B0875"),
             // Barely-lit at the ends, white hot where the two halves meet.
             ("Ember",        1, "FF0200DC0600AF1000FF7000FFD070FFD070FF7000AF1000DC0600FF0200"),
             // Three hard bands with a dark LED between them. The gaps make the
