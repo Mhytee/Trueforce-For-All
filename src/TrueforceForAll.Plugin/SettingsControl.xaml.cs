@@ -12550,7 +12550,7 @@ namespace TrueforceForAll.Plugin
             "SLOTWRITE<n>   Write a rainbow (red, orange, yellow, green, spring green, cyan, azure, blue, violet, magenta) into LIGHTSYNC custom slot n (1-5, default 5) and light the whole bar. BACKS THE SLOT UP FIRST and refuses to write if it cannot read the original. Asymmetric on purpose: which end the RED lands on tells us which physical LED is index 1. PERSISTS on the wheel until restored.\n" +
             "SLOTRESTORE<n> Put your own colours back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
             "LEDRATE<ms>    DEV: how often the rev lights may update, 10 to 1000 ms (default 40, measured safe on a G PRO; G HUB itself uses 160). Live only, resets on restart. For finding whether a faster bar costs anything on the shared HID++ pipe: drive it and watch the FORCE.\n" +
-            "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up FIRST and refuses if it cannot. PERSISTS across a restart, which is the point, and your colours stay held in the backup the whole time. SLOTRESTORE<n> puts them back.\n" +
+            "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up FIRST and refuses if it cannot. PERSISTS across a restart, which is the point, and your colours stay held in the backup the whole time. SLOTRESTORE<n> puts them back. SLOTBLANKALL does all five at once (the real factory-wheel case) and SLOTRESTOREALL gives them all back.\n" +
             "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colours (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colours are possible on this wheel at all.\n" +
             "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
             "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
@@ -13657,6 +13657,64 @@ namespace TrueforceForAll.Plugin
             // captures the backup; the second settles the loan so the zeros
             // survive a restart, which they must, since the test is what happens
             // on the NEXT launch. SLOTRESTORE<n> puts the slot back.
+            // Blank or give back EVERY custom slot in one go, which is the shape
+            // the factory-wheel rehearsal actually needs: a wheel with one slot
+            // left full is not the case being tested.
+            //
+            // Checked BEFORE the single-slot codes below, and deliberately so:
+            // StartsWith("SLOTBLANK") also matches "SLOTBLANKALL", which would
+            // then try to read "ALL" as a slot number and report a range error.
+            if (code.Equals("SLOTBLANKALL", StringComparison.OrdinalIgnoreCase)
+             || code.Equals("SLOTRESTOREALL", StringComparison.OrdinalIgnoreCase))
+            {
+                bool restoring = code.Equals("SLOTRESTOREALL", StringComparison.OrdinalIgnoreCase);
+                AccessCodeBox.Text = string.Empty;
+
+                var lines = new System.Collections.Generic.List<string>();
+                int okCount = 0;
+                for (int slot = 0; slot < WheelLedChannel.CustomSlotCount; slot++)
+                {
+                    string m; bool ok;
+                    if (restoring) ok = _plugin.RestoreSlot(slot, out m, undoBlank: true);
+                    else
+                    {
+                        // Same two steps as SLOTBLANK<n>: BorrowSlot takes the
+                        // backup and refuses if it cannot, then the blank is
+                        // recorded WITHOUT settling the loan, so the colours stay
+                        // protected while the slot reads empty.
+                        var zeros = new byte[WheelLedChannel.LedCount * 3];
+                        ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
+                        { Slot = (byte)slot, DirectionWire = 3, Rgb = zeros }, out m,
+                          displayLevel: 0);
+                        if (ok) ok = _plugin.MarkSlotBlanked(slot, out m);
+                    }
+                    if (ok) okCount++;
+                    lines.Add((ok ? "OK   " : "SKIP ") + "CUSTOM " + (slot + 1)
+                              + ": " + (m ?? "(no detail)"));
+                }
+
+                // Per-slot lines rather than a count. A slot that refused because
+                // it could not be read is a different thing from one that had no
+                // backup to give back, and whoever is running the rehearsal needs
+                // to tell them apart.
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    restoring ? "Give every light slot back" : "Blank every light slot",
+                    string.Join(Environment.NewLine, lines)
+                    + Environment.NewLine + Environment.NewLine
+                    + (restoring
+                       ? okCount + " of " + WheelLedChannel.CustomSlotCount + " restored. "
+                         + "SKIP on a slot that was never blanked is expected: there is nothing held for it."
+                       : okCount + " of " + WheelLedChannel.CustomSlotCount + " blanked, and every one of "
+                         + "those was backed up first. Your colours stay held until you type SLOTRESTOREALL."
+                         + Environment.NewLine + Environment.NewLine
+                         + "Delete light-patterns.json and relaunch to test the factory-wheel first run."),
+                    okCount > 0 ? DialogKind.Info : DialogKind.Warning);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = (restoring ? "Restored " : "Blanked ")
+                        + okCount + " of " + WheelLedChannel.CustomSlotCount + " slots.";
+                return;
+            }
+
             if (code.StartsWith("SLOTBLANK", StringComparison.OrdinalIgnoreCase))
             {
                 AccessCodeBox.Text = string.Empty;
