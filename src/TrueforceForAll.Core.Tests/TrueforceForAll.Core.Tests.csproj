@@ -65,6 +65,12 @@
     <Compile Include="..\TrueforceForAll.Plugin\LightSlotBackup.cs">
       <Link>Linked\LightSlotBackup.cs</Link>
     </Compile>
+    <!-- The wheel button's running order and where in it we stand. Extracted
+         from TrueforcePlugin precisely so it could be tested: it produced four
+         user-visible bugs in one week while it was unreachable in there. -->
+    <Compile Include="..\TrueforceForAll.Plugin\LightCycle.cs">
+      <Link>Linked\LightCycle.cs</Link>
+    </Compile>
     <!-- Rev-level decision. Links cleanly because the controller talks to
          WheelLedChannel (Core) and nothing else, and an unopened channel is
          inert, so the level maths can be exercised with no wheel present.

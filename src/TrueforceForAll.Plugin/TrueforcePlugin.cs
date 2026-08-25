@@ -1220,80 +1220,23 @@ namespace TrueforceForAll.Plugin
         /// cold asks the wheel, which is the right answer when it works.</summary>
         private string _lastCycleKey;
 
-        private static string CycleKey(LightCycleStop s)
-            => s == null ? null
-             : s.Auto ? "auto"
-             : s.Pattern != null ? "p:" + s.Pattern.Id
-             : "e:" + s.Effect;
+        /// <summary>What is physically lit on the wheel, as ONE answer.
+        ///
+        /// Three flags used to answer this between them and nothing owned the
+        /// result, which is how a car with no published data came to keep the
+        /// previous car's colours. Derived in one place now so every reader
+        /// agrees.</summary>
+        private LightShowing WhatIsShowing
+            => LightCycle.Showing(AutoColorsShowing, HasExplicitCarLightChoice(),
+                                  LibraryPatternShowing);
 
-        private sealed class LightCycleStop
-        {
-            public int Effect;              // 1..9
-            public LightPattern Pattern;    // null for the wheel's own effects
-            public bool Auto;               // "let this car's own data decide"
-            public string Label;
-        }
-
-        /// <summary>The full running order, wheel-first: effects 1-4, then the
-        /// five slots in order, with the lent slot expanded into every pattern in
-        /// the library at its own position.</summary>
+        /// <summary>The full running order, wheel-first. The order itself is
+        /// built by LightCycle, which is pure and tested; this only gathers what
+        /// the wheel currently looks like.</summary>
         private System.Collections.Generic.List<LightCycleStop> BuildLightCycle()
-        {
-            var stops = new System.Collections.Generic.List<LightCycleStop>();
-
-            // Auto first, where the pickers put it. Without a stop of its own a
-            // user who cycles away from the car's own colours can never get back
-            // to them from the rim: every other stop pins something, and pinning
-            // is precisely what turns Auto off.
-            if (AutoCarColorsAvailable())
-                stops.Add(new LightCycleStop { Auto = true, Label = "Auto (this car's colours)" });
-
-            for (int e = 1; e <= 4; e++)
-                stops.Add(new LightCycleStop { Effect = e, Label = RevPatternLabel(e) });
-
-            // Then the wheel's own slots, but only the ones that actually hold
-            // something. A blank factory slot as a stop is a dark strip and a
-            // press that reads as broken.
-            var programmed = SlotProgrammedMap();
-            int stage = StageSlot();
-            for (int slot = 0; slot < WheelLedChannel.CustomSlotCount; slot++)
-            {
-                // The stage is left out. Whatever it held is in the library
-                // already (imported on first use), so it still appears below
-                // under its own name, and leaving it out means the running order
-                // does not change the moment we borrow it.
-                if (slot == stage) continue;
-                if (programmed[slot])
-                    stops.Add(new LightCycleStop
-                    { Effect = 5 + slot, Label = RevPatternLabel(5 + slot) });
-            }
-
-            // Past the last slot the user has filled, the cycle carries straight
-            // on into the library. Those patterns are not on the wheel, so each
-            // is shown by writing it into the borrow slot: the next free one, or
-            // the last slot once all five are in use. From the rim it is one
-            // unbroken list and the user never has to know where the hardware
-            // ran out of room.
-            if (stage >= 0)
-                foreach (var p in LightPatterns.Patterns)
-                {
-                    // A pattern that lives in a programmed slot of its own was
-                    // already added above, and adding it again here means every
-                    // one of the top five is visited TWICE on a cycle: once by
-                    // selecting its own slot, where the base shows that slot's
-                    // stored name, and once through the stage under its real
-                    // name. The stage is the exception, since it was skipped
-                    // above precisely so its pattern appears here instead.
-                    if (p == null) continue;
-                    if (p.Slot >= 0 && p.Slot != stage
-                        && p.Slot < WheelLedChannel.CustomSlotCount && programmed[p.Slot]) continue;
-
-                    stops.Add(new LightCycleStop
-                    { Effect = 5 + stage, Pattern = p, Label = p.Name });
-                }
-
-            return stops;
-        }
+            => LightCycle.Build(AutoCarColorsAvailable(), StageSlot(), SlotProgrammedMap(),
+                                LightPatterns.Patterns, WheelLedChannel.CustomSlotCount,
+                                RevPatternLabel);
 
         /// <summary>Step one place along the unified cycle. Returns false if it
         /// could not work out where we are, so the caller falls back to the plain
@@ -1310,54 +1253,10 @@ namespace TrueforceForAll.Plugin
 
             int current = _rpmLeds.KnownSelection;
 
-            int at;
-            // A slot is borrowed ONLY while a library pattern is showing, so that
-            // is what tells the two apart. The effect number cannot: it is the
-            // same whether the user is looking at their own slot or at one of
-            // ours standing in it. Read from memory, not by loading the backup
-            // file on every press.
-            // Auto is checked FIRST. While the car's own colours are showing a
-            // stage slot may well be lent out too, so the library test below
-            // would claim the position and the cycle would step off from the
-            // wrong place.
-            if (AutoColorsShowing && !HasExplicitCarLightChoice()
-                && stops.FindIndex(s => s.Auto) >= 0)
-            {
-                at = stops.FindIndex(s => s.Auto);
-            }
-            else if (LibraryPatternShowing)
-            {
-                at = stops.FindIndex(s => s.Pattern != null && s.Pattern.Id == LightPatterns.CurrentId);
-                if (at < 0) at = stops.FindIndex(s => s.Pattern != null);
-            }
-            else
-            {
-                // !s.Auto matters. The Auto stop also has a null Pattern, and its
-                // Effect is 0, so without this it matches whenever the wheel's
-                // known selection reads 0. The cycle then resets to position 0
-                // on every press and can only ever step one place, which showed
-                // up as toggling between Auto and the first sweep.
-                at = stops.FindIndex(s => s.Pattern == null && !s.Auto && s.Effect == current);
-            }
-            // Everything above asks the WHEEL where we are, and in a car it
-            // cannot answer: the game's FFB owns the pipe, so a pick is staged
-            // rather than written and KnownSelection never moves off whatever it
-            // last managed to read. The search then failed, at fell back to an
-            // end, and the next press wrapped to index 0. That is why cycling in
-            // a car toggled between one stop and Auto instead of stepping.
-            //
-            // So fall back to where WE last landed before falling back to an
-            // end. The wheel is still asked first, because the user may have
-            // moved it from the base's own menu.
-            if (at < 0 && _lastCycleKey != null)
-                at = stops.FindIndex(s => CycleKey(s) == _lastCycleKey);
-
-            // Nothing known at all: start from an end so a first press still
-            // lands somewhere sensible.
-            if (at < 0) at = direction < 0 ? 0 : stops.Count - 1;
-
-            int n = stops.Count;
-            var next = stops[((at + (direction < 0 ? -1 : 1)) % n + n) % n];
+            int at = LightCycle.PositionOf(stops, WhatIsShowing, LightPatterns.CurrentId,
+                                           current, _lastCycleKey);
+            var next = LightCycle.Step(stops, at, direction);
+            if (next == null) return false;
 
             if (next.Auto)
             {
@@ -1392,7 +1291,7 @@ namespace TrueforceForAll.Plugin
                 PickRevLightPattern(next.Effect, previewAfter: true);
             }
 
-            _lastCycleKey = CycleKey(next);
+            _lastCycleKey = LightCycle.KeyFor(next);
             DashReadout("LIGHT PATTERN", next.Label);
             SimHub.Logging.Current.Info($"[TF4ALL] light cycle -> {next.Label}"
                                       + (next.Pattern != null ? " (in the lent slot)" : ""));
