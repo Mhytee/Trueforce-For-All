@@ -402,6 +402,36 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
+        public void ADeliberatelyBlankedSlotKeepsItsDebtOpen()
+        {
+            // The distinction that stops SLOTBLANK being destructive. Marking the
+            // loan SETTLED would make the automatic restore skip the slot (wanted)
+            // but would also make the next borrow treat it as un-backed-up,
+            // re-read it, and record the BLANK as the original, discarding the
+            // last copy of the user's colours. Blanked keeps Restored false, so
+            // the backup stays protected.
+            var e = LightSlotBackupStore.FromSlot(Slot(3, seed: 0x77), "G PRO", DateTime.UtcNow);
+            e.Blanked = true;
+            Store().Save(Map(new KeyValuePair<string, LightSlotBackupEntry>(
+                LightSlotBackupStore.KeyFor("G PRO", 3), e)));
+
+            string key;
+            var found = LightSlotBackupStore.Find(Store().Load(), "G PRO", 3, out key);
+
+            Assert.True(found.Blanked);
+            Assert.False(found.Restored);
+            Assert.Equal(LightSlotBackupStore.ToHex(Rgb(0x77)), found.RgbHex);
+        }
+
+        [Fact]
+        public void AnOrdinaryBackupIsNotBlanked()
+        {
+            // Blanked is dev-only. Every normal borrow must leave it false, or the
+            // automatic restore would start skipping real loans.
+            Assert.False(LightSlotBackupStore.FromSlot(Slot(3), "G PRO", DateTime.UtcNow).Blanked);
+        }
+
+        [Fact]
         public void TheOriginalNameSurvivesTheFile()
         {
             // So the wheel's own menu reads as theirs again once we give it back.

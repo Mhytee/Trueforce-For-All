@@ -11469,7 +11469,7 @@ namespace TrueforceForAll.Plugin
             {
                 var map = SlotBackups.Load();
                 foreach (var kv in map)
-                    if (kv.Value != null && !kv.Value.Restored
+                    if (kv.Value != null && !kv.Value.Restored && !kv.Value.Blanked
                         && kv.Value.Slot < WheelLedChannel.CustomSlotCount)
                         return kv.Value.Slot;
             }
@@ -11969,7 +11969,52 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Put a borrowed slot back exactly as we found it and mark the
         /// backup settled. Safe to call when nothing is owed: it says so.</summary>
-        public bool RestoreSlot(int slot, out string message)
+        /// <param name="undoBlank">Set only by the human-typed SLOTRESTORE. The
+        /// automatic paths must not undo a deliberate blank, or the rehearsal it
+        /// exists for would not survive the next car load.</param>
+        /// <summary>DEV (SLOTBLANK): record that this slot was deliberately
+        /// emptied, so the automatic restore paths leave it alone and the blank
+        /// survives a restart, WITHOUT settling the loan. The debt staying open is
+        /// what keeps the user's real colours protected in the backup file.</summary>
+        public bool MarkSlotBlanked(int slot, out string message)
+        {
+            message = null;
+            try
+            {
+                var store = SlotBackups;
+                var map = store.Load();
+                if (store.LastLoadCorrupt)
+                {
+                    message = "The slot backup file could not be read, so the blank was not recorded.";
+                    return false;
+                }
+
+                string key;
+                var entry = LightSlotBackupStore.Find(map, SlotWheelId, slot, out key);
+                if (entry == null)
+                {
+                    message = $"No backup held for CUSTOM {slot + 1}, so it was not marked blank.";
+                    return false;
+                }
+
+                entry.Blanked = true;
+                if (!store.Save(map))
+                {
+                    message = "Could not record the blank, so it will be undone at the next launch.";
+                    return false;
+                }
+                message = $"CUSTOM {slot + 1} now reads as never programmed. Your colours are still "
+                        + $"held in the backup; SLOTRESTORE{slot + 1} puts them back.";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = "Could not record the blank: " + ex.Message;
+                return false;
+            }
+        }
+
+        public bool RestoreSlot(int slot, out string message, bool undoBlank = false)
         {
             message = null;
             var ch = _rpmLeds?.Channel;
@@ -11998,6 +12043,17 @@ namespace TrueforceForAll.Plugin
                     message = $"CUSTOM {slot + 1} was already restored.";
                     return false;
                 }
+                // A deliberately blanked slot is skipped by the AUTOMATIC restore
+                // paths, which is what makes the blank survive a restart. Typing
+                // SLOTRESTORE is not one of those: it is a person asking for their
+                // colours back, so it goes through and clears the blank.
+                if (entry.Blanked && !undoBlank)
+                {
+                    message = $"CUSTOM {slot + 1} is deliberately blanked (SLOTBLANK). "
+                            + $"Type SLOTRESTORE{slot + 1} to put your colours back.";
+                    return false;
+                }
+                entry.Blanked = false;
 
                 var original = LightSlotBackupStore.ToSlot(entry);
                 if (original == null)
@@ -12065,7 +12121,7 @@ namespace TrueforceForAll.Plugin
                 var map = store.Load();
                 var owed = new List<int>();
                 foreach (var kv in map)
-                    if (kv.Value != null && !kv.Value.Restored
+                    if (kv.Value != null && !kv.Value.Restored && !kv.Value.Blanked
                         && string.Equals(kv.Value.WheelId, SlotWheelId, StringComparison.OrdinalIgnoreCase))
                         owed.Add(kv.Value.Slot);
 

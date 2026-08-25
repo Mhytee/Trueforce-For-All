@@ -45,6 +45,21 @@ namespace TrueforceForAll.Plugin
         /// menu reads as theirs again once we give it back. Null when the slot
         /// had no name or it could not be read.</summary>
         public string OriginalName { get; set; }
+
+        /// <summary>DEV ONLY (SLOTBLANK): this slot has been deliberately emptied
+        /// to rehearse the factory-wheel first run, and must STAY empty across a
+        /// restart for that rehearsal to mean anything.
+        ///
+        /// A separate flag rather than reusing Restored, which would have been the
+        /// obvious shortcut and is a data-loss bug. Restored means "the debt is
+        /// paid", and it does two other things: it makes the automatic restore
+        /// skip the slot (wanted here) but ALSO makes the next borrow treat the
+        /// slot as un-backed-up, re-read it, and record the BLANK as the original
+        /// (catastrophic here, because it discards the last copy of the user's own
+        /// colours). Blanked keeps the debt open, so the backup is still protected
+        /// and SLOTRESTORE still works, while the auto-restore paths leave it
+        /// alone.</summary>
+        public bool Blanked { get; set; }
     }
 
     /// <summary>Reads and writes the on-disk slot backups.</summary>

@@ -12550,7 +12550,7 @@ namespace TrueforceForAll.Plugin
             "SLOTWRITE<n>   Write a rainbow (red, orange, yellow, green, spring green, cyan, azure, blue, violet, magenta) into LIGHTSYNC custom slot n (1-5, default 5) and light the whole bar. BACKS THE SLOT UP FIRST and refuses to write if it cannot read the original. Asymmetric on purpose: which end the RED lands on tells us which physical LED is index 1. PERSISTS on the wheel until restored.\n" +
             "SLOTRESTORE<n> Put your own colours back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
             "LEDRATE<ms>    DEV: how often the rev lights may update, 10 to 1000 ms (default 40, measured safe on a G PRO; G HUB itself uses 160). Live only, resets on restart. For finding whether a faster bar costs anything on the shared HID++ pipe: drive it and watch the FORCE.\n" +
-            "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up first and PERSISTS across a restart, which is the point. SLOTRESTORE<n> puts it back.\n" +
+            "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up FIRST and refuses if it cannot. PERSISTS across a restart, which is the point, and your colours stay held in the backup the whole time. SLOTRESTORE<n> puts them back.\n" +
             "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colours (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colours are possible on this wheel at all.\n" +
             "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
             "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
@@ -13671,13 +13671,18 @@ namespace TrueforceForAll.Plugin
                 var zeros = new byte[WheelLedChannel.LedCount * 3];
 
                 string msg;
+                // ONE write, and the loan stays OPEN. Settling it with
+                // permanent:true was the obvious way to make the blank survive a
+                // restart and it was quietly destructive: a settled loan makes the
+                // NEXT borrow of this slot treat it as un-backed-up, re-read it,
+                // and record the blank we just wrote as "the original", discarding
+                // the last copy of the user's real colours. Marking it blanked
+                // instead keeps the debt open, so the backup stays protected and
+                // SLOTRESTORE still works.
                 bool ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
                 { Slot = (byte)slot, DirectionWire = 3, Rgb = zeros }, out msg,
                   displayLevel: 0);
-                if (ok)
-                    ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
-                    { Slot = (byte)slot, DirectionWire = 3, Rgb = zeros }, out msg,
-                      displayLevel: 0, slotName: null, permanent: true);
+                if (ok) ok = _plugin.MarkSlotBlanked(slot, out msg);
 
                 TrueforceDialog.Show(Window.GetWindow(this), "Blank a light slot",
                     (msg ?? "(no detail)") + "\n\n"
@@ -13729,7 +13734,10 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
 
                 bool ok; string msg;
-                if (restore) ok = _plugin.RestoreSlot(slot, out msg);
+                // undoBlank: typing SLOTRESTORE is a person asking for their
+                // colours back, which is exactly the case the automatic paths must
+                // not do on their own.
+                if (restore) ok = _plugin.RestoreSlot(slot, out msg, undoBlank: true);
                 else
                 {
                     var wheelOrder = new byte[][]
