@@ -1,5 +1,15 @@
 Your wheel holds **five** light patterns. (This is about the patterns themselves; [why the rev lights only follow your revs in some games](guide:wheel-lights) is a separate matter.) The library holds as many as you like, and the extras are swapped into a slot as you drive, so the wheel's five are a window onto the library rather than the whole of it.
 
+## Your own slots are borrowed, not taken
+
+Holding more patterns than the wheel does means putting them somewhere, so the
+library borrows one slot: the one the wheel is already showing if that is a
+custom one, otherwise the last. Whatever was in it is backed up before anything
+is written, and put back when the plugin lets go of it.
+
+The other four are never touched, and you can pin which slot gets borrowed if
+you would rather it left a particular one alone.
+
 ## Walking the library needs a button
 
 The swapping happens while you are driving, so there has to be a way to step through without stopping. Any control SimHub can see will do: a wheel button, a button box, a keyboard key.
