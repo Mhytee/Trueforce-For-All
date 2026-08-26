@@ -384,6 +384,9 @@ namespace TrueforceForAll.Plugin
             // Reinstall is the repair path: same copy, over whatever is there. It
             // is also how someone picks up a newer mod after a plugin update
             // without waiting for the game-detection refresh to notice.
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+            Grid.SetColumn(buttons, 2);
+
             var btn = new Button
             {
                 Content = t.Installed ? "Reinstall" : "Install",
@@ -394,12 +397,58 @@ namespace TrueforceForAll.Plugin
                     : "Copy the mod into this game's mods folder."
             };
             btn.Click += (s, ev) => InstallFsModFor(t);
-            Grid.SetColumn(btn, 2);
+            buttons.Children.Add(btn);
+
+            // Only where there is something to remove. We put the file in that
+            // folder, so taking it back out belongs here rather than in a
+            // support answer telling someone to go and delete it themselves.
+            if (t.Installed)
+            {
+                var rm = new Button
+                {
+                    Content = "Remove",
+                    Padding = new Thickness(12, 3, 12, 3),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = "Delete the mod from this game's mods folder."
+                };
+                rm.Click += (s, ev) => UninstallFsModFor(t);
+                buttons.Children.Add(rm);
+            }
 
             row.Children.Add(name);
             row.Children.Add(state);
-            row.Children.Add(btn);
+            row.Children.Add(buttons);
             return row;
+        }
+
+        /// <summary>Confirm, then remove. Confirmed because it deletes a file
+        /// from another product's folder, and the confirm says the thing a user
+        /// actually needs to weigh: the steering is not what they are giving
+        /// up.</summary>
+        private void UninstallFsModFor(TrueforcePlugin.FsModTarget t)
+        {
+            if (_plugin == null) return;
+            bool? go = TrueforceDialog.Show(Window.GetWindow(this),
+                "Remove the Farming Simulator mod?",
+                "This deletes TF4ALL Enhanced Telemetry from " + t.DisplayName + "'s mods "
+                + "folder.\n\n"
+                + "Your force feedback keeps working. The plugin builds Farming Simulator's "
+                + "steering force itself and does not need the mod. What you lose is what the "
+                + "mod adds on top: ground texture through the wheel, the implement thud, and "
+                + "the airborne cut.\n\n"
+                + "It stops loading the next time the game starts.",
+                DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Keep it");
+            if (go != true) return;
+
+            string err = _plugin.UninstallFsMod(t.Game);
+            string outcome = err == null
+                ? t.DisplayName + ": removed. It stops loading the next time the game starts."
+                : t.DisplayName + ": could not remove it. " + err + ".";
+            RefreshFsModTargets();
+            if (FsModTargetsStatus == null) return;
+            FsModTargetsStatus.Text = outcome;
+            FsModTargetsStatus.Visibility = Visibility.Visible;
         }
 
         private void InstallFsModFor(TrueforcePlugin.FsModTarget t)

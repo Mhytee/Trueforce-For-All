@@ -1,4 +1,4 @@
-; Inno Setup script for Trueforce For All.
+﻿; Inno Setup script for Trueforce For All.
 ;
 ; What it does:
 ;   1. Detects SimHub via its Inno-Setup registry key, with fallbacks.
@@ -910,5 +910,74 @@ begin
       WizardForm.FinishedLabel.Height := ScaleY(120);
     WizardForm.RunList.Top    := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(16);
     WizardForm.RunList.Height := WizardForm.RunList.Parent.ClientHeight - WizardForm.RunList.Top - ScaleY(8);
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+// Farming Simulator: take our game mod back out on uninstall.
+//
+// The plugin writes TF4ALLTelemetry.zip into Farming Simulator's mods folder so
+// the game will publish the physics the effects need. That file is ours, it
+// does nothing at all once the plugin is gone, and nothing else will ever clean
+// it up: the game does not know where it came from, and a user who uninstalls
+// from Windows has no reason to suspect a leftover in a different game's
+// folder. So uninstalling removes it.
+//
+// The folder is not always the default one. Farming Simulator lets a player
+// relocate mods through gameSettings.xml (modsDirectoryOverride), and heavy
+// modders do, so we honour the override exactly as the plugin does when it
+// installs. Getting this wrong would delete nothing and leave the file behind
+// in the folder the game actually reads.
+//
+// Deliberately narrow: only our own file name, only in a Farming Simulator mods
+// folder, and every failure is silent. An uninstaller is the wrong place to
+// argue with the user about a file they did not ask about.
+
+function FsModsOverride(GameDir: string; var ModsDir: string): Boolean;
+var
+  Lines: TArrayOfString;
+  I, P, Q: Integer;
+  S: string;
+begin
+  Result := False;
+  if not FileExists(GameDir + '\gameSettings.xml') then Exit;
+  if not LoadStringsFromFile(GameDir + '\gameSettings.xml', Lines) then Exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    S := Lines[I];
+    if Pos('modsDirectoryOverride', S) > 0 then
+    begin
+      // An override that is present but switched off means the default folder.
+      if Pos('active="true"', S) = 0 then Exit;
+      P := Pos('directory="', S);
+      if P = 0 then Exit;
+      S := Copy(S, P + Length('directory="'), MaxInt);
+      Q := Pos('"', S);
+      if Q = 0 then Exit;
+      ModsDir := Trim(Copy(S, 1, Q - 1));
+      Result := ModsDir <> '';
+      Exit;
+    end;
+  end;
+end;
+
+procedure RemoveFsMod(GameFolder: string);
+var
+  GameDir, ModsDir, ZipPath: string;
+begin
+  GameDir := ExpandConstant('{userdocs}') + '\My Games\' + GameFolder;
+  if not FsModsOverride(GameDir, ModsDir) then
+    ModsDir := GameDir + '\mods';
+  ZipPath := AddBackslash(ModsDir) + 'TF4ALLTelemetry.zip';
+  if FileExists(ZipPath) then
+    DeleteFile(ZipPath);   // fails harmlessly if the game is open
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    RemoveFsMod('FarmingSimulator2025');
+    RemoveFsMod('FarmingSimulator2022');
   end;
 end;

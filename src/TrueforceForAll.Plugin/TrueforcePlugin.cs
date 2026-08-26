@@ -2079,6 +2079,56 @@ namespace TrueforceForAll.Plugin
             return gameFeedingSimHub ? 2 : 3;
         }
 
+        /// <summary>Take the mod back out for a NAMED game. Returns null on
+        /// success, else a short human-readable reason.
+        ///
+        /// The counterpart to InstallFsMod, and the reason it exists: we write a
+        /// file into somebody else's game folder, so we should be able to remove
+        /// it without asking them to go find it. Leaving that as the only route
+        /// out is what makes people wary of letting a tool touch a game directory
+        /// at all.
+        ///
+        /// Two pieces of bookkeeping travel with the delete, and without them the
+        /// mod comes back by itself. The version stamp has to go, because a
+        /// stamp that disagrees with the shipped version is what triggers the
+        /// silent refresh in MaybeOfferFsModInstall. And the install offer is
+        /// marked declined, because the dialog fires whenever the file is absent:
+        /// re-offering on the next session would be arguing with someone who has
+        /// just told us what they want. The tab banner still carries the offer,
+        /// so nothing is lost, it just stops interrupting.</summary>
+        public string UninstallFsMod(string game)
+        {
+            if (!TryGetFsModInfo(game, out string modsDir, out _))
+                return "this game is not supported yet";
+            try
+            {
+                string target = Path.Combine(modsDir, "TF4ALLTelemetry.zip");
+                if (File.Exists(target)) File.Delete(target);
+
+                var s = Settings;
+                if (s != null)
+                {
+                    if (s.FsModInstalledVersions != null) s.FsModInstalledVersions.Remove(game);
+                    s.FsModInstallDeclined = true;
+                    PersistSettingsCore();
+                }
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] TF4ALL Enhanced Telemetry game mod removed for {game}.");
+                return null;
+            }
+            catch (IOException)
+            {
+                // The game holds its mods open while it runs.
+                return "the file is in use, so close Farming Simulator and try again";
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn(
+                    "[TF4ALL] Could not remove the TF4ALL Enhanced Telemetry game mod: " + ex.Message);
+                return ex.Message;
+            }
+        }
+
         /// <summary>One Farming Simulator title we ship a mod for, as the standing
         /// install control on the Settings tab needs it.</summary>
         public sealed class FsModTarget
