@@ -59,7 +59,12 @@ namespace TrueforceForAll.Plugin
             // bring the channel up now rather than letting the first click be the
             // one that quietly fails. Also lets the slot names and contents below
             // be read at all.
-            _plugin.EnsureLedChannelOpen();
+            // Not while the plugin is switched off: opening runs a full HID++ probe
+            // and resolve against the wheel, which is exactly the endpoint traffic
+            // "off" is supposed to end. The editor itself still builds, so the tab
+            // works and nothing downstream finds a half-initialised panel.
+            if (_plugin.MasterMode != TrueforceMasterMode.Off)
+                _plugin.EnsureLedChannelOpen();
 
             BuildLedCells();
             BuildPalette();
@@ -419,7 +424,6 @@ namespace TrueforceForAll.Plugin
             try
             {
                 string keepId = _editing?.Id;
-                int lent = _plugin?.StageSlot() ?? -1;
 
                 _rows.Clear();
                 // Everything from here to the end of the slots physically lives on
@@ -448,9 +452,12 @@ namespace TrueforceForAll.Plugin
                         Slot = i,
                         OnWheel = true,
                         EditableName = inSlot?.Name,
+                        // The "lent" marker is gone: which slot we borrow is our
+                        // bookkeeping, not something the user picked or needs to
+                        // track, and naming it invited the question of what a loan
+                        // is. The backup and restore still work exactly the same.
                         Text = "   CUSTOM " + (i + 1) + ": "
                              + (inSlot != null ? inSlot.Name : "empty")
-                             + (i == lent ? "   ← lent" : "")
                              + (inSlot != null && inSlot.Id == _patternLib.CurrentId ? "   ●" : ""),
                     });
                 }
@@ -993,8 +1000,11 @@ namespace TrueforceForAll.Plugin
             if (row == null || _plugin == null) return;
 
             // Without this the select is merely STAGED when the channel is closed
-            // (parked, no game), and the click looks like it did nothing.
-            _plugin.EnsureLedChannelOpen();
+            // (parked, no game), and the click looks like it did nothing. Skipped
+            // while the plugin is off, where the write it prepares for is refused
+            // anyway and the open would be pure wheel traffic.
+            if (_plugin.MasterMode != TrueforceMasterMode.Off)
+                _plugin.EnsureLedChannelOpen();
 
             // Names both what was CLICKED and what the editor is holding. If they
             // ever disagree, the selection is not reaching the editor, and the log

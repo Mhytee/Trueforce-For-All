@@ -33,7 +33,7 @@ For each release:
 3. Changelog / What's new:
    - The **GitHub release notes are the canonical "What's new" source.** The
      in-app What's-new modal fetches and renders the published release body
-     (RenderReleaseNotes), so notes can be fixed post-release without a plugin
+     (MarkdownView.Render), so notes can be fixed post-release without a plugin
      update. A normal fix/hotfix release needs **no** `EffectChangelog` entry.
    - `EffectChangelog.cs` has two separate jobs:
      - **Badge registry** (`KnownEffectIds`): when the release adds a new

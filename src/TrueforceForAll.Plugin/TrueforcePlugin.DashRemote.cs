@@ -1988,7 +1988,14 @@ namespace TrueforceForAll.Plugin
             // the display delegates only; _dashPresetList and the snapshot
             // stay raw because select/apply needs the stored names.
             this.AttachDelegate("Dash.PresetName",   () => BuiltinPresets.ToDisplayName(DashSnap().PresetName));
+            // Kept as-is for djson files already deployed on people's phones:
+            // "on" has always meant the full plugin, and that is still true.
             this.AttachDelegate("Dash.PluginOn",     () => PluginEnabled);
+            // The full answer, for a dash that wants to name the mode. EFFECTIVE, so
+            // it agrees with Dash.PluginOn and with the toggle beside it: publishing
+            // the stored choice would print "full" next to a switch reading off in
+            // any game the plugin had yielded.
+            this.AttachDelegate("Dash.MasterMode",   () => ModeLabel(MasterMode));
             this.AttachDelegate("Dash.MasterGain",   () => MasterGain);
             this.AttachDelegate("Dash.AudioGain",    () => ActiveAudioGain);
             this.AttachDelegate("Dash.AudioOn",      () => ActiveAudioEnabled);
@@ -2636,7 +2643,14 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashPluginToggle",   (a, b) =>
             {
                 DashNoteActivity();
-                SetPluginEnabled(!PluginEnabled);
+                // Acts on the EFFECTIVE state, as it always did, so one tap still
+                // turns the plugin on for the game you are in. A three-way cycle
+                // here read as a dead toggle: in a game the plugin had auto-yielded,
+                // the first tap moved to lights only and Dash.PluginOn stayed false,
+                // so it took three taps to do what one used to, via a mode the user
+                // never asked for. Lights only stays reachable from the settings
+                // panel, and off returns you to it if that is where you were.
+                SetMasterEnabledFromToggle(!PluginEnabled);
                 RaiseDashRemoteChanged();
             });
 

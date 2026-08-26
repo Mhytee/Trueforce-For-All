@@ -930,6 +930,21 @@ namespace TrueforceForAll.Plugin
             {
                 if (Settings == null) return "Settings not loaded yet.";
 
+                // 0. Lights only. A quiet wheel is the whole point of this mode, so
+                //    there is no fault to report. Returning null rather than an
+                //    explanation on purpose: the caller renders any non-empty string
+                //    in a solid amber panel with a warning triangle, so describing
+                //    the mode here would show a permanent fault for behaviour the
+                //    user chose. The status pill and the line under the mode
+                //    selector already say what is happening.
+                if (MasterMode == TrueforceMasterMode.LightsyncOnly) return null;
+
+                // A chosen GLOBAL off is the same case: the user set the switch and
+                // the wheel being quiet is the result they asked for, so it must not
+                // render as a fault either. Only the per-game demotion below is
+                // worth surfacing, because that one they may not remember choosing.
+                if (StoredMasterMode == TrueforceMasterMode.Off) return null;
+
                 // 1. Hard master switch
                 if (!Settings.PluginEnabled)
                 {
@@ -937,8 +952,16 @@ namespace TrueforceForAll.Plugin
                         && Settings.GameEnabled != null
                         && Settings.GameEnabled.TryGetValue(_activeGame, out var ge)
                         && !ge)
-                        return $"Plugin is disabled for '{_activeGame}'. Re-enable via the master switch (auto-remembers per game).";
-                    return "Plugin is disabled. Click the 'Plugin enabled' checkbox at the top to turn it on.";
+                        // Only reachable when the USER chose off for this game:
+                        // nothing else writes that map any more.
+                        // No game id in the text: ActiveGame is SimHub's raw name and
+                        // the header card names the game right above this.
+                        return IsNativeTrueforceGame(_activeGame)
+                            ? "You switched the plugin off for this game. Set the mode back to Normal at the top, "
+                              + "or to Lightsync only to keep the Lightsync features while the game keeps its "
+                              + "own Trueforce."
+                            : "Plugin is switched off for this game. Set the mode back to Normal at the top (it is remembered per game).";
+                    return "Plugin is switched off. Set the mode at the top of the panel to Normal to turn it on.";
                 }
 
                 // 2. Master gain at zero
@@ -1301,6 +1324,11 @@ namespace TrueforceForAll.Plugin
         public void CycleRevLightPattern(int direction)
         {
             if (_rpmLeds == null) return;
+            // A bound wheel button reaches this with the plugin switched off, and
+            // the path opens the HID++ channel, reads all five slots, writes an
+            // effect switch and runs a preview sweep. None of it goes through
+            // BorrowSlot, so this is its own gate.
+            if (MasterMode == TrueforceMasterMode.Off) return;
 
             // One continuous walk through everything the wheel can show, in the
             // order the wheel itself lists them: the four built-in sweeps, then
@@ -1431,27 +1459,90 @@ namespace TrueforceForAll.Plugin
             return on;
         }
 
-        public bool PluginEnabled => Settings?.PluginEnabled ?? true;
+        /// <summary>The master switch as the USER set it. This never moves on a
+        /// game change: the per-game memory demotes what we do, not what they
+        /// chose. Defaults to Full before settings load, which is what the bool
+        /// this replaced defaulted to.</summary>
+        public TrueforceMasterMode StoredMasterMode
+            => Settings?.MasterMode ?? TrueforceMasterMode.Normal;
 
-        /// <summary>Toggle the master enable. When disabled, sends the protocol
-        /// Stop command so the wheel returns to its native FFB / Trueforce
-        /// path (e.g. iRacing's own Trueforce takes over) and the producer
-        /// loop skips rendering. When re-enabled, sends Start and resumes.
-        /// If <paramref name="persistForActiveGame"/> is true and a game is
-        /// detected, the choice is auto-remembered for that game.</summary>
-        public void SetPluginEnabled(bool enabled, bool persistForActiveGame = true)
+        /// <summary>What we may actually do right now: the stored choice, demoted
+        /// to Off when the user has switched us off for the game that is running.
+        /// Latched in a volatile rather than computed on demand, because the 1 kHz
+        /// producer reads it every pass and walking the per-game dictionary there
+        /// would both cost and race a settings write.</summary>
+        public TrueforceMasterMode MasterMode => (TrueforceMasterMode)_effectiveMode;
+        private volatile int _effectiveMode = (int)TrueforceMasterMode.Normal;
+
+        /// <summary>True only in the mode that runs the force layer. Kept under the
+        /// name every existing consumer already reads, and kept meaning exactly what
+        /// it meant before a third state existed: Lightsync-only and Off both read
+        /// as "not running", which is the safe answer for all of them.</summary>
+        public bool PluginEnabled => MasterMode == TrueforceMasterMode.Normal;
+
+        /// <summary>Resolve the stored mode against the per-game memory.
+        ///
+        /// The per-game switch can only DEMOTE. It has only ever answered one
+        /// question, whether the force layer runs in this game, so it can turn Full
+        /// into Off for a game and nothing else. Off and lights-only are global
+        /// stances the user typed in, and letting a stored map promote either of
+        /// them back to Full would mean the master switch moved on its own: pick
+        /// Off at the desk, start a game you had once enabled, and the whole force
+        /// path comes back up with no action from you.
+        ///
+        /// The old bool could not express a global Off (it WAS the per-game state,
+        /// pushed from this map on every game change), which is why the migration
+        /// starts everyone on Full and lets the map keep doing the demoting.</summary>
+        private TrueforceMasterMode ResolveEffectiveMode()
+        {
+            var stored = StoredMasterMode;
+            if (stored != TrueforceMasterMode.Normal) return stored;
+
+            // Offline CAR editing pins _activeGame to the car being edited, which is
+            // not a game that is running. Without this, opening an ACC or iRacing car
+            // in the editor at the desk makes the next resolve (a wheel re-attach, a
+            // sync pull) read that game's stored "off" and tear the whole force
+            // pipeline down while nobody is driving.
+            //
+            // Deliberately NOT IsOfflineEditing, which is preset editing: that one
+            // does not pin _activeGame and does not stop the game-change block, so
+            // exempting it would let a real game change resolve to Full and stream
+            // into a native-Trueforce title that had just auto-disabled itself.
+            if (IsOfflineEditingCar) return TrueforceMasterMode.Normal;
+
+            string g = _activeGame;
+            if (string.IsNullOrEmpty(g)) return TrueforceMasterMode.Normal;
+            if (Settings?.GameEnabled != null && Settings.GameEnabled.TryGetValue(g, out bool on))
+                return on ? TrueforceMasterMode.Normal : TrueforceMasterMode.Off;
+            // Unseen game: full, except where the game brings Trueforce of its own.
+            // There we land on LIGHTSYNC ONLY rather than off: our ep3 stream would
+            // fight the game's Trueforce, but the wheel's patterns are ours to set
+            // either way, so standing all the way back gave up the one thing that
+            // costs the game nothing. An explicit choice still wins, because it
+            // writes the per-game map and the branch above reads that first.
+            return IsNativeTrueforceGame(g)
+                ? TrueforceMasterMode.LightsyncOnly
+                : TrueforceMasterMode.Normal;
+        }
+
+        /// <summary>Land on whatever mode the stored choice plus the active game now
+        /// resolve to: latch it, mirror it into the retired bool, put the ep3 device
+        /// where the new mode says it belongs, and hand the wheel's lights back if we
+        /// are leaving. Every path that changes the stored mode, the per-game memory
+        /// or the active game ends here, so one place decides what the wheel does.</summary>
+        private void ApplyEffectiveMode(string context)
         {
             if (Settings == null) return;
-            bool wasEnabled = Settings.PluginEnabled;
-            Settings.PluginEnabled = enabled;
+            var mode = ResolveEffectiveMode();
+            var was  = (TrueforceMasterMode)_effectiveMode;
+            _effectiveMode = (int)mode;
+            // The retired bool tracks the EFFECTIVE mode, exactly as it did when it
+            // was the only switch. Anything still reading it (the pause gate, the
+            // producer, the spring arming) keeps working untouched.
+            Settings.PluginEnabled = mode == TrueforceMasterMode.Normal;
 
-            if (persistForActiveGame && !string.IsNullOrEmpty(_activeGame))
-            {
-                Settings.GameEnabled[_activeGame] = enabled;
-                PersistSettingsCore();
-            }
+            if (was == mode) return;
 
-            if (wasEnabled == enabled) return;
             bool effective;
             lock (_enableDeviceLock)
             {
@@ -1473,9 +1564,190 @@ namespace TrueforceForAll.Plugin
                     _device?.SendStartCommand();
                 }
             }
+
+            // Bring the rest of the force pipeline (capture, telemetry, the helper
+            // child, the device itself) up or down to match, so a mode switch takes
+            // effect now rather than at the next SimHub restart.
+            ReconcileFullPipeline(mode);
+
+            // Lights are a separate pipe on a separate endpoint, so they need their
+            // own reconcile: leaving Off has to give borrowed slots back, and the
+            // device transition above says nothing about them.
+            ReconcileLightSubsystems(was, mode, context);
+
             SimHub.Logging.Current.Info(
-                $"[TF4ALL] Plugin {(effective ? "enabled" : "disabled")}{(string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")}.");
+                $"[TF4ALL] Master mode {ModeLabel(mode)}"
+                + (string.IsNullOrEmpty(_activeGame) ? "" : $" for '{_activeGame}'")
+                + (string.IsNullOrEmpty(context) ? "." : $" ({context})."));
         }
+
+        // ---- iRacing setup notice -------------------------------------------
+        // Lives on the PLUGIN, not the settings panel, because it has to fire the
+        // moment iRacing is seen. Owned by the panel it would only appear once
+        // someone opened the panel, which is exactly the wrong order: the point is
+        // to tell them how to get the full experience before they conclude the
+        // wheel is dead. Shows again on each iRacing session until dismissed.
+        private const string IracingNoticeBody =
+            "iRacing keeps working out what the car is doing. It just stops driving the wheel itself and hands those forces to the plugin, so the feel stays the sim's own, and your rev lights and wheel screen come back with it.\n\n" +
+            "We start on Lightsync only, which leaves iRacing completely alone and sets the wheel's pattern to match the car you are in. For the rest, four steps, once:\n\n" +
+            "1. With iRacing closed, open Documents\\iRacing\\app.ini and set loadTrueForceAPI=0.\n" +
+            "2. Start iRacing and turn its force feedback off in the options. Leave its strength number where it is, the plugin reads it.\n" +
+            "3. Set the mode at the top of this panel to Normal.\n" +
+            "4. Tick Telemetry Based FFB for iRacing on that tab.\n\n" +
+            "If the wheel stays quiet afterwards, one of the two iRacing switches is still on.";
+
+        private volatile bool _iracingNoticeShowing;
+        private volatile bool _iracingNoticeShownThisSession;
+        private string _lastGameSeenForNotice;
+
+        /// <summary>Called on the game-change edge. Also clears the once-per-session
+        /// latch on the way OUT of iRacing, so the next iRacing session gets the
+        /// notice again (until it is dismissed for good).</summary>
+        private void MaybeFireIracingNotice(string game)
+        {
+            if (string.Equals(_lastGameSeenForNotice, game, StringComparison.Ordinal)) return;
+            _lastGameSeenForNotice = game;
+            if (IsIRacingReshapeGame(game)) ShowIracingNotice(null);
+            else _iracingNoticeShownThisSession = false;
+        }
+
+        /// <summary>Show it. Safe from any thread; a null owner centres on screen,
+        /// which is what happens when the settings panel is not open. Once per
+        /// iRacing session, from whichever caller reaches it first.</summary>
+        /// <param name="force">A deliberate request (the "iRacing setup instructions"
+        /// link), which ignores both the dismissed latch and the once-a-session one.
+        /// Someone who clicks a link asking for the steps is asking for the steps.</param>
+        public void ShowIracingNotice(System.Windows.Window owner, bool force = false)
+        {
+            if (Settings == null) return;
+            if (!force && Settings.IRacingTrueforceNoticeDismissed) return;
+            if (_iracingNoticeShowing) return;
+            if (!force && _iracingNoticeShownThisSession) return;
+
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            _iracingNoticeShownThisSession = true;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_iracingNoticeShowing) return;
+                if (Settings == null) return;
+                if (!force && Settings.IRacingTrueforceNoticeDismissed) return;
+                _iracingNoticeShowing = true;
+                try
+                {
+                    bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
+                        "Using Trueforce For All in iRacing",
+                        IracingNoticeBody,
+                        DialogKind.Info,
+                        okLabel: "Got it, don't show again",
+                        cancelLabel: "Remind me later",
+                        goldOk: true);
+                    // true = dismiss for good. Remind me later leaves the latch off,
+                    // so it reappears on the next iRacing session.
+                    if (r == true)
+                    {
+                        Settings.IRacingTrueforceNoticeDismissed = true;
+                        try { PersistSettings(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                { SimHub.Logging.Current.Info("[TF4ALL] iRacing notice failed: " + ex.Message); }
+                finally { _iracingNoticeShowing = false; }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        /// <summary>One spelling of each mode for logs and status text.</summary>
+        internal static string ModeLabel(TrueforceMasterMode mode)
+        {
+            switch (mode)
+            {
+                case TrueforceMasterMode.Off:           return "off";
+                // "Lightsync only", not "lights only": Lightsync is the wheel's own
+                // pattern system and setting a pattern in it is the whole of what
+                // this mode does. "Lights only" reads as a promise to light wheels
+                // in games that never light them, which we cannot do.
+                case TrueforceMasterMode.LightsyncOnly: return "Lightsync only";
+                default:                                return "normal";
+            }
+        }
+
+        /// <summary>Set the master switch. The stored choice moves only here and in
+        /// the settings paths that replace Settings wholesale.
+        /// If <paramref name="persistForActiveGame"/> is true and a game is
+        /// detected, the choice is auto-remembered for that game.</summary>
+        public void SetMasterMode(TrueforceMasterMode mode, bool persistForActiveGame = true)
+        {
+            if (Settings == null) return;
+            // Remember what they were on before going full, so a two-state control
+            // (the home Feedback tile, a wheel button) can put them back where they
+            // were instead of dropping them to Off.
+            if (mode == TrueforceMasterMode.Normal && Settings.MasterMode != TrueforceMasterMode.Normal)
+                _preFullMode = Settings.MasterMode;
+
+            bool inGame = persistForActiveGame && !string.IsNullOrEmpty(_activeGame);
+
+            // Choosing OFF while a game is running means "not in this game", which is
+            // what the old on/off switch meant and what people expect: they are
+            // sitting in a title, they switch us off, they do not intend to lose the
+            // plugin in every other title too. So it stamps the per-game memory and
+            // leaves the stored choice on Full, which the resolver then demotes for
+            // this game alone. A global off is still available, by choosing Off with
+            // no game running, and is rarely what anyone wants.
+            //
+            // Only from Full, though. Coming from Lightsync-only there is no force
+            // layer for the per-game switch to talk about, so Off has to mean off.
+            bool perGameOff = inGame
+                && mode == TrueforceMasterMode.Off
+                && Settings.MasterMode == TrueforceMasterMode.Normal;
+
+            Settings.MasterMode = perGameOff ? TrueforceMasterMode.Normal : mode;
+
+            // The per-game memory answers one question only: does the force layer
+            // run in THIS game. Lightsync-only is not an answer to it, so choosing
+            // it leaves the map alone. Stamping every game the user visited with
+            // "false" would silently switch the force layer off everywhere the
+            // moment they went back to full.
+            if (inGame && mode != TrueforceMasterMode.LightsyncOnly)
+                Settings.GameEnabled[_activeGame] = mode == TrueforceMasterMode.Normal;
+
+            // Apply BEFORE persisting. ApplyEffectiveMode is where the derived
+            // PluginEnabled is written, and saving first put a file on disk whose
+            // bool still said the previous thing: a crash in that window, or a
+            // rollback to a build that predates the enum, would read "enabled" for
+            // someone who had just chosen lights only and start the whole force
+            // pipeline. The bool exists precisely so an older build reads the safe
+            // answer, which only works if it is current when the file is written.
+            ApplyEffectiveMode("user choice");
+            PersistSettingsCore();
+        }
+
+        /// <summary>Toggle the master enable. When disabled, sends the protocol
+        /// Stop command so the wheel returns to its native FFB / Trueforce
+        /// path (e.g. iRacing's own Trueforce takes over) and the producer
+        /// loop skips rendering. When re-enabled, sends Start and resumes.
+        /// Kept for the callers that predate the third state; on means Full and
+        /// off means Off, so neither can land a user in Lightsync-only by
+        /// accident.</summary>
+        public void SetPluginEnabled(bool enabled, bool persistForActiveGame = true)
+            => SetMasterMode(enabled ? TrueforceMasterMode.Normal : TrueforceMasterMode.Off,
+                             persistForActiveGame);
+
+        // What the user was on before they last switched to full. In-memory only:
+        // it exists to make a two-state control reversible within a session, not to
+        // outlive one.
+        private TrueforceMasterMode _preFullMode = TrueforceMasterMode.Off;
+
+        /// <summary>The on/off answer for a two-state control (SimHub's home
+        /// Feedback tile, a bound wheel button). Off returns the user to whatever
+        /// they were on BEFORE they switched to full, so a lights-only user who
+        /// flicks this tile twice ends up back on lights only rather than being
+        /// quietly dropped to off with no way back from that tile.</summary>
+        public void SetMasterEnabledFromToggle(bool on)
+            => SetMasterMode(on ? TrueforceMasterMode.Normal
+                                : (_preFullMode == TrueforceMasterMode.LightsyncOnly
+                                   ? TrueforceMasterMode.LightsyncOnly
+                                   : TrueforceMasterMode.Off));
+
 
         // Serializes the device Stop/Pause vs Resume/Start decision between the
         // live toggle (SetPluginEnabled) and the transitionless reconciler
@@ -1498,9 +1770,20 @@ namespace TrueforceForAll.Plugin
         /// wheel).</summary>
         private void SyncDeviceToPluginEnabled(string context)
         {
+            if (Settings == null) return;
+
+            // Settings may have been REPLACED wholesale by the caller (import,
+            // backup restore, account switch), so the latched effective mode can be
+            // stale in either direction and the derived bool below with it.
+            // Recompute both before anything reads them.
+            var mode = ResolveEffectiveMode();
+            var was  = (TrueforceMasterMode)_effectiveMode;
+            _effectiveMode = (int)mode;
+            Settings.PluginEnabled = mode == TrueforceMasterMode.Normal;
+
             var dev = _device;
-            if (Settings == null || dev == null) return;
             string outcome = null;
+            if (dev != null)
             lock (_enableDeviceLock)
             {
                 if (!Settings.PluginEnabled)
@@ -1527,6 +1810,14 @@ namespace TrueforceForAll.Plugin
             }
             if (outcome != null)
                 SimHub.Logging.Current.Info($"[TF4ALL] {context}: {outcome}.");
+
+            // The rest of the mode, for the same reason the device half exists: an
+            // imported or restored file can move the master switch without anyone
+            // calling SetMasterMode, and the pipeline and the lights have to follow
+            // it. Deliberately outside the dev != null guard above, because a null
+            // device is the STEADY STATE of both non-full modes.
+            ReconcileFullPipeline(mode);
+            if (was != mode) ReconcileLightSubsystems(was, mode, context);
         }
 
         public void SetFfbScale(float v)
@@ -1788,6 +2079,44 @@ namespace TrueforceForAll.Plugin
             return gameFeedingSimHub ? 2 : 3;
         }
 
+        /// <summary>One Farming Simulator title we ship a mod for, as the standing
+        /// install control on the Settings tab needs it.</summary>
+        public sealed class FsModTarget
+        {
+            public string Game;          // SimHub game name
+            public string DisplayName;   // as a person would say it
+            public bool GameFound;       // its mods folder is on this PC
+            public bool Installed;       // our mod is sitting in it
+        }
+
+        /// <summary>Every Farming Simulator title we ship a mod for, whether it is
+        /// on this PC, and whether the mod is already there. Reads the same folder
+        /// (override included) that the install writes to, so what the control says
+        /// is what the game will find.</summary>
+        public List<FsModTarget> FsModTargets()
+        {
+            var list = new List<FsModTarget>();
+            AddFsModTarget(list, "FarmingSimulator25", "Farming Simulator 25");
+            AddFsModTarget(list, "FarmingSimulator22", "Farming Simulator 22");
+            return list;
+        }
+
+        private static void AddFsModTarget(List<FsModTarget> list, string game, string name)
+        {
+            var t = new FsModTarget { Game = game, DisplayName = name };
+            if (TryGetFsModInfo(game, out string modsDir, out _))
+            {
+                try
+                {
+                    t.GameFound = Directory.Exists(modsDir);
+                    t.Installed = t.GameFound
+                        && File.Exists(Path.Combine(modsDir, "TF4ALLTelemetry.zip"));
+                }
+                catch { /* unreadable folder: reads as not found, which is honest */ }
+            }
+            list.Add(t);
+        }
+
         /// <summary>True when the active game either has our mod installed or
         /// is not a game we ship one for. The tab banner shows on false.</summary>
         public bool IsFsModInstalledForActiveGame()
@@ -1805,9 +2134,15 @@ namespace TrueforceForAll.Plugin
         /// <summary>Install (or refresh) the mod for the active game. Returns
         /// null on success, else a short human-readable reason. Called from
         /// the tab banner's Install button and the first-session dialog.</summary>
-        public string InstallFsModForActiveGame()
+        public string InstallFsModForActiveGame() => InstallFsMod(_activeGame);
+
+        /// <summary>Install (or refresh) the mod for a NAMED game, so the settings
+        /// UI can offer it for a title that is not running. The mods folder is a
+        /// folder on disk whether or not the game is open, and every route we had
+        /// to this needed Farming Simulator running WITHOUT the mod: the one state
+        /// a user preparing, reinstalling, or checking is never in.</summary>
+        public string InstallFsMod(string game)
         {
-            string game = _activeGame;
             if (!TryGetFsModInfo(game, out string modsDir, out string resource))
                 return "this game is not supported yet";
             try
@@ -2831,6 +3166,43 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
+            // The master switch became three-state. Everyone lands on Full, and that
+            // is the honest translation rather than a shortcut: the old bool was
+            // never a global choice, it was the LIVE state pushed from the per-game
+            // map on every game change, and that map travels forward untouched and
+            // keeps demoting exactly the games it always did. Reading a stored
+            // "false" as a global Off would take whichever game happened to be
+            // selected when the file was last written and switch the plugin off
+            // everywhere, which nobody asked for. Latched, so a user who then picks
+            // lights-only or off is left alone on the next launch.
+            if (!Settings.MasterModeMigratedV1)
+            {
+                Settings.MasterMode = TrueforceMasterMode.Normal;
+
+                // Drop the per-game "off" entries WE wrote for native-Trueforce
+                // games. Older builds stamped one on first sight of each of them, so
+                // an existing install carries a map that pins iRacing, ACC and the
+                // rest to off, and the new default (Lightsync only) could never
+                // apply because the map is read first. A deliberate off for one of
+                // those games is indistinguishable from our own stamp, so this does
+                // reset that choice, to a mode that is strictly less intrusive: the
+                // game keeps its force feedback either way and the only difference
+                // is whether we set the car's pattern.
+                if (Settings.GameEnabled != null)
+                {
+                    var ours = new List<string>();
+                    foreach (var kv in Settings.GameEnabled)
+                        if (!kv.Value && IsNativeTrueforceGame(kv.Key)) ours.Add(kv.Key);
+                    foreach (var g in ours) Settings.GameEnabled.Remove(g);
+                }
+
+                Settings.MasterModeMigratedV1 = true;
+                try { PersistSettingsCore(); } catch { }
+            }
+            // Latch the effective mode from what we just loaded, so nothing reads
+            // the field's compile-time default before the first game arrives.
+            ApplyEffectiveMode("settings loaded");
+
             if (!Settings.FoldersRestructuredV3)
             {
                 RestructureFoldersIfNeeded();
@@ -3357,7 +3729,25 @@ namespace TrueforceForAll.Plugin
             // the plugin (telemetry, effects, audio capture, capture-poll
             // thread) still comes up so the watchdog only has to re-attach
             // the device, not reconstruct the whole pipeline.
-            if (!TryBringUpDevice())
+            if (MasterMode != TrueforceMasterMode.Normal)
+            {
+                // Off and lights-only never open the Trueforce endpoint, so there
+                // is nothing to bring up: no HID handle, no init sequence, no
+                // USBPcap capture, no 1 kHz stream. Discovery still runs, because
+                // the wheel's identity is what the LED path and every lighting
+                // control read. This is also what makes lights-only true to its
+                // name rather than a paused version of the full plugin.
+                WheelMatch found;
+                if (!DiscoverWheel(out found))
+                {
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] No supported wheel found; the lighting controls will stay empty "
+                        + "until one is detected.");
+                }
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Master mode is {ModeLabel(MasterMode)}: the wheel's force path was not started.");
+            }
+            else if (!TryBringUpDevice())
             {
                 SimHub.Logging.Current.Warn(
                     "[TF4ALL] Wheel not ready at startup; the plugin will "
@@ -3503,8 +3893,17 @@ namespace TrueforceForAll.Plugin
         // when the stream has faulted or no wheel was present yet. The
         // producer thread is plugin-lifetime and reused across re-attaches,
         // it's only created on the first successful bring-up.
-        private bool TryBringUpDevice()
+        /// <summary>Find the wheel and take its identity WITHOUT opening it.
+        ///
+        /// Split out of bring-up because lights-only mode never opens the Trueforce
+        /// endpoint but still has to know which wheel is attached: _hidWheelPid is
+        /// what tells the LED path a strip exists, and it is what the pattern
+        /// pickers and the wheel diagnostics read. Left inside bring-up, both of
+        /// the non-Full modes would report "no wheel" and every lighting control
+        /// would quietly empty out.</summary>
+        private bool DiscoverWheel(out WheelMatch match)
         {
+            match = null;
             if (_shuttingDown) return false;
 
             SimHub.Logging.Current.Info("[TF4ALL] Discovering wheel...");
@@ -3521,7 +3920,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             }
 
-            var match = matches[0];
+            match = matches[0];
             _hidWheelVid = match.Vid;
             _hidWheelPid = match.Pid;
             _hidWheelProductString = match.ProductString;
@@ -3635,6 +4034,17 @@ namespace TrueforceForAll.Plugin
             {
                 _unverifiedWheelNotice = null;
             }
+
+            return true;
+        }
+
+        /// <summary>Discover the wheel and OPEN it: the HID handle, the init
+        /// sequence, the FFB tap and the 1 kHz stream. Full mode only. The two
+        /// other modes call DiscoverWheel and stop there.</summary>
+        private bool TryBringUpDevice()
+        {
+            WheelMatch match;
+            if (!DiscoverWheel(out match)) return false;
 
             try
             {
@@ -3982,26 +4392,48 @@ namespace TrueforceForAll.Plugin
             }
             catch { }
 
+            // What follows is split by mode. The orphan sweep above runs in ALL of
+            // them (it only cleans up, and a capture child left by a previous full
+            // session would otherwise hold the USBPcap device forever), but every
+            // subsystem below either opens hardware, spawns a process or starts a
+            // thread, and lights-only promises none of that. The effects and the
+            // engine loop ARE still constructed in every mode: they are inert
+            // objects until the producer thread ticks them, that thread only exists
+            // after a successful bring-up, and leaving them null would null-ref
+            // every settings binding and redline lookup that reads them.
+            bool fullPipeline = MasterMode == TrueforceMasterMode.Normal;
+
             // Spawn the loopback helper child process. It does the actual
             // per-process WASAPI loopback in modern .NET (where COM interop is
             // reliable), and streams audio bytes back to us over stdout.
-            try
+            if (fullPipeline)
             {
-                string pluginDir = System.IO.Path.GetDirectoryName(typeof(TrueforcePlugin).Assembly.Location);
-                string helperExe = System.IO.Path.Combine(pluginDir, "TrueforceForAll.LoopbackHelper.exe");
-                _helperHost = new HelperHost(helperExe);
-                _helperHost.Spawn();
-                SimHub.Logging.Current.Info($"[TF4ALL] Loopback helper spawned ({helperExe}).");
-            }
-            catch (Exception ex)
-            {
-                SimHub.Logging.Current.Error("[TF4ALL] Failed to spawn loopback helper", ex);
-                _helperHost = null;
+                try
+                {
+                    string pluginDir = System.IO.Path.GetDirectoryName(typeof(TrueforcePlugin).Assembly.Location);
+                    string helperExe = System.IO.Path.Combine(pluginDir, "TrueforceForAll.LoopbackHelper.exe");
+                    _helperHost = new HelperHost(helperExe);
+                    _helperHost.Spawn();
+                    SimHub.Logging.Current.Info($"[TF4ALL] Loopback helper spawned ({helperExe}).");
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Error("[TF4ALL] Failed to spawn loopback helper", ex);
+                    _helperHost = null;
+                }
+
             }
 
-            // Audio capture: create the source, attach it to the helper, hook
-            // it into the mixer. Capture stays inactive (silent) until the poll
-            // thread detects a sim and tells the host to retarget.
+            // Audio capture: create the source, attach it to the helper, hook it
+            // into the mixer. Capture stays inactive (silent) until the poll thread
+            // detects a sim and tells the host to retarget.
+            //
+            // The SOURCE is built in every mode and the ATTACH is not. Constructing
+            // it opens no device (the capture itself lives in the helper child), and
+            // a dozen settings, preset and import paths write to _audio without a
+            // null check, so leaving it null would turn a mode switch into a crash
+            // the next time anyone touched an audio slider. With no helper attached
+            // and no mixer registration it simply never produces a sample.
             _audio = new AudioCaptureSource
             {
                 Enabled = Settings.AudioCapture.Enabled,
@@ -4011,8 +4443,12 @@ namespace TrueforceForAll.Plugin
                 Settings.Performance.AudioRingSize,
                 AudioCaptureSource.MinRingSamples, AudioCaptureSource.MaxRingSamples, AudioCaptureSource.DefaultRingSamples);
             _audio.SetRingCapacity(Settings.Performance.AudioRingSize);
-            if (_helperHost != null) _audio.Attach(_helperHost);
-            _mixer.Add(_audio);
+            if (fullPipeline)
+            {
+                if (_helperHost != null) _audio.Attach(_helperHost);
+                _mixer.Add(_audio);
+                _audioInMixer = true;
+            }
 
             // Telemetry effects: instantiate from settings, register in the
             // mixer in display order. Each effect is fed via the active
@@ -4095,8 +4531,14 @@ namespace TrueforceForAll.Plugin
                     // Bring the channel up now when lighting is in use, so the
                     // first pattern pick or bound button press acts immediately
                     // instead of being the one that quietly opens it.
-                    if (Settings?.LovelyCarDataEnabled == true || Settings?.LightsyncTabUnlocked == true)
+                    if (MasterMode != TrueforceMasterMode.Off
+                        && (Settings?.LovelyCarDataEnabled == true || Settings?.LightsyncTabUnlocked == true))
                         EnsureLedChannelOpen();
+
+                    // RestoreOwedSlots stays unconditional in every mode, Off
+                    // included. It answers "nothing owed" from disk without
+                    // touching the wheel, and when something IS owed it is the
+                    // only route back to the user's own colours after a crash.
 
                     string restored = RestoreOwedSlots();
                     if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
@@ -4114,7 +4556,10 @@ namespace TrueforceForAll.Plugin
             // fault-tolerant: if the driver isn't installed, construction
             // succeeds but IsOpen = false. When the setting is off, none of
             // this runs and _driverChannel / _driverLedChannel stay null.
-            if (Settings != null && Settings.ExperimentalDriverIntercept)
+            // Full only: it opens its own HID++ channel to the wheel and puts the
+            // kernel filter driver into the write path between the game and the
+            // wheel, which is the largest possible violation of "touch nothing".
+            if (fullPipeline && Settings != null && Settings.ExperimentalDriverIntercept)
             {
                 try
                 {
@@ -4204,18 +4649,29 @@ namespace TrueforceForAll.Plugin
             // tick triggers the game-change block (since _activeGame starts
             // null) and SwapTelemetrySource picks an enhanced source if the
             // running game has one.
-            _simHubSource = new SimHubTelemetrySource { OnFrame = DispatchFrame };
-            _simHubSource.Start();
-            _telemetrySource = _simHubSource;
-            SimHub.Logging.Current.Info($"[TF4ALL] Telemetry source: {_telemetrySource.Name}.");
-
-            _capturePollThread = new Thread(CapturePollLoop)
+            //
+            // Full only. Lights-only needs no telemetry at all: the car's colours
+            // come from its published ramp, not from a frame, and the car's identity
+            // arrives in DataUpdate, which SimHub calls whether or not we run a
+            // source. Skipping it here is also what keeps the promise about the UDP
+            // port: SwapTelemetrySource is where the Forza listener binds 5300, and
+            // a lights-only plugin sitting on that port would steal Data Out from
+            // the game while claiming to touch nothing.
+            if (fullPipeline)
             {
-                IsBackground = true,
-                Name = "TrueforceCapturePoll",
-            };
-            _capturePollThread.Start();
-            SimHub.Logging.Current.Info("[TF4ALL] Audio capture armed; waiting for a supported game to start.");
+                _simHubSource = new SimHubTelemetrySource { OnFrame = DispatchFrame };
+                _simHubSource.Start();
+                _telemetrySource = _simHubSource;
+                SimHub.Logging.Current.Info($"[TF4ALL] Telemetry source: {_telemetrySource.Name}.");
+
+                _capturePollThread = new Thread(CapturePollLoop)
+                {
+                    IsBackground = true,
+                    Name = "TrueforceCapturePoll",
+                };
+                _capturePollThread.Start();
+                SimHub.Logging.Current.Info("[TF4ALL] Audio capture armed; waiting for a supported game to start.");
+            }
 
             // Default-on (Settings.ShowFeedbackBox): splice a Trueforce gain tile
             // into SimHub's home "Feedback" section. Self-retrying + defensive; if
@@ -4223,6 +4679,11 @@ namespace TrueforceForAll.Plugin
             // won't appear (cosmetic, never throws).
             _feedbackInjector = new FeedbackBoxInjector(this);
             _feedbackInjector.Start();
+
+            // What this pass actually built, so a later mode switch adds or removes
+            // the difference rather than guessing.
+            _fullPipelineRunning = fullPipeline;
+            _pipelineReady = true;
         }
         private System.Threading.CancellationTokenSource _updateCheckerCts;
         public System.Threading.CancellationToken UpdateCheckerToken
@@ -4861,6 +5322,18 @@ namespace TrueforceForAll.Plugin
 
         public void End(PluginManager pluginManager)
         {
+            // Shut the mode reconcile down BEFORE anything is disposed. It runs on a
+            // thread-pool thread and rebuilds whatever it finds missing, so one still
+            // in flight would spawn a fresh loopback helper and reopen the wheel
+            // right after this method had torn both down. On the plugin-disable path
+            // there is no process exit to reap that orphaned child.
+            // Deliberately NOT _shuttingDown here: that flag is set further down, on
+            // purpose, so the owed-slot restore just below still runs. _pipelineReady
+            // is the narrower switch and every arm of the reconcile tests it.
+            _pipelineReady = false;
+            for (int i = 0; i < 100 && System.Threading.Volatile.Read(ref _pipelineReconciling) != 0; i++)
+                System.Threading.Thread.Sleep(50);
+
             // Give back any borrowed light slot FIRST, while the HID++ channel is
             // still up. A slot write persists on the wheel, so leaving one held
             // means the user's own colours stay overwritten after we exit. Runs
@@ -5116,7 +5589,12 @@ namespace TrueforceForAll.Plugin
             // DispatchFrame only runs on telemetry frames and there are none
             // without a game. With nothing to report this hands the screen back,
             // so the wheel's own menu is what you see at rest.
-            if (_oledDash != null && (Settings?.ModeBOledEnabled ?? false)
+            // Full only, and that gate is not cosmetic: ModeBOledEnabled defaults
+            // ON, so before this the plugin wrote the wheel's screen with the
+            // master switch off and no game running. Lights-only leaves the screen
+            // alone too: it promises the lights and nothing else.
+            if (_oledDash != null && MasterMode == TrueforceMasterMode.Normal
+                && (Settings?.ModeBOledEnabled ?? false)
                 && NoTelemetryArriving())
             {
                 string idleLabel = null, idleValue = null;
@@ -5126,8 +5604,13 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] OLED idle error", ex); }
             }
 
+            // Full only. This is a SECOND continuous 0x807A level writer, behind the
+            // experimental driver intercept, and it reads none of the gates the
+            // main rev-light path does. Armed in either new mode it would write
+            // levels the mode promises not to.
             var ledCh = _driverLedChannel;
             if (ledCh != null && ledCh.IsReady && data?.NewData != null
+                && MasterMode == TrueforceMasterMode.Normal
                 && !string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
             {
                 try
@@ -5344,7 +5827,11 @@ namespace TrueforceForAll.Plugin
                 // belongs to the session that set it (it lengthens the
                 // SimHub-fallback dwell in EvaluateFsTelemetryFallback).
                 _fsPipeFedThisGame = false;
-                SwapTelemetrySource(gameName);
+                // Full only. The enhanced sources bind sockets and open shared
+                // memory, and the Forza one takes UDP 5300, which is the game's own
+                // Data Out port. A mode that promises to touch nothing but the
+                // wheel's lights must not be holding it.
+                if (MasterMode == TrueforceMasterMode.Normal) SwapTelemetrySource(gameName);
                 // Re-arm/disarm Mode B for the new game (Mode B capable games
                 // = synthesized force; everything else = the normal pass-
                 // through path). The contention watchdog latch resets here
@@ -5415,34 +5902,42 @@ namespace TrueforceForAll.Plugin
                 }
 
                 // Per-game master enable. Default is "true" for unseen games,
-                // EXCEPT for games that ship native Trueforce (Forza Motorsport
-                // 2023), for those we default to "false" so our ep3 stream
-                // doesn't fight the game's own Trueforce path. Saved values
-                // always win over defaults so a user who explicitly enabled
-                // us for a native-TF game keeps that choice.
+                // EXCEPT for games that bring Trueforce of their own, which default
+                // to LIGHTSYNC ONLY: our ep3 stream would fight theirs, but the
+                // wheel's patterns cost the game nothing, so we keep those and hand
+                // the force back. Saved values always win over defaults, so a user
+                // who explicitly enabled us for one of those games keeps that choice.
+                //
+                // Nothing is WRITTEN to the per-game map here any more. The map is a
+                // record of the user's own choices; writing our default into it made
+                // that default indistinguishable from a decision they had made, and
+                // it is what pinned every native-Trueforce game to off.
                 if (Settings != null)
                 {
-                    bool savedValue = false;
                     bool sawSaved = !string.IsNullOrEmpty(gameName)
                         && Settings.GameEnabled != null
-                        && Settings.GameEnabled.TryGetValue(gameName, out savedValue);
-                    bool wantEnabled;
-                    if (sawSaved) { wantEnabled = savedValue; }
-                    else if (IsNativeTrueforceGame(gameName))
+                        && Settings.GameEnabled.ContainsKey(gameName);
+                    if (!sawSaved && IsNativeTrueforceGame(gameName))
                     {
-                        wantEnabled = false;
-                        // Persist so the user's per-game UI reflects "off" the
-                        // first time and they understand we backed off.
-                        if (Settings.GameEnabled == null)
-                            Settings.GameEnabled = new Dictionary<string, bool>();
-                        Settings.GameEnabled[gameName] = false;
-                        try { PersistSettingsCore(); } catch { }
-                        SimHub.Logging.Current.Info(
-                            $"[TF4ALL] Auto-disabling for '{gameName}' (ships native Trueforce). Re-enable manually if you prefer our stream.");
+                        SimHub.Logging.Current.Info(IsIRacingReshapeGame(gameName)
+                            ? "[TF4ALL] iRacing brings Trueforce of its own, so we start on Lightsync only: our "
+                              + "Trueforce effects and FFB tap are off, the Lightsync features stay. Normal carries "
+                              + "iRacing's own force feedback through the plugin with our effects and the wheel's "
+                              + "screen on top, after a short setup in iRacing."
+                            : $"[TF4ALL] '{gameName}' brings Trueforce of its own, so we start on Lightsync only: "
+                              + "our Trueforce effects and FFB tap are off, the Lightsync features stay. Switch to "
+                              + "Normal if you would rather have our Trueforce instead of the game's.");
                     }
-                    else { wantEnabled = true; }
-                    if (Settings.PluginEnabled != wantEnabled)
-                        SetPluginEnabled(wantEnabled, persistForActiveGame: false);
+                    // iRacing's setup notice, on sight rather than on panel-open.
+                    MaybeFireIracingNotice(gameName);
+
+                    // RESOLVE rather than push. This used to write the master switch
+                    // itself from the per-game map, which under a third state would
+                    // drag a lights-only user into full the moment they started a
+                    // game they had once enabled. ResolveEffectiveMode keeps the
+                    // old Full/Off behaviour bit for bit and leaves the stored
+                    // choice where the user put it.
+                    ApplyEffectiveMode("game change");
                 }
 
                 // Drive-tab boxes follow the game, when the user asked them
@@ -5656,7 +6151,21 @@ namespace TrueforceForAll.Plugin
                 {
                     BackfillDisplayNameForActiveCar();
                 }
+
+                // Lights-only runs no telemetry source, so the car-load edge that
+                // normally arrives on a frame has to be driven from here. Full mode
+                // deliberately keeps using the frame path: it can prove the HID++
+                // pipe is free of the game's force and this cannot, and the latch
+                // inside means only the first caller acts either way.
+                if (MasterMode == TrueforceMasterMode.LightsyncOnly)
+                    ApplyCarLightsForActiveCar(ffbQuietProven: false);
             }
+
+            // Same reasoning for handing a slot back when the user turns the base's
+            // own dial away from ours: in lights-only there is no frame to notice it
+            // on. Cheap (four early returns) so it rides the data tick.
+            if (MasterMode == TrueforceMasterMode.LightsyncOnly)
+                ReleaseBorrowIfWheelMovedAway();
 
             // G HUB UI presence check. Polled every ~5 s; logs on transitions.
             // Surfaced in the UI as a warning banner because the G HUB UI can
@@ -6296,13 +6805,26 @@ namespace TrueforceForAll.Plugin
                 }
                 // The one safety condition both HID++ surfaces share: a force
                 // mode armed, the game's FFB proven quiet, session live.
-                bool hidppFree = _forceMode != ForceModeOff && ffbQuietProven && sessionActive;
+                // MasterMode is the first term, and it has to be checked HERE rather
+                // than left to the pipeline teardown. Switching out of full hands the
+                // wheel back synchronously but disposes the telemetry source on a
+                // background task, so frames keep arriving for a moment afterwards.
+                // Without this, the very next frame's level write would re-arm the
+                // keepalive AbandonWheel had just stopped, and nothing would stop it
+                // a second time: a level pair every second, forever, on the endpoint
+                // the game's force feedback shares.
+                bool hidppFree = MasterMode == TrueforceMasterMode.Normal
+                              && _forceMode != ForceModeOff && ffbQuietProven && sessionActive;
                 bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
                 // EXPERIMENTAL wheel-base OLED. Same pipe, same rule, its own
                 // opt-in (default off). OLEDANY lifts the gate on purpose, to
                 // find out whether a screen write really does disturb a game's
                 // own HID++ force.
-                bool modeBOled = (Settings?.ModeBOledEnabled ?? false)
+                // The OLEDANY override lifts the pipe-safety gate on purpose, so the
+                // mode has to be its own term or that dev code would keep the screen
+                // ours through a switch out of full.
+                bool modeBOled = MasterMode == TrueforceMasterMode.Normal
+                            && (Settings?.ModeBOledEnabled ?? false)
                             && (hidppFree || (Settings?.OledIgnoreModeBGate ?? false));
                 // Latched for the settings panel, which needs to know whether a
                 // preview is safe to draw and runs on another thread.
@@ -6374,38 +6896,11 @@ namespace TrueforceForAll.Plugin
                     // never resolves the channel and the LEDs stay dark (no harm).
                     try
                     {
-                        // Car-load edge: a car with a remembered pattern sets
-                        // the wheel to it ONCE when it becomes active, so a
-                        // manual pick mid-session still sticks until the next
-                        // remembered car arrives. Not a per-frame push: the
-                        // wheel's selection is a real selector, not a state
-                        // we continuously enforce.
-                        string carKey = (!string.IsNullOrEmpty(_activeGame) && !string.IsNullOrEmpty(_activeCarId))
-                            ? _activeGame + "/" + _activeCarId : null;
-                        if (carKey != null && carKey != _revCarKeyApplied)
-                        {
-                            _revCarKeyApplied = carKey;
-                            // A remembered PATTERN of ours wins over a remembered
-                            // wheel effect: picking one of our patterns for a car
-                            // is the more specific choice, and the two are kept
-                            // mutually exclusive when either is saved.
-                            var rememberedPattern = GetCarRememberedLightPattern();
-                            if (rememberedPattern != null)
-                            {
-                                var p = rememberedPattern;
-                                Task.Run(() =>
-                                {
-                                    string msg;
-                                    if (!ApplyLightPattern(p, out msg))
-                                        SimHub.Logging.Current.Info("[TF4ALL] remembered pattern not applied: " + msg);
-                                });
-                            }
-                            else if (Settings?.CarRevLightEffect != null
-                                && Settings.CarRevLightEffect.TryGetValue(carKey, out int remembered)
-                                && remembered > 0)
-                                _rpmLeds.ApplyRemembered(remembered, ffbQuietProven);
-                            OnLovelyCarChanged(_activeGame, _activeCarId);
-                        }
+                        // Car-load edge. In lights-only mode there is no telemetry
+                        // source to reach this line, so DataUpdate drives the same
+                        // call; the latch inside makes whichever arrives first the
+                        // only one that acts.
+                        ApplyCarLightsForActiveCar(ffbQuietProven);
 
                         // Per-car published data, when the user has turned it on
                         // and we hold some for this car. Null curve = today's
@@ -7199,6 +7694,408 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>Car-load edge for the wheel's lights: whatever this car should
+        /// be showing, applied ONCE when it becomes active, so a manual pick made
+        /// mid-session still sticks until the next remembered car arrives. Not a
+        /// per-frame push: the wheel's selection is a real selector, not a state we
+        /// continuously enforce.
+        ///
+        /// Deliberately reads no telemetry frame. The colours come from the car's
+        /// own published ramp rather than the live gear, and the car id is
+        /// established in DataUpdate, so lights-only mode can drive this edge with
+        /// no telemetry source running at all.
+        ///
+        /// Callable from either thread: the latch is exchanged atomically, so the
+        /// telemetry path and the DataUpdate path cannot both apply the same car.</summary>
+        /// <param name="ffbQuietProven">Whether the HID++ pipe is known to be free
+        /// of the game's own force right now. False only stages a remembered pick
+        /// instead of writing it, which is the correct answer whenever we cannot
+        /// prove the pipe is ours.</param>
+        private void ApplyCarLightsForActiveCar(bool ffbQuietProven)
+        {
+            if (MasterMode == TrueforceMasterMode.Off || _rpmLeds == null) return;
+
+            string carKey = (!string.IsNullOrEmpty(_activeGame) && !string.IsNullOrEmpty(_activeCarId))
+                ? _activeGame + "/" + _activeCarId : null;
+            if (carKey == null) return;
+            string prev = System.Threading.Interlocked.Exchange(ref _revCarKeyApplied, carKey);
+            if (string.Equals(prev, carKey, StringComparison.Ordinal)) return;
+
+            // A remembered PATTERN of ours wins over a remembered wheel effect:
+            // picking one of our patterns for a car is the more specific choice,
+            // and the two are kept mutually exclusive when either is saved.
+            bool lightsOnly = MasterMode == TrueforceMasterMode.LightsyncOnly;
+
+            var rememberedPattern = GetCarRememberedLightPattern();
+            if (rememberedPattern != null)
+            {
+                var p = rememberedPattern;
+                Task.Run(() =>
+                {
+                    string msg;
+                    // No confirmation sweep in lights-only. The sweep is roughly
+                    // seven seconds of level writes (a 0-to-10 ramp, a lit hold, a
+                    // ramp back down) on the endpoint the game's force feedback
+                    // shares, at every car load, which is precisely the continuous
+                    // level driving this mode exists to avoid. The colours land
+                    // either way, and in this mode the game lights the bar.
+                    if (!ApplyLightPattern(p, out msg, sweep: !lightsOnly))
+                        SimHub.Logging.Current.Info("[TF4ALL] remembered pattern not applied: " + msg);
+                });
+            }
+            else if (Settings?.CarRevLightEffect != null
+                && Settings.CarRevLightEffect.TryGetValue(carKey, out int remembered)
+                && remembered > 0)
+                // In lights-only the write is allowed even though the pipe cannot be
+                // proven quiet: a remembered pick is a single selection write at car
+                // load, no different from the selection a slot upload already emits,
+                // and staging it instead meant it never landed at all, since nothing
+                // in this mode ever arms the bar to consume a staged pick.
+                _rpmLeds.ApplyRemembered(remembered, ffbQuietProven || lightsOnly);
+
+            OnLovelyCarChanged(_activeGame, _activeCarId);
+        }
+
+        // True while the FULL pipeline's own subsystems are up: the loopback helper
+        // attached, audio registered in the mixer, a telemetry source running, the
+        // capture poll thread alive and the device open. Tracked rather than
+        // inferred, because a live mode switch has to add or remove exactly the
+        // pieces that are missing or present, and adding a second copy of any of
+        // them is worse than not switching at all.
+        // Volatile: written inside _pipelineLock but READ unlocked by the cheap
+        // pre-check in ReconcileFullPipeline, which runs on SimHub's data thread and
+        // on the WPF dispatcher. A stale read there would skip a reconcile the mode
+        // actually needs.
+        private volatile bool _fullPipelineRunning;
+        private bool _audioInMixer;   // touched only under _pipelineLock
+        private volatile bool _capturePollStop;
+        // Set once InitPipeline has finished, so a mode change that lands during
+        // startup cannot start a subsystem before the code that owns it has run.
+        private volatile bool _pipelineReady;
+
+        /// <summary>Bring the force pipeline up or down to match the mode, live,
+        /// without a SimHub restart. The effects and the engine loop are NOT part of
+        /// this: they are built in every mode and are inert until the producer
+        /// thread ticks them, so they never need adding or removing.</summary>
+        private readonly object _pipelineLock = new object();
+        private int _pipelineReconciling;   // 0/1: single-flight AND re-entrancy guard
+
+        private void ReconcileFullPipeline(TrueforceMasterMode now)
+        {
+            // Init resolves the mode BEFORE it builds the pipeline, and it builds
+            // the right one for the mode. Reconciling before that point would start
+            // subsystems ahead of the code that owns them.
+            if (!_pipelineReady) return;
+            if ((now == TrueforceMasterMode.Normal) == _fullPipelineRunning) return;
+            // NEVER inline. Tearing down waits on a child process to exit and
+            // bringing up runs the wheel's ~136-packet init sequence, and every
+            // caller is either SimHub's data thread (a game change) or the WPF
+            // dispatcher (the combo, the home tile). Blocking either for seconds is
+            // how a mode switch becomes a freeze.
+            Task.Run((Action)ReconcilePipelineCore);
+        }
+
+        /// <summary>The pipeline reconcile itself, on a background thread, one at a
+        /// time.</summary>
+        private void ReconcilePipelineCore()
+        {
+            // Single-flight, and re-entrancy-proof: StartFullPipelineParts reaches
+            // SyncDeviceToPluginEnabled, which calls back into ReconcileFullPipeline.
+            if (System.Threading.Interlocked.CompareExchange(ref _pipelineReconciling, 1, 0) != 0) return;
+            try
+            {
+                lock (_pipelineLock)
+                {
+                    // Loop rather than act once. A mode change that lands WHILE we
+                    // are working is picked up here instead of being lost, which is
+                    // what let a stop racing a start finish with the pipeline torn
+                    // down and the mode still reading full: a green UI over a dead
+                    // wheel. Bounded so a user flipping the combo cannot spin us.
+                    for (int guard = 0; guard < 4; guard++)
+                    {
+                        // Re-tested every pass: End() clears _pipelineReady and then
+                        // waits for us, so a teardown that starts mid-loop must not
+                        // find us rebuilding what it just disposed.
+                        if (!_pipelineReady || _shuttingDown) return;
+                        bool wantFull = MasterMode == TrueforceMasterMode.Normal;
+                        if (wantFull == _fullPipelineRunning) return;
+                        if (wantFull) StartFullPipelineParts();
+                        else StopFullPipelineParts();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Error("[TF4ALL] pipeline reconcile failed", ex);
+            }
+            finally
+            {
+                System.Threading.Volatile.Write(ref _pipelineReconciling, 0);
+                // A request that arrived while we held the flag returned without
+                // acting, so re-check once we have let go.
+                if (_pipelineReady && !_shuttingDown
+                    && (MasterMode == TrueforceMasterMode.Normal) != _fullPipelineRunning)
+                    Task.Run((Action)ReconcilePipelineCore);
+            }
+        }
+
+        private void StopFullPipelineParts()
+        {
+            _fullPipelineRunning = false;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Standing the force pipeline down: capture, telemetry and the "
+                + "Trueforce stream all stop here.");
+
+            // The producer THREAD is deliberately left alive. With the mode no longer
+            // full it parks in the same idle sleep a disabled plugin has always used,
+            // and tearing it down would mean rebuilding it on the way back for no gain.
+            try { StopIRacingDirect(); } catch { }
+
+            _capturePollStop = true;
+            var poll = _capturePollThread;
+            _capturePollThread = null;
+            // Joined HERE rather than in the background: the loop only samples the
+            // stop flag between 100 ms sleep slices, so a fast flip back to full
+            // would otherwise start a second poll thread while the first was still
+            // in a sleep, and both would run CaptureTick for the rest of the
+            // session. This method already runs on a background thread.
+            if (poll != null) { try { poll.Join(2000); } catch { } }
+
+            // Release the capture itself. Detaching the helper is not enough: the
+            // tick's fast path returns early while _capturedProcess is alive, so a
+            // brand-new helper spawned on the way back to full would never be told
+            // which process to record, and the audio layer would produce silence for
+            // the rest of the game session while the status still read "Capturing".
+            try
+            {
+                var held = System.Threading.Interlocked.Exchange(ref _capturedProcess, null);
+                if (held != null)
+                {
+                    try { held.Dispose(); } catch { }
+                    try { _audio?.Stop(); } catch { }
+                    ExitStreamingGcMode();
+                }
+            }
+            catch { }
+
+            // Same order and the same explicit-dispose reasoning as End(): a keep-alive
+            // listener may be bound without being the active source.
+            try { _telemetrySource?.Dispose(); } catch { }
+            if (_forzaUdp != null && _forzaUdp != _telemetrySource)
+            { try { _forzaUdp.Dispose(); } catch { } }
+            _forzaUdp = null;
+            _forzaOnSimHubFallback = false;
+            if (_fsPipeSource != null && _fsPipeSource != _telemetrySource)
+            { try { _fsPipeSource.Dispose(); } catch { } }
+            _fsPipeSource    = null;
+            _telemetrySource = null;
+            _simHubSource    = null;
+
+            // The helper is a child process, so leaving it running would be the most
+            // visible way to break the promise this mode makes.
+            try { _audio?.Detach(); } catch { }
+            try { _helperHost?.Dispose(); } catch { }
+            _helperHost = null;
+
+            // Release the kernel filter driver. This one is not merely untidy to
+            // leave open: while we hold the control device the driver ABSORBS the
+            // game's force writes instead of passing them through, and the ep3
+            // stream that used to re-emit them is being torn down two lines below,
+            // so the wheel would go completely dead in a mode that promised to touch
+            // nothing. Closing the handle is what reverts the driver to passthrough.
+            // Not rebuilt on the way back to full: the intercept is an experimental
+            // opt-in whose own UI already says it applies at the next restart.
+            if (_driverChannel != null || _driverLedChannel != null)
+            {
+                try { _driverChannel?.Dispose(); } catch { }
+                _driverChannel = null;
+                try { _driverLedChannel?.Dispose(); } catch { }
+                _driverLedChannel = null;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Filter-driver intercept released; the wheel is back on passthrough. "
+                    + "Restart SimHub to use the intercept again.");
+            }
+
+            // Tap, steering reader and the device itself.
+            //
+            // Wait for any bring-up already in flight first, or its CleanupDevice +
+            // TryBringUpDevice would land AFTER this teardown and leave a live ep3
+            // stream and a capture child running in a mode that has none. Bounded:
+            // a bring-up is a HID open plus a ~136-packet init, so a few seconds is
+            // the honest upper bound, and the work item re-checks the mode itself as
+            // a second line of defence.
+            for (int i = 0; i < 100 && System.Threading.Volatile.Read(ref _recoveryInProgress) != 0; i++)
+                System.Threading.Thread.Sleep(50);
+            CleanupDevice();
+        }
+
+        private void StartFullPipelineParts()
+        {
+            // Nothing starts once the plugin is on its way out. Checked here as well
+            // as in the loop above because this is the method that spawns a child
+            // process and opens the wheel.
+            if (!_pipelineReady || _shuttingDown) return;
+            SimHub.Logging.Current.Info("[TF4ALL] Starting the force pipeline.");
+
+            if (_helperHost == null)
+            {
+                try
+                {
+                    string pluginDir = System.IO.Path.GetDirectoryName(typeof(TrueforcePlugin).Assembly.Location);
+                    string helperExe = System.IO.Path.Combine(pluginDir, "TrueforceForAll.LoopbackHelper.exe");
+                    _helperHost = new HelperHost(helperExe);
+                    _helperHost.Spawn();
+                    SimHub.Logging.Current.Info($"[TF4ALL] Loopback helper spawned ({helperExe}).");
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Error("[TF4ALL] Failed to spawn loopback helper", ex);
+                    _helperHost = null;
+                }
+            }
+            if (_audio != null && _helperHost != null) _audio.Attach(_helperHost);
+            // Mixer.Add appends without checking, so a second registration would
+            // render the same source twice.
+            if (_audio != null && !_audioInMixer) { _mixer.Add(_audio); _audioInMixer = true; }
+
+            if (_simHubSource == null)
+            {
+                _simHubSource = new SimHubTelemetrySource { OnFrame = DispatchFrame };
+                _simHubSource.Start();
+                _telemetrySource = _simHubSource;
+                SimHub.Logging.Current.Info($"[TF4ALL] Telemetry source: {_telemetrySource.Name}.");
+            }
+
+            _capturePollStop = false;
+            if (_capturePollThread == null)
+            {
+                _capturePollThread = new Thread(CapturePollLoop)
+                {
+                    IsBackground = true,
+                    Name = "TrueforceCapturePoll",
+                };
+                _capturePollThread.Start();
+            }
+
+            // Last, because it is the slow one (HID open plus the init sequence) and
+            // because everything above should already be waiting for it.
+            //
+            // Claims the same single-flight slot the recovery watchdog and the UI
+            // probe use. Without it, the watchdog on the data thread sees
+            // MasterMode == Full and _device == null the instant the mode latches,
+            // and starts a SECOND bring-up whose first act is CleanupDevice, which
+            // disposes this one's half-built device out from under it.
+            if (_device == null)
+            {
+                if (System.Threading.Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) == 0)
+                {
+                    try
+                    {
+                        // Stamp the attempt so the watchdog's rate limiter starts
+                        // from now rather than from whenever it last ran in full.
+                        _lastRecoveryAttemptTicks = Stopwatch.GetTimestamp();
+                        if (!TryBringUpDevice())
+                            SimHub.Logging.Current.Warn(
+                                "[TF4ALL] Wheel not ready; the recovery watchdog will keep retrying.");
+                    }
+                    finally { System.Threading.Volatile.Write(ref _recoveryInProgress, 0); }
+                }
+            }
+            // Set even when the wheel is not ready: the watchdog is now allowed to
+            // run, and it is the thing that finishes the job.
+            _fullPipelineRunning = true;
+
+            // The game we are already in never went through the game-change path in
+            // this mode, so pick its telemetry source and arm its force mode now.
+            if (!string.IsNullOrEmpty(_activeGame))
+            {
+                try { SwapTelemetrySource(_activeGame, silent: true); } catch { }
+                try { ApplyModeBFromSettings(); } catch { }
+            }
+        }
+
+        /// <summary>Put the LIGHT subsystems where a new master mode says they
+        /// belong. Separate from the ep3 device transition because the lights ride
+        /// their own endpoint and answer to their own rules: entering Off has to
+        /// give a borrowed slot back, and entering any mode that does not drive a
+        /// live rev bar has to stop the keepalive that would otherwise keep writing
+        /// levels once a second forever.</summary>
+        private void ReconcileLightSubsystems(TrueforceMasterMode was, TrueforceMasterMode now, string context)
+        {
+            try
+            {
+                // Full is the only mode that drives a live bar. AbandonWheel rather
+                // than ForceOff: ForceOff stands down while a sweep owns the strip,
+                // which is exactly the case if the switch is made mid-preview, and
+                // that sweep would then keep writing levels for seconds afterwards
+                // with its auto-off ramp firing later still. This also stops the
+                // keepalive, which otherwise resends a level once a second forever
+                // on a pipe the game now owns.
+                if (now != TrueforceMasterMode.Normal)
+                {
+                    _rpmLeds?.AbandonWheel();
+                    // The screen goes back with the lights. Nothing else hands it
+                    // over: the gate-off path rides telemetry frames, and outside
+                    // full there are none, so a panel we were drawing on would stay
+                    // ours with no way for the wheel's own menu to return.
+                    // AbandonScreen rather than ForceOff, which stands down while a
+                    // test or layout report holds the panel: those run up to 25 s.
+                    try { _oledDash?.AbandonScreen(); } catch { }
+                    // The G923's legacy rev bar is a different channel on a
+                    // different report, so nothing above touches it. A running
+                    // F8 sweep would otherwise keep writing at ~60 Hz.
+                    try { _f8Leds?.StopSweep(); } catch { }
+                    try { _f8Leds?.SetLevel(0, 5); } catch { }
+                }
+                else try { _oledDash?.AllowScreen(); } catch { }
+
+                // Re-apply this car's lights on the way INTO a mode that may show
+                // them. The car-load edge is latched and only fires on a car change,
+                // so without this, choosing lights-only while already sitting in a
+                // car did nothing at all until the user swapped car, and coming back
+                // to full after an off (which restores the user's own colours) left
+                // the wheel showing those instead of the car's for the rest of the
+                // session.
+                if (now != TrueforceMasterMode.Off && was != now)
+                {
+                    System.Threading.Interlocked.Exchange(ref _revCarKeyApplied, null);
+                    Task.Run(() =>
+                    {
+                        try { ApplyCarLightsForActiveCar(ffbQuietProven: now == TrueforceMasterMode.LightsyncOnly); }
+                        catch (Exception ex)
+                        { SimHub.Logging.Current.Info("[TF4ALL] car lights on mode change failed: " + ex.Message); }
+                    });
+                }
+
+                if (was == TrueforceMasterMode.Normal && now == TrueforceMasterMode.LightsyncOnly)
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Lightsync only: the force layer is standing down; we keep setting the wheel's patterns.");
+
+                if (now != TrueforceMasterMode.Off) return;
+
+                // Off means off, so the user's own colours go back now rather than
+                // sitting in a borrowed slot until shutdown. Same shape as
+                // OnLovelyEnabledChanged above: off the caller's thread, and never
+                // throwing into it.
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        string restored = RestoreOwedSlots();
+                        if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info("[TF4ALL] slot restore on switch-off failed: " + ex.Message);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] light reconcile failed: " + ex.Message);
+            }
+        }
+
         /// <summary>Car-load edge: adopt whatever published rev-light data we hold
         /// for this car, then refresh it in the background. Cache first so a car
         /// we already know lights correctly on lap one rather than after a round
@@ -7239,8 +8136,13 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         var fresh = store.Refresh(game, carId);
-                        // Only adopt if the car has not changed again underneath us.
-                        if (string.Equals(_activeGame, game, StringComparison.Ordinal)
+                        // Only adopt if the car has not changed again underneath us,
+                        // AND the master switch has not moved to Off while the fetch
+                        // was in flight: a network round trip easily outlives a
+                        // click, and landing colours after "off" is exactly the bug
+                        // this mode work exists to fix.
+                        if (MasterMode != TrueforceMasterMode.Off
+                            && string.Equals(_activeGame, game, StringComparison.Ordinal)
                             && string.Equals(_activeCarId, carId, StringComparison.Ordinal))
                         {
                             _lovelyCar  = fresh;
@@ -9306,6 +10208,12 @@ namespace TrueforceForAll.Plugin
             // armed. The force half still checks the mode before it publishes.
             if (!IsIRacingReshapeGame(_activeGame)) { StopIRacingDirect(); return; }
 
+            // The MASTER mode is a different question, and the answer is yes only
+            // in full: the direct reader opens the sim's shared memory and runs its
+            // own thread, which is telemetry, which the other two modes do not do.
+            // Stopping rather than just returning matters on a live mode switch.
+            if (MasterMode != TrueforceMasterMode.Normal) { StopIRacingDirect(); return; }
+
             // Prefer the sim's own memory. Attempted here rather than on a timer
             // because DataUpdate is already the "iRacing is running" signal.
             MaybeStartIRacingDirect();
@@ -10707,6 +11615,11 @@ namespace TrueforceForAll.Plugin
         public void TestRpmLeds()
         {
             if (_rpmLeds == null) { SimHub.Logging.Current.Info("[RPM-LED] controller not initialized"); return; }
+            // Full only: the test is two full up/down sweeps plus a redline hold,
+            // about eleven seconds of continuous level writes, and the first of them
+            // re-arms the keepalive a slot write had just stopped.
+            if (MasterMode != TrueforceMasterMode.Normal)
+            { SimHub.Logging.Current.Info("[RPM-LED] test skipped: the bar is not ours to drive in this mode"); return; }
             int ms = _rpmLeds.RunTest();
             SimHub.Logging.Current.Info($"[RPM-LED] Test started, duration={ms} ms ({_rpmLeds.Status})");
         }
@@ -10730,6 +11643,10 @@ namespace TrueforceForAll.Plugin
         public void EnsureWheelPatternRead()
         {
             if (_rpmLeds == null || _rpmLeds.KnownSelection > 0) return;
+            // Not while the plugin is off. Note the pipe-safety test below cannot
+            // stand in for this outside full mode: no telemetry source runs there,
+            // so NoTelemetryArriving is trivially true and the test always passes.
+            if (MasterMode == TrueforceMasterMode.Off) return;
             if (!NoTelemetryArriving() && !_ffbQuietNow) return;
             _rpmLeds.OpenInBackground();
         }
@@ -10756,9 +11673,34 @@ namespace TrueforceForAll.Plugin
             if (s == null) return false;
             if (s.CarRevLightEffect == null)
                 s.CarRevLightEffect = new Dictionary<string, int>();
-            s.CarRevLightEffect[_activeGame + "/" + _activeCarId] = effect;
+            string key = _activeGame + "/" + _activeCarId;
+            s.CarRevLightEffect[key] = effect;
+            // The two kinds of pin are meant to be mutually exclusive, and the
+            // library-pattern side already clears this one. Without the mirror, a car
+            // with a pattern pinned kept showing that pattern after the user pinned a
+            // wheel effect instead, because the pattern wins when both are set.
+            s.CarLightPattern?.Remove(key);
             try { PersistSettingsCore(); } catch { }
             return true;
+        }
+
+        /// <summary>Pin a DELIBERATE pick to the active car, when the user has asked
+        /// for that with "Always remember per car". A silent no-op otherwise.
+        ///
+        /// Deliberately not called from the paths that APPLY a remembered pattern, or
+        /// it would re-pin what it had just read and a restore would look like a
+        /// choice.</summary>
+        private void MaybeAutoRememberForCar(string patternId, int effect)
+        {
+            if (Settings?.AlwaysRememberCarPattern != true) return;
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return;
+            try
+            {
+                if (!string.IsNullOrEmpty(patternId)) RememberLightPatternForActiveCar(patternId);
+                else if (effect >= 1 && effect <= 9) RememberPatternForActiveCar(effect);
+            }
+            catch (Exception ex)
+            { SimHub.Logging.Current.Info("[TF4ALL] auto-remember failed: " + ex.Message); }
         }
 
         /// <summary>Forget the active car's remembered pattern. The wheel's
@@ -10793,11 +11735,15 @@ namespace TrueforceForAll.Plugin
         public void PickRevLightPattern(int effect, bool previewAfter = false)
         {
             if (_rpmLeds == null || effect < 1 || effect > 9) return;
+            // Reachable from the always-visible rev-light dropdown, which is not the
+            // same control as the slot writes BorrowSlot guards.
+            if (MasterMode == TrueforceMasterMode.Off) return;
             // Whatever we were standing in the stage slot is no longer what the
             // wheel is showing, and neither are the car's own colours.
             LibraryPatternShowing = false;
             _autoAppliedColors = false;
             NoteLightSelectionChanged();
+            MaybeAutoRememberForCar(null, effect);
             _rpmLeds.StagePattern(effect);   // arm applies it even if the live write loses
             Task.Run(() =>
             {
@@ -10832,6 +11778,15 @@ namespace TrueforceForAll.Plugin
         public void PreviewRevLightPattern()
         {
             if (_rpmLeds == null) return;
+            // FULL only, and gated here rather than at each caller because there are
+            // three: PickRevLightPattern's previewAfter, and both rev-light combos,
+            // which call this directly on a re-click of the already-selected row and
+            // so never pass through the gated pick. The sweep is a 0-to-10-to-0 level
+            // ramp, a lit hold and a ramp back down, roughly seven seconds of level
+            // traffic, and it opens the channel itself if it is closed. That is the
+            // continuous bar driving lights-only forbids and the wheel traffic off
+            // forbids outright.
+            if (MasterMode != TrueforceMasterMode.Normal) return;
             // Only skip when the live bar is actually LIT, not merely when a
             // game is loaded. In the pits at idle the strip is dark, the live
             // feed is showing nothing to fight, and skipping here left a pattern
@@ -10877,8 +11832,17 @@ namespace TrueforceForAll.Plugin
             if (ok) LibraryPatternShowing = false;
             if (ok)
             {
-                if (sweep) PreviewRevLightPattern();
-                else _rpmLeds.HoldLit(WheelLedChannel.LedCount, ShowHoldMs);
+                // Both of these DRIVE the bar, and only full mode may. Passing
+                // sweep:false was not enough on its own: HoldLit re-arms the very
+                // keepalive the slot write had just stopped, then holds the bar lit
+                // for eight seconds and ramps it back down, which is around nine
+                // seconds of level traffic per car load on the endpoint the game's
+                // force feedback shares.
+                if (MasterMode == TrueforceMasterMode.Normal)
+                {
+                    if (sweep) PreviewRevLightPattern();
+                    else _rpmLeds.HoldLit(WheelLedChannel.LedCount, ShowHoldMs);
+                }
             }
             return ok;
         }
@@ -10895,6 +11859,12 @@ namespace TrueforceForAll.Plugin
         public int SyncSlotsToWheel(out string message)
         {
             message = null;
+            // Reordering or deleting a pattern in the editor lands here, and the
+            // LIGHTSYNC tab stays live after a switch to off, so this needs its own
+            // gate: the method opens the channel, reads every slot and writes names,
+            // none of which passes through BorrowSlot.
+            if (MasterMode == TrueforceMasterMode.Off)
+            { message = "The plugin is switched off, so it is not writing to the wheel."; return 0; }
             if (_rpmLeds?.Channel == null) { message = "No supported wheel detected."; return 0; }
             if (!EnsureLedChannelOpen())
             { message = "Could not reach the wheel. Check it is connected and powered on."; return 0; }
@@ -11017,6 +11987,10 @@ namespace TrueforceForAll.Plugin
         {
             var ch = _rpmLeds?.Channel;
             if (ch == null) return "Rev-light channel not created (no supported wheel detected).";
+            // Read-only in intent, but it opens the channel itself and sends five
+            // HID++ queries, so it is still wheel traffic and off means off.
+            if (MasterMode == TrueforceMasterMode.Off)
+                return "The plugin is switched off, so the wheel was not probed.";
             try { return ch.ProbeSlotFeature(); }
             catch (Exception ex) { return "Slot probe failed: " + ex.Message; }
         }
@@ -11638,7 +12612,11 @@ namespace TrueforceForAll.Plugin
             if (ok)
             {
                 LightPatterns.CurrentId = pattern.Id;
-                if (userChose) LightPatterns.StickyId = pattern.Id;
+                if (userChose)
+                {
+                    LightPatterns.StickyId = pattern.Id;
+                    MaybeAutoRememberForCar(pattern.Id, 0);
+                }
                 SaveLightPatterns();
                 PublishDashLightProfile(rgb, DirectionFromWire(pattern.DirectionWire), pattern.Name);
                 LibraryPatternShowing = true;
@@ -11651,8 +12629,17 @@ namespace TrueforceForAll.Plugin
                 // patterns invisible while parked. An edit does not sweep, but it
                 // still lights the bar and re-arms the fade, so the strip stays up
                 // for as long as the user keeps working on it.
-                if (sweep) PreviewRevLightPattern();
-                else _rpmLeds.HoldLit(WheelLedChannel.LedCount, ShowHoldMs);
+                // Both of these DRIVE the bar, and only full mode may. Passing
+                // sweep:false was not enough on its own: HoldLit re-arms the very
+                // keepalive the slot write had just stopped, then holds the bar lit
+                // for eight seconds and ramps it back down, which is around nine
+                // seconds of level traffic per car load on the endpoint the game's
+                // force feedback shares.
+                if (MasterMode == TrueforceMasterMode.Normal)
+                {
+                    if (sweep) PreviewRevLightPattern();
+                    else _rpmLeds.HoldLit(WheelLedChannel.LedCount, ShowHoldMs);
+                }
             }
             return ok;
         }
@@ -11693,6 +12680,11 @@ namespace TrueforceForAll.Plugin
 
         public WheelLedChannel.WheelLedSlot ReadSlot(int slot)
         {
+            // A read is still a HID++ query on the endpoint the game's force shares,
+            // and the settled contention model says any traffic there while force is
+            // flowing cuts the force. The pattern editor reads all five slots on
+            // every panel open, so this is not a rare path.
+            if (MasterMode == TrueforceMasterMode.Off) return null;
             var ch = _rpmLeds?.Channel;
             if (ch == null) return null;
             try
@@ -11707,6 +12699,10 @@ namespace TrueforceForAll.Plugin
         /// does not offer it. Read-only, so it is safe to call whenever.</summary>
         public int ReadLedBrightness()
         {
+            // Reading is harmless; OPENING to read is not, and this is called from
+            // the pattern editor's ordinary refresh, so without this the gate on the
+            // editor's own open bought nothing.
+            if (MasterMode == TrueforceMasterMode.Off) return -1;
             if (!EnsureLedChannelOpen()) return -1;
             try { return _rpmLeds?.Channel?.TryReadBrightnessPercent() ?? -1; }
             catch { return -1; }
@@ -11716,6 +12712,12 @@ namespace TrueforceForAll.Plugin
         /// moving the control: nothing writes this on load or shutdown.</summary>
         public bool WriteLedBrightness(int percent)
         {
+            // Brightness is a DEVICE-level setting (HID++ 0x8040), not part of a
+            // slot, so it never passed through BorrowSlot's gate. The LIGHTSYNC tab
+            // stays live after a switch to off, and this slider would change the
+            // user's wheel permanently in the mode that promises to leave their
+            // lights exactly as they set them.
+            if (MasterMode == TrueforceMasterMode.Off) return false;
             if (!EnsureLedChannelOpen()) return false;
             try { return _rpmLeds?.Channel?.TryWriteBrightnessPercent(percent) == true; }
             catch { return false; }
@@ -11723,6 +12725,10 @@ namespace TrueforceForAll.Plugin
 
         public string ReadSlotName(int slot)
         {
+            // Same reasoning as ReadSlot: the pattern editor names all five slots on
+            // every panel open, which is ten query and reply round trips on the
+            // shared endpoint.
+            if (MasterMode == TrueforceMasterMode.Off) return null;
             try { return _rpmLeds?.Channel?.TryReadSlotName(slot); }
             catch { return null; }
         }
@@ -11731,6 +12737,9 @@ namespace TrueforceForAll.Plugin
         /// characters by the wire.</summary>
         public bool WriteSlotName(int slot, string name)
         {
+            // Renaming a pattern in the editor writes the wheel directly. Same rule
+            // as every other write: not while the plugin is off.
+            if (MasterMode == TrueforceMasterMode.Off) return false;
             try { return _rpmLeds?.Channel?.TryWriteSlotName(slot, name) == true; }
             catch { return false; }
         }
@@ -11827,11 +12836,38 @@ namespace TrueforceForAll.Plugin
         /// LED colour trim. Anything that later compares this slot against that
         /// pattern must compare RAW too, which ToWireHex(LightPattern) handles
         /// as the single place that decision lives.</param>
+        /// <summary>After a slot write in a mode that does not drive the bar, stop
+        /// the keepalive the write just armed.
+        ///
+        /// A slot upload necessarily sets a level (the wheel renders nothing at 0,
+        /// which is why the upload floors it), and setting a level arms a sender
+        /// that then resends it every second for the rest of the session. In full
+        /// mode that is exactly right. In lights-only it would be continuous traffic
+        /// on the endpoint the game's force feedback shares, for a level that is the
+        /// game's to set, which is the one thing the mode promises not to do.</summary>
+        private void StopKeepAliveOutsideFull(WheelLedChannel ch)
+        {
+            if (ch == null || MasterMode == TrueforceMasterMode.Normal) return;
+            try { ch.StopKeepAlive(); } catch { }
+        }
+
         public bool BorrowSlot(WheelLedChannel.WheelLedSlot want, out string message,
                                int displayLevel = -1, string slotName = null,
                                bool permanent = false, bool rawColors = false)
         {
             message = null;
+            // Off means off, including the lights. Every colour that reaches a slot
+            // comes through here (the car-load auto-apply, the pattern library, the
+            // blank/restore rehearsal, the dev codes), so this one refusal is what
+            // makes the master switch honest: before it, a "disabled" plugin still
+            // repainted a Lightsync slot on every car load. RestoreSlot deliberately
+            // does NOT come through here, so the way back to the user's own colours
+            // stays open in every mode.
+            if (MasterMode == TrueforceMasterMode.Off)
+            {
+                message = "The plugin is switched off, so it is not writing to the wheel.";
+                return false;
+            }
             var ch = _rpmLeds?.Channel;
             if (ch == null) { message = "No supported wheel detected."; return false; }
             if (want == null) { message = "Nothing to write."; return false; }
@@ -11895,6 +12931,7 @@ namespace TrueforceForAll.Plugin
 
                     if (!ch.TryWriteSlot(wire, displayLevel))
                     { message = "The wheel refused the write (see SimHub.txt)."; return false; }
+                    StopKeepAliveOutsideFull(ch);
                     if (!string.IsNullOrWhiteSpace(slotName)) WriteSlotName(want.Slot, slotName);
                     InvalidateSlotProgrammedCache();
                     message = $"Saved into CUSTOM {want.Slot + 1}. It stays on the wheel with SimHub closed.";
@@ -11944,6 +12981,7 @@ namespace TrueforceForAll.Plugin
                 }
 
                 if (!ch.TryWriteSlot(wire, displayLevel)) { message = "The wheel refused the write (see SimHub.txt)."; return false; }
+                StopKeepAliveOutsideFull(ch);
 
                 // Name the slot after what is IN it. Scrolling the base's own
                 // LIGHTSYNC menu then reads as the pattern being shown, which is
@@ -12038,7 +13076,16 @@ namespace TrueforceForAll.Plugin
                     message = $"No backup held for CUSTOM {slot + 1}; nothing to restore.";
                     return false;
                 }
-                if (entry.Restored)
+                // A settled loan normally means the debt is paid and there is
+                // nothing to give back. The exception is a slot we deliberately
+                // BLANKED: the rehearsal fills the empty slots it just created,
+                // and SyncSlotsToWheel writes those permanently, which settles the
+                // very loans the blanking opened. Refusing here would strand the
+                // user's real colours in a file that still holds them perfectly,
+                // with no way to write them back. So an explicit SLOTRESTORE beats
+                // the settlement whenever the slot carries a blank we owe an undo
+                // for. Seen 2026-08-24 doing exactly this on slots 1-4.
+                if (entry.Restored && !(undoBlank && entry.Blanked))
                 {
                     message = $"CUSTOM {slot + 1} was already restored.";
                     return false;
@@ -12047,6 +13094,9 @@ namespace TrueforceForAll.Plugin
                 // paths, which is what makes the blank survive a restart. Typing
                 // SLOTRESTORE is not one of those: it is a person asking for their
                 // colours back, so it goes through and clears the blank.
+                // Blanked slots are skipped by the AUTOMATIC paths, which is what
+                // makes a blank survive a restart. Typing SLOTRESTORE is not one of
+                // those: it is a person asking for their colours back.
                 if (entry.Blanked && !undoBlank)
                 {
                     message = $"CUSTOM {slot + 1} is deliberately blanked (SLOTBLANK). "
@@ -12165,6 +13215,8 @@ namespace TrueforceForAll.Plugin
         public void TestOled()
         {
             if (_oledDash == null) { SimHub.Logging.Current.Info("[OLED] controller not initialized"); return; }
+            if (!OledWritesSafeNow)
+            { SimHub.Logging.Current.Info("[OLED] test skipped: the screen is not ours to write in this mode"); return; }
             int ms = _oledDash.RunTest();
             SimHub.Logging.Current.Info($"[OLED] Test started, duration={ms} ms ({_oledDash.Status})");
         }
@@ -12176,6 +13228,8 @@ namespace TrueforceForAll.Plugin
         public void ReportOledLayouts()
         {
             if (_oledDash == null) { SimHub.Logging.Current.Info("[OLED] controller not initialized"); return; }
+            if (!OledWritesSafeNow)
+            { SimHub.Logging.Current.Info("[OLED] layout report skipped: the screen is not ours to write in this mode"); return; }
             int ms = _oledDash.RunLayoutReport();
             SimHub.Logging.Current.Info($"[OLED] Layout report started, duration={ms} ms");
         }
@@ -12202,6 +13256,13 @@ namespace TrueforceForAll.Plugin
         public bool WheelHasSelectableLightPattern =>
             _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268 || _hidWheelPid == 0xC276;
 
+        /// <summary>Whether discovery has actually identified a wheel yet. Distinct
+        /// from the capability properties above, which answer "false" both for a
+        /// wheel that cannot do the thing AND for no wheel at all. Anything that
+        /// HIDES a feature has to tell those two apart, or a wheel that was powered
+        /// off at startup takes the feature away with it.</summary>
+        public bool WheelDetected => _hidWheelPid != 0;
+
         public string OledStatus => _oledDash?.Status ?? "(n/a)";
         public bool OledIsTesting => _oledDash?.IsTesting ?? false;
 
@@ -12209,9 +13270,16 @@ namespace TrueforceForAll.Plugin
         /// force feedback: no game at all, or Mode B holding the HID++ pipe
         /// free, or the user has taken the gate off deliberately.</summary>
         public bool OledWritesSafeNow =>
-            (Settings?.OledIgnoreModeBGate ?? false)
-            || _oledHidppFree
-            || NoTelemetryArriving();
+            // The screen belongs to full mode. Checked FIRST because the two terms
+            // below both read true forever outside it: _oledHidppFree is latched by
+            // the frame path and NoTelemetryArriving is trivially true when no
+            // telemetry source is running, so within half a second of switching to
+            // off or lights-only this said "safe" while a game was mid-corner with
+            // its own force feedback live.
+            MasterMode == TrueforceMasterMode.Normal
+            && ((Settings?.OledIgnoreModeBGate ?? false)
+                || _oledHidppFree
+                || NoTelemetryArriving());
 
         /// <summary>True when no telemetry frame has arrived recently, which is
         /// the honest test for "nothing is driving the wheel right now".
@@ -12298,6 +13366,14 @@ namespace TrueforceForAll.Plugin
         /// (write-on-change), &gt;0 = forza-style resend every N ms (e.g. 16).</param>
         public string ToggleF8LedSweep(int? resendMs)
         {
+            // Full only. This opens the wheel's gamepad HID collection and then
+            // resends the legacy F8-12 rev-LED report roughly sixty times a second
+            // until it is switched off again, which is both wheel traffic off
+            // forbids and the continuous bar driving lights-only forbids. It is a
+            // dev code, but it was the last LED path with no gate.
+            if (MasterMode != TrueforceMasterMode.Normal)
+                return $"Master mode is {ModeLabel(MasterMode)}, so the rev LEDs are not ours to drive. "
+                     + "Switch to Normal to use this.";
             try
             {
                 if (_f8Leds == null)
@@ -12825,6 +13901,14 @@ namespace TrueforceForAll.Plugin
 
         private void SwapTelemetrySourceLocked(string game, bool silent)
         {
+            // Full only, checked HERE because this is the chokepoint every source
+            // creation passes through. Gating only the game-change caller left three
+            // ungated ways in (a Forza port or bind edit, an account switch and a
+            // backup restore all call ApplyForzaSettings), each of which would bind
+            // UDP 5300 and wire DispatchFrame in a mode that promises no telemetry,
+            // and once bound nothing tore it down again for the rest of the session.
+            if (MasterMode != TrueforceMasterMode.Normal) return;
+
             bool gameIsForza = IsForzaGameName(game);
             ITelemetrySource newSource = null;
             if (game == "AssettoCorsa")
@@ -13261,6 +14345,10 @@ namespace TrueforceForAll.Plugin
         {
             if (Settings?.Forza == null) return;
             PersistSettingsCore();
+            // The settings are saved in every mode; the LISTENER is a full-mode
+            // thing. Returning here rather than further in also keeps the null
+            // _simHubSource below out of reach, since nothing outside full has one.
+            if (MasterMode != TrueforceMasterMode.Normal) return;
 
             lock (_sourceSwapLock)
             {
@@ -13321,7 +14409,9 @@ namespace TrueforceForAll.Plugin
                     if (_telemetrySource == _forzaUdp)
                     {
                         _forzaUdp.OnFrame = null;
-                        _simHubSource.OnFrame = DispatchFrame;
+                        // Null-guarded: the fallback only exists in full mode, and
+                        // this used to be an unconditional dereference.
+                        if (_simHubSource != null) _simHubSource.OnFrame = DispatchFrame;
                         _telemetrySource = _simHubSource;
                     }
                     try { _forzaUdp.Dispose(); } catch { }
@@ -21545,6 +22635,14 @@ namespace TrueforceForAll.Plugin
                             ? null : Newtonsoft.Json.Linq.JObject.Parse(slot.ProfileForzaJson),
                     };
                     BackupProjection.ApplySettings(env, Settings);
+                    // A profile stashed before the master switch became three-state
+                    // has no MasterMode key, and ApplySettings only writes the keys
+                    // it finds, so the OUTGOING account's mode would survive the
+                    // switch and decide the incoming one. Same answer as the other
+                    // two pre-enum paths: Full, with the profile's own GameEnabled
+                    // map carrying its per-game choices.
+                    if (env.Settings["MasterMode"] == null)
+                        Settings.MasterMode = TrueforceMasterMode.Normal;
                 }
             }
             catch (Exception ex)
@@ -26440,6 +27538,17 @@ namespace TrueforceForAll.Plugin
             var preservedMachineLocal = Settings;
             Settings = imported;
             PreserveMachineLocalSettings(preservedMachineLocal, Settings);
+            // A file written before the master switch had three states carries no
+            // MasterMode, so it deserializes to the C# default. Full is also the
+            // right answer, for the same reason the startup migration uses it: the
+            // imported GameEnabled map carries every per-game "off" the user ever
+            // set, and the old bool never expressed a global one. Stamp the latch so
+            // nothing downstream tries to re-derive it.
+            if (!Settings.MasterModeMigratedV1)
+            {
+                Settings.MasterMode = TrueforceMasterMode.Normal;
+                Settings.MasterModeMigratedV1 = true;
+            }
             // The cross-wheel FFB policy and any pending prompt are per-PC (Excluded
             // from backup); a wholesale import would otherwise replace this PC's choice
             // with the file's. Restore them so the gate below reads this PC's policy.
@@ -27260,6 +28369,18 @@ namespace TrueforceForAll.Plugin
             var ffbGate = BackupProjection.ApplySettings(env, Settings);
             StashCrossWheelFfbIfGated(ffbGate);
 
+            // An envelope built by a version that predates the three-state switch
+            // carries PluginEnabled and no MasterMode, and ApplySettings only writes
+            // keys the envelope actually has, so the local mode would survive a
+            // restore that was meant to replace it. Land on Full and let the
+            // restored GameEnabled map (Portable, so it travels) reproduce every
+            // per-game "off" PC1 had. Deriving Off from the bool instead would take
+            // whichever game PC1 happened to have selected at backup time and
+            // switch PC2 off in every game.
+            if (env?.Settings != null && env.Settings["MasterMode"] == null
+                && env.Settings["PluginEnabled"] != null)
+                Settings.MasterMode = TrueforceMasterMode.Normal;
+
             // PluginEnabled is Portable and just landed without a SetPluginEnabled
             // transition. Reconcile the device FIRST: everything below does file
             // IO that can throw, and every caller (manual restore, conflict
@@ -27276,6 +28397,9 @@ namespace TrueforceForAll.Plugin
             Settings.CarsMigratedV2          = true;
             Settings.LegacyBuiltinsCleanedV1 = true;
             Settings.FoldersRestructuredV3   = true;
+            // The restored MasterMode is authoritative; nothing should re-derive it
+            // from the bool that now merely mirrors it.
+            Settings.MasterModeMigratedV1    = true;
             Settings.CarPresetOrdinalNamesMigratedV1 = true;
             Settings.CarPresetOrdinalNamesMigratedV2 = true;
             Settings.ForzaCarIdsNormalizedV1         = true;
@@ -28241,11 +29365,14 @@ namespace TrueforceForAll.Plugin
             // Initial settle delay so plugin Init can finish on the SimHub side
             // before we start hammering the process table.
             Thread.Sleep(500);
-            while (!_shuttingDown)
+            // _capturePollStop is the mode switch's exit: leaving full mode has to
+            // stop scanning the process table as well as everything else, and
+            // _shuttingDown alone would keep this thread running until SimHub quit.
+            while (!_shuttingDown && !_capturePollStop)
             {
                 CaptureTick();
                 // 1 Hz polling. Sleep in small slices so shutdown is responsive.
-                for (int i = 0; i < 10 && !_shuttingDown; i++)
+                for (int i = 0; i < 10 && !_shuttingDown && !_capturePollStop; i++)
                     Thread.Sleep(100);
             }
         }
@@ -28514,8 +29641,49 @@ namespace TrueforceForAll.Plugin
         // gating checks; the blocking bring-up (HID open + ~136 ms init
         // sequence + tap spawn) is offloaded to the thread pool so SimHub's
         // tick never stalls. Single-flight via _recoveryInProgress.
+        /// <summary>Discovery-only retry for the modes that never open the wheel.
+        ///
+        /// The recovery watchdog was the ONLY thing that re-ran discovery after Init,
+        /// so gating it on full mode meant a wheel powered on (or released by G HUB)
+        /// after startup was never found: the pattern pickers stayed hidden and the
+        /// status pill read "wheel not detected" for the rest of the session, while
+        /// the startup log promised the opposite. This costs one HID enumeration
+        /// every few seconds and only until a wheel answers.</summary>
+        private void MaybeRediscoverWheel()
+        {
+            if (_shuttingDown || _hidWheelPid != 0) return;
+            if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return;
+            if (_isGHubRunning) return;   // it holds the HID; nothing to find until it closes
+
+            long now = Stopwatch.GetTimestamp();
+            if (now - _lastRecoveryAttemptTicks < RecoveryIntervalTicks) return;
+            _lastRecoveryAttemptTicks = now;
+
+            if (System.Threading.Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) != 0) return;
+            Task.Run(() =>
+            {
+                try
+                {
+                    WheelMatch found;
+                    if (DiscoverWheel(out found))
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Wheel detected; the lighting controls are available now.");
+                }
+                catch (Exception ex)
+                { SimHub.Logging.Current.Info("[TF4ALL] wheel rediscovery failed: " + ex.Message); }
+                finally { System.Threading.Volatile.Write(ref _recoveryInProgress, 0); }
+            });
+        }
+
         private void MaybeRecoverDevice()
         {
+            // Full only, and this is the gate that matters most. The watchdog fires
+            // on _device == null, which is the STEADY STATE of both other modes, and
+            // it runs from every data tick. Without this, lights-only would appear
+            // to work for a few seconds and then quietly resurrect the whole force
+            // path: HID open, the init sequence, a USBPcap child, the 1 kHz stream.
+            // Nothing in the UI or the log would say the mode had been violated.
+            if (MasterMode != TrueforceMasterMode.Normal) { MaybeRediscoverWheel(); return; }
             if (_shuttingDown || System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return;
 
             var d = _device;
@@ -28547,6 +29715,19 @@ namespace TrueforceForAll.Plugin
                     // _device is null and resumes the instant it's back.
                     CleanupDevice();
                     if (_shuttingDown) return;
+                    // Re-read the mode INSIDE the work item. The gate above ran on
+                    // the data thread, possibly hundreds of ms ago, and a mode
+                    // switch in that window would otherwise be overtaken here: the
+                    // teardown would finish, this would reopen the HID handle, run
+                    // the init sequence, spawn the capture child and start the ep3
+                    // stream, and nothing afterwards would notice, because the
+                    // watchdog then refuses at its own gate forever.
+                    if (MasterMode != TrueforceMasterMode.Normal)
+                    {
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] Wheel re-attach abandoned: the master mode changed while it was running.");
+                        return;
+                    }
                     bool ok = TryBringUpDevice();
                     SimHub.Logging.Current.Info(ok
                         ? "[TF4ALL] Wheel re-attached; stream resumed."
@@ -28614,6 +29795,13 @@ namespace TrueforceForAll.Plugin
         /// can't run a bring-up at the same time.</summary>
         public string RunActiveDeviceProbe()
         {
+            // The second UI entry into bring-up. Refuse it outside full mode rather
+            // than letting a diagnostic button open the endpoint the mode promises
+            // not to touch.
+            if (MasterMode != TrueforceMasterMode.Normal)
+                return $"Master mode is {ModeLabel(MasterMode)}, so the wheel's force path is "
+                     + "not open and there is nothing to probe. Switch to Normal to use this.";
+
             var d = _device;
             if (d != null && !d.StreamFaulted)
                 return "Device already healthy: active probe skipped (it never "

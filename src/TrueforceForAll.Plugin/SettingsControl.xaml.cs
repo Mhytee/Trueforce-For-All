@@ -210,6 +210,10 @@ namespace TrueforceForAll.Plugin
         {
             InitializeComponent();
             WireEditableReadouts();
+            // The Forza and Farming Simulator step lists in the Settings tab are
+            // rendered from the same Markdown the guides show, so there is one
+            // text rather than two that drift.
+            RenderEmbeddedGuideSteps();
             // The banner's Install is the same action as the install modal's
             // gold button; style them identically so it reads as one action.
             if (FsModInstallButton != null)
@@ -462,13 +466,7 @@ namespace TrueforceForAll.Plugin
             _suppressEvents = true;
             try
             {
-                PluginEnabledCheck.IsChecked = _plugin.PluginEnabled;
-                string game = _plugin.ActiveGame;
-                // Hint moved off the card into the checkbox tooltip to reclaim a row.
-                if (PluginEnabledCheck != null)
-                    PluginEnabledCheck.ToolTip = string.IsNullOrEmpty(game)
-                        ? "Choice is auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."
-                        : $"Auto-remembered for '{game}'. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel.";
+                RefreshMasterModeUi();
 
                 if (AuthorNameBox != null)
                     AuthorNameBox.Text = _plugin.Settings?.SharingAuthor ?? "";
@@ -1050,6 +1048,15 @@ namespace TrueforceForAll.Plugin
                             ? "Also works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6."
                             : null;
                     }
+                    // Route back to the one-time introduction, on exactly the games
+                    // the dialog itself will open for. Everywhere else it would be a
+                    // link that does nothing: its every line is addressed to the game
+                    // you are in, Farming Simulator included, where "set the game's
+                    // force feedback to 0" is the wrong advice outright.
+                    if (ModeBIntroLink != null)
+                        ModeBIntroLink.Visibility = mbSupported
+                            ? System.Windows.Visibility.Visible
+                            : System.Windows.Visibility.Collapsed;
                     ModeBEnabledCheck.Visibility = springGame
                         ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
                     // The controls stay visible in every game so the section can be
@@ -1084,10 +1091,10 @@ namespace TrueforceForAll.Plugin
                     if (TeleFfbSectionHeader != null)
                         TeleFfbSectionHeader.Text = reshapeGame
                             ? "Force feedback" : "Telemetry Based FFB";
-                    if (WheelLightsNeedNote != null)
-                        WheelLightsNeedNote.Text = reshapeGame
-                            ? "These need the force feedback above switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; taking the force over ourselves frees them. That is why iRacing needs its own force feedback turned off, and why the lights and screen come back once it is."
-                            : "These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them.";
+                    // WheelLightsNeedNote is no longer set here. One sentence now
+                    // covers every game, iRacing included, so it lives in the XAML
+                    // with the rest of the section instead of being rebuilt on
+                    // every refresh tick to say the same thing.
                     if (ModeBUnsupportedBadge != null)
                         ModeBUnsupportedBadge.Visibility = mbSupported || springGame
                             ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
@@ -1243,7 +1250,16 @@ namespace TrueforceForAll.Plugin
                     OledSection.Visibility = _plugin.WheelHasOledScreen
                         ? Visibility.Visible : Visibility.Collapsed;
                 // The gate above sits on the inner section, so on a wheel with no
-                // screen the LIGHTSYNC wrapper would render a "Wheel screen"
+                // The LIGHTSYNC tab hides itself on a wheel that cannot be programmed,
+                // and that answer changes the moment a wheel is discovered. Re-run
+                // the gate only when the verdict actually moves, since it reparents
+                // controls and this method runs on a timer.
+                {
+                    bool wantTab = _plugin.Settings?.LightsyncTabUnlocked == true
+                                && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern);
+                    if (_lightsyncTabShown != wantTab) ApplyLightsyncTabVisibility();
+                }
+                // screen the LIGHTSYNC wrapper would render a "Dynamic OLED"
                 // header above nothing. Hide the whole expander with it.
                 if (LightsyncScreenExpander != null)
                     LightsyncScreenExpander.Visibility = _plugin.WheelHasOledScreen
@@ -1258,6 +1274,8 @@ namespace TrueforceForAll.Plugin
                         ? "Wheel lights and screen" : "Wheel lights";
                 if (LovelyCarDataCheck != null)
                     LovelyCarDataCheck.IsChecked = _plugin.Settings?.LovelyCarDataEnabled == true;
+                if (AlwaysRememberPatternCheck != null)
+                    AlwaysRememberPatternCheck.IsChecked = _plugin.Settings?.AlwaysRememberCarPattern == true;
                 RefreshLightsyncCycleHint();
                 if (ModeBOledCheck != null)
                     ModeBOledCheck.IsChecked = _plugin.Settings?.ModeBOledEnabled == true;
@@ -1298,16 +1316,18 @@ namespace TrueforceForAll.Plugin
                 // actual car name ("1997 Mazda RX-7"). Falls back to carId for
                 // games whose carIds are already descriptive (AC) or for cars
                 // not in the catalog.
+                string game = _plugin.ActiveGame;
                 HeaderGameText.Text = string.IsNullOrEmpty(game) ? "(none)" : game;
-                // Fire the iRacing app.ini notice once per transition into iRacing
-                // (deferred off the dispatcher so a modal never blocks this refresh).
+                // The iRacing notice now fires from the plugin on first sight of the
+                // game, so it reaches people who never open this panel. All this does
+                // is offer it a window to sit on when the panel IS open; the plugin's
+                // own latch is what stops it appearing twice.
                 string curGameForNotice = _plugin?.ActiveGame;
                 if (!string.Equals(_lastGameForIracingNotice, curGameForNotice, StringComparison.Ordinal))
                 {
                     _lastGameForIracingNotice = curGameForNotice;
                     if (string.Equals(curGameForNotice, "IRacing", StringComparison.Ordinal))
-                        Dispatcher.BeginInvoke(new Action(MaybeShowIracingTrueforceNotice),
-                            System.Windows.Threading.DispatcherPriority.Background);
+                        _plugin?.ShowIracingNotice(Window.GetWindow(this));
                 }
                 // The Mode B intro is NOT fired here. Launching inside a
                 // capable game (e.g. the FH6 profile) would pop it on SimHub's
@@ -2580,7 +2600,15 @@ namespace TrueforceForAll.Plugin
             string text;
             System.Windows.Media.SolidColorBrush bg, dot;
 
-            if (!enabled)                       { text = "Disabled";              bg = PillGreyBg;  dot = PillGreyDot;  }
+            // Lights-only gets its own state ahead of everything else. In that mode
+            // "Stream stopped" and "Waiting for telemetry" are both TRUE and both
+            // correct, and rendering either in amber would show a fault for exactly
+            // the behaviour the user asked for.
+            if (_plugin.MasterMode == TrueforceMasterMode.LightsyncOnly)
+                                                { text = wheelOk ? "Lightsync only" : "Wheel not detected";
+                                                  bg = wheelOk ? PillMutedBg : PillAmberBg;
+                                                  dot = wheelOk ? PillMutedDot : PillAmberDot; }
+            else if (!enabled)                  { text = "Disabled";              bg = PillGreyBg;  dot = PillGreyDot;  }
             else if (!wheelOk)                  { text = "Wheel not detected";    bg = PillAmberBg; dot = PillAmberDot; }
             else if (!streamOk)                 { text = "Stream stopped";        bg = PillAmberBg; dot = PillAmberDot; }
             else if (!gameOn)
@@ -4857,12 +4885,105 @@ namespace TrueforceForAll.Plugin
 
         // ---------- Master / Audio ----------
 
-        private void PluginEnabled_Changed(object sender, RoutedEventArgs e)
+        /// <summary>Load the master-mode selector and the line under it.
+        ///
+        /// Both read the EFFECTIVE mode, which is what the plugin is actually doing,
+        /// exactly as the checkbox this replaced read the effective bool. Showing the
+        /// stored choice instead looked tidier and broke the per-game switch: a Full
+        /// user starting iRacing has the plugin auto-yield for that game, and a
+        /// selector still reading "Full" cannot be used to take it back, because
+        /// picking the already-selected item raises no event in WPF.</summary>
+        private void RefreshMasterModeUi()
         {
-            if (_suppressEvents || _plugin == null) return;
-            // Plugin-enabled is a per-game preference (GameEnabled dict), not
-            // part of preset content, so it doesn't dirty the active preset.
-            _plugin.SetPluginEnabled(PluginEnabledCheck.IsChecked == true);
+            if (_plugin == null) return;
+            var effective = _plugin.MasterMode;
+            if (MasterModeCombo != null) MasterModeCombo.SelectedIndex = IndexForMode(effective);
+
+            string game = _plugin.ActiveGame;
+            if (MasterModeNote == null) return;
+
+            // The effective mode can differ from the stored one, because the per-game
+            // switch demotes. Only ONE case earns its own sentence: iRacing, where
+            // there is something specific to do about it and a link to the steps.
+            // Everywhere else the mode name plus its plain description is enough, and
+            // a per-game explanation under every game was more words than the fact
+            // was worth.
+            if (effective == TrueforceMasterMode.LightsyncOnly
+                && _plugin.StoredMasterMode == TrueforceMasterMode.Normal
+                && _plugin.ActiveGameIsReshapeGame)
+            {
+                // Built as inlines rather than plain text so "iRacing setup
+                // instructions" is a link straight to the modal, instead of telling
+                // someone the steps exist and leaving them to find them.
+                MasterModeNote.Inlines.Clear();
+                MasterModeNote.Inlines.Add(new Run(
+                    "iRacing supports Trueforce natively. If you want to use our effects instead, "
+                    + "switch to Normal and follow the "));
+                var steps = new Hyperlink(new Run("iRacing setup instructions"));
+                steps.Click += (s2, e2) => _plugin?.ShowIracingNotice(Window.GetWindow(this), force: true);
+                MasterModeNote.Inlines.Add(steps);
+                MasterModeNote.Inlines.Add(new Run("."));
+                if (_plugin.WheelHasOledScreen)
+                    MasterModeNote.Inlines.Add(new Run(" Normal mode also unlocks dynamic OLED support."));
+                return;
+            }
+
+            switch (effective)
+            {
+                case TrueforceMasterMode.Off:
+                    // Off is the per-game disable, so with a game running that is
+                    // what it says. The global variant only happens when someone
+                    // picks Off at the desk, and there is no game to name.
+                    MasterModeNote.Text = string.IsNullOrEmpty(game)
+                        ? "Off: fully disables all plugin features."
+                        : "Off: fully disables all plugin features for this game.";
+                    break;
+                case TrueforceMasterMode.LightsyncOnly:
+                    // Says what it switches OFF, deliberately. Describing it by what
+                    // it does with the lights read as a promise to light wheels in
+                    // games that never light them, which is not something we can do.
+                    MasterModeNote.Text =
+                        "Lightsync only: disables the plugin's Trueforce effects and FFB tap. "
+                        + "For games with native Trueforce support, or when you only want our "
+                        + "Lightsync patterns and features.";
+                    break;
+                default:
+                    // Deliberately does not list the features. It is the default and
+                    // the mode nearly everyone runs everywhere, so it has nothing to
+                    // justify; the tabs below are the feature list. Mirrors the Off
+                    // line, which is the same sentence inverted. Naming the wheel's
+                    // screen also meant conditioning on whether the wheel has one,
+                    // which is a lot of machinery for a caption.
+                    // A "Forza needs its telemetry pointed here" sentence was tried
+                    // here and taken out again: three surfaces already say it at the
+                    // moment it is true (the UDP setup banner, the SimHub-fallback
+                    // banner, the slip-starved warning), all of them landing on the
+                    // same steps, and this line is read in every game by everyone
+                    // whose setup is already fine. The header's guide list covers
+                    // the one case they miss, someone setting Forza up before
+                    // starting it, without a condition and without the noise.
+                    MasterModeNote.Text = "Normal: all plugin features enabled. The one to use in most games.";
+                    break;
+            }
+        }
+
+        private static int IndexForMode(TrueforceMasterMode m)
+            => m == TrueforceMasterMode.Normal ? 0
+             : m == TrueforceMasterMode.LightsyncOnly ? 1 : 2;
+
+        private static TrueforceMasterMode ModeForIndex(int i)
+            => i == 0 ? TrueforceMasterMode.Normal
+             : i == 1 ? TrueforceMasterMode.LightsyncOnly : TrueforceMasterMode.Off;
+
+        private void MasterMode_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || MasterModeCombo == null) return;
+            // The master mode is a per-game preference (GameEnabled dict) where it is
+            // off or full, and a global stance where it is lights only. Neither is
+            // preset content, so this does not dirty the active preset.
+            _plugin.SetMasterMode(ModeForIndex(MasterModeCombo.SelectedIndex));
+            RefreshMasterModeUi();
+            try { UpdateStatusPill(); } catch { }
         }
 
         private void MasterGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -6718,6 +6839,19 @@ namespace TrueforceForAll.Plugin
         private void UsbPcapPickDevice_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
+            // Full only. The picker's scan spawns a USBPcapCMD child per root hub
+            // and captures every device on the bus, including the wheel the game is
+            // driving, which is precisely the "no USB capture" the other two modes
+            // promise. The FFB-tap buttons beside it are already inert without a
+            // device; this was the half that still did work.
+            if (_plugin.MasterMode != TrueforceMasterMode.Normal)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Pick device manually",
+                    $"The master mode is {TrueforcePlugin.ModeLabel(_plugin.MasterMode)}, so the plugin is not "
+                    + "capturing USB traffic and there is nothing to pick a device for. Switch to Normal first.",
+                    DialogKind.Info);
+                return;
+            }
             var dlg = new UsbDevicePickerWindow(_plugin);
             try { dlg.Owner = Window.GetWindow(this); } catch { }
             dlg.ShowDialog();
@@ -6741,6 +6875,17 @@ namespace TrueforceForAll.Plugin
         // Per-car rev-light data master switch. Networked and third-party, so it
         // is off until asked for. Turning it off drops the in-memory copies at
         // once so the lights revert this frame rather than at the next car.
+        private void AlwaysRememberPattern_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.AlwaysRememberCarPattern = AlwaysRememberPatternCheck?.IsChecked == true;
+            _plugin.PersistSettings();
+            // The Remember button hides once a pick is pinned, and with this on the
+            // pick pins itself, so the row beside it needs re-reading.
+            RefreshRevLightPicker();
+            RefreshCarRevLightRow();
+        }
+
         private void LovelyCarData_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -7616,11 +7761,20 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private void UdpSetupBannerButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>Open the Forza Data Out steps: Settings tab, UDP telemetry
+        /// expanded, scrolled to the numbered steps and the Port box they refer to.
+        ///
+        /// The one place the steps live, so every route to them (both banners, the
+        /// mode note, the header's guide list) lands on the same copy next to the
+        /// controls it talks about. A guide that restates the steps somewhere else
+        /// drifts from the ones the user actually follows.</summary>
+        /// <param name="openTroubleshooter">Open "Not receiving packets?" too. For
+        /// the routes that arrive because nothing is arriving.</param>
+        private void JumpToForzaTelemetrySetup(bool openTroubleshooter)
         {
             if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
             if (UdpTelemetryExpander != null) UdpTelemetryExpander.IsExpanded = true;
-            if (ForzaTroubleshootExpander != null)
+            if (openTroubleshooter && ForzaTroubleshootExpander != null)
                 ForzaTroubleshootExpander.IsExpanded = true;
             // Defer the scroll until the Settings tab has laid out its content.
             FrameworkElement target = ForzaSection;
@@ -7628,6 +7782,9 @@ namespace TrueforceForAll.Plugin
                 Dispatcher.BeginInvoke(new Action(() => target.BringIntoView()),
                     DispatcherPriority.Background);
         }
+
+        private void UdpSetupBannerButton_Click(object sender, RoutedEventArgs e)
+            => JumpToForzaTelemetrySetup(openTroubleshooter: true);
 
         // Drives the "running on SimHub fallback" info banner. Distinct from the
         // no-telemetry setup banner: here telemetry IS reaching SimHub, we just
@@ -7638,18 +7795,11 @@ namespace TrueforceForAll.Plugin
             ForzaFallbackBanner.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        // The user is already receiving telemetry (via SimHub), so jump straight to
+        // the Forza setup section and the forward fields rather than the "not
+        // receiving packets?" troubleshooter.
         private void ForzaFallbackBannerButton_Click(object sender, RoutedEventArgs e)
-        {
-            // The user is already receiving telemetry (via SimHub), so jump
-            // straight to the Forza setup section and the forward fields rather
-            // than the "not receiving packets?" troubleshooter.
-            if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
-            if (UdpTelemetryExpander != null) UdpTelemetryExpander.IsExpanded = true;
-            FrameworkElement target = ForzaSection;
-            if (target != null)
-                Dispatcher.BeginInvoke(new Action(() => target.BringIntoView()),
-                    DispatcherPriority.Background);
-        }
+            => JumpToForzaTelemetrySetup(openTroubleshooter: false);
 
         // Home-screen gain tile toggle.
         private void ShowFeedbackBox_Changed(object sender, RoutedEventArgs e)
@@ -9009,7 +9159,7 @@ namespace TrueforceForAll.Plugin
                 // section, rather than auto-popping on the home screen. Deferred to
                 // Background so the tab paints first and the modal opens over it;
                 // MaybeShowModeBIntro no-ops if already seen or the game can't use it.
-                Dispatcher.BeginInvoke(new Action(MaybeShowModeBIntro),
+                Dispatcher.BeginInvoke(new Action(() => MaybeShowModeBIntro()),
                     System.Windows.Threading.DispatcherPriority.Background);
             }
         }
@@ -11054,9 +11204,9 @@ namespace TrueforceForAll.Plugin
         // still honored as a gate for legacy mid-cadence settings files.
         // iRacing app.ini Trueforce notice. Re-fires each time iRacing becomes
         // the active game until the user dismisses it for good. Trigger lives in
-        // RefreshFromPlugin (transition into "IRacing"); this is the show step.
+        // RefreshFromPlugin (transition into "IRacing"); the show step now lives on
+        // the plugin, which fires it on first sight of the game.
         private string _lastGameForIracingNotice;
-        private bool _iracingNoticeShowing;
         // No hand-wrapping: the dialog's body already wraps (TrueforceDialog
         // sets TextWrapping.Wrap), so baked-in line breaks only fought it and
         // left ragged short lines (owner, 2026-08-16). Breaks here are
@@ -11064,44 +11214,10 @@ namespace TrueforceForAll.Plugin
         // Short, and reasons instead of warnings (owner, 2026-08-16). The
         // long version spent its words on caveats, which reads as risk for
         // something that is three settings and reversible.
-        private const string IracingTrueforceNoticeBody =
-            "iRacing keeps working out what the car is doing. It just stops driving the wheel itself and hands those forces to the plugin, so the feel stays the sim's own, and your rev lights and wheel screen come back with it.\n\n" +
-            "Three steps, once:\n\n" +
-            "1. With iRacing closed, open Documents\\iRacing\\app.ini and set loadTrueForceAPI=0.\n" +
-            "2. Start iRacing and turn its force feedback off in the options. Leave its strength number where it is, the plugin reads it.\n" +
-            "3. Tick Telemetry Based FFB for iRacing on that tab.\n\n" +
-            "If the wheel stays quiet afterwards, one of the two iRacing switches is still on.";
-
-        private void MaybeShowIracingTrueforceNotice()
-        {
-            if (_plugin?.Settings == null) return;
-            if (_plugin.Settings.IRacingTrueforceNoticeDismissed) return;
-            if (!string.Equals(_plugin.ActiveGame, "IRacing", StringComparison.Ordinal)) return;
-            // SimHub caches this control; a dispatched action can fire after
-            // Unloaded, when GetWindow returns null and a modal would detach.
-            var owner = Window.GetWindow(this);
-            if (owner == null) return;
-            if (_iracingNoticeShowing) return;
-            _iracingNoticeShowing = true;
-            try
-            {
-                bool? r = TrueforceDialog.Show(owner,
-                    "Using Trueforce For All in iRacing",
-                    IracingTrueforceNoticeBody,
-                    DialogKind.Info,
-                    okLabel: "Got it, don't show again",
-                    cancelLabel: "Remind me later",
-                    goldOk: true);
-                // true = dismiss for good. false/null (Remind me later / X) leaves
-                // the latch off, so it re-appears on the next iRacing launch.
-                if (r == true)
-                {
-                    _plugin.Settings.IRacingTrueforceNoticeDismissed = true;
-                    _plugin.PersistSettings();
-                }
-            }
-            finally { _iracingNoticeShowing = false; }
-        }
+        // The iRacing notice body and its show step moved to TrueforcePlugin
+        // (ShowIracingNotice) so it can fire the moment iRacing is seen rather
+        // than waiting for someone to open this panel. Only the transition
+        // tracker above stayed, to hand the dialog a window when there is one.
 
         // Telemetry Based FFB (Mode B) intro. Shown once, the first time a
         // Mode-B-capable game (FM8 / FH5 / FH6) is the active game. Trigger is
@@ -11109,10 +11225,17 @@ namespace TrueforceForAll.Plugin
         // so it appears in context instead of over SimHub's home screen. The
         // HasSeenModeBIntro flag keeps it one-time; this is the show step.
         private bool _modeBIntroShowing;
-        private void MaybeShowModeBIntro()
+        /// <param name="force">A deliberate request (the tab's setup-instructions
+        /// link, or the header's guide list), which ignores the one-time latch.
+        /// Someone who asks for the walkthrough is asking for the walkthrough.
+        /// The supported-game gate still stands either way: every line of this
+        /// dialog is addressed to the game you are in, and there is no honest way
+        /// to say "set this game's force feedback to 0" to someone who is not in
+        /// one. The callers send that reader to the tab instead.</param>
+        private void MaybeShowModeBIntro(bool force = false)
         {
             if (_plugin?.Settings == null) return;
-            if (_plugin.Settings.HasSeenModeBIntro) return;
+            if (!force && _plugin.Settings.HasSeenModeBIntro) return;
             if (!_plugin.ActiveGameSupportsModeB) return;
             var owner = Window.GetWindow(this);
             if (owner == null) return;
@@ -11125,6 +11248,12 @@ namespace TrueforceForAll.Plugin
                 // telemetry, and saying otherwise promises a different feel
                 // than the one that arrives (owner, 2026-08-16).
                 bool reshape = _plugin.ActiveGameIsReshapeGame;
+                // Whether there is anything left to offer. Read BEFORE the body is
+                // built, because the closing sentence points at a button that only
+                // exists when this is true: re-opened from the tab's link with the
+                // feature already on, "Then activate it below" sat above a lone
+                // "Got it".
+                bool canActivate = !_plugin.ModeBEnabledForActiveGame;
                 string body = reshape
                     ? "The plugin can carry iRacing's force feedback for you. It does not "
                       + "replace it: iRacing still works out what the car is doing and hands "
@@ -11143,19 +11272,19 @@ namespace TrueforceForAll.Plugin
                       + "game force feedback, so they can only run when the plugin owns the "
                       + "whole signal, as it does here.\n\n"
                       + "To try it, set this game's force feedback and vibration to 0 in its "
-                      + "wheel settings, so the plugin is the only force on the wheel. "
-                      + "Then activate it below.";
+                      + "wheel settings, so the plugin is the only force on the wheel."
+                      + (canActivate ? " Then activate it below." : "");
                 bool? r = TrueforceDialog.Show(owner,
                     reshape ? "Let the plugin carry iRacing's force feedback"
                             : "Telemetry Based FFB is available",
                     body,
                     DialogKind.Info,
-                    okLabel: "Activate for this game",
-                    cancelLabel: "Not now",
+                    okLabel: canActivate ? "Activate for this game" : "Got it",
+                    cancelLabel: canActivate ? "Not now" : null,
                     goldOk: true);
                 // One-time: mark seen on any outcome so it never re-nags.
                 _plugin.Settings.HasSeenModeBIntro = true;
-                if (r == true)
+                if (r == true && canActivate)
                 {
                     _plugin.SetModeBEnabledForActiveGame(true);
                     if (ModeBEnabledCheck != null)
@@ -11170,6 +11299,13 @@ namespace TrueforceForAll.Plugin
             }
             finally { _modeBIntroShowing = false; }
         }
+
+        // The standing route back to the introduction above, which is otherwise
+        // one-time and gone for good once it has been answered. The steps it
+        // carries (set the game's force feedback and vibration to 0) are needed
+        // long after the dialog that delivered them.
+        private void ModeBIntroLink_Click(object sender, RoutedEventArgs e)
+            => MaybeShowModeBIntro(force: true);
 
         private void MaybeShowNetworkedWelcome()
         {
@@ -14118,17 +14254,30 @@ namespace TrueforceForAll.Plugin
 
             if (btn != null)
             {
-                bool already = selPatternId != null
-                    ? remPattern?.Id == selPatternId
-                    : remEffect.HasValue && remEffect.Value == selEffect;
-                btn.IsEnabled = hasCar && (selPatternId != null
-                    ? remPattern?.Id != selPatternId
-                    : selEffect >= 1 && selEffect <= 9 && remEffect != selEffect);
-                btn.Content = already ? "Remembered" : "Remember for this car";
-                btn.ToolTip = hasCar
-                    ? "Optional: re-apply this pattern whenever this car loads. "
-                      + "Your pick is already on the wheel either way."
-                    : "Needs an active car. Your pick is already on the wheel either way.";
+                // Shown only when pressing it would CHANGE something. Selecting Auto
+                // with nothing pinned is already the stored state, so a Remember
+                // button there asks the user to confirm the status quo; and a pattern
+                // that is already remembered was showing a dead "Remembered" button
+                // next to a status line saying the same thing and a Forget link that
+                // undoes it, which is three controls for one fact.
+                //
+                // Auto is the odd one: its tag is a sentinel rather than a pattern id,
+                // and "remembering" it means clearing the pin, so it matches the
+                // stored state precisely when nothing is pinned at all.
+                bool already =
+                    selPatternId == TrueforcePlugin.AutoPatternTag
+                        ? (remPattern == null && !remEffect.HasValue)
+                    : selPatternId != null
+                        ? remPattern?.Id == selPatternId
+                        : remEffect.HasValue && remEffect.Value == selEffect;
+
+                bool offerable = hasCar && !already
+                    && (selPatternId != null || (selEffect >= 1 && selEffect <= 9));
+                btn.Visibility = offerable ? Visibility.Visible : Visibility.Collapsed;
+                btn.IsEnabled = offerable;
+                btn.Content = "Remember for this car";
+                btn.ToolTip = "Optional: re-apply this pattern whenever this car loads. "
+                            + "Your pick is already on the wheel either way.";
             }
             if (status != null)
             {
@@ -14181,8 +14330,11 @@ namespace TrueforceForAll.Plugin
                   + "covers it. Best in the serious sims, and it grows as the data does\n"
                   + "•  Put the gear, your speed and your last lap on the wheel's screen"+
                     "\n\n"
-                  + "The lights and the screen share a channel with game force feedback, "
-                  + "so they need Telemetry Based FFB on.";
+                  + "Driving the bar with your revs shares a channel with game force "
+                  + "feedback, so that part needs Telemetry Based FFB on. The patterns "
+                  + "do not: Lightsync only, at the top of the panel, switches our "
+                  + "Trueforce effects and FFB tap off and leaves the rest of this "
+                  + "tab working.";
 
                 // The binder itself, in the dialog. Sending someone to another tab
                 // to find a row called "Rev pattern next" is how a feature stays
@@ -14364,9 +14516,26 @@ namespace TrueforceForAll.Plugin
         /// <summary>Put the wheel-lights and wheel-screen blocks on whichever tab
         /// owns them right now, show or hide the LIGHTSYNC tab, and never leave the
         /// selection stranded on a tab that just went away.</summary>
+        // What the last call decided, so the periodic refresh can re-run this when
+        // the answer changes without doing MoveBlock work on every tick.
+        private bool? _lightsyncTabShown;
+
         private void ApplyLightsyncTabVisibility()
         {
-            bool on = _plugin?.Settings?.LightsyncTabUnlocked == true;
+            // A G923's strip lights one fixed look and its slots cannot be
+            // programmed, so there is nothing on this tab its owner can use. The
+            // most we could do for that wheel is drive the fixed ladder in step with
+            // the game, which does not earn a tab.
+            //
+            // Fail OPEN on an unknown wheel: the capability property answers false
+            // both for "cannot" and for "no wheel found yet", and a wheel powered on
+            // after SimHub would otherwise take the tab away for the session.
+            bool wheelCannot = _plugin != null
+                            && _plugin.WheelDetected
+                            && !_plugin.WheelHasSelectableLightPattern;
+
+            bool on = _plugin?.Settings?.LightsyncTabUnlocked == true && !wheelCannot;
+            _lightsyncTabShown = on;
 
             MoveBlock(WheelLightsBlock, on ? LightsyncTabHost : ModeBSupportedPanel);
             MoveBlock(WheelScreenBlock, on ? LightsyncScreenHost : ModeBSupportedPanel);
@@ -14380,6 +14549,13 @@ namespace TrueforceForAll.Plugin
                 LightsyncTab.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
             }
 
+            // Built in every mode. The wheel traffic it used to do is gated at
+            // source now (the channel open inside it, the slot writes, the names,
+            // the brightness), and skipping the build instead left the tab visible
+            // with none of its controls constructed: _patternStore stayed null, this
+            // method is one-shot and nothing re-ran it on a mode change, so New threw
+            // a NullReferenceException out of a click handler for the rest of the
+            // session.
             if (on)
             {
                 try { EnsurePatternUi(); }
@@ -14587,7 +14763,8 @@ namespace TrueforceForAll.Plugin
                 // user: opening the channel is HID++ traffic that picking a
                 // pattern never used to cause, and the release check is a disk
                 // read for a backup that cannot exist.
-                if (_plugin.Settings?.LightsyncTabUnlocked == true)
+                if (_plugin.Settings?.LightsyncTabUnlocked == true
+                    && _plugin.MasterMode != TrueforceMasterMode.Off)
                 {
                     // A real thing on the wheel, so any slot we were borrowing has
                     // done its job and goes back to the user before we switch.
@@ -17160,334 +17337,6 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Render a GitHub-flavored Markdown release body as a stack of styled
-        // TextBlocks. Supports headings (#..######) and bullets (- / *); other
-        // syntax falls through as plain text. We don't pull in a real markdown
-        // parser because the release notes only ever use these two constructs
-        // and we want zero added dependencies in net48 plugin land.
-        private static StackPanel RenderReleaseNotes(string body)
-        {
-            var panel = new StackPanel();
-            if (string.IsNullOrWhiteSpace(body))
-            {
-                panel.Children.Add(new TextBlock
-                {
-                    Text = "(No release notes published.)",
-                    FontSize = 12,
-                    Opacity = 0.7,
-                });
-                return panel;
-            }
-
-            // Normalize line endings: GitHub bodies usually arrive with \r\n.
-            string[] lines = body.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-            bool prevWasBlank = false;
-            bool imageNoteShown = false;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                string raw = lines[i] ?? "";
-                string trimmed = raw.TrimStart();
-
-                if (string.IsNullOrWhiteSpace(trimmed))
-                {
-                    // Collapse runs of blank lines into a single small gap.
-                    if (!prevWasBlank && panel.Children.Count > 0)
-                    {
-                        panel.Children.Add(new TextBlock { Height = 6 });
-                        prevWasBlank = true;
-                    }
-                    continue;
-                }
-                prevWasBlank = false;
-
-                // Markdown images (![alt](url), or link-wrapped [![...]) and
-                // the HTML ones GitHub writes when you drag a file into the
-                // release editor (<img src="...user-attachments/...">, and
-                // <video> / <picture> for the same reason).
-                // This renderer is text-only (and WPF wouldn't animate a
-                // release GIF anyway), so image lines are dropped instead of
-                // showing as raw markup. One dim pointer per body tells
-                // in-app readers where the visuals live.
-                if (trimmed.StartsWith("![", StringComparison.Ordinal)
-                    || trimmed.StartsWith("[![", StringComparison.Ordinal)
-                    || trimmed.StartsWith("<img", StringComparison.OrdinalIgnoreCase)
-                    || trimmed.StartsWith("<video", StringComparison.OrdinalIgnoreCase)
-                    || trimmed.StartsWith("<picture", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!imageNoteShown)
-                    {
-                        imageNoteShown = true;
-                        panel.Children.Add(new TextBlock
-                        {
-                            Text = "(screenshots on the GitHub release page)",
-                            FontSize = 11,
-                            Opacity = 0.55,
-                            Margin = new Thickness(0, 0, 0, 2),
-                        });
-                    }
-                    continue;
-                }
-
-                // Blockquote ("> ..." lines), including GitHub alert callouts
-                // ("> [!WARNING]" etc.). Consecutive quote lines collapse into
-                // one left-accented callout box; the quoted content re-enters
-                // this renderer, so headers/bullets/bold inside it work.
-                if (trimmed[0] == '>')
-                {
-                    var quoted = new System.Collections.Generic.List<string>();
-                    int j = i;
-                    while (j < lines.Length)
-                    {
-                        string q = (lines[j] ?? "").TrimStart();
-                        if (q.Length == 0 || q[0] != '>') break;
-                        string innerLine = q.Substring(1);
-                        if (innerLine.StartsWith(" ", StringComparison.Ordinal))
-                            innerLine = innerLine.Substring(1);
-                        quoted.Add(innerLine);
-                        j++;
-                    }
-                    panel.Children.Add(BuildQuoteCallout(quoted));
-                    i = j - 1;   // loop ++ lands on the first non-quote line
-                    continue;
-                }
-
-                // Heading levels 1..3 (deeper levels fall through to plain).
-                int hashCount = 0;
-                while (hashCount < trimmed.Length && trimmed[hashCount] == '#') hashCount++;
-                if (hashCount >= 1 && hashCount <= 3
-                    && hashCount < trimmed.Length && trimmed[hashCount] == ' ')
-                {
-                    string text = trimmed.Substring(hashCount + 1).Trim();
-                    double size = hashCount == 1 ? 16 : hashCount == 2 ? 14 : 13;
-                    var hdr = new TextBlock
-                    {
-                        Text = text,
-                        FontSize = size,
-                        FontWeight = FontWeights.SemiBold,
-                        Margin = new Thickness(0, panel.Children.Count == 0 ? 0 : 10, 0, 2),
-                        TextWrapping = TextWrapping.Wrap,
-                    };
-                    // Gold the section (###) headers to match the bundled
-                    // changelog's grouped look; keep the title (#/##) default.
-                    if (hashCount >= 3)
-                        hdr.Foreground = new SolidColorBrush(Color.FromRgb(0xC8, 0x86, 0x0B));
-                    panel.Children.Add(hdr);
-                    continue;
-                }
-
-                // Bullet rows ("- foo" / "* foo"). Use a real bullet glyph
-                // indented one step. Inline **bold** spans get rendered as
-                // bold runs so release notes like "- **Headline.** desc"
-                // don't show literal asterisks.
-                if (trimmed.Length >= 2
-                    && (trimmed[0] == '-' || trimmed[0] == '*')
-                    && trimmed[1] == ' ')
-                {
-                    string content = trimmed.Substring(2);
-                    // Two-tier: when the bullet opens with a **bold** lead-in
-                    // (our "- **Headline:** description" shape), render the
-                    // headline as a bulleted bold line and the rest as a dimmed,
-                    // indented description line, echoing the bundled changelog.
-                    if (content.StartsWith("**", StringComparison.Ordinal))
-                    {
-                        int close = content.IndexOf("**", 2, StringComparison.Ordinal);
-                        if (close > 2)
-                        {
-                            string headline = content.Substring(2, close - 2);
-                            string desc = content.Substring(close + 2).TrimStart();
-                            var hl = new TextBlock
-                            {
-                                FontSize = 12,
-                                Margin = new Thickness(8, 4, 0, 0),
-                                TextWrapping = TextWrapping.Wrap,
-                            };
-                            hl.Inlines.Add(new Run("• "));
-                            // Through the inline renderer (re-wrapped in **
-                            // so it keeps the bold weight) instead of a raw
-                            // bold Run: headlines can carry links, like the
-                            // bold Patreon link in the v0.2.1 warning.
-                            AppendInlineMarkdown(hl, "**" + headline + "**");
-                            panel.Children.Add(hl);
-                            if (desc.Length > 0)
-                            {
-                                var db = new TextBlock
-                                {
-                                    FontSize = 11,
-                                    Opacity = 0.7,
-                                    Margin = new Thickness(22, 2, 0, 0),
-                                    TextWrapping = TextWrapping.Wrap,
-                                };
-                                AppendInlineMarkdown(db, desc);
-                                panel.Children.Add(db);
-                            }
-                            continue;
-                        }
-                    }
-                    var tb = new TextBlock
-                    {
-                        FontSize = 12,
-                        Margin = new Thickness(8, 2, 0, 2),
-                        TextWrapping = TextWrapping.Wrap,
-                    };
-                    tb.Inlines.Add(new Run("• "));
-                    AppendInlineMarkdown(tb, content);
-                    panel.Children.Add(tb);
-                    continue;
-                }
-
-                // Plain paragraph line. Same **bold** treatment as bullets.
-                var para = new TextBlock
-                {
-                    FontSize = 12,
-                    Margin = new Thickness(0, 2, 0, 2),
-                    TextWrapping = TextWrapping.Wrap,
-                };
-                AppendInlineMarkdown(para, trimmed);
-                panel.Children.Add(para);
-            }
-            return panel;
-        }
-
-        // A "> quoted" block as a left-accented callout box. A GitHub alert
-        // marker ("[!WARNING]" etc.) as the first quoted line picks the title
-        // and accent color, echoing how GitHub renders it; a plain quote gets
-        // a neutral bar and no title. Content re-enters RenderReleaseNotes,
-        // so everything the renderer knows works inside the box too.
-        private static Border BuildQuoteCallout(System.Collections.Generic.List<string> quoted)
-        {
-            string title  = null;
-            Color  accent = Color.FromRgb(0x88, 0x88, 0x88);
-            int start = 0;
-            string first = null;
-            for (int k = 0; k < quoted.Count; k++)
-            {
-                if (!string.IsNullOrWhiteSpace(quoted[k])) { first = quoted[k].Trim(); start = k; break; }
-            }
-            if (first != null
-                && first.StartsWith("[!", StringComparison.Ordinal)
-                && first.EndsWith("]", StringComparison.Ordinal))
-            {
-                switch (first.Substring(2, first.Length - 3).ToUpperInvariant())
-                {
-                    case "WARNING":   title = "Warning";   accent = Color.FromRgb(0xE5, 0xC0, 0x4A); break;
-                    case "CAUTION":   title = "Caution";   accent = Color.FromRgb(0xE0, 0x62, 0x5A); break;
-                    case "IMPORTANT": title = "Important"; accent = Color.FromRgb(0xB0, 0x87, 0xE8); break;
-                    case "NOTE":      title = "Note";      accent = Color.FromRgb(0x6C, 0xA0, 0xDD); break;
-                    case "TIP":       title = "Tip";       accent = Color.FromRgb(0x5F, 0xB8, 0x6A); break;
-                }
-                if (title != null) start++;   // the marker line itself isn't content
-            }
-
-            StackPanel inner;
-            string bodyText = string.Join("\n", quoted.Skip(start));
-            inner = string.IsNullOrWhiteSpace(bodyText) ? new StackPanel() : RenderReleaseNotes(bodyText);
-            if (title != null)
-            {
-                inner.Children.Insert(0, new TextBlock
-                {
-                    Text = title,
-                    FontSize = 12,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(accent),
-                    Margin = new Thickness(0, 0, 0, 2),
-                });
-            }
-            return new Border
-            {
-                BorderBrush = new SolidColorBrush(accent),
-                BorderThickness = new Thickness(3, 0, 0, 0),
-                Background = new SolidColorBrush(Color.FromArgb(0x16, accent.R, accent.G, accent.B)),
-                CornerRadius = new CornerRadius(2),
-                Padding = new Thickness(10, 6, 10, 6),
-                Margin = new Thickness(0, 6, 0, 6),
-                Child = inner,
-            };
-        }
-
-        // Append `text` to a TextBlock's Inlines, rendering **bold** runs in
-        // bold and [label](https://url) as clickable links. Anything outside
-        // those is plain. An unclosed `**` stays literal rather than being
-        // dropped, so a body that opens bold without closing degrades
-        // gracefully; a malformed or non-http link stays literal too. Links
-        // may sit inside bold spans (and carry the bold weight); bold markers
-        // inside a link label are consumed as styling, not shown.
-        private static void AppendInlineMarkdown(TextBlock tb, string text)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            bool bold = false;
-            var sb = new System.Text.StringBuilder();
-            void Flush()
-            {
-                if (sb.Length == 0) return;
-                tb.Inlines.Add(new Run(sb.ToString())
-                {
-                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
-                });
-                sb.Clear();
-            }
-            int i = 0;
-            while (i < text.Length)
-            {
-                if (i + 1 < text.Length && text[i] == '*' && text[i + 1] == '*')
-                {
-                    // Opening bold needs a closer somewhere ahead; otherwise
-                    // the marker is literal text.
-                    if (!bold && text.IndexOf("**", i + 2, StringComparison.Ordinal) < 0)
-                    {
-                        sb.Append("**");
-                        i += 2;
-                        continue;
-                    }
-                    Flush();
-                    bold = !bold;
-                    i += 2;
-                    continue;
-                }
-                if (text[i] == '[')
-                {
-                    int closeBracket = text.IndexOf(']', i + 1);
-                    if (closeBracket > i && closeBracket + 1 < text.Length && text[closeBracket + 1] == '(')
-                    {
-                        int closeParen = text.IndexOf(')', closeBracket + 2);
-                        if (closeParen > closeBracket)
-                        {
-                            string label = text.Substring(i + 1, closeBracket - i - 1).Replace("**", "");
-                            string url   = text.Substring(closeBracket + 2, closeParen - closeBracket - 2);
-                            if (label.Length > 0
-                                && Uri.TryCreate(url, UriKind.Absolute, out var uri)
-                                && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
-                            {
-                                Flush();
-                                var link = new System.Windows.Documents.Hyperlink(new Run(label)
-                                {
-                                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
-                                })
-                                {
-                                    NavigateUri = uri,
-                                    Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xB4, 0xEE)),
-                                };
-                                link.RequestNavigate += (s, e) =>
-                                {
-                                    try
-                                    {
-                                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                                            e.Uri.AbsoluteUri) { UseShellExecute = true });
-                                    }
-                                    catch { }
-                                };
-                                tb.Inlines.Add(link);
-                                i = closeParen + 1;
-                                continue;
-                            }
-                        }
-                    }
-                }
-                sb.Append(text[i]);
-                i++;
-            }
-            Flush();
-        }
-
         // Manual "Check for updates" link in the header. The plugin already
         // fires a one-shot check on Init, but users opening the panel hours
         // later need a way to re-poll without restarting SimHub. The
@@ -17653,7 +17502,7 @@ namespace TrueforceForAll.Plugin
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
                 Padding = new Thickness(10),
             };
-            notesScroll.Content = RenderReleaseNotes(upd.ReleaseNotes);
+            notesScroll.Content = MarkdownView.Render(upd.ReleaseNotes);
             root.Children.Add(notesScroll);
 
             win.Content = root;
@@ -17853,7 +17702,7 @@ namespace TrueforceForAll.Plugin
 
             // GitHub release notes are the canonical source for this modal (so
             // notes can be fixed post-release without a plugin update); the
-            // bundled EffectChangelog is the offline fallback. RenderReleaseNotes
+            // bundled EffectChangelog is the offline fallback. MarkdownView.Render
             // styles the markdown to echo the bundled changelog's look (gold
             // section headers, dimmed two-tier entries).
             var ghReleases = _plugin.GetGitHubReleasesForBanner();
@@ -17934,7 +17783,7 @@ namespace TrueforceForAll.Plugin
                         FontSize = 14,
                         Margin = new Thickness(0, i == 0 ? 0 : 14, 0, 6),
                     });
-                    bodyStack.Children.Add(RenderReleaseNotes(r.Body));
+                    bodyStack.Children.Add(MarkdownView.Render(r.Body));
                 }
             }
             else if (useLocal)
@@ -18037,7 +17886,7 @@ namespace TrueforceForAll.Plugin
         }
 
         // Dev/test: render arbitrary release-notes markdown through the exact
-        // production path (RenderReleaseNotes) so the GitHub notes can be
+        // production path (MarkdownView.Render) so the GitHub notes can be
         // previewed before publishing (the plugin can't fetch an unpublished
         // draft). Driven by the PREVIEW access code from clipboard text.
         private void ShowNotesPreview(string markdown)
@@ -18084,7 +17933,7 @@ namespace TrueforceForAll.Plugin
                 BorderThickness = new Thickness(1),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
                 Padding = new Thickness(12),
-                Content = RenderReleaseNotes(markdown),
+                Content = MarkdownView.Render(markdown),
             };
             root.Children.Add(scroll);
 

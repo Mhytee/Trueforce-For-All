@@ -45,7 +45,10 @@ namespace TrueforceForAll.Plugin
         public static readonly HashSet<string> Portable = new HashSet<string>(StringComparer.Ordinal)
         {
             // Feature toggles the user opted into.
-            "PluginEnabled", "ModeBRevLightsEnabled", "CarRevLightEffect", "CarLightPattern", "ShowFeedbackBox",
+            // MasterMode sits beside the bool it replaced: the two are written
+            // together and must never land on PC2 disagreeing about whether the
+            // plugin is on.
+            "PluginEnabled", "MasterMode", "ModeBRevLightsEnabled", "CarRevLightEffect", "CarLightPattern", "ShowFeedbackBox",
             // iRacing reshape strength. Travels: it is normalized against the
             // sim's own max force, so it carries no wheel-specific meaning.
             "IRacingForceGain", "IRacingUse360Hz",
@@ -94,6 +97,7 @@ namespace TrueforceForAll.Plugin
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
             "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate",
             "LightsyncTabUnlocked", "LovelyCarDataEnabled", "LightsyncDynamicSlot",
+            "AlwaysRememberCarPattern",
             // LED colour trim. Portable because it describes the WHEEL, which
             // travels to the second PC with its own LED binning intact, same
             // reasoning as the rev-light and OLED preferences. Also listed in
@@ -194,6 +198,7 @@ namespace TrueforceForAll.Plugin
             "FoldersRestructuredV3", "UserSlotsMigratedV1", "SlotsKeyedByUserIdV1", "GamesWithRedlineRevalidated",
             "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
             "CommunityDefaultOnRepitchedV1", "EngineChoiceMovedToCarFactsV1", "EngineOnlyOverridesPrunedV1",
+            "MasterModeMigratedV1",
             // Backend config (release bakes constants; a dev override must not travel).
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).

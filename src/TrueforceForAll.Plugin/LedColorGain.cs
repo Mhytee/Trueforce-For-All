@@ -21,13 +21,29 @@
 // So the correction is applied per LED and then renormalised: scale all three
 // channels back up until the brightest one returns to where it started.
 // Scaling all three by the same factor leaves their ratios alone, so the hue
-// stays corrected while the headroom comes back. Pure green and pure blue come
-// out untouched; yellow and white do not move at all, because red is already
-// their peak and red is never cut.
+// stays corrected while the headroom comes back.
+//
+// How much comes back depends on WHICH channel is the colour's peak, and this
+// is the part that is easy to get backwards. The renormalising factor is
+// peakIn/peakOut, so it only exceeds 1 when the peak channel is one being cut.
+// The channel with the HIGHEST gain is the reference: it is never cut, which
+// means a colour peaked on it renormalises by exactly 1 and keeps the full cut
+// on its other channels.
+//
+// With the shipped gains the reference is red, so:
+//   - pure green, pure blue: restored exactly, no light lost.
+//   - green-dominant mixes: scaled up, can end brighter than authored.
+//   - yellow, white, orange, every red-peaked mix: factor of 1, no refund.
+//     Yellow (255,255,0) goes out as (255,155,0) and white as (255,155,165),
+//     which on the emission model these gains imply is roughly a quarter of
+//     the light. That is the real price of the hue fix.
+// None of this is a property of red as such. Set the sliders so green is the
+// highest and green becomes the reference, and the cost moves to the greens.
 //
 // That holds even if the firmware runs its own transfer curve, as long as the
 // curve is the same on all three channels: scaling drive scales all three
-// outputs by the same factor, so the ratio survives.
+// outputs by the same factor, so the ratio survives. A curve does change the
+// SIZE of the quarter above, which is measured in drive, not in photons.
 //
 // What it gives up, deliberately: the unnormalised form also evened out
 // brightness BETWEEN colours, since the green die out-emits the red one at

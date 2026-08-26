@@ -12,6 +12,7 @@
 // Returns: true=affirmative (OK/Yes), false=negative (No/Cancel button),
 //          null=closed via [X] or Esc (treat as Cancel).
 
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -173,13 +174,25 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 8),
             });
 
-            root.Children.Add(new TextBlock
+            // Scrolled, and capped against the screen rather than a fixed number.
+            // The window sizes to its content with no resize grip, so a long body
+            // (the troubleshooting guides run to several screens of steps) would
+            // otherwise push the buttons off the bottom of the display, with no
+            // way to reach them. A short body never reaches the cap and renders
+            // exactly as it did before.
+            root.Children.Add(new ScrollViewer
             {
-                Text = body ?? "",
-                Foreground = MutedFg,
-                FontSize = 12,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                MaxHeight = Math.Max(240, SystemParameters.WorkArea.Height * 0.6),
                 Margin = new Thickness(0, 0, 0, 16),
-                TextWrapping = TextWrapping.Wrap,
+                Content = new TextBlock
+                {
+                    Text = body ?? "",
+                    Foreground = MutedFg,
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap,
+                },
             });
 
             var btnRow = new StackPanel

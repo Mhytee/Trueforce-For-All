@@ -14,6 +14,19 @@ using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
 {
+    /// <summary>What the plugin is allowed to do at all: the master switch every
+    /// subsystem asks before it starts. Off means off, including the wheel's
+    /// lights, which used to keep being written while "disabled".</summary>
+    public enum TrueforceMasterMode
+    {
+        Off = 0,            // touch nothing: no stream, no capture, no wheel writes
+        LightsyncOnly = 1,  // set the wheel's Lightsync patterns only: no ep3 stream, no FFB tap, no effects
+        // "Normal", not "Full": this is the default and the one nearly everyone
+        // runs everywhere, so it should read as the baseline rather than the top of
+        // a ladder. "Full" invited "what am I missing?" in the other two.
+        Normal = 2,         // everything, with the per-game switch underneath it
+    }
+
     /// <summary>How a PC treats FFB tuning synced from a DIFFERENT wheel model.
     /// FFB always backs up regardless; this only governs whether it is APPLIED on
     /// restore/sync onto a mismatched wheel. Per-PC (tied to this device's wheel).</summary>
@@ -26,11 +39,35 @@ namespace TrueforceForAll.Plugin
 
     public sealed class TrueforceSettings
     {
-        // Master enable. When false, ProducerLoop skips rendering and the
-        // wheel is told to return to its native FFB/Trueforce path, useful
-        // for games that ship native Trueforce support (iRacing) where our
-        // ep3 stream would conflict with the game's own.
+        // Master enable, RETIRED as an input on 2026-08-24 and kept as a
+        // DERIVED mirror of MasterMode == Full (the RpmLedUnlocked precedent
+        // below). Still written on every mode change, still backed up, still
+        // read by the ep3 pause gate and the producer loop, so an older build
+        // reading a newer settings file sees exactly the answer it expects:
+        // Lightsync-only and Off both look like "disabled" to anything that
+        // only knows the bool, which is the safe reading in both cases.
+        //
+        // When false, ProducerLoop skips rendering and the wheel is told to
+        // return to its native FFB/Trueforce path, useful for games that ship
+        // native Trueforce support (iRacing) where our ep3 stream would
+        // conflict with the game's own.
         public bool PluginEnabled { get; set; } = true;
+
+        // The real master switch. Off touches nothing at all; LightsyncOnly
+        // runs the wheel's lights and nothing else (no ep3 stream, no USBPcap
+        // capture, no helper exe, no telemetry sources, no effects); Full is
+        // everything, with the per-game switch underneath it.
+        //
+        // Defaults to Full so a fresh install behaves exactly as it always
+        // has. Existing installs are translated once by MasterModeMigratedV1.
+        [JsonConverter(typeof(StringEnumConverter))]
+        public TrueforceMasterMode MasterMode { get; set; } = TrueforceMasterMode.Normal;
+
+        // One-shot latch for the PluginEnabled -> MasterMode translation.
+        // EXCLUDED from backup: carrying "already migrated" onto a machine
+        // whose settings predate the mode would make it skip its own
+        // translation and inherit a default instead of the user's choice.
+        public bool MasterModeMigratedV1 { get; set; } = false;
 
         // Drive the wheel's rev lights while Telemetry Based FFB (Mode B) is
         // on. On by default: Mode B means the game's own FFB is quiet on the
@@ -1338,6 +1375,16 @@ namespace TrueforceForAll.Plugin
         // handed back on exit, so borrowing stays reversible. Portable: the five
         // slots exist on any of these wheelbases, so the preference travels.
         public int LightsyncDynamicSlot { get; set; } = -1;
+
+        // Pin every deliberate pattern pick to the car you are in, without having
+        // to press Remember. Off by default: pinning is a per-car commitment, and
+        // someone flicking through patterns to look at them should not end up with
+        // whichever one they stopped on bound to that car forever.
+        //
+        // Only DELIBERATE picks count (a dropdown, a pattern-editor row, a bound
+        // cycle button). Applying a pattern the car already remembers, or restoring
+        // one, does not re-pin anything.
+        public bool AlwaysRememberCarPattern { get; set; } = false;
 
         // Per-channel trim for what the LEDs actually emit. See LedColorGain.
         // The colours we store are sRGB intent; these three say how far each

@@ -875,6 +875,12 @@ namespace TrueforceForAll.Plugin
                         return;
                     }
 
+                    // Every write below goes through Hold, which is where the
+                    // abandon latch is checked. It used to call _channel.Show
+                    // directly, so AbandonScreen could clear the panel once and the
+                    // report would then draw over it for the remaining twenty-odd
+                    // seconds, re-starting the sender thread on its next Show.
+                    if (_abandoned) return;
                     _testStatus = "▶ reading the wheel's layout table…";
                     _log("[OLED] ---- layout table for THIS wheel ----");
                     _log("[OLED] " + _channel.ReadLayoutTable());
@@ -887,15 +893,15 @@ namespace TrueforceForAll.Plugin
                     // Only fn0-fn3 are documented; anything above is unexplored.
                     _testStatus = "▶ probing undocumented functions…";
                     _log("[OLED] ---- function probe fn4-fn15 ----");
+                    if (_abandoned) return;
                     _channel.ProbeFunctions(4, 15);
                     _log("[OLED] ---- end function probe ----");
 
                     // Ruler offsets, so a photograph can be read without
                     // counting: A=5, B=6 ... Z=30, 0=31 ... 9=40, a=41 ... w=63.
                     _log("[OLED] ruler key: A=offset 5, B=6, ... Z=30, 0=31, ... 9=40, a=41, ... w=63");
-                    _testStatus = "▶ 1/4 layout 7 ruler - is the lower row one run of letters?";
-                    _channel.Show(_channel.BuildRuler(OledLayout.TwoRow));
-                    Thread.Sleep(holdMs);
+                    Hold("▶ 1/4 layout 7 ruler - is the lower row one run of letters?",
+                         _channel.BuildRuler(OledLayout.TwoRow), holdMs);
 
                     // The split was reported with a SHORT string and denied with
                     // a full-width ruler. A full field would look contiguous
@@ -904,15 +910,12 @@ namespace TrueforceForAll.Plugin
                     // isolate it: the original case verbatim, the same without
                     // its label in case the label is what moves things, and the
                     // same string on the layout that has always looked right.
-                    _testStatus = "▶ 2/4 layout 7, \"112%\" with a label - GAP or no gap?";
-                    _channel.Show(_channel.BuildTwoRow("TWO ROW 112%", "112%"));
-                    Thread.Sleep(holdMs);
-                    _testStatus = "▶ 3/4 layout 7, \"112%\" alone - GAP or no gap?";
-                    _channel.Show(_channel.BuildTwoRow("", "112%"));
-                    Thread.Sleep(holdMs);
-                    _testStatus = "▶ 4/4 layout 9, \"112%\" alone - the control";
-                    _channel.Show(_channel.BuildFourRowCenter("", "112%", "", ""));
-                    Thread.Sleep(holdMs);
+                    Hold("▶ 2/4 layout 7, \"112%\" with a label - GAP or no gap?",
+                         _channel.BuildTwoRow("TWO ROW 112%", "112%"), holdMs);
+                    Hold("▶ 3/4 layout 7, \"112%\" alone - GAP or no gap?",
+                         _channel.BuildTwoRow("", "112%"), holdMs);
+                    Hold("▶ 4/4 layout 9, \"112%\" alone - the control",
+                         _channel.BuildFourRowCenter("", "112%", "", ""), holdMs);
                 }
                 catch (Exception ex) { _log($"[OLED] layout report error: {ex.Message}"); }
                 finally
@@ -931,11 +934,39 @@ namespace TrueforceForAll.Plugin
 
         private void Hold(string status, byte[] setter, int ms)
         {
-            if (!_channel.IsReady) return;
+            // Abandoned is checked HERE rather than only between calls, because a
+            // single hold is 2.5 to 6 seconds and the layout report is four of them:
+            // without this a master-mode switch two seconds in kept drawing on the
+            // wheel's screen for another twenty.
+            if (!_channel.IsReady || _abandoned) return;
             _testStatus = status;
             _channel.Show(setter);
             Thread.Sleep(ms);
         }
+
+        /// <summary>Set while a test or layout report should stop early. Not a
+        /// generation counter like the LED side's, because neither of these can run
+        /// concurrently with itself: _testing already refuses a second one.</summary>
+        private volatile bool _abandoned;
+
+        /// <summary>Hand the screen back and stop anything already running.
+        ///
+        /// ForceOff is not enough on its own: it stands down while _testing is set,
+        /// which covers the whole of a test (about 13 s) or a layout report (about
+        /// 25 s), so a mode switch during either left the panel being written long
+        /// after the plugin had promised to stop.</summary>
+        public void AbandonScreen()
+        {
+            _abandoned = true;
+            try { if (_channel.IsReady) _channel.Clear(); } catch { }
+            _showing = false;
+            _testing = false;
+            _testStatus = "";
+        }
+
+        /// <summary>Clear the abandon latch when a mode that may write the screen
+        /// comes back, so a later test is not refused by a stale flag.</summary>
+        public void AllowScreen() { _abandoned = false; }
 
         /// <summary>Hand the screen back now (feature unchecked / plugin
         /// disabled). No telemetry frames arrive after that to drive the

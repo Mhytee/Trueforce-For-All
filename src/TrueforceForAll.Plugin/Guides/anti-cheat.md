@@ -1,0 +1,9 @@
+Yes. The plugin runs entirely outside the game. It **never** injects code, reads or writes game memory, or hooks the game in any way.
+
+What it does instead:
+
+- Talks to your wheel over USB.
+- Reads telemetry the game already broadcasts, through SimHub, shared memory or UDP.
+- Captures game audio through Windows' own loopback.
+
+Switching a game's native Trueforce off, where you choose to, is done by editing a config file or flipping a setting before launch. Never by touching the running game.

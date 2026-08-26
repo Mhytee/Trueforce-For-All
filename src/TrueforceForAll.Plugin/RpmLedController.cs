@@ -64,6 +64,11 @@ namespace TrueforceForAll.Plugin
         /// auto-off knows it has been superseded and stands down.</summary>
         private volatile int _holdGen;
 
+        /// <summary>Bumped by each test sweep and by AbandonWheel, so a running
+        /// test can be told to stop. Its loops used to ride _channel.IsReady alone,
+        /// which nothing clears, so nothing could interrupt an ~11 second sweep.</summary>
+        private volatile int _testGen;
+
         private void TakeStrip(int owner) { _owner = owner; _testing = owner != OwnerNone; }
         private void DropStrip()          { _owner = OwnerNone; _testing = false; }
 
@@ -372,6 +377,11 @@ namespace TrueforceForAll.Plugin
             // Mark testing BEFORE returning so the UI's status-poll timer sees the
             // test immediately (it self-stops ~1 s after RpmLedIsTesting clears).
             TakeStrip(OwnerTest);
+            // A generation, so the sweep can be told to stop. Without one its loops
+            // rode _channel.IsReady alone, which nothing clears, and a master-mode
+            // switch made mid-test left it writing levels for the rest of its ~11 s
+            // into a mode that had just promised to stop touching the wheel.
+            int testGen = Interlocked.Increment(ref _testGen);
             Task.Run(() =>
             {
                 bool opened = _channel.IsReady;
@@ -399,22 +409,22 @@ namespace TrueforceForAll.Plugin
                     // The wheel's own step count (10 G PRO/RS50, 5 G923),
                     // known once the channel resolved.
                     int steps = _channel.StripLength;
-                    for (int cycle = 0; cycle < 2 && _channel.IsReady; cycle++)
+                    for (int cycle = 0; cycle < 2 && _channel.IsReady && _testGen == testGen; cycle++)
                     {
-                        for (int lvl = 0; lvl <= steps && _channel.IsReady; lvl++)
+                        for (int lvl = 0; lvl <= steps && _channel.IsReady && _testGen == testGen; lvl++)
                         {
                             _testStatus = $"▶ rev sweep - level {lvl}/{steps}";
                             _channel.SetLevel(lvl);
                             Thread.Sleep(stepMs);
                         }
-                        for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady; lvl--)
+                        for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady && _testGen == testGen; lvl--)
                         {
                             _testStatus = $"▶ rev sweep - level {lvl}/{steps}";
                             _channel.SetLevel(lvl);
                             Thread.Sleep(stepMs);
                         }
                     }
-                    if (_channel.IsReady)
+                    if (_channel.IsReady && _testGen == testGen)
                     {
                         _testStatus = "▶ redline (all LEDs)";
                         _log($"[RPM-LED] Test: redline hold (level {steps})");
@@ -427,14 +437,17 @@ namespace TrueforceForAll.Plugin
                 {
                     // Only tidy up / claim "finished" when we actually opened;
                     // the open-failure path keeps its own status message.
-                    if (opened)
+                    // Superseded (AbandonWheel bumped the generation) means someone
+                    // else already turned the strip off and owns it now, so touching
+                    // the wheel or the owner token here would undo their work.
+                    if (opened && _testGen == testGen)
                     {
                         try { _channel.TurnOff(); } catch { }
                         _lastBucket = -1;
                         _testStatus = "test finished - LEDs off";
                         _log("[RPM-LED] Test: finished, LEDs off (level 0).");
                     }
-                    DropStrip();
+                    if (_testGen == testGen) DropStrip();
                 }
             });
             return total;
@@ -661,6 +674,27 @@ namespace TrueforceForAll.Plugin
         public void ForceOff()
         {
             if (_testing) return;
+            try { if (_channel.IsReady) _channel.TurnOff(); } catch { }
+            _lastBucket = -1;
+        }
+
+        /// <summary>Give the strip up completely and stop everything already in
+        /// flight: a running preview sweep, a test sweep, a lit hold, and a pending
+        /// auto-off ramp.
+        ///
+        /// ForceOff is not enough on its own. It stands down when _testing is set,
+        /// which is exactly the case while a sweep owns the strip, so a mode switch
+        /// made mid-preview left that sweep writing levels for seconds afterwards
+        /// and its auto-off ramp firing up to eight seconds later, into a mode that
+        /// had promised to stop touching the wheel. Bumping both generations is what
+        /// makes the already-queued work notice.</summary>
+        public void AbandonWheel()
+        {
+            System.Threading.Interlocked.Increment(ref _previewGen);
+            System.Threading.Interlocked.Increment(ref _holdGen);
+            System.Threading.Interlocked.Increment(ref _testGen);
+            DropStrip();
+            _testStatus = "";
             try { if (_channel.IsReady) _channel.TurnOff(); } catch { }
             _lastBucket = -1;
         }

@@ -1430,6 +1430,37 @@ namespace TrueforceForAll.Core
 
         public void Clear() => TurnOff();
 
+        /// <summary>Stop the keepalive WITHOUT writing anything, leaving the strip
+        /// showing whatever it currently shows.
+        ///
+        /// For the mode that owns a slot's colours but not the bar's level. Once
+        /// armed, the sender resends the level pair every second forever, and in a
+        /// game driving its own lights that is continuous traffic on the endpoint
+        /// its force feedback shares, for a level that is not ours to set. TurnOff
+        /// would stop it too, but only by writing a 0 that blanks the colours we
+        /// just uploaded, so the two are not interchangeable.</summary>
+        public void StopKeepAlive()
+        {
+            Thread t;
+            lock (_io)
+            {
+                _hbStop = true;
+                t = _hbThread; _hbThread = null;
+                // _armed MUST clear with the thread. SetLevel only calls Arm() when
+                // !_armed, so leaving it set would mean no sender thread and no
+                // re-arm: every later SetLevel would update a field nothing reads,
+                // and the eventual TurnOff would see _armed and blank the very
+                // colours the slot write had just uploaded.
+                //
+                // _level is left alone on purpose. It is what the wheel is showing,
+                // and nothing here changes that.
+                _armed = false;
+                _sentLevel = -1;
+            }
+            // Joined outside _io, same deadlock reasoning as TurnOff.
+            try { t?.Join(300); } catch { }
+        }
+
         // Callers build a 7-byte SHORT payload with r[0] as a placeholder report
         // id. Route it to the command stream: the G PRO uses its real 7-byte SHORT
         // collection (report 0x10); the G923 Xbox has none, so SHORT rides the

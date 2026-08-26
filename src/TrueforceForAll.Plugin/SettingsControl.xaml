@@ -879,11 +879,21 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <CheckBox Grid.Column="0" x:Name="PluginEnabledCheck" FontSize="14" FontWeight="SemiBold"
-                                  VerticalAlignment="Center"
-                                  Content="Plugin enabled"
-                                  ToolTip="Choice is auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."
-                                  Checked="PluginEnabled_Changed" Unchecked="PluginEnabled_Changed"/>
+                        <!-- Master switch. Three states rather than two since the
+                             lighting work: a checkbox cannot say "lights but no
+                             force", and leaving that behaviour to fall out of
+                             "disabled" made the plugin do things nobody asked for. -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Mode" FontSize="14" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <ComboBox x:Name="MasterModeCombo" Width="150" VerticalAlignment="Center"
+                                      SelectionChanged="MasterMode_Changed"
+                                      ToolTip="Normal: force feedback, effects, rev lights and the wheel's screen. Use this in most games. Lightsync only: disables the plugin's Trueforce effects and FFB tap, for games with native Trueforce support or when you only want our Lightsync patterns and features. Off: fully disables all plugin features for the game you are in.">
+                                <ComboBoxItem Content="Normal"/>
+                                <ComboBoxItem Content="Lightsync only"/>
+                                <ComboBoxItem Content="Off"/>
+                            </ComboBox>
+                        </StackPanel>
                         <!-- Live status pill, moved up beside the on/off toggle so the
                              control and the state it produces read together. The gold
                              "Enhanced" badge rides alongside when a per-game source is
@@ -912,6 +922,23 @@
                              shortcut. Driven by RefreshAccountChip. -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal"
                                     VerticalAlignment="Center" HorizontalAlignment="Right">
+                            <!-- Guides. Every game that needs something done outside
+                                 the plugin (iRacing's two switches, Forza's Data Out)
+                                 says so in a banner or a dialog that appears when it
+                                 is already wrong and is gone once answered. This is
+                                 the standing list: one place to go and look, rather
+                                 than a thing you had to catch. Each entry is a route
+                                 into copy that lives somewhere else, never a second
+                                 copy of it. The tooltip names the surface, not what
+                                 is in it, so adding a guide never dates it. Built in
+                                 SettingsControl.Guides.cs. -->
+                            <Button x:Name="HelpGuidesHeaderButton"
+                                    Height="26" Padding="6,0" Margin="0,0,4,0" Cursor="Hand"
+                                    Click="HelpGuides_Click"
+                                    ToolTip="Guides and walkthroughs."
+                                    ToolTipService.InitialShowDelay="150">
+                                <TextBlock Text="❔" FontSize="13" VerticalAlignment="Center"/>
+                            </Button>
                             <!-- TF4ALL Dash phone access. Opens our QR dialog
                                  (DashPhoneWindow) deep-linked to the dash, so scanning
                                  the QR lands straight on TF4ALL Dash instead of
@@ -958,6 +985,13 @@
                             </Button>
                         </StackPanel>
                     </Grid>
+                    <!-- One line saying what the chosen mode does and does not touch.
+                         The mode is the plugin's biggest single behaviour switch, and
+                         "Lightsync only" in particular has to be legible without opening
+                         a tooltip. Text comes from RefreshMasterModeUi. -->
+                    <TextBlock x:Name="MasterModeNote" FontSize="11" Opacity="0.75"
+                               TextWrapping="Wrap" Margin="0,6,0,10"
+                               Text=""/>
                     <!-- Game + Car share one row to save vertical space; the 84-wide
                          label column lines up with the preset labels below. -->
                     <Grid Margin="0,0,0,2">
@@ -2707,6 +2741,14 @@
                  player reads only the sentence that applies to them. -->
             <TextBlock x:Name="ModeBIntroText" Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
                        Text="The wheel's steering force is built from telemetry instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel. Farming Simulator 22 and 25 are supported too, through the spring option below."/>
+            <!-- The way back to the introduction dialog, which fires once when a
+                 supported game first opens this tab and is gone for good after
+                 that. Its steps outlive it. Visibility from RefreshFromPlugin. -->
+            <TextBlock x:Name="ModeBIntroLink" Style="{StaticResource HelpText}"
+                       Margin="0,-6,0,10" Visibility="Collapsed">
+                <Hyperlink Click="ModeBIntroLink_Click"
+                           ToolTip="What Telemetry Based FFB does, and what to set in the game first.">Setup instructions</Hyperlink>
+            </TextBlock>
 
             <!-- Contention warning. The plugin latches ModeBContentionDetected when
                  the game keeps streaming its own FFB while Mode B is driving the
@@ -3391,13 +3433,26 @@
             <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12">
                 <TextBlock x:Name="WheelLightsHeaderText" Text="Wheel lights and screen" Style="{StaticResource SectionHeaderText}"/>
             </Border>
-            <TextBlock x:Name="WheelLightsNeedNote" Style="{StaticResource HelpText}" Margin="0,4,0,10" TextWrapping="Wrap"
+            <!-- One short line, the same one in every game. The paragraph that used
+                 to explain the shared-channel rule here has moved into the guide
+                 behind the link below: the switch says what the user wants
+                 ("wherever it can"), the guide answers "why not everywhere", and
+                 nobody has to read about HID++ endpoints to tick a box. -->
+            <TextBlock x:Name="WheelLightsNeedNote" Style="{StaticResource HelpText}" Margin="0,4,0,2" TextWrapping="Wrap"
                        ToolTip="A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first."
-                       Text="These need Telemetry Based FFB switched on. Writing to them while a game runs its own force feedback makes that force feedback cut out, because they share one channel on the wheel; replacing the game's force feedback frees them."/>
-            <CheckBox x:Name="ModeBRevLightsCheck" Content="Rev lights"
-                      Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6"
-                       Text="The rev lights fill as revs climb and flash at the shift point. Turn this off if a game drives the wheel's lights itself."/>
+                       Text="Your wheel's lights follow your revs in the games that allow it."/>
+            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10">
+                <Hyperlink Click="WheelLightsWhy_Click"
+                           ToolTip="Why the lights work in some games and not others.">Why not every game?</Hyperlink>
+            </TextBlock>
+            <CheckBox x:Name="ModeBRevLightsCheck" Content="Drive the rev lights in games that don't, wherever that is possible"
+                      Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"
+                      ToolTip="The plugin works out per game and per session whether it can take the lights over without cutting the game's force feedback. This says whether to do it when it can."/>
+            <!-- No help line under this one. The label says what it does, and the
+                 line that used to sit here offered to stop us "overwriting" the
+                 wheel's own lighting, which is not what happens: we add lights to
+                 games that have none, where we can. -->
+
             <!-- Hidden on wheels whose strip has a fixed look (G923): a
                  pattern picker there reads as a feature the owner is
                  missing. Same principle as OledSection above. -->
@@ -3554,9 +3609,6 @@
             <sh:SHTabItem x:Name="LightsyncTab" Header="LIGHTSYNC &amp; OLED" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,12" TextWrapping="Wrap"
-                                   Text="Your wheel's lights and screen live here, because lighting belongs to the wheel rather than to any one game or preset."/>
-
                         <!-- One-time hint about the cycle binding. The library's whole
                              promise is more patterns than the wheel's five slots, and
                              the only way to STEP through them while driving is a bound
@@ -3611,6 +3663,14 @@
                         <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,20,0,10">
                             <TextBlock Text="Light patterns from car data" Style="{StaticResource SectionHeaderText}"/>
                         </Border>
+                        <!-- Sits with the other per-car lighting behaviour rather than
+                             beside the pattern list, because it is about what happens
+                             when you PICK a pattern, not about the library itself. -->
+                        <CheckBox x:Name="AlwaysRememberPatternCheck" Content="Remember my pick for each car automatically"
+                                  Margin="0,0,0,2" Checked="AlwaysRememberPattern_Changed" Unchecked="AlwaysRememberPattern_Changed"
+                                  ToolTip="Off by default, so flicking through patterns to look at them does not pin whichever one you stopped on."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,10" TextWrapping="Wrap"
+                                   Text="Pick a pattern while you are in a car and it becomes that car's pattern, with no need to press Remember. Only deliberate picks count."/>
                         <CheckBox x:Name="LovelyCarDataCheck" Content="Match my wheel to the car I'm driving"
                                   Margin="0,0,0,2" Checked="LovelyCarData_Changed" Unchecked="LovelyCarData_Changed"
                                   ToolTip="Works even in games that light the wheel themselves, because the colours are set once as the car loads and the game drives the lights from there. Downloads a small file the first time you drive a car that has one, then keeps it on this PC and works offline."/>
@@ -3681,7 +3741,7 @@
                                 <ListBox x:Name="PatternList" Height="300" SelectionChanged="PatternList_SelectionChanged"
                                          HorizontalContentAlignment="Stretch"
                                          MouseDoubleClick="PatternList_MouseDoubleClick"
-                                         ToolTip="Double-click a name to rename it. The bracketed ones live on the wheel; the rest are swapped through the lent slot, so they need SimHub running."/>
+                                         ToolTip="Double-click a name to rename it. The bracketed ones live on the wheel; the rest are swapped in as needed, so they need SimHub running."/>
                                 <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
                                            Text="The blue bracket marks what is stored on the wheel itself. Everything below it is swapped in as needed."/>
                                 <UniformGrid Columns="3" Margin="0,6,0,0">
@@ -3812,7 +3872,18 @@
                             </Expander.Header>
                             <StackPanel x:Name="LedTrimPanel" Margin="0,8,0,0">
                                     <TextBlock FontSize="11" Opacity="0.75" TextWrapping="Wrap" Margin="0,2,0,6"
-                                               Text="If yellow comes out looking green, or white looks tinted, pull down whichever channel is too strong until it matches. Your wheel's LEDs are not equally bright per colour, and this makes up the difference. Set it once and leave it."/>
+                                               Text="Your wheel's LEDs are not equally bright per colour, and this makes up the difference. Yellow looking green? Bring green down. White looking blue? Bring blue down. Judge it on the rim, not on screen, and move in small steps. Set it once and leave it."/>
+                                    <!-- The invariant, stated because the sliders do
+                                         not behave the way three independent
+                                         brightness controls would: only the RATIO
+                                         between them survives, so the highest slider
+                                         is the reference and the other two are cut
+                                         relative to it. Someone who drags one down
+                                         part way is weakening the correction, not
+                                         dimming that channel, and levelling all
+                                         three switches it off entirely. -->
+                                    <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,8"
+                                               Text="Only the gap between the sliders matters. The highest one is the reference and keeps its colour as authored; the others are cut relative to it. Three equal sliders means no correction at all, whatever the number."/>
                                     <Grid Margin="0,2,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="44"/>
@@ -3871,7 +3942,10 @@
                              live in one place. -->
                         <Expander x:Name="LightsyncScreenExpander" IsExpanded="False" Margin="0,10,0,0">
                             <Expander.Header>
-                                <TextBlock Text="Wheel screen" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                <!-- Logitech's own name for the panel. "Wheel screen"
+                                     was descriptive but anonymous; the branded name
+                                     is what the wheel's box and G HUB call it. -->
+                                <TextBlock Text="Dynamic OLED" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             </Expander.Header>
                             <StackPanel x:Name="LightsyncScreenHost" Margin="0,8,0,0"/>
                         </Expander>
@@ -4243,14 +4317,12 @@
                  Forza is the only UDP-telemetry game, so this section is the
                  entire body of the UDP telemetry expander. -->
             <StackPanel x:Name="ForzaSection">
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,3" FontSize="12"
-                Text="1. In Forza, open Settings, then HUD and Gameplay, and find UDP Race Telemetry."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,3" FontSize="12"
-                Text="2. Turn Data Out ON."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,3" FontSize="12"
-                Text="3. Set the IP address to 127.0.0.1, and the port to the number in the Port box below."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                Text="4. Turn on Forward to SimHub below, so SimHub's dashboards keep working."/>
+            <!-- The steps are rendered here from Guides\forza-setup.md, which is
+                 the same text the "Forza: UDP & Data Out setup" guide shows. They
+                 were four hand-written TextBlocks until the guide started carrying
+                 the same steps; the copy nobody would remember to update is the one
+                 printed beside the controls. Filled by RenderEmbeddedGuideSteps. -->
+            <StackPanel x:Name="ForzaStepsHost" Margin="0,0,0,8"/>
             <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>
@@ -4310,19 +4382,15 @@
                 <StackPanel>
                     <CheckBox x:Name="ForzaForwardEnabledCheck" Content="Also forward to SimHub (dashboards, ShakeIt / Buttkicker, etc.)" Click="ForzaForwardEnabled_Changed" Margin="0,0,0,4"
                               FontWeight="SemiBold"
-                              ToolTip="Enable when you also use SimHub for Forza (dashboards, ShakeIt bass shakers / Buttkicker, anything SimHub drives). Forza can only send telemetry to one place, so this plugin receives it and re-broadcasts every packet verbatim to SimHub."/>
+                              ToolTip="Enable when you also use SimHub for Forza (dashboards, ShakeIt bass shakers / Buttkicker, anything SimHub drives). Forza can only send telemetry to one place, so this plugin receives it and relays every packet on to SimHub. Live telemetry passes through unaltered; short replay and menu gaps are filled on the forwarded copy so SimHub does not read them as the game disconnecting."/>
                     <!-- Intro on its own line; the numbered setup steps render as
                          separate rows below so the option isn't a wall of text. -->
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="11"
-                               Text="Forza already points at this plugin; this just relays a copy on to SimHub. Setup:"/>
-                    <StackPanel Margin="10,0,0,6">
-                        <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,0,0,3"
-                                   Text="1. In SimHub, click the Home button at the top of the left sidebar. It should show Forza Horizon as the active game (if not, click Change game). Click Game config and note the UDP port it shows (often 8000). Just read it, do not change anything here."/>
-                        <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,0,0,3"
-                                   Text="2. Enable this box, set the forward host to 127.0.0.1, and set the forward port to that SimHub port."/>
-                        <TextBlock Style="{StaticResource HelpText}" FontSize="11"
-                                   Text="3. Drive for a moment and check the &quot;Forwarded:&quot; line below. Once it shows packets, SimHub's dashboards and bass shakers are back."/>
-                    </StackPanel>
+                               Text="Forza already points at this plugin; this just relays a copy on to SimHub."/>
+                    <!-- Rendered from Guides\forza-forward.md, the same text the
+                         "Forza: UDP & Data Out setup" guide carries under its own
+                         steps. Filled by RenderEmbeddedGuideSteps. -->
+                    <StackPanel x:Name="ForzaForwardStepsHost" Margin="0,0,0,6"/>
                     <Grid Margin="0,0,0,4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
@@ -4365,6 +4433,31 @@
                 </StackPanel>
             </Expander>
             </StackPanel> <!-- /ForzaSection -->
+                </StackPanel>
+            </Expander>
+
+            <!-- Farming Simulator game mod: the peer of the Forza UDP section
+                 above. Always here, whatever is running, because setting a game
+                 up happens before you play it and reinstalling happens long
+                 after. The Telemetry FFB tab's banner still does the contextual
+                 nudge, but its Install button exists only while FS is running
+                 WITHOUT the mod, which is the one state a user who is preparing,
+                 repairing or just checking is never in. Rows are built in
+                 SettingsControl.Guides.cs from the same folder the install
+                 writes to, so what this says is what the game will find. -->
+            <Expander x:Name="FsModExpander" IsExpanded="False" Margin="0,0,0,8"
+                      Expanded="FsModExpander_Expanded">
+                <Expander.Header>
+                    <TextBlock Text="Farming Simulator telemetry mod" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <!-- Rendered from Guides\farming-sim.md, the same text the
+                         "Farming Simulator: install the telemetry mod" guide shows.
+                         Filled by RenderEmbeddedGuideSteps. -->
+                    <StackPanel x:Name="FsModStepsHost" Margin="0,0,0,8"/>
+                    <StackPanel x:Name="FsModTargetsPanel"/>
+                    <TextBlock x:Name="FsModTargetsStatus" Style="{StaticResource HelpText}" FontSize="11"
+                               Margin="0,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
                 </StackPanel>
             </Expander>
 

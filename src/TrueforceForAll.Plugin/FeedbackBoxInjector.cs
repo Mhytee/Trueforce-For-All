@@ -312,9 +312,14 @@ namespace TrueforceForAll.Plugin
                 _plugin.MasterGain = (float)e.NewValue;   // live: mixer + settings
                 _pendingPersist = true;
             };
-            _masterToggle = MakeToggle("Master", "Turn all TF4ALL haptics on/off");
-            _masterToggle.Checked   += (s, e) => { if (!_syncing) _plugin.SetPluginEnabled(true); };
-            _masterToggle.Unchecked += (s, e) => { if (!_syncing) _plugin.SetPluginEnabled(false); };
+            // Two states for a three-state switch. Off returns the user to whatever
+            // they were on before full (see SetMasterEnabledFromToggle), so someone
+            // running lights-only can use this tile without losing that mode and
+            // having no way back to it from here.
+            _masterToggle = MakeToggle("Master",
+                "Turn all TF4ALL haptics on/off. Lightsync only is in the plugin's own settings.");
+            _masterToggle.Checked   += (s, e) => { if (!_syncing) _plugin.SetMasterEnabledFromToggle(true); };
+            _masterToggle.Unchecked += (s, e) => { if (!_syncing) _plugin.SetMasterEnabledFromToggle(false); };
             content.Children.Add(MakeRow(_masterToggle, _masterSlider));
 
             // Audio row: the toggle enables/disables the audio-haptics layer.
