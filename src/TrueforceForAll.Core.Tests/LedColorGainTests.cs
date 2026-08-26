@@ -1,10 +1,10 @@
-using System.Linq;
+﻿using System.Linq;
 using TrueforceForAll.Plugin;
 using Xunit;
 
 namespace TrueforceForAll.Core.Tests
 {
-    /// <summary>The per-channel LED colour trim. Determinism matters as much as
+    /// <summary>The per-channel LED color trim. Determinism matters as much as
     /// correctness here: three separate sites compare what is on the wheel
     /// against a stored pattern run through Apply, so a rounding change would
     /// break every one of those comparisons and re-upload five slots on every
@@ -72,10 +72,10 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void ColoursWithRedAtTheirPeakDoNotMoveAtAll()
+        public void ColorsWithRedAtTheirPeakDoNotMoveAtAll()
         {
             // Red is never cut, so it stays the peak and the scale is 1. These
-            // are the colours the owner tuned by eye, so they must not shift
+            // are the colors the owner tuned by eye, so they must not shift
             // when renormalising was added.
             var yellow = LedColorGain.Apply(Rgb(0xFF, 0xFF, 0x00), 1f, 0.55f, 0.31f);
             var white  = LedColorGain.Apply(Rgb(0xFF, 0xFF, 0xFF), 1f, 0.55f, 0.31f);

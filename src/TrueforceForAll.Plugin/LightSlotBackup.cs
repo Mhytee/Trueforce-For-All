@@ -7,7 +7,7 @@
 //
 // The backup deliberately lives on disk rather than in memory. A crash, a
 // SimHub kill, or a plugin disable all end the process without giving us a
-// chance to restore, and an in-memory copy would take the user's colours with
+// chance to restore, and an in-memory copy would take the user's colors with
 // it. On disk, the next launch can still make them whole.
 //
 // MACHINE-LOCAL by nature: it mirrors the state of one physical wheel on one
@@ -56,7 +56,7 @@ namespace TrueforceForAll.Plugin
         /// skip the slot (wanted here) but ALSO makes the next borrow treat the
         /// slot as un-backed-up, re-read it, and record the BLANK as the original
         /// (catastrophic here, because it discards the last copy of the user's own
-        /// colours). Blanked keeps the debt open, so the backup is still protected
+        /// colors). Blanked keeps the debt open, so the backup is still protected
         /// and SLOTRESTORE still works, while the auto-restore paths leave it
         /// alone.</summary>
         public bool Blanked { get; set; }
@@ -106,7 +106,7 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Set aside a file we could not read rather than letting the
-        /// next save overwrite it. It may be the only copy of the user's colours,
+        /// next save overwrite it. It may be the only copy of the user's colors,
         /// and a human can still read the hex out of it by hand.</summary>
         private void MarkCorrupt(string path)
         {
@@ -121,7 +121,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Returns FALSE if nothing reached the disk. Callers must not
         /// go on to overwrite a wheel slot after a false: the on-disk copy is the
-        /// only thing that can give the user their colours back.</summary>
+        /// only thing that can give the user their colors back.</summary>
         /// <summary>Serialises writers in this process. Two applies firing at once
         /// is not hypothetical: a car load and a settings change did exactly that.
         /// The unique temp name stops them corrupting each other; this stops them
@@ -142,7 +142,7 @@ namespace TrueforceForAll.Plugin
                 // saves in flight at once fought over one file and the loser
                 // reported "cannot access the file", which surfaced to the user
                 // as "could not save a backup of your slot" on a wheel that was
-                // perfectly writable. Seen live 2026-08-23 when two car-colour
+                // perfectly writable. Seen live 2026-08-23 when two car-color
                 // applies ran 3 ms apart.
                 string tmp = _path + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + ".tmp";
                 try
@@ -180,7 +180,7 @@ namespace TrueforceForAll.Plugin
         /// legitimately differ between sessions (a discovery miss, an unreadable
         /// USB product name, a future edit to that text). Without it, a changed
         /// identity would orphan a backup that is still owed, the next borrow
-        /// would record OUR colours as the original, and the user's real ones
+        /// would record OUR colors as the original, and the user's real ones
         /// would be gone. An owed debt is worth paying even if we are less sure
         /// which wheel it came from; the alternative is silent loss.</summary>
         public static LightSlotBackupEntry Find(Dictionary<string, LightSlotBackupEntry> map,
@@ -220,7 +220,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Parse stored hex back to bytes. Returns null for anything
         /// malformed, so a corrupted backup is refused rather than written to the
-        /// wheel as garbage colours.</summary>
+        /// wheel as garbage colors.</summary>
         public static byte[] FromHex(string hex)
         {
             if (string.IsNullOrWhiteSpace(hex)) return null;

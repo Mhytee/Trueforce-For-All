@@ -1,4 +1,4 @@
-// The help browser behind the header's "?" button.
+﻿// The help browser behind the header's "?" button.
 //
 // One window, list on the left, guide on the right. It replaced a context menu
 // whose entries were of two different kinds: some opened a document, some
@@ -235,7 +235,7 @@ namespace TrueforceForAll.Plugin
             // WPF's default button template ignores a plain Background on hover
             // and paints its own system chrome, so a gold button turned grey the
             // moment the pointer touched it. ModalButtonTheme swaps the template
-            // for a flat one that keeps the colour and dims on hover instead.
+            // for a flat one that keeps the color and dims on hover instead.
             ModalButtonTheme.Primary(_actionButton);
             _actionButton.Click += (s, e) =>
             {

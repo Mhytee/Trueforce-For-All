@@ -93,7 +93,7 @@ namespace TrueforceForAll.Core
 
         private const ushort PageRevLights = 0x807A; // LIGHTSYNC effect / rev level
         // Per-slot RGB config (Logitech: RPM_LED_PATTERN). Where a custom
-        // LIGHTSYNC slot's colours and animation direction live. Documented from
+        // LIGHTSYNC slot's colors and animation direction live. Documented from
         // mescon's Linux driver, which verified it on an RS50; whether a G PRO
         // implements it is exactly what ProbeSlotFeature exists to find out.
         private const ushort PageSlotConfig = 0x807B;
@@ -649,7 +649,7 @@ namespace TrueforceForAll.Core
         /// slots (5 = CUSTOM 1), which is how a slot is selected.</summary>
         public const int CustomSlotCount = 5;
 
-        /// <summary>One stored LIGHTSYNC slot: which way it fills and what colour
+        /// <summary>One stored LIGHTSYNC slot: which way it fills and what color
         /// each LED is.
         ///
         /// <see cref="Rgb"/> is 30 bytes in PHYSICAL LED order, LED 1 first. The
@@ -686,9 +686,9 @@ namespace TrueforceForAll.Core
         }
         private byte _idxSlot;
 
-        /// <summary>Read a stored slot's direction and colours.
+        /// <summary>Read a stored slot's direction and colors.
         ///
-        /// Colours come back in PHYSICAL LED order (LED 1 first). The wire order
+        /// Colors come back in PHYSICAL LED order (LED 1 first). The wire order
         /// is reversed (LED 10 first), and that reversal is handled here so no
         /// caller has to think about it.</summary>
         public bool TryReadSlot(int slot, out WheelLedSlot config)
@@ -708,7 +708,7 @@ namespace TrueforceForAll.Core
                 if (!TryQueryOn(idx, (byte)(0x10 | SwId), (byte)slot, resp)) return false;
                 if (resp[4] != slot) { _log($"[RPM-LED] slot {slot} read: echo mismatch"); return false; }
 
-                // REFUSE a reply too short to hold all thirty colour bytes.
+                // REFUSE a reply too short to hold all thirty color bytes.
                 //
                 // The reply buffer is 64 zeroed bytes, so a shorter frame (this
                 // page's wiring is not byte-verified on every wheel, and replies
@@ -728,7 +728,7 @@ namespace TrueforceForAll.Core
                 var rgb = new byte[LedCount * 3];
                 for (int i = 0; i < LedCount; i++)
                 {
-                    int src = 6 + (LedCount - 1 - i) * 3;   // 4 = slot, 5 = direction, then colours
+                    int src = 6 + (LedCount - 1 - i) * 3;   // 4 = slot, 5 = direction, then colors
                     if (src + 2 >= resp.Length) return false;
                     rgb[i * 3 + 0] = resp[src + 0];
                     rgb[i * 3 + 1] = resp[src + 1];
@@ -739,8 +739,8 @@ namespace TrueforceForAll.Core
             }
         }
 
-        /// <summary>Write a slot's direction and colours, then select and repaint
-        /// it. Colours are given in PHYSICAL LED order and reversed onto the wire
+        /// <summary>Write a slot's direction and colors, then select and repaint
+        /// it. Colors are given in PHYSICAL LED order and reversed onto the wire
         /// here.
         ///
         /// THIS PERSISTS ON THE WHEEL. A slot is a saved preset, so this
@@ -749,14 +749,14 @@ namespace TrueforceForAll.Core
         ///
         /// The sequence follows mescon's driver, which drives this page on both an
         /// RS50 and a G PRO: select the slot's effect on 0x807A, a pre-config
-        /// level, the colour upload on 0x807B, a commit level, then enable. The
+        /// level, the color upload on 0x807B, a commit level, then enable. The
         /// level is deliberately the CURRENT rev level rather than a full bar:
         /// committing at full length flashes every LED (observed on this wheel
         /// 2026-08-12), and our own testing showed fn7 promotes the staged effect
         /// at any level. It is floored at 1 because a level of 0 blanks the strip
-        /// before the colours land, which is the bug that made mescon's uploads
+        /// before the colors land, which is the bug that made mescon's uploads
         /// look like they had done nothing.</summary>
-        /// <param name="displayLevel">How many steps to light once the colours
+        /// <param name="displayLevel">How many steps to light once the colors
         /// land. -1 (the default) keeps the current rev level, which is what
         /// automatic use wants. Pass the strip length to show the whole pattern,
         /// which is what a human verifying a write wants.</param>
@@ -781,9 +781,9 @@ namespace TrueforceForAll.Core
                 }
                 if (_veryLong == null)
                 {
-                    // The colour upload needs the 64-byte collection. Finding out
+                    // The color upload needs the 64-byte collection. Finding out
                     // AFTER the effect switch has gone out would leave the wheel
-                    // on the target slot showing its old colours.
+                    // on the target slot showing its old colors.
                     _log("[RPM-LED] slot write: no 64-byte collection on this wheel");
                     return false;
                 }
@@ -798,13 +798,13 @@ namespace TrueforceForAll.Core
                         _log($"[RPM-LED] slot write: SET_EFFECT {5 + config.Slot} not acknowledged, continuing");
 
                     // 2. Pre-config level. Never 0 during the sequence itself: a
-                    // level of 0 switches the strip off before the colours land,
+                    // level of 0 switches the strip off before the colors land,
                     // so they never appear. The level is put BACK afterwards.
                     int wanted = displayLevel >= 0 ? displayLevel : _level;
                     int lvl = Math.Max(1, Math.Min(_stripLen, wanted));
                     SendFn6(lvl);
 
-                    // 3. The colour upload itself: [slot][direction][30 RGB, LED10 first].
+                    // 3. The color upload itself: [slot][direction][30 RGB, LED10 first].
                     var pkt = new byte[LenVeryLong];
                     pkt[0] = RepVeryLong; pkt[1] = DevWired; pkt[2] = idx; pkt[3] = (byte)(0x20 | SwId);
                     pkt[4] = config.Slot;
@@ -820,7 +820,7 @@ namespace TrueforceForAll.Core
                     WriteVeryLong(pkt);
                     // Report failure rather than optimism. A caller that treats an
                     // unacknowledged write as success can mark a backup settled
-                    // while the wheel still holds our colours, and the next borrow
+                    // while the wheel still holds our colors, and the next borrow
                     // then captures those as "the original".
                     if (!TryMatchReply(_replyStream, idx, (byte)(0x20 | SwId), resp, maxTimeouts: 2))
                     {
@@ -828,7 +828,7 @@ namespace TrueforceForAll.Core
                         return false;
                     }
 
-                    // 4. Commit + enable so the strip repaints with the new colours.
+                    // 4. Commit + enable so the strip repaints with the new colors.
                     SendFn6(lvl);
                     TryQuery(Fn(7), 0x00, resp);
 
@@ -1063,8 +1063,8 @@ namespace TrueforceForAll.Core
                 if (idxSlot == 0)
                 {
                     sb.AppendLine("Slot page 0x807B: NOT PRESENT on this wheel.");
-                    sb.AppendLine("This wheel does not expose the per-slot colour feature over HID++, "
-                                + "so custom colours cannot be written by us the way they can on an RS50.");
+                    sb.AppendLine("This wheel does not expose the per-slot color feature over HID++, "
+                                + "so custom colors cannot be written by us the way they can on an RS50.");
                     string none = sb.ToString();
                     _log("[RPM-LED] slot probe:\n" + none);
                     return none;
@@ -1433,11 +1433,11 @@ namespace TrueforceForAll.Core
         /// <summary>Stop the keepalive WITHOUT writing anything, leaving the strip
         /// showing whatever it currently shows.
         ///
-        /// For the mode that owns a slot's colours but not the bar's level. Once
+        /// For the mode that owns a slot's colors but not the bar's level. Once
         /// armed, the sender resends the level pair every second forever, and in a
         /// game driving its own lights that is continuous traffic on the endpoint
         /// its force feedback shares, for a level that is not ours to set. TurnOff
-        /// would stop it too, but only by writing a 0 that blanks the colours we
+        /// would stop it too, but only by writing a 0 that blanks the colors we
         /// just uploaded, so the two are not interchangeable.</summary>
         public void StopKeepAlive()
         {
@@ -1450,7 +1450,7 @@ namespace TrueforceForAll.Core
                 // !_armed, so leaving it set would mean no sender thread and no
                 // re-arm: every later SetLevel would update a field nothing reads,
                 // and the eventual TurnOff would see _armed and blank the very
-                // colours the slot write had just uploaded.
+                // colors the slot write had just uploaded.
                 //
                 // _level is left alone on purpose. It is what the wheel is showing,
                 // and nothing here changes that.
@@ -1478,7 +1478,7 @@ namespace TrueforceForAll.Core
         // The 0x807B slot config needs 32 parameter bytes, which only the 64-byte
         // VERY_LONG report can carry. Falls back to the LONG collection if the
         // wheel exposes no VERY_LONG one, where it will simply fail rather than
-        // silently truncate the colours.
+        // silently truncate the colors.
         private void WriteVeryLong(byte[] r)
         {
             if (_veryLong != null) _veryLong.Write(r);

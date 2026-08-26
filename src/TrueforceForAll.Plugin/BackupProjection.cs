@@ -98,7 +98,7 @@ namespace TrueforceForAll.Plugin
             "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate",
             "LightsyncTabUnlocked", "LovelyCarDataEnabled", "LightsyncDynamicSlot",
             "AlwaysRememberCarPattern",
-            // LED colour trim. Portable because it describes the WHEEL, which
+            // LED color trim. Portable because it describes the WHEEL, which
             // travels to the second PC with its own LED binning intact, same
             // reasoning as the rev-light and OLED preferences. Also listed in
             // FfbWheelSpecific, so restoring a G PRO's trim onto a G923 with a
@@ -255,7 +255,7 @@ namespace TrueforceForAll.Plugin
         public static readonly string[] ForzaPortableFields = { "Enabled", "Port", "ForwardGapBridge" };
 
         /// <summary>The wheel-specific tuning keys (Mode B feel, learned grip
-        /// calibration, and the LED colour trim): a subset of Portable that
+        /// calibration, and the LED color trim): a subset of Portable that
         /// ApplySettings WITHHOLDS when the cross-wheel policy is not Always and
         /// the backup came from a different wheel model. They still travel in
         /// the envelope; the gate only decides whether they are written onto
@@ -266,7 +266,7 @@ namespace TrueforceForAll.Plugin
         ///
         /// The LED trim is here for the same reason as the FFB tuning but a
         /// blunter one: it compensates the relative brightness of one wheel's
-        /// LED dies, so writing a G PRO's numbers onto a G923 would miscolour a
+        /// LED dies, so writing a G PRO's numbers onto a G923 would miscolor a
         /// package it was never measured against.</summary>
         public static readonly HashSet<string> FfbWheelSpecific = new HashSet<string>(StringComparer.Ordinal)
         {

@@ -1,4 +1,4 @@
-// File-based built-in preset store. Built-in presets ship as plain JSON files
+﻿// File-based built-in preset store. Built-in presets ship as plain JSON files
 // in a folder (default: <plugin dll dir>\TrueforceForAll-Presets) and are
 // discovered by directory scan, so dropping a file in makes it a built-in with
 // no manifest to maintain. This replaces the old C# string consts: presets are
@@ -56,7 +56,11 @@ namespace TrueforceForAll.Plugin
         // flat-folder game scan must skip them. Their stem (without .json) is
         // also a reserved preset name that should never appear in the library.
         private static readonly string[] ReservedMetadataFiles =
-            { GameDefaultsFileName, CarDefaultsFileName, "manifest.json", "installed-packs.json" };
+            { GameDefaultsFileName, CarDefaultsFileName, "manifest.json", "installed-packs.json",
+              // The LIGHTSYNC pattern library lives in this folder so backups
+              // carry it. It is not a preset, and without this the flat-folder
+              // game scan would list it as one called "light-patterns".
+              "light-patterns.json" };
 
         public static bool IsReservedMetadataFile(string fileName)
         {
@@ -69,7 +73,7 @@ namespace TrueforceForAll.Plugin
         /// library preset with one of these names is a stray that leaked from a
         /// folder scan and should be pruned.</summary>
         public static IReadOnlyList<string> ReservedPresetNames { get; } =
-            new[] { "game-defaults", "car-defaults", "manifest", "installed-packs" };
+            new[] { "game-defaults", "car-defaults", "manifest", "installed-packs", "light-patterns" };
 
 
         /// <summary>Load every built-in from <paramref name="folder"/> by

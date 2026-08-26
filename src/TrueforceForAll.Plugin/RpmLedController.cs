@@ -592,7 +592,7 @@ namespace TrueforceForAll.Plugin
                         if (opened)
                         {
                             // Settle where the caller asked. A pick made from the
-                            // settings tab wants the bar left LIT so the colours
+                            // settings tab wants the bar left LIT so the colors
                             // can be looked at; the Test button wants the wheel
                             // handed back dark.
                             try
@@ -622,13 +622,13 @@ namespace TrueforceForAll.Plugin
         /// Re-arming is the whole point: keep working and it stays lit, stop and it
         /// goes out by itself a few seconds later. A parked wheel holding a full
         /// bar indefinitely is wrong, but going dark while someone is choosing
-        /// colours is worse.</summary>
+        /// colors is worse.</summary>
         public void HoldLit(int level, int holdMs)
         {
             if (TestOwnsLeds) return;
             // LIT, not merely "a game is loaded". At idle the strip is dark and
             // there is nothing to fight, and refusing here meant editing a
-            // colour in the pits showed the user nothing.
+            // color in the pits showed the user nothing.
             if (LiveBarIsLit) return;
             if (!_channel.IsReady) return;
             try { _channel.SetLevel(Math.Max(0, Math.Min(level, _channel.StripLength))); } catch { }

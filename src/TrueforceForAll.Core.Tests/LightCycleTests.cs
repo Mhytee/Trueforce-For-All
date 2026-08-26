@@ -1,4 +1,4 @@
-// The wheel button's running order, and where in it we stand.
+﻿// The wheel button's running order, and where in it we stand.
 //
 // Every test in the "bugs that actually happened" section below is a defect the
 // owner found on the rim in a single week, because this logic lived as a private
@@ -72,7 +72,7 @@ namespace TrueforceForAll.Core.Tests
         public void AutoIsReachableByCycling()
         {
             // "auto never gets cycled to". Without a stop of its own, a user who
-            // cycles away from the car's colours can never get back: every other
+            // cycles away from the car's colors can never get back: every other
             // stop pins something, and pinning is what turns Auto off.
             Assert.Contains(Build(auto: true), s => s.Auto);
         }
@@ -120,7 +120,7 @@ namespace TrueforceForAll.Core.Tests
         [Fact]
         public void AutoIsAskedBeforeTheLibrary()
         {
-            // While the car's own colours are up, a stage slot may well be lent
+            // While the car's own colors are up, a stage slot may well be lent
             // out too, so both flags can read true at once. The library test would
             // otherwise claim the position and the cycle would step off from the
             // wrong place.
@@ -136,12 +136,12 @@ namespace TrueforceForAll.Core.Tests
         //
         // One answer, derived in one place. Three separate flags used to answer
         // this between them and nothing owned the result, which is how a car with
-        // no published data kept the PREVIOUS car's colours.
+        // no published data kept the PREVIOUS car's colors.
 
         [Fact]
-        public void CarColoursWinOverALentSlot()
+        public void CarColorsWinOverALentSlot()
         {
-            // Both are true at once whenever auto colours are painted into a
+            // Both are true at once whenever auto colors are painted into a
             // borrowed slot, and only one of them is what the user sees.
             Assert.Equal(LightShowing.CarAutoColors,
                 LightCycle.Showing(autoColorsApplied: true, carChoicePinned: false,
@@ -152,7 +152,7 @@ namespace TrueforceForAll.Core.Tests
         public void APatternPinnedToThisCarIsNotAuto()
         {
             // Pinning is precisely what turns Auto off, so the pinned pattern is
-            // what is showing even though our colours are still on the slot.
+            // what is showing even though our colors are still on the slot.
             Assert.Equal(LightShowing.LibraryPattern,
                 LightCycle.Showing(autoColorsApplied: true, carChoicePinned: true,
                                    libraryPatternShowing: true));

@@ -40,10 +40,10 @@ namespace TrueforceForAll.Plugin
         /// and hand-editable.</summary>
         public string RgbHex { get; set; }
 
-        /// <summary>Send these colours to the wheel exactly as stored, skipping
-        /// the LED colour trim.
+        /// <summary>Send these colors to the wheel exactly as stored, skipping
+        /// the LED color trim.
         ///
-        /// Patterns normally hold sRGB INTENT: what the colour means on a
+        /// Patterns normally hold sRGB INTENT: what the color means on a
         /// screen, which the trim converts into what this particular wheel has
         /// to be sent to render it. That is right for anything picked on
         /// screen, and it is what lets a pattern travel to someone else's wheel
@@ -295,7 +295,7 @@ namespace TrueforceForAll.Plugin
         /// treat the list as curated: adding one means putting it on a wheel
         /// first, not just liking the hex.
         ///
-        /// Most of them were tuned BY EYE at the shipped colour trim, so the
+        /// Most of them were tuned BY EYE at the shipped color trim, so the
         /// stored bytes are not meant to read correctly as sRGB. What matters is
         /// what comes out the far side of LedColorGain, and moving the shipped
         /// gains means retuning these rather than just recompiling.
@@ -314,7 +314,7 @@ namespace TrueforceForAll.Plugin
             ("Sunset",       3, "FFD080FFA850FF8030FF5820F03828D02040A018607010704B0C7A4B0875"),
             // Blue and green at the ends, magenta meeting in the middle.
             ("Neon Mirror",  2, "0000FF00FFAD00FF6C3916FBFF0037FF00373916FB00FF6C00FFAD0000FF"),
-            // Ten distinct colours. Unmistakable, so it shows instantly which end
+            // Ten distinct colors. Unmistakable, so it shows instantly which end
             // a strip starts from and which way it fills.
             ("Rainbow",      3, "FF0000FF6000FFFF0000FF0000FF8000FFFF0080FF0000FF8000FFFF00FF"),
 
@@ -334,7 +334,7 @@ namespace TrueforceForAll.Plugin
             //
             // Read as sRGB this looks like a set of saturated blues rather than
             // a pale ramp, and it is meant to: it was tuned BY EYE on the rim at
-            // the shipped colour trim, so what matters is what comes out the far
+            // the shipped color trim, so what matters is what comes out the far
             // side of that trim, not how the stored bytes read on a screen. Move
             // the shipped gains and this pattern needs retuning.
             ("Ice",          3, "559DFF4995FF3D8EFF3186FF247FFF186FFF125BF00C47E00633E1001EFF"),
@@ -382,7 +382,7 @@ namespace TrueforceForAll.Plugin
         /// actually see on the rim. Only meaningful once: after this, position is
         /// what drives the wheel rather than the other way round.
         ///
-        /// A slot whose colours we already hold ADOPTS that pattern rather than
+        /// A slot whose colors we already hold ADOPTS that pattern rather than
         /// adding a copy, which is what keeps one pattern to one entry. The
         /// shipped built-ins are copies of real slots, so without that every user
         /// would start with a duplicate of each.</summary>
@@ -390,7 +390,7 @@ namespace TrueforceForAll.Plugin
         /// tolerance, NOT byte for byte.
         ///
         /// The question being asked is "is this the same pattern", and the
-        /// colour trim stands between a stored pattern and the bytes that
+        /// color trim stands between a stored pattern and the bytes that
         /// reached the wheel. Nudge the trim by a fraction of one count and
         /// every byte can round differently, so an exact test answers "no" for a
         /// pattern that is obviously the same one. That really happened: moving

@@ -1,4 +1,4 @@
-// Turning published per-car dash data into something a Logitech rev strip can
+﻿// Turning published per-car dash data into something a Logitech rev strip can
 // render. Pure math, no device access: the wire writes live in the LED channel,
 // and these results are their input.
 //
@@ -13,8 +13,8 @@
 //      through the first lights then sprint through the last few).
 //
 //   2. LOOK. A car's dash fills in one of four directions, and that direction
-//      plus its colours is what a LIGHTSYNC custom slot stores. Both are derived
-//      here from the published thresholds and colours.
+//      plus its colors is what a LIGHTSYNC custom slot stores. Both are derived
+//      here from the published thresholds and colors.
 //
 // Everything is deterministic and side-effect free so it unit-tests without a
 // wheel, which matters because the slot-write protocol is still unverified on a
@@ -168,9 +168,9 @@ namespace TrueforceForAll.Plugin
             return sxy / Math.Sqrt(sxx * syy);
         }
 
-        // ---------------- Colour ----------------
+        // ---------------- Color ----------------
 
-        /// <summary>The car's colours in the order its dash lights them: one entry
+        /// <summary>The car's colors in the order its dash lights them: one entry
         /// per distinct switch-on RPM, earliest first. Mirror pairs collapse to a
         /// single step here (they are one step of the sequence lighting two LEDs),
         /// which is exactly what a mirrored strip needs.</summary>
@@ -185,9 +185,9 @@ namespace TrueforceForAll.Plugin
             {
                 if (thresholds[i] <= 0) continue;
                 if (steps.ContainsKey(thresholds[i])) continue;   // first LED of a pair wins
-                // Colour and threshold arrays share an index. A car whose colour
+                // Color and threshold arrays share an index. A car whose color
                 // array is short (six files upstream break their own length rule)
-                // simply contributes no colour for that step.
+                // simply contributes no color for that step.
                 if (i >= colors.Length) continue;
                 if (colors[i].IsGap) continue;
                 steps[thresholds[i]] = colors[i];
@@ -212,7 +212,7 @@ namespace TrueforceForAll.Plugin
             return outp;
         }
 
-        /// <summary>Lay progression-ordered colours onto physical LED positions
+        /// <summary>Lay progression-ordered colors onto physical LED positions
         /// for <paramref name="layout"/>. Mirrored layouts write each step to both
         /// LEDs of its pair, so the strip stays symmetric by construction.</summary>
         public static LovelyColor[] PlaceOnStrip(LovelyColor[] steps, LightDirection layout, int stripLength)
@@ -251,14 +251,14 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>The fallback palette for a car with no usable colour data:
+        /// <summary>The fallback palette for a car with no usable color data:
         /// the conventional green to yellow to red climb, laid out for this
         /// layout. Red is capped at the final two LEDs; a longer red band reads as
         /// "already at the limit" for most of the useful range.
         ///
         /// Mirrored layouts band by PAIR rather than by LED, because a strip that
         /// advances two LEDs at a time cannot show an odd-sized band without
-        /// splitting a pair across two colours.</summary>
+        /// splitting a pair across two colors.</summary>
         public static LovelyColor[] DefaultRampColors(LightDirection layout, int stripLength)
         {
             var strip = new LovelyColor[Math.Max(0, stripLength)];
@@ -273,7 +273,7 @@ namespace TrueforceForAll.Plugin
             if (IsMirrored(layout))
             {
                 // Five pairs on a ten-LED strip give green, green, yellow, yellow,
-                // red: two LEDs of red, and no colour ever split across a pair.
+                // red: two LEDs of red, and no color ever split across a pair.
                 redSteps   = steps >= 3 ? 1 : 0;
                 greenSteps = (int)Math.Ceiling((steps - redSteps) / 2.0);
             }
@@ -297,8 +297,8 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Compose the full slot payload for a car: the direction its
-        /// dash fills and the colours to store, falling back to the conventional
-        /// ramp when the car publishes no usable colours. This is the object the
+        /// dash fills and the colors to store, falling back to the conventional
+        /// ramp when the car publishes no usable colors. This is the object the
         /// slot writer will hand to the wheel once the write path is verified on a
         /// G PRO.</summary>
         public static LightProfile BuildProfile(LovelyCarProfile car, LovelyGearRamp ramp, int stripLength)
@@ -328,7 +328,7 @@ namespace TrueforceForAll.Plugin
         public LightDirection Layout { get; set; }
         public LovelyColor[] Colors { get; set; } = new LovelyColor[0];
 
-        /// <summary>False when the colours are our conventional fallback rather
+        /// <summary>False when the colors are our conventional fallback rather
         /// than the car's own, so the UI can say which the user is looking at.</summary>
         public bool UsedCarColors { get; set; }
 

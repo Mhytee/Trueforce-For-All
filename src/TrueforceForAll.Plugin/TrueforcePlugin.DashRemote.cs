@@ -939,7 +939,7 @@ namespace TrueforceForAll.Plugin
         private volatile bool _dashLightRedline;
         private volatile int _dashLightSteps;
         private LovelyLightMath.LightProfileSnapshot _dashLightProfile;
-        /// <summary>The published profile is the ramp we synthesized, not colours
+        /// <summary>The published profile is the ramp we synthesized, not colors
         /// anyone chose, so a strip-length change rebuilds it at the new size.
         /// Set ONLY by PublishFallbackLightProfile: a profile read off the wheel
         /// carries the wheel's own ten entries whatever the strip length, so
@@ -971,7 +971,7 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Colour of one LED as "#RRGGBB", for a dash to bind straight to
+        /// <summary>Color of one LED as "#RRGGBB", for a dash to bind straight to
         /// a rectangle's fill.</summary>
         public string DashLightColor(int led)
         {
@@ -1023,12 +1023,12 @@ namespace TrueforceForAll.Plugin
             _dashLightRedline = redline;
             _dashLightSteps = steps;
 
-            // Colours, if nobody has supplied any. A profile only arrives when
+            // Colors, if nobody has supplied any. A profile only arrives when
             // the user picks a pattern or the car data paints one, so without
             // this the common case (a wheel showing whatever it was already set
             // to, which we never read back) mirrored as ten black LEDs. The
             // conventional ramp is the honest answer there: it is what the level
-            // means, in the colours everyone expects, and a real pattern
+            // means, in the colors everyone expects, and a real pattern
             // replaces it the moment one is chosen.
             if (steps > 0 && (_dashLightProfile == null
                               || (_dashLightProfileIsFallback && _dashLightProfile.Rgb?.Length != steps * 3)))
@@ -1052,11 +1052,11 @@ namespace TrueforceForAll.Plugin
             PublishDashLightProfile(rgb, direction, name, isFallback: true);
         }
 
-        // The selection whose colours are published, so a change is noticed.
+        // The selection whose colors are published, so a change is noticed.
         // -1 = nothing published yet.
         private volatile int _dashLightSelPublished = -1;
 
-        /// <summary>Keep the dash's colours pointed at whatever the wheel is
+        /// <summary>Keep the dash's colors pointed at whatever the wheel is
         /// showing NOW.
         ///
         /// Polled rather than pushed from the places that change the selection,
@@ -1066,10 +1066,10 @@ namespace TrueforceForAll.Plugin
         ///
         /// Three cases:
         ///   * a slot we lent is showing something WE put there, so whoever lent
-        ///     it published the colours and the name already. Nothing to read.
-        ///   * one of the wheel's own five slots: read it back in full, colours
+        ///     it published the colors and the name already. Nothing to read.
+        ///   * one of the wheel's own five slots: read it back in full, colors
         ///     and direction, under our name for the pattern in it.
-        ///   * one of the four built-in sweeps: the colours are firmware and
+        ///   * one of the four built-in sweeps: the colors are firmware and
         ///     cannot be read, so keep the ramp and take the direction, which is
         ///     the part of a sweep the dash can honestly reproduce.
         ///
@@ -1089,7 +1089,7 @@ namespace TrueforceForAll.Plugin
             if (sel < 1 || sel > 9) return;          // never read the wheel yet
 
             int slot = sel - 5;
-            // Ours, standing in a lent slot: ApplyLightPattern or the car-colour
+            // Ours, standing in a lent slot: ApplyLightPattern or the car-color
             // apply published it, under a better name than the slot carries.
             if (slot >= 0 && slot == BorrowedSlot)
             {
@@ -1106,7 +1106,7 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Read what selection <paramref name="sel"/> looks like and
-        /// publish it as the dash's colours. BLOCKING (it talks to the wheel), so
+        /// publish it as the dash's colors. BLOCKING (it talks to the wheel), so
         /// every caller is already off SimHub's update thread.
         ///
         /// Called both from the poll and straight from the pick, because the poll
@@ -1127,7 +1127,7 @@ namespace TrueforceForAll.Plugin
                     if (programmed)
                     {
                         // Straight out of the wheel, so already in the wheel's own
-                        // colour space: published as read, never trimmed. Our name
+                        // color space: published as read, never trimmed. Our name
                         // for it first: the slot's own label is whatever it was
                         // called before the plugin ever ran.
                         PublishDashLightProfile(s.Rgb, DirectionFromWire(s.DirectionWire),
@@ -1147,7 +1147,7 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Called when the shown pattern changes, so the dash's colours
+        /// <summary>Called when the shown pattern changes, so the dash's colors
         /// follow. Cheap: a snapshot rather than a live read.</summary>
         internal void PublishDashLightProfile(byte[] rgb, LightDirection direction, string name,
                                               bool isFallback = false)
@@ -2312,7 +2312,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
 
-            // Auto hands the strip to the wheel: colours, direction and fill all
+            // Auto hands the strip to the wheel: colors, direction and fill all
             // come from Dash.Lights.*, so the dash draws the rim. The dash falls
             // back to its own strip (and to RevOutsideIn for its direction)
             // whenever Dash.Lights.Count reads 0, which is every rig without a

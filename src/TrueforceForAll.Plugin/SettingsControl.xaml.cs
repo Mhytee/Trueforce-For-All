@@ -12684,10 +12684,10 @@ namespace TrueforceForAll.Plugin
             "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
             "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
             "SLOTWRITE<n>   Write a rainbow (red, orange, yellow, green, spring green, cyan, azure, blue, violet, magenta) into LIGHTSYNC custom slot n (1-5, default 5) and light the whole bar. BACKS THE SLOT UP FIRST and refuses to write if it cannot read the original. Asymmetric on purpose: which end the RED lands on tells us which physical LED is index 1. PERSISTS on the wheel until restored.\n" +
-            "SLOTRESTORE<n> Put your own colours back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
+            "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
             "LEDRATE<ms>    DEV: how often the rev lights may update, 10 to 1000 ms (default 40, measured safe on a G PRO; G HUB itself uses 160). Live only, resets on restart. For finding whether a faster bar costs anything on the shared HID++ pipe: drive it and watch the FORCE.\n" +
-            "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up FIRST and refuses if it cannot. PERSISTS across a restart, which is the point, and your colours stay held in the backup the whole time. SLOTRESTORE<n> puts them back. SLOTBLANKALL does all five at once (the real factory-wheel case) and SLOTRESTOREALL gives them all back.\n" +
-            "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colours (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colours are possible on this wheel at all.\n" +
+            "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up FIRST and refuses if it cannot. PERSISTS across a restart, which is the point, and your colors stay held in the backup the whole time. SLOTRESTORE<n> puts them back. SLOTBLANKALL does all five at once (the real factory-wheel case) and SLOTRESTOREALL gives them all back.\n" +
+            "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colors (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colors are possible on this wheel at all.\n" +
             "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
             "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
             "CYCLEHINT      Re-arm the LIGHTSYNC intro modal and force the cycle-binding hint on screen even though the pattern cycle action is already bound. For testing them, since anyone working on them has it bound. Session only. Toggle.\n" +
@@ -13816,7 +13816,7 @@ namespace TrueforceForAll.Plugin
                     {
                         // Same two steps as SLOTBLANK<n>: BorrowSlot takes the
                         // backup and refuses if it cannot, then the blank is
-                        // recorded WITHOUT settling the loan, so the colours stay
+                        // recorded WITHOUT settling the loan, so the colors stay
                         // protected while the slot reads empty.
                         var zeros = new byte[WheelLedChannel.LedCount * 3];
                         ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
@@ -13841,7 +13841,7 @@ namespace TrueforceForAll.Plugin
                        ? okCount + " of " + WheelLedChannel.CustomSlotCount + " restored. "
                          + "SKIP on a slot that was never blanked is expected: there is nothing held for it."
                        : okCount + " of " + WheelLedChannel.CustomSlotCount + " blanked, and every one of "
-                         + "those was backed up first. Your colours stay held until you type SLOTRESTOREALL."
+                         + "those was backed up first. Your colors stay held until you type SLOTRESTOREALL."
                          + Environment.NewLine + Environment.NewLine
                          + "Delete light-patterns.json and relaunch to test the factory-wheel first run."),
                     okCount > 0 ? DialogKind.Info : DialogKind.Warning);
@@ -13870,7 +13870,7 @@ namespace TrueforceForAll.Plugin
                 // restart and it was quietly destructive: a settled loan makes the
                 // NEXT borrow of this slot treat it as un-backed-up, re-read it,
                 // and record the blank we just wrote as "the original", discarding
-                // the last copy of the user's real colours. Marking it blanked
+                // the last copy of the user's real colors. Marking it blanked
                 // instead keeps the debt open, so the backup stays protected and
                 // SLOTRESTORE still works.
                 bool ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
@@ -13884,7 +13884,7 @@ namespace TrueforceForAll.Plugin
                        ? "CUSTOM " + n + " now reads as never programmed, and stays that way "
                          + "across a restart." + "\n\n"
                          + "Delete light-patterns.json and relaunch to test the factory-wheel "
-                         + "first run. Type SLOTRESTORE" + n + " to put your own colours back."
+                         + "first run. Type SLOTRESTORE" + n + " to put your own colors back."
                        : "Nothing was written, so the slot is untouched."),
                     ok ? DialogKind.Info : DialogKind.Warning);
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
@@ -13915,7 +13915,7 @@ namespace TrueforceForAll.Plugin
             }
 
             // Write an ASYMMETRIC rainbow into a slot, or put the user's own
-            // colours back. Asymmetric on purpose: which end the RED lands on is
+            // colors back. Asymmetric on purpose: which end the RED lands on is
             // what tells us which physical LED the code counts as number 1.
             if (code.StartsWith("SLOTWRITE", StringComparison.OrdinalIgnoreCase)
                 || code.StartsWith("SLOTRESTORE", StringComparison.OrdinalIgnoreCase))
@@ -13929,7 +13929,7 @@ namespace TrueforceForAll.Plugin
 
                 bool ok; string msg;
                 // undoBlank: typing SLOTRESTORE is a person asking for their
-                // colours back, which is exactly the case the automatic paths must
+                // colors back, which is exactly the case the automatic paths must
                 // not do on their own.
                 if (restore) ok = _plugin.RestoreSlot(slot, out msg, undoBlank: true);
                 else
@@ -13956,11 +13956,11 @@ namespace TrueforceForAll.Plugin
                 string detail = restore
                     ? "Check the wheel's own LIGHTSYNC menu: CUSTOM " + n + " should look as it did before."
                     : "The strip is now sweeping: it fills 0 to 10 and back, twice, then holds the full bar."
-                      + "\n\nColours stored, LED 1 to LED 10: red, orange, yellow, green, spring "
+                      + "\n\nColors stored, LED 1 to LED 10: red, orange, yellow, green, spring "
                       + "green, cyan, azure, blue, violet, magenta."
-                      + "\n\nWhich end does the fill START from, and which colour is there? That says "
+                      + "\n\nWhich end does the fill START from, and which color is there? That says "
                       + "which physical LED the code counts as number 1."
-                      + "\n\nType SLOTRESTORE" + n + " to put your own colours back.";
+                      + "\n\nType SLOTRESTORE" + n + " to put your own colors back.";
 
                 TrueforceDialog.Show(Window.GetWindow(this),
                     restore ? "Restore light slot" : "Write light slot",
@@ -13971,7 +13971,7 @@ namespace TrueforceForAll.Plugin
             }
 
             // Read-only: ask the wheel whether it implements per-slot LIGHTSYNC
-            // colours and dump what each custom slot holds. Writes nothing.
+            // colors and dump what each custom slot holds. Writes nothing.
             if (code.Equals("SLOTPROBE", StringComparison.OrdinalIgnoreCase))
             {
                 AccessCodeBox.Text = string.Empty;
@@ -14162,7 +14162,7 @@ namespace TrueforceForAll.Plugin
         /// them by name instead, and listing both would show every slot twice.
         ///
         /// Tags carry identity: an int for one of the wheel's effects, a pattern
-        /// id for a library row, and "*auto*" for the car's own colours. Nothing
+        /// id for a library row, and "*auto*" for the car's own colors. Nothing
         /// keys off position.</summary>
         private void FillPatternCombo(ComboBox combo, System.Windows.Input.MouseButtonEventHandler onItemClick)
         {
@@ -14178,7 +14178,7 @@ namespace TrueforceForAll.Plugin
             }
 
             if (_plugin != null && _plugin.AutoCarColorsAvailable())
-                Add("Auto (this car's own colours)", "*auto*");
+                Add("Auto (this car's own colors)", "*auto*");
 
             bool unlocked = _plugin?.Settings?.LightsyncTabUnlocked == true;
 
@@ -14207,7 +14207,7 @@ namespace TrueforceForAll.Plugin
         /// library pattern, so position means nothing and only the tag
         /// identifies a row.
         ///
-        /// Three cases, most specific first. The car's own colours are showing
+        /// Three cases, most specific first. The car's own colors are showing
         /// and the user has not overridden them; a library pattern is in a slot,
         /// where the borrowed slot means "whatever we last wrote there" and any
         /// other slot means the pattern that lives in it; or it is one of the
@@ -14473,7 +14473,7 @@ namespace TrueforceForAll.Plugin
             return false;
         }
 
-        /// <summary>What the pattern combos are built FROM: the auto-colours
+        /// <summary>What the pattern combos are built FROM: the auto-colors
         /// capability plus every pattern's id, slot and name. Comparing this against
         /// the last one is how a refresh avoids rebuilding an identical list, which
         /// would drop the user's selection mid-interaction.</summary>

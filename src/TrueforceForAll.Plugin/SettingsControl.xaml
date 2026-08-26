@@ -3673,21 +3673,23 @@
                                    Text="Pick a pattern while you are in a car and it becomes that car's pattern, with no need to press Remember. Only deliberate picks count."/>
                         <CheckBox x:Name="LovelyCarDataCheck" Content="Match my wheel to the car I'm driving"
                                   Margin="0,0,0,2" Checked="LovelyCarData_Changed" Unchecked="LovelyCarData_Changed"
-                                  ToolTip="Works even in games that light the wheel themselves, because the colours are set once as the car loads and the game drives the lights from there. Downloads a small file the first time you drive a car that has one, then keeps it on this PC and works offline."/>
+                                  ToolTip="Works even in games that light the wheel themselves, because the colors are set once as the car loads and the game drives the lights from there. Downloads a small file the first time you drive a car that has one, then keeps it on this PC and works offline."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                                   Text="Gives your wheel the car's own colours and fill direction as you get in it, and fills the lights at the points that car really lights at. Cars come up unevenly in real life, so the last few arrive fast as you approach the shift."/>
-                        <!-- Attribution is precise on purpose. The licence requires
-                             the credit, and the credit must not overstate what it
-                             covers: this project supplies the light PATTERNS only,
-                             while redlines, engine data and car names come from our
-                             own community car facts and cover cars they do not. A
-                             blanket "car data by" would misrepresent both sides. -->
-                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" TextWrapping="Wrap">
-                            <Run Text="Light patterns for covered cars come from "/><Hyperlink Click="LovelyCredit_Click"
-                                    ToolTip="Opens the lovely-car-data project on GitHub.">Lovely Sim Racing</Hyperlink><Run Text=", shared under CC BY-NC-SA 4.0."/>
+                                   Text="Gives your wheel the car's own colors and fill direction as you get in it, and fills the lights at the points that car really lights at. Cars come up unevenly in real life, so the last few arrive fast as you approach the shift."/>
+                        <!-- The credit stays here and stays visible: the licence
+                             requires it, so it is a condition of using the data
+                             rather than decoration. What moved into the guide is
+                             the DISCLOSURE around it, which was three more lines
+                             explaining that the dataset supplies patterns only
+                             while redlines, engine data and car names come from
+                             our own community car facts. Precise, worth saying,
+                             and far too much text to sit under one checkbox. -->
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,10" TextWrapping="Wrap">
+                            <Run Text="Light patterns by "/><Hyperlink Click="LovelyCredit_Click"
+                                    ToolTip="Opens the lovely-car-data project on GitHub.">Lovely Sim Racing</Hyperlink><Run Text=", CC BY-NC-SA 4.0. "/><Hyperlink
+                                    Click="LovelyGuide_Click"
+                                    ToolTip="What the dataset covers, and what comes from our own car facts.">What this covers</Hyperlink>
                         </TextBlock>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,10" TextWrapping="Wrap"
-                                   Text="Redlines, engine details and car names still come from Trueforce For All's own community car facts, for every game."/>
 
                         <!-- Wheel-wide brightness, lifted out of the pattern editor
                              where it used to live. It is a setting of the user's
@@ -3779,9 +3781,9 @@
                                 </Grid>
 
                                 <CheckBox x:Name="PatternApplyTrimBox" Margin="0,0,0,6"
-                                          Content="Apply LED colour tuning"
+                                          Content="Apply LED color tuning"
                                           Checked="PatternApplyTrim_Changed" Unchecked="PatternApplyTrim_Changed"
-                                          ToolTip="On for colours you picked on screen, so they come out on the wheel looking like they do here. Off for a pattern you took off the wheel or tuned by eye on the rim, because those already allow for it and tuning them again would change them."/>
+                                          ToolTip="On for colors you picked on screen, so they come out on the wheel looking like they do here. Off for a pattern you took off the wheel or tuned by eye on the rim, because those already allow for it and tuning them again would change them."/>
 
                                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,5"
                                            Text="Click an LED to select it. Left here is left on the wheel, and the wheel shows the whole pattern while you work."/>
@@ -3791,7 +3793,7 @@
                                     </ItemsControl.ItemsPanel>
                                 </ItemsControl>
 
-                                <!-- Colour picker: current colour, sliders for any
+                                <!-- Color picker: current color, sliders for any
                                      value, swatches for the common ones. -->
                                 <Border BorderBrush="#40FFFFFF" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
                                     <Grid>
@@ -3847,11 +3849,11 @@
                                     <Button x:Name="PatternPreviewBtn" Content="Play pattern" Padding="14,5" Click="PatternPreview_Click"
                                             ToolTip="Sweeps the strip so you can watch which way it fills."/>
                                     <Button x:Name="PatternFillAllBtn" Content="Fill all" Margin="8,0,0,0" Padding="10,5"
-                                            Click="PatternFillAll_Click" ToolTip="Set every LED to the current colour."/>
+                                            Click="PatternFillAll_Click" ToolTip="Set every LED to the current color."/>
                                     <Button x:Name="PatternMirrorBtn" Content="Mirror" Margin="6,0,0,0" Padding="10,5"
                                             Click="PatternMirror_Click" ToolTip="Copy the LED you have selected onto the one opposite it, so LED 2 pairs with LED 9. For the fills that work in pairs."/>
                                     <Button x:Name="PatternReverseBtn" Content="Reverse" Margin="6,0,0,0" Padding="10,5"
-                                            Click="PatternReverse_Click" ToolTip="Turn the whole strip back to front, so the first LED takes the last one's colour. For a ramp built from the wrong end."/>
+                                            Click="PatternReverse_Click" ToolTip="Turn the whole strip back to front, so the first LED takes the last one's color. For a ramp built from the wrong end."/>
                                 </StackPanel>
                                 <TextBlock x:Name="PatternStatusText" FontSize="11" Opacity="0.8" TextWrapping="Wrap"/>
 
@@ -3860,7 +3862,7 @@
                             </StackPanel>
                         </Expander>
 
-                        <!-- Colour trim. Patterns store what a colour means
+                        <!-- Color trim. Patterns store what a color means
                                      on a screen; these three say how far each channel
                                      has to come down for THIS wheel's LEDs to render
                                      that meaning. Red is the weak die on the wheels
@@ -3868,11 +3870,11 @@
                                      other two come down to meet it. -->
                         <Expander x:Name="LedTrimExpander" IsExpanded="False" Margin="0,10,0,0">
                             <Expander.Header>
-                                <TextBlock Text="Colour trim" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Color trim" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             </Expander.Header>
                             <StackPanel x:Name="LedTrimPanel" Margin="0,8,0,0">
                                     <TextBlock FontSize="11" Opacity="0.75" TextWrapping="Wrap" Margin="0,2,0,6"
-                                               Text="Your wheel's LEDs are not equally bright per colour, and this makes up the difference. Yellow looking green? Bring green down. White looking blue? Bring blue down. Judge it on the rim, not on screen, and move in small steps. Set it once and leave it."/>
+                                               Text="Your wheel's LEDs are not equally bright per color, and this makes up the difference. Yellow looking green? Bring green down. White looking blue? Bring blue down. Judge it on the rim, not on screen, and move in small steps. Set it once and leave it."/>
                                     <!-- The invariant, stated because the sliders do
                                          not behave the way three independent
                                          brightness controls would: only the RATIO
@@ -3883,7 +3885,7 @@
                                          dimming that channel, and levelling all
                                          three switches it off entirely. -->
                                     <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,8"
-                                               Text="Only the gap between the sliders matters. The highest one is the reference and keeps its colour as authored; the others are cut relative to it. Three equal sliders means no correction at all, whatever the number."/>
+                                               Text="Only the gap between the sliders matters. The highest one is the reference and keeps its color as authored; the others are cut relative to it. Three equal sliders means no correction at all, whatever the number."/>
                                     <Grid Margin="0,2,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="44"/>
@@ -3923,7 +3925,7 @@
                                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                         <Button x:Name="LedTrimYellowBtn" Content="Show yellow" Padding="10,5"
                                                 Click="LedTrimYellow_Click"
-                                                ToolTip="Light all ten in plain yellow, the colour that shows a green imbalance most clearly."/>
+                                                ToolTip="Light all ten in plain yellow, the color that shows a green imbalance most clearly."/>
                                         <Button x:Name="LedTrimWhiteBtn" Content="Show white" Margin="6,0,0,0" Padding="10,5"
                                                 Click="LedTrimWhite_Click"
                                                 ToolTip="Light all ten in plain white. Hold a sheet of paper next to it and trim until they agree."/>
@@ -4219,7 +4221,7 @@
                             <TextBlock Text="Rev light direction:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
                             <RadioButton x:Name="RemoteRevAutoRadio" GroupName="RemoteRevDir" Content="Auto (follow the wheel)"
                             Checked="RemoteRevDirection_Changed"
-                            ToolTip="The strip shows your wheel's rev lights: their colours, their fill direction, and the switch-on points of the car you are driving. Falls back to the settings below on a wheel whose lights we cannot read."/>
+                            ToolTip="The strip shows your wheel's rev lights: their colors, their fill direction, and the switch-on points of the car you are driving. Falls back to the settings below on a wheel whose lights we cannot read."/>
                             <RadioButton x:Name="RemoteRevLtrRadio" GroupName="RemoteRevDir" Content="Left to right"
                             Margin="0,4,0,0" Checked="RemoteRevDirection_Changed"
                             ToolTip="The rev strip fills from the left edge toward the right as revs climb."/>

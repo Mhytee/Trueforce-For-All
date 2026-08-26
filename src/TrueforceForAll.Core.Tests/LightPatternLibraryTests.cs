@@ -104,7 +104,7 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void ColoursSurviveTheRoundTripToStorage()
+        public void ColorsSurviveTheRoundTripToStorage()
         {
             var lib = new LightPatternLibrary();
             var rgb = new byte[30];
@@ -293,10 +293,10 @@ namespace TrueforceForAll.Core.Tests
 
         // ---- where a pattern lives is where it sits ----
 
-        private static Func<int, WheelLedChannel.WheelLedSlot> Slots(params byte[][] colours)
-            => slot => slot < colours.Length && colours[slot] != null
+        private static Func<int, WheelLedChannel.WheelLedSlot> Slots(params byte[][] colors)
+            => slot => slot < colors.Length && colors[slot] != null
                 ? new WheelLedChannel.WheelLedSlot
-                  { Slot = (byte)slot, DirectionWire = 2, Rgb = colours[slot] }
+                  { Slot = (byte)slot, DirectionWire = 2, Rgb = colors[slot] }
                 : null;
 
         private static LightPatternLibrary LibOf(params string[] names)
@@ -461,7 +461,7 @@ namespace TrueforceForAll.Core.Tests
         public void MalformedHexIsRefusedRatherThanPartiallyParsed(string hex)
         {
             // A half-parsed backup written back to the wheel would be garbage
-            // colours, so anything malformed must fail cleanly.
+            // colors, so anything malformed must fail cleanly.
             Assert.Null(LightSlotBackupStore.FromHex(hex));
         }
 

@@ -28,7 +28,7 @@ namespace TrueforceForAll.Plugin
         private Border[] _ledCells;
         private bool _patternUiLoading;
 
-        // Enough range to build a real rev pattern without a colour-wheel dialog,
+        // Enough range to build a real rev pattern without a color-wheel dialog,
         // which WPF does not provide and which would be overkill for ten LEDs.
         private static readonly string[] Palette =
         {
@@ -71,7 +71,7 @@ namespace TrueforceForAll.Plugin
             RefreshSlotNames();
 
             // Work out which pattern is in which slot by looking at the wheel.
-            // A slot whose colours we already have is ASSIGNED to that pattern
+            // A slot whose colors we already have is ASSIGNED to that pattern
             // rather than copied in, which is what keeps one pattern one entry.
             // New contents are added only the first time, so deleting an imported
             // pattern does not bring it back next launch.
@@ -91,7 +91,7 @@ namespace TrueforceForAll.Plugin
             _patternStore.Save(_patternLib);
 
             // Make the wheel agree with the list. On a first run this writes no
-            // colours (the order was just adopted FROM the wheel) but it does put
+            // colors (the order was just adopted FROM the wheel) but it does put
             // the pattern names onto the slots, so the base's own menu reads as
             // the patterns rather than whatever they were called before.
             string syncMsg;
@@ -103,7 +103,7 @@ namespace TrueforceForAll.Plugin
 
             // Point the library at whatever the wheel is showing right now, so
             // the editor opens on the pattern the user is actually looking at
-            // rather than an arbitrary first entry. Writes nothing: the colours
+            // rather than an arbitrary first entry. Writes nothing: the colors
             // are already on the wheel.
             if (string.IsNullOrEmpty(_patternLib.CurrentId))
                 AdoptSlotContentsAsPattern(_plugin.StageSlot());
@@ -140,7 +140,7 @@ namespace TrueforceForAll.Plugin
             if (_patternUiLoading || _plugin == null) return;
             int pct = (int)Math.Round(LedBrightnessSlider.Value);
             if (LedBrightnessText != null) LedBrightnessText.Text = pct + "%";
-            // Throttled like the colour edits: dragging a slider would otherwise
+            // Throttled like the color edits: dragging a slider would otherwise
             // fire a write per pixel down the pipe the wheel shares with force.
             _pendingBrightness = pct;
             if (_brightnessTimer == null)
@@ -161,7 +161,7 @@ namespace TrueforceForAll.Plugin
         private int _pendingBrightness = -1;
         private System.Windows.Threading.DispatcherTimer _brightnessTimer;
 
-        // ---------------- colour trim ----------------
+        // ---------------- color trim ----------------
 
         /// <summary>Put the stored trim on the three sliders. Percentages, because
         /// "green at 59%" is a thing a person can hold in their head where 0.588
@@ -211,7 +211,7 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.LedTrimG = (float)(LedTrimGSlider.Value / 100.0);
             _plugin.Settings.LedTrimB = (float)(LedTrimBSlider.Value / 100.0);
 
-            // Same throttle as the brightness and colour edits: a slider drag
+            // Same throttle as the brightness and color edits: a slider drag
             // would otherwise fire a 64-byte upload per pixel down the pipe the
             // wheel also uses for force.
             if (_trimTimer == null)
@@ -223,10 +223,10 @@ namespace TrueforceForAll.Plugin
                     _trimTimer.Stop();
                     _plugin.PersistSettings();
                     // Re-show whatever is on the rim so the trim is judged live.
-                    // A test colour wins, because that is what they are looking
+                    // A test color wins, because that is what they are looking
                     // at while dragging.
-                    if (_trimTestColour != null)
-                        ShowFlatTestColour(_trimTestColour[0], _trimTestColour[1], _trimTestColour[2], null);
+                    if (_trimTestColor != null)
+                        ShowFlatTestColor(_trimTestColor[0], _trimTestColor[1], _trimTestColor[2], null);
                     else
                     {
                         ShowOnWheelNow();
@@ -243,10 +243,10 @@ namespace TrueforceForAll.Plugin
         }
 
         private void LedTrimYellow_Click(object sender, RoutedEventArgs e)
-            => ShowFlatTestColour(0xFF, 0xFF, 0x00, "Plain yellow on all ten. Bring green down until it stops looking lime.");
+            => ShowFlatTestColor(0xFF, 0xFF, 0x00, "Plain yellow on all ten. Bring green down until it stops looking lime.");
 
         private void LedTrimWhite_Click(object sender, RoutedEventArgs e)
-            => ShowFlatTestColour(0xFF, 0xFF, 0xFF, "Plain white on all ten. Hold a sheet of paper beside it and trim until they match.");
+            => ShowFlatTestColor(0xFF, 0xFF, 0xFF, "Plain white on all ten. Hold a sheet of paper beside it and trim until they match.");
 
         private void LedTrimReset_Click(object sender, RoutedEventArgs e)
         {
@@ -254,25 +254,25 @@ namespace TrueforceForAll.Plugin
             // Back to the shipped tuning, NOT to no correction at all. Clearing
             // to null is what makes this button safe to press by accident: it
             // returns the wheel to how it arrives out of the box rather than
-            // stranding it on uncorrected colours.
+            // stranding it on uncorrected colors.
             _plugin.Settings.LedTrimR = null;
             _plugin.Settings.LedTrimG = null;
             _plugin.Settings.LedTrimB = null;
             _plugin.PersistSettings();
             RefreshLedTrim();
-            _trimTestColour = null;
+            _trimTestColor = null;
             ShowOnWheelNow();
             SetPatternStatus("Back to the tuning this wheel ships with.");
         }
 
-        /// <summary>Light every LED one flat colour, sent as INTENT so it passes
+        /// <summary>Light every LED one flat color, sent as INTENT so it passes
         /// through the trim on the way out. That is the whole point: the user
-        /// drags until the trimmed result looks like the colour they asked
+        /// drags until the trimmed result looks like the color they asked
         /// for.</summary>
-        private void ShowFlatTestColour(byte r, byte g, byte b, string status)
+        private void ShowFlatTestColor(byte r, byte g, byte b, string status)
         {
             if (_plugin == null) return;
-            _trimTestColour = new[] { r, g, b };
+            _trimTestColor = new[] { r, g, b };
 
             var rgb = new byte[WheelLedChannel.LedCount * 3];
             for (int i = 0; i < WheelLedChannel.LedCount; i++)
@@ -290,13 +290,13 @@ namespace TrueforceForAll.Plugin
                 Rgb = rgb,
             }, out msg, displayLevel: WheelLedChannel.LedCount);
 
-            if (!ok) { _trimTestColour = null; SetPatternStatus(msg); }
+            if (!ok) { _trimTestColor = null; SetPatternStatus(msg); }
             else if (status != null) SetPatternStatus(status);
         }
 
-        // Which flat colour the trim sliders are being judged against, or null
+        // Which flat color the trim sliders are being judged against, or null
         // when the rim is back to showing a real pattern.
-        private byte[] _trimTestColour;
+        private byte[] _trimTestColor;
         private System.Windows.Threading.DispatcherTimer _trimTimer;
 
         private void BuildLedCells()
@@ -624,7 +624,7 @@ namespace TrueforceForAll.Plugin
             if (row != null && row.Kind == "wheelEffect")
             {
                 // A firmware sweep. Its DIRECTION we know exactly, because the
-                // effect number is the direction. Its colours we cannot read: they
+                // effect number is the direction. Its colors we cannot read: they
                 // are fixed in the wheel and there is no way to ask for them, so
                 // the strip is shown blank rather than inventing a guess and
                 // passing it off as what the wheel does.
@@ -639,7 +639,7 @@ namespace TrueforceForAll.Plugin
                 _editing = _slotScratch;
                 SetPatternStatus("This one is built into the wheel: it fills "
                                + Directions.FirstOrDefault(d => d.Wire == _editing.DirectionWire).Label.ToLowerInvariant()
-                               + ", and its colours are fixed in the wheel's own firmware, so they cannot be read or changed here.");
+                               + ", and its colors are fixed in the wheel's own firmware, so they cannot be read or changed here.");
             }
             else
             {
@@ -733,7 +733,7 @@ namespace TrueforceForAll.Plugin
                     ? Color.FromRgb(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2])
                     : Colors.Black;
                 _ledCells[i].Background = new SolidColorBrush(c);
-                // Label in whichever of black/white stays readable on the colour.
+                // Label in whichever of black/white stays readable on the color.
                 if (_ledCells[i].Child is TextBlock t)
                     t.Foreground = (c.R * 0.299 + c.G * 0.587 + c.B * 0.114) > 140
                         ? Brushes.Black : Brushes.White;
@@ -776,7 +776,7 @@ namespace TrueforceForAll.Plugin
                 PatternCurrentSwatch.Background = new SolidColorBrush(Color.FromRgb(r, g, b));
         }
 
-        /// <summary>Write one LED's colour into the pattern being edited and save.
+        /// <summary>Write one LED's color into the pattern being edited and save.
         /// Saving on every touch keeps the library and the screen in step; there
         /// is no separate commit for the user to forget.</summary>
         private void SetLed(int index, byte r, byte g, byte b, bool alsoMirror = false)
@@ -804,7 +804,7 @@ namespace TrueforceForAll.Plugin
         /// by looking at the rim rather than at a swatch.
         ///
         /// Throttled because every call is a full slot write (an effect select, a
-        /// 64-byte colour upload and a commit), and dragging a slider would
+        /// 64-byte color upload and a commit), and dragging a slider would
         /// otherwise fire dozens a second down a pipe the wheel also uses for
         /// force. A trailing timer makes sure the LAST value still lands, so the
         /// rim never ends up showing something the screen does not.</summary>
@@ -843,23 +843,23 @@ namespace TrueforceForAll.Plugin
         private System.Windows.Threading.DispatcherTimer _wheelShowTimer;
 
         /// <summary>Write the pattern and light the whole bar, WITHOUT sweeping.
-        /// The static full bar is what you want while placing colours; the sweep
+        /// The static full bar is what you want while placing colors; the sweep
         /// is a separate, deliberate action.</summary>
         /// <param name="pattern">The pattern to show. Passed EXPLICITLY by the
         /// click handler rather than read from _editing, so what lands on the
         /// wheel is what was clicked. Reading shared editor state here meant any
         /// desync wrote a different pattern than the one selected, silently.
-        /// Null falls back to whatever is being edited, for the colour edits that
+        /// Null falls back to whatever is being edited, for the color edits that
         /// genuinely mean "the thing in front of me".</param>
         private void ShowOnWheelNow(LightPattern pattern = null, bool sweep = false)
         {
             var target = pattern ?? _editing;
             if (target == null || _plugin == null) return;
 
-            // Showing a real pattern ends any flat colour the trim sliders were
+            // Showing a real pattern ends any flat color the trim sliders were
             // being judged against, so a later trim drag re-shows this rather
             // than jumping back to the test swatch.
-            _trimTestColour = null;
+            _trimTestColor = null;
 
             string msg;
             // Editing one of the wheel's OWN slots writes to THAT slot. Showing a
@@ -877,7 +877,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Take whatever is stored in a slot into the library and make it
         /// the one showing. Returns the pattern's name, or null if the slot could
-        /// not be read. Writes nothing to the wheel: the colours are already
+        /// not be read. Writes nothing to the wheel: the colors are already
         /// there, which is the entire point.</summary>
         private string AdoptSlotContentsAsPattern(int slot)
         {
@@ -1175,7 +1175,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>Copy the left half onto the right. The two mirrored fills drive
         /// the strip in pairs, so a pattern for them has to be symmetric or the
         /// halves disagree.</summary>
-        /// <summary>Copy the selected LED's colour onto the one opposite it, so
+        /// <summary>Copy the selected LED's color onto the one opposite it, so
         /// LED 2 pairs with LED 9 and so on. Per LED rather than per half: a
         /// mirrored bar is usually built one pair at a time, and copying the whole
         /// left half over the right threw away work every time it was pressed.</summary>
@@ -1209,7 +1209,7 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Turn the whole strip back to front: LED 1 takes LED 10's
-        /// colour, LED 2 takes LED 9's, and so on. Useful when a ramp was built
+        /// color, LED 2 takes LED 9's, and so on. Useful when a ramp was built
         /// from the wrong end, which is easy to do given the fill direction is a
         /// separate setting.</summary>
         private void PatternReverse_Click(object sender, RoutedEventArgs e)
@@ -1233,8 +1233,8 @@ namespace TrueforceForAll.Plugin
             _editing.RgbHex = LightSlotBackupStore.ToHex(rgb);
             _patternStore.Save(_patternLib);
             PaintLedCells();
-            // Follow the colour the user was looking at to its new position,
-            // rather than leaving the selection pointing at a different colour.
+            // Follow the color the user was looking at to its new position,
+            // rather than leaving the selection pointing at a different color.
             if (_selectedLed >= 0 && _selectedLed < n) SelectLed(n - 1 - _selectedLed);
             ShowOnWheelThrottled();
             SetPatternStatus("Strip reversed.");
@@ -1258,12 +1258,12 @@ namespace TrueforceForAll.Plugin
             _editing.TrimExempt = PatternApplyTrimBox?.IsChecked != true;
             // Saved unconditionally. This flag has no representation on the
             // wheel to fall back on, so it cannot rely on a later incidental
-            // save the way a colour edit in a live slot can.
+            // save the way a color edit in a live slot can.
             _patternStore.Save(_patternLib);
             SetPatternStatus(_editing.TrimExempt
-                ? "Colours now go to the wheel exactly as stored, so judge this one on the rim rather than on screen."
-                : "Colours now go through the trim on the way out.");
-            // Only the colours changed, not the fill, so light it rather than
+                ? "Colors now go to the wheel exactly as stored, so judge this one on the rim rather than on screen."
+                : "Colors now go through the trim on the way out.");
+            // Only the colors changed, not the fill, so light it rather than
             // running a sweep.
             ShowOnWheelNow();
         }
@@ -1361,7 +1361,7 @@ namespace TrueforceForAll.Plugin
             _patternStore.Save(_patternLib);
             _editing = made;
             RefreshPatternList();
-            SetPatternStatus("Click an LED, then a colour.");
+            SetPatternStatus("Click an LED, then a color.");
         }
 
         private void PatternDelete_Click(object sender, RoutedEventArgs e)
@@ -1374,7 +1374,7 @@ namespace TrueforceForAll.Plugin
             // Deleting one that lives on the wheel shifts everything below it up,
             // so a different pattern lands in that slot. Without pushing the new
             // order down, the rim would keep showing the deleted pattern's
-            // colours while the list named its replacement, until the next move
+            // colors while the list named its replacement, until the next move
             // or restart. Same release-then-sync that PatternMove_Click does,
             // and for the same reason: position IS residency.
             bool wasOnWheel = _editing.OnWheel;
@@ -1410,7 +1410,7 @@ namespace TrueforceForAll.Plugin
             byte[] rgb = _editing.Rgb();
             if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
             {
-                SetPatternStatus("This pattern's colours are unreadable.");
+                SetPatternStatus("This pattern's colors are unreadable.");
                 return;
             }
 

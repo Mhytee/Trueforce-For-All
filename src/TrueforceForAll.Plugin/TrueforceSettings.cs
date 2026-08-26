@@ -579,7 +579,7 @@ namespace TrueforceForAll.Plugin
         public bool DashRevStripOutsideIn { get; set; } = true;
 
         // TF4ALL Remote dash: let the rev strip follow the wheel instead of
-        // drawing its own. On (default) the strip takes its colours, its fill
+        // drawing its own. On (default) the strip takes its colors, its fill
         // direction and its switch-on points from the wheel's live rev lights
         // (Dash.Lights.*), so the phone shows the rim, per-car published light
         // data included. Falls back to the strip's own green-amber-red ramp on
@@ -1387,7 +1387,7 @@ namespace TrueforceForAll.Plugin
         public bool AlwaysRememberCarPattern { get; set; } = false;
 
         // Per-channel trim for what the LEDs actually emit. See LedColorGain.
-        // The colours we store are sRGB intent; these three say how far each
+        // The colors we store are sRGB intent; these three say how far each
         // channel has to be cut for this particular wheel to render that intent
         // correctly, because the red die is typically the weak one and a
         // nominal yellow arrives looking like lime.

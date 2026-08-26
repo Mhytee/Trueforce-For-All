@@ -1,4 +1,4 @@
-// The "?" button in the header card: the plugin's guides, and the standing
+﻿// The "?" button in the header card: the plugin's guides, and the standing
 // Farming Simulator install control one of them opens.
 //
 // Setup is what the first entries happen to be about, not what the list is:
@@ -127,11 +127,18 @@ namespace TrueforceForAll.Plugin
                     // pane. Fails OPEN on an undetected wheel, same as the tab does,
                     // so a wheel powered on after SimHub does not lose the entry.
                     Key = "light-patterns", Group = GroupAbout,
-                    Title = "Light patterns: the library, cycling, and colour tuning",
+                    Title = "Light patterns: the library, cycling, and color tuning",
                     Visible = () => _plugin?.Settings?.LightsyncTabUnlocked == true
                                  && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern),
                     ActionLabel = "Open the LIGHTSYNC tab",
                     Action = () => SelectTab(LightsyncTab),
+                },
+                new GuideEntry
+                {
+                    Key = "lovely-car-data", Group = GroupAbout,
+                    Title = "Matching your wheel to the car: where that data comes from",
+                    ActionLabel = "Open the Lovely dataset",
+                    Action = () => OpenUrl("https://github.com/Lovely-Sim-Racing/lovely-car-data"),
                 },
                 new GuideEntry
                 {
@@ -255,6 +262,12 @@ namespace TrueforceForAll.Plugin
 
         private void WheelLightsWhy_Click(object sender, RoutedEventArgs e)
             => OpenGuides("wheel-lights");
+
+        /// <summary>The "What this covers" link beside the Lovely credit. The
+        /// credit itself stays in the panel because the licence asks for it;
+        /// this is the disclosure that used to sit under it.</summary>
+        private void LovelyGuide_Click(object sender, RoutedEventArgs e)
+            => OpenGuides("lovely-car-data");
 
         /// <summary>Open the lights section, wherever it currently lives: the block
         /// is REPARENTED into the LIGHTSYNC tab when that tab is unlocked, so its

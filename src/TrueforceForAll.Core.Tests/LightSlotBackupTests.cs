@@ -1,10 +1,10 @@
-// Safekeeping for a borrowed LIGHTSYNC slot.
+﻿// Safekeeping for a borrowed LIGHTSYNC slot.
 //
 // This file guards the least reversible thing the plugin does. Writing a slot
 // OVERWRITES a preset the user may have spent an evening on in G HUB, it
 // persists on the wheel, and it outlives our process. The on-disk backup is the
 // only route back. Every test here is really the same assertion: after any
-// plausible mishap, the user's own colours are still recoverable.
+// plausible mishap, the user's own colors are still recoverable.
 //
 // So the bias throughout is REFUSE RATHER THAN GUESS. A malformed backup must
 // come back null, never as plausible-looking bytes, because the caller writes
@@ -92,10 +92,10 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void TheHexIsTheColoursInOrderSoAPersonCanReadTheFile()
+        public void TheHexIsTheColorsInOrderSoAPersonCanReadTheFile()
         {
             // The format is a deliberate choice: the file is the last copy of
-            // someone's colours, and a human must be able to pull them out of it
+            // someone's colors, and a human must be able to pull them out of it
             // by hand if everything else fails.
             var rgb = new byte[] { 0x00, 0xFF, 0x80 };
             Assert.Equal("00FF80", LightSlotBackupStore.ToHex(rgb));
@@ -121,7 +121,7 @@ namespace TrueforceForAll.Core.Tests
         public void AFreshBackupIsNotYetRestored()
         {
             // Restored is the debt flag: false at the next launch means a session
-            // died holding the slot and we still owe the user their colours.
+            // died holding the slot and we still owe the user their colors.
             Assert.False(LightSlotBackupStore.FromSlot(Slot(2), "G PRO", DateTime.UtcNow).Restored);
         }
 
@@ -129,7 +129,7 @@ namespace TrueforceForAll.Core.Tests
         //
         // Everything here returns null rather than a best guess. The caller
         // writes what it gets straight to the wheel, so a lenient parse would
-        // paint garbage over the very colours this file exists to protect.
+        // paint garbage over the very colors this file exists to protect.
 
         [Theory]
         [InlineData(null)]
@@ -182,7 +182,7 @@ namespace TrueforceForAll.Core.Tests
         public void TwoWheelsDoNotShareASlotsBackup()
         {
             // Keyed by wheel as well as slot so swapping bases cannot push one
-            // wheel's colours onto another's slot 3.
+            // wheel's colors onto another's slot 3.
             Assert.NotEqual(LightSlotBackupStore.KeyFor("G PRO", 3),
                             LightSlotBackupStore.KeyFor("G923", 3));
         }
@@ -216,7 +216,7 @@ namespace TrueforceForAll.Core.Tests
             // The wheel identity is a string, and it can legitimately differ
             // between sessions: a discovery miss, an unreadable USB product name,
             // a future edit to that text. Orphaning the backup would let the next
-            // borrow record OUR colours as the original, and the user's real ones
+            // borrow record OUR colors as the original, and the user's real ones
             // would be gone for good. An owed debt is worth paying even when we
             // are less sure which wheel it came from.
             var map = Map(Entry("G PRO (old name)", 3, seed: 0x40));
@@ -245,7 +245,7 @@ namespace TrueforceForAll.Core.Tests
         [Fact]
         public void ASettledLoanIsNotReopenedByTheFallback()
         {
-            // Already restored means the user has their colours. Handing this back
+            // Already restored means the user has their colors. Handing this back
             // would overwrite whatever they have chosen since.
             var map = Map(Entry("old name", 3, restored: true));
 
@@ -254,7 +254,7 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void TheFallbackDoesNotBorrowADifferentSlotsColours()
+        public void TheFallbackDoesNotBorrowADifferentSlotsColors()
         {
             var map = Map(Entry("old name", 4));
 
@@ -320,7 +320,7 @@ namespace TrueforceForAll.Core.Tests
         [Fact]
         public void AnUnreadableFileIsSetAsideRatherThanOverwritten()
         {
-            // It may be the only copy of the user's colours, and a person can
+            // It may be the only copy of the user's colors, and a person can
             // still read the hex out of it by hand.
             File.WriteAllText(_path, "{ this is not json");
 
@@ -408,7 +408,7 @@ namespace TrueforceForAll.Core.Tests
             // loan SETTLED would make the automatic restore skip the slot (wanted)
             // but would also make the next borrow treat it as un-backed-up,
             // re-read it, and record the BLANK as the original, discarding the
-            // last copy of the user's colours. Blanked keeps Restored false, so
+            // last copy of the user's colors. Blanked keeps Restored false, so
             // the backup stays protected.
             var e = LightSlotBackupStore.FromSlot(Slot(3, seed: 0x77), "G PRO", DateTime.UtcNow);
             e.Blanked = true;

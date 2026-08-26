@@ -1247,7 +1247,7 @@ namespace TrueforceForAll.Plugin
         ///
         /// Three flags used to answer this between them and nothing owned the
         /// result, which is how a car with no published data came to keep the
-        /// previous car's colours. Derived in one place now so every reader
+        /// previous car's colors. Derived in one place now so every reader
         /// agrees.</summary>
         private LightShowing WhatIsShowing
             => LightCycle.Showing(AutoColorsShowing, HasExplicitCarLightChoice(),
@@ -4538,7 +4538,7 @@ namespace TrueforceForAll.Plugin
                     // RestoreOwedSlots stays unconditional in every mode, Off
                     // included. It answers "nothing owed" from disk without
                     // touching the wheel, and when something IS owed it is the
-                    // only route back to the user's own colours after a crash.
+                    // only route back to the user's own colors after a crash.
 
                     string restored = RestoreOwedSlots();
                     if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
@@ -4650,7 +4650,7 @@ namespace TrueforceForAll.Plugin
             // null) and SwapTelemetrySource picks an enhanced source if the
             // running game has one.
             //
-            // Full only. Lights-only needs no telemetry at all: the car's colours
+            // Full only. Lights-only needs no telemetry at all: the car's colors
             // come from its published ramp, not from a frame, and the car's identity
             // arrives in DataUpdate, which SimHub calls whether or not we run a
             // source. Skipping it here is also what keeps the promise about the UDP
@@ -5336,7 +5336,7 @@ namespace TrueforceForAll.Plugin
 
             // Give back any borrowed light slot FIRST, while the HID++ channel is
             // still up. A slot write persists on the wheel, so leaving one held
-            // means the user's own colours stay overwritten after we exit. Runs
+            // means the user's own colors stay overwritten after we exit. Runs
             // before the teardown below closes the streams this needs.
             try
             {
@@ -5344,7 +5344,7 @@ namespace TrueforceForAll.Plugin
                 if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
 
                 // Leave the strip dark. Writing a slot has to light it briefly to
-                // land the colours, and whatever we were showing is ours, not the
+                // land the colors, and whatever we were showing is ours, not the
                 // user's: a lit LED sitting there after SimHub closes looks like
                 // the wheel is stuck.
                 try { _rpmLeds?.Channel?.Clear(); } catch { }
@@ -6956,7 +6956,7 @@ namespace TrueforceForAll.Plugin
                     // G923 PS (C266): legacy F8-12 rev bar, 5 LEDs. The G923 Xbox
                     // is NOT here; it takes the HID++ 0x807A path above.
                     DriveG923Leds(pct, redline, modeBLeds);
-                    // Not mirrored: this path never builds a level or a colour
+                    // Not mirrored: this path never builds a level or a color
                     // profile, so there is nothing for the dash to follow and it
                     // should draw its own strip instead of a frozen one.
                     ClearDashLights();
@@ -7678,7 +7678,7 @@ namespace TrueforceForAll.Plugin
 
                 // Switching the feature off should mean OFF, not "off from the
                 // next restart": give the slot straight back rather than sitting
-                // on the user's colours until shutdown.
+                // on the user's colors until shutdown.
                 Task.Run(() =>
                 {
                     try
@@ -7700,7 +7700,7 @@ namespace TrueforceForAll.Plugin
         /// per-frame push: the wheel's selection is a real selector, not a state we
         /// continuously enforce.
         ///
-        /// Deliberately reads no telemetry frame. The colours come from the car's
+        /// Deliberately reads no telemetry frame. The colors come from the car's
         /// own published ramp rather than the live gear, and the car id is
         /// established in DataUpdate, so lights-only mode can drive this edge with
         /// no telemetry source running at all.
@@ -7737,7 +7737,7 @@ namespace TrueforceForAll.Plugin
                     // seven seconds of level writes (a 0-to-10 ramp, a lit hold, a
                     // ramp back down) on the endpoint the game's force feedback
                     // shares, at every car load, which is precisely the continuous
-                    // level driving this mode exists to avoid. The colours land
+                    // level driving this mode exists to avoid. The colors land
                     // either way, and in this mode the game lights the bar.
                     if (!ApplyLightPattern(p, out msg, sweep: !lightsOnly))
                         SimHub.Logging.Current.Info("[TF4ALL] remembered pattern not applied: " + msg);
@@ -8053,7 +8053,7 @@ namespace TrueforceForAll.Plugin
                 // them. The car-load edge is latched and only fires on a car change,
                 // so without this, choosing lights-only while already sitting in a
                 // car did nothing at all until the user swapped car, and coming back
-                // to full after an off (which restores the user's own colours) left
+                // to full after an off (which restores the user's own colors) left
                 // the wheel showing those instead of the car's for the rest of the
                 // session.
                 if (now != TrueforceMasterMode.Off && was != now)
@@ -8073,7 +8073,7 @@ namespace TrueforceForAll.Plugin
 
                 if (now != TrueforceMasterMode.Off) return;
 
-                // Off means off, so the user's own colours go back now rather than
+                // Off means off, so the user's own colors go back now rather than
                 // sitting in a borrowed slot until shutdown. Same shape as
                 // OnLovelyEnabledChanged above: off the caller's thread, and never
                 // throwing into it.
@@ -8108,7 +8108,7 @@ namespace TrueforceForAll.Plugin
             PublishLovelyRedlines();
 
             // Both early returns below skip ApplyCarColorsOnLoad, which is the
-            // only thing that hands the lights back. Without this, colours we
+            // only thing that hands the lights back. Without this, colors we
             // borrowed for the PREVIOUS car survive switching to a car with no
             // id (an unrecognised car) or turning the feature off mid-session,
             // and the wheel keeps showing a car the user is no longer in.
@@ -8139,7 +8139,7 @@ namespace TrueforceForAll.Plugin
                         // Only adopt if the car has not changed again underneath us,
                         // AND the master switch has not moved to Off while the fetch
                         // was in flight: a network round trip easily outlives a
-                        // click, and landing colours after "off" is exactly the bug
+                        // click, and landing colors after "off" is exactly the bug
                         // this mode work exists to fix.
                         if (MasterMode != TrueforceMasterMode.Off
                             && string.Equals(_activeGame, game, StringComparison.Ordinal)
@@ -8150,7 +8150,7 @@ namespace TrueforceForAll.Plugin
                             _lovelyGear = null;
                             PublishLovelyRedlines();
                             // A car seen for the first time has no cached data at
-                            // the car-load edge, so this is where its colours
+                            // the car-load edge, so this is where its colors
                             // become available.
                             ApplyCarColorsOnLoad(game, carId);
                         }
@@ -11739,7 +11739,7 @@ namespace TrueforceForAll.Plugin
             // same control as the slot writes BorrowSlot guards.
             if (MasterMode == TrueforceMasterMode.Off) return;
             // Whatever we were standing in the stage slot is no longer what the
-            // wheel is showing, and neither are the car's own colours.
+            // wheel is showing, and neither are the car's own colors.
             LibraryPatternShowing = false;
             _autoAppliedColors = false;
             NoteLightSelectionChanged();
@@ -11818,7 +11818,7 @@ namespace TrueforceForAll.Plugin
 
             byte[] rgb = pattern.Rgb();
             if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
-            { message = "That pattern's colours are unreadable."; return false; }
+            { message = "That pattern's colors are unreadable."; return false; }
 
             bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
             {
@@ -11889,34 +11889,34 @@ namespace TrueforceForAll.Plugin
                 var have = ReadSlot(slot);
                 // Compare against what we WOULD send, not against what the
                 // library stores. The library holds sRGB intent; the wheel
-                // holds that intent after the colour trim. Comparing the two
+                // holds that intent after the color trim. Comparing the two
                 // directly would never match on a calibrated wheel, so
-                // coloursRight would be permanently false and this loop would
+                // colorsRight would be permanently false and this loop would
                 // re-upload all five slots on every LIGHTSYNC tab open, which
                 // is five flash writes down the pipe force feedback shares.
                 string wireHex = ToWireHex(p);
-                bool coloursRight = have?.Rgb != null
+                bool colorsRight = have?.Rgb != null
                     && have.DirectionWire == p.DirectionWire
                     && string.Equals(LightSlotBackupStore.ToHex(have.Rgb), wireHex,
                                      StringComparison.OrdinalIgnoreCase);
 
-                if (coloursRight)
+                if (colorsRight)
                 {
-                    // The colours are right but the NAME may not be. Slots keep
+                    // The colors are right but the NAME may not be. Slots keep
                     // whatever they were called before the plugin ever ran, and
-                    // adopting the wheel's order matches on colour alone, so the
+                    // adopting the wheel's order matches on color alone, so the
                     // first five would sit there under their old names forever.
                     // Scrolling the base's own menu should read as the patterns
-                    // that are actually in them. One name write, no colour upload.
+                    // that are actually in them. One name write, no color upload.
                     string wantName = WheelLedChannel.SlotNameFor(p.Name);
                     string haveName = ReadSlotName(slot);
                     // A name we cannot read is not a name we know to be RIGHT
                     // either, and skipping the write on an unreadable name meant
                     // slots 1 to 4 sat under their factory "CUSTOM n" labels
-                    // forever: the colour branch below is the only other thing
-                    // that names a slot, and it never runs once the colours
+                    // forever: the color branch below is the only other thing
+                    // that names a slot, and it never runs once the colors
                     // match. A name write is one cheap idempotent packet, far
-                    // less than the colour upload this branch exists to avoid.
+                    // less than the color upload this branch exists to avoid.
                     if (!string.Equals(haveName ?? string.Empty, wantName, StringComparison.Ordinal)
                         && WriteSlotName(slot, p.Name))
                         renames++;
@@ -11961,7 +11961,7 @@ namespace TrueforceForAll.Plugin
         /// and cycling to the same pattern did not.</summary>
         /// <summary>How long a lit strip stays up after an EDIT before fading.
         /// Long: the user is working on that pattern, each change re-arms it, and
-        /// a bar that drops out between colour picks is the thing they are trying
+        /// a bar that drops out between color picks is the thing they are trying
         /// to look at going away.</summary>
         private const int ShowHoldMs = 8000;
 
@@ -11978,10 +11978,10 @@ namespace TrueforceForAll.Plugin
         private int ShowLevel =>
             (_rpmLeds?.IsDriving ?? false) ? -1 : WheelLedChannel.LedCount;
 
-        /// <summary>Ask this wheel whether it implements the per-slot colour
+        /// <summary>Ask this wheel whether it implements the per-slot color
         /// feature, and what it currently holds. READ-ONLY: nothing is written to
         /// a slot and no effect is selected. Answers the one question blocking
-        /// every colour and layout feature, which mescon could only verify on an
+        /// every color and layout feature, which mescon could only verify on an
         /// RS50.</summary>
         public string ProbeLedSlotFeature()
         {
@@ -11996,14 +11996,14 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Show the ACTIVE car's own light pattern on the wheel: compose
-        /// its colours and fill direction from the published data and write them
+        /// its colors and fill direction from the published data and write them
         /// into the designated slot.
         ///
         /// Manual for now, on purpose. The composition and the slot write are both
         /// proven, but an automatic per-car write fires unattended and possibly
         /// mid-session, on a pipe shared with the game's force feedback, so it
         /// wants its own gate before it runs on its own.</summary>
-        /// <summary>Car-load edge: put THIS car's own colours and fill direction
+        /// <summary>Car-load edge: put THIS car's own colors and fill direction
         /// into the lent slot, so the wheel matches the car's dash without anyone
         /// touching a setting.
         ///
@@ -12037,7 +12037,7 @@ namespace TrueforceForAll.Plugin
                 // Nothing to say about this car.
                 //
                 // Only put the user's own pattern back if WE were the ones who
-                // moved it, i.e. a previous car's colours are still showing.
+                // moved it, i.e. a previous car's colors are still showing.
                 // Restoring unconditionally meant that in a game the dataset does
                 // not cover at all (every Forza title), each car change rewrote a
                 // slot and switched the wheel, for no reason and without anyone
@@ -12057,7 +12057,7 @@ namespace TrueforceForAll.Plugin
                 {
                     // Only act on the car that is STILL active: a background
                     // refresh or a quick car switch must not paint the wrong car's
-                    // colours onto the wheel.
+                    // colors onto the wheel.
                     if (!string.Equals(_activeGame, game, StringComparison.Ordinal)
                         || !string.Equals(_activeCarId, carId, StringComparison.Ordinal)) return;
 
@@ -12077,7 +12077,7 @@ namespace TrueforceForAll.Plugin
 
                     string msg;
                     // ALWAYS trimmed: no rawColors here, deliberately. These are
-                    // upstream sRGB colours describing the real car, not bytes
+                    // upstream sRGB colors describing the real car, not bytes
                     // anyone tuned against this wheel, so they need the same
                     // correction as anything picked on screen.
                     bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
@@ -12102,23 +12102,23 @@ namespace TrueforceForAll.Plugin
                         // the NEXT car: it compared the sticky id against a stale
                         // CurrentId, matched, and returned without writing, so a
                         // car the dataset knows nothing about kept the previous
-                        // car's colours instead of restoring the user's pick.
+                        // car's colors instead of restoring the user's pick.
                         LightPatterns.CurrentId = null;
                         LibraryPatternShowing = false;
                     }
 
-                    // The dash mirrors the car's colours whether or not the wheel
+                    // The dash mirrors the car's colors whether or not the wheel
                     // write landed: on screen there is nothing to refuse us.
                     PublishDashLightProfile(rgb, profile.Layout, car.CarName ?? carId);
 
                     SimHub.Logging.Current.Info(ok
-                        ? $"[TF4ALL] car colours applied for {carId}: {profile.Layout}, "
-                          + (profile.UsedCarColors ? "the car's own colours" : "standard ramp")
-                        : "[TF4ALL] car colours not applied: " + msg);
+                        ? $"[TF4ALL] car colors applied for {carId}: {profile.Layout}, "
+                          + (profile.UsedCarColors ? "the car's own colors" : "standard ramp")
+                        : "[TF4ALL] car colors not applied: " + msg);
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] car-colour apply failed: " + ex.Message);
+                    SimHub.Logging.Current.Info("[TF4ALL] car-color apply failed: " + ex.Message);
                 }
             });
         }
@@ -12173,7 +12173,7 @@ namespace TrueforceForAll.Plugin
             string layout = profile.Layout.ToString();
             message = ok
                 ? $"{car.CarName ?? _activeCarId}: {layout}, "
-                  + (profile.UsedCarColors ? "the car's own colours" : "no colours published, so the standard ramp")
+                  + (profile.UsedCarColors ? "the car's own colors" : "no colors published, so the standard ramp")
                   + ". " + detail
                 : detail;
             return ok;
@@ -12181,10 +12181,55 @@ namespace TrueforceForAll.Plugin
 
         // ---- LIGHTSYNC slot borrow / restore ----
 
-        /// <summary>Where the user's light-pattern library lives. Beside the
-        /// preset library so a folder backup carries it.</summary>
-        public string LightPatternFilePath => Path.Combine(TfPaths.CommonRoot,
-            "TrueforceForAll-Library", "light-patterns.json");
+        /// <summary>Where the user's light-pattern library lives: INSIDE the
+        /// user preset folder, which is the folder the backup bundler walks.
+        ///
+        /// It used to sit in a sibling called "TrueforceForAll-Library" under a
+        /// comment claiming a folder backup carried it. It did not: that name is
+        /// the LEGACY preset folder, migrated to TrueforceForAll\user by the
+        /// one-time restructure, and the bundler walks the new one. So a user's
+        /// whole pattern library was absent from backup, export, restore and
+        /// cloud sync, while CarLightPattern (car to pattern id) travelled
+        /// without it, which would land a second PC with per-car assignments
+        /// pointing at patterns it does not have.
+        ///
+        /// Here it is carried with no backup-side change at all: Bundle() globs
+        /// *.json under this folder recursively and restores it verbatim.
+        /// BuiltinPresetStore.IsReservedMetadataFile keeps the preset scan from
+        /// reading it as a game preset called "light-patterns".</summary>
+        public string LightPatternFilePath => Path.Combine(
+            UserPresets.CurrentFolder ?? UserPresets.DefaultFolder, "light-patterns.json");
+
+        /// <summary>The pre-0.3.0 home. Kept only so the migration below can
+        /// find a library that is already sitting there.</summary>
+        private static string LegacyLightPatternFilePath => Path.Combine(
+            TfPaths.CommonRoot, "TrueforceForAll-Library", "light-patterns.json");
+
+        /// <summary>Carry an existing library across to the new home, once.
+        ///
+        /// Only ever writes into an EMPTY destination, so a library already at
+        /// the new path always wins and re-running this can never overwrite it.
+        /// The source is left in place: it costs a few KB, and it means a user
+        /// who rolls back still has their patterns where the old build looks.</summary>
+        private void MigrateLightPatternsIfNeeded()
+        {
+            try
+            {
+                string dest = LightPatternFilePath;
+                if (string.IsNullOrEmpty(dest) || File.Exists(dest)) return;
+                string src = LegacyLightPatternFilePath;
+                if (!File.Exists(src)) return;
+                string parent = Path.GetDirectoryName(dest);
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                File.Copy(src, dest);
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Light-pattern library copied into the preset folder so backups carry it.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] Light-pattern migration failed: " + ex.Message);
+            }
+        }
 
         // The library lives HERE rather than in the settings UI because a bound
         // button has to cycle it with no window open. The editor reads and writes
@@ -12200,8 +12245,14 @@ namespace TrueforceForAll.Plugin
                 lock (_lightPatternGate)
                 {
                     if (_lightPatternStore == null)
+                    {
+                        // Runs before the first read, which is the only moment
+                        // that matters: the store is created once and the file
+                        // is loaded through it.
+                        MigrateLightPatternsIfNeeded();
                         _lightPatternStore = new LightPatternStore(LightPatternFilePath)
                         { Log = m => SimHub.Logging.Current.Info(m) };
+                    }
                     return _lightPatternStore;
                 }
             }
@@ -12243,7 +12294,7 @@ namespace TrueforceForAll.Plugin
 
             // An unreturned backup means a slot is already on loan, from earlier
             // in this session or from one that died holding it. THAT is the stage:
-            // taking a different one would strand our colours in theirs and hold
+            // taking a different one would strand our colors in theirs and hold
             // two slots at once.
             int held = HeldBorrowedSlot();
             if (held >= 0) return _stageSlot = held;
@@ -12495,16 +12546,16 @@ namespace TrueforceForAll.Plugin
         ///
         /// Their pick is meant to STICK: choosing a pattern is a standing choice,
         /// not a one-car one. Without this, driving a car the database knows and
-        /// then one it does not would leave the first car's colours on the wheel,
+        /// then one it does not would leave the first car's colors on the wheel,
         /// which reads as the plugin having wandered off on its own.
         ///
         /// Silent and best-effort: nothing chosen yet means leave the wheel be.</summary>
-        /// <summary>True while the lights are showing a CAR'S colours that we
+        /// <summary>True while the lights are showing a CAR'S colors that we
         /// applied, rather than whatever the user chose. The only thing that
         /// justifies moving them back on the next car.</summary>
         private bool _autoAppliedColors;
 
-        /// <summary>Whether the car's OWN colours are what the wheel is showing
+        /// <summary>Whether the car's OWN colors are what the wheel is showing
         /// right now, as opposed to something the user has since picked.
         ///
         /// The pickers used to display "Auto" whenever a car had data and nothing
@@ -12582,9 +12633,9 @@ namespace TrueforceForAll.Plugin
         /// cycling, which makes it their standing choice. False for automatic
         /// applies, which must not redefine what they picked.</param>
         /// <param name="sweep">Play the fill animation as well as lighting the
-        /// bar. Right for a deliberate pick, wrong for a live colour edit, where
+        /// bar. Right for a deliberate pick, wrong for a live color edit, where
         /// restarting the sweep on every slider tick would flicker instead of
-        /// showing the colour the user is choosing.</param>
+        /// showing the color the user is choosing.</param>
         public bool ApplyLightPattern(LightPattern pattern, out string message,
                                       bool userChose = false, bool sweep = true)
         {
@@ -12595,7 +12646,7 @@ namespace TrueforceForAll.Plugin
             byte[] rgb = pattern.Rgb();
             if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
             {
-                message = "That pattern's colours are unreadable.";
+                message = "That pattern's colors are unreadable.";
                 return false;
             }
 
@@ -12620,7 +12671,7 @@ namespace TrueforceForAll.Plugin
                 SaveLightPatterns();
                 PublishDashLightProfile(rgb, DirectionFromWire(pattern.DirectionWire), pattern.Name);
                 LibraryPatternShowing = true;
-                // A deliberate pick replaces the car's own colours, so they are no
+                // A deliberate pick replaces the car's own colors, so they are no
                 // longer what is on the wheel and nothing should claim they are.
                 _autoAppliedColors = false;
                 NoteLightSelectionChanged();
@@ -12771,8 +12822,8 @@ namespace TrueforceForAll.Plugin
         /// copy at shutdown would undo the change they just asked for. This is
         /// the whole difference between editing your own slot and lending one to
         /// the plugin.</param>
-        /// <summary>The hex that a pattern's stored colours become on the wire
-        /// once the LED colour trim is applied.
+        /// <summary>The hex that a pattern's stored colors become on the wire
+        /// once the LED color trim is applied.
         ///
         /// The library stores sRGB INTENT and the wheel holds that intent after
         /// trimming, so after calibration the two genuinely differ byte for
@@ -12830,10 +12881,10 @@ namespace TrueforceForAll.Plugin
             return LedColorGain.Apply(rgb, r, g, b);
         }
 
-        /// <param name="rawColors">The caller's colours are already in the
+        /// <param name="rawColors">The caller's colors are already in the
         /// wheel's own space (a pattern the user tuned by eye on the rim, or one
         /// imported out of the wheel's slots), so they go out untouched by the
-        /// LED colour trim. Anything that later compares this slot against that
+        /// LED color trim. Anything that later compares this slot against that
         /// pattern must compare RAW too, which ToWireHex(LightPattern) handles
         /// as the single place that decision lives.</param>
         /// <summary>After a slot write in a mode that does not drive the bar, stop
@@ -12856,12 +12907,12 @@ namespace TrueforceForAll.Plugin
                                bool permanent = false, bool rawColors = false)
         {
             message = null;
-            // Off means off, including the lights. Every colour that reaches a slot
+            // Off means off, including the lights. Every color that reaches a slot
             // comes through here (the car-load auto-apply, the pattern library, the
             // blank/restore rehearsal, the dev codes), so this one refusal is what
             // makes the master switch honest: before it, a "disabled" plugin still
             // repainted a Lightsync slot on every car load. RestoreSlot deliberately
-            // does NOT come through here, so the way back to the user's own colours
+            // does NOT come through here, so the way back to the user's own colors
             // stays open in every mode.
             if (MasterMode == TrueforceMasterMode.Off)
             {
@@ -12940,7 +12991,7 @@ namespace TrueforceForAll.Plugin
 
                 // A backup file we could not parse is NOT the same as no backup.
                 // Carrying on would re-read the slot, capture whatever is on it
-                // (possibly our own colours from a previous borrow) and record
+                // (possibly our own colors from a previous borrow) and record
                 // that as "the original", destroying the last trace of theirs.
                 if (store.LastLoadCorrupt)
                 {
@@ -12964,13 +13015,13 @@ namespace TrueforceForAll.Plugin
                     }
                     var entry = LightSlotBackupStore.FromSlot(original, SlotWheelId, DateTime.UtcNow);
                     // Keep the slot's own name too, so giving it back restores how
-                    // the wheel's menu reads, not just the colours.
+                    // the wheel's menu reads, not just the colors.
                     entry.OriginalName = ReadSlotName(want.Slot);
                     map[LightSlotBackupStore.KeyFor(SlotWheelId, want.Slot)] = entry;
 
                     // The save MUST land before the wheel is touched. Reporting
                     // "backed up first" while the write silently failed was the
-                    // worst bug in this path: the user would believe their colours
+                    // worst bug in this path: the user would believe their colors
                     // were safe when the only copy had just been discarded.
                     if (!store.Save(map))
                     {
@@ -13013,7 +13064,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>DEV (SLOTBLANK): record that this slot was deliberately
         /// emptied, so the automatic restore paths leave it alone and the blank
         /// survives a restart, WITHOUT settling the loan. The debt staying open is
-        /// what keeps the user's real colours protected in the backup file.</summary>
+        /// what keeps the user's real colors protected in the backup file.</summary>
         public bool MarkSlotBlanked(int slot, out string message)
         {
             message = null;
@@ -13041,7 +13092,7 @@ namespace TrueforceForAll.Plugin
                     message = "Could not record the blank, so it will be undone at the next launch.";
                     return false;
                 }
-                message = $"CUSTOM {slot + 1} now reads as never programmed. Your colours are still "
+                message = $"CUSTOM {slot + 1} now reads as never programmed. Your colors are still "
                         + $"held in the backup; SLOTRESTORE{slot + 1} puts them back.";
                 return true;
             }
@@ -13081,7 +13132,7 @@ namespace TrueforceForAll.Plugin
                 // BLANKED: the rehearsal fills the empty slots it just created,
                 // and SyncSlotsToWheel writes those permanently, which settles the
                 // very loans the blanking opened. Refusing here would strand the
-                // user's real colours in a file that still holds them perfectly,
+                // user's real colors in a file that still holds them perfectly,
                 // with no way to write them back. So an explicit SLOTRESTORE beats
                 // the settlement whenever the slot carries a blank we owe an undo
                 // for. Seen 2026-08-24 doing exactly this on slots 1-4.
@@ -13093,14 +13144,14 @@ namespace TrueforceForAll.Plugin
                 // A deliberately blanked slot is skipped by the AUTOMATIC restore
                 // paths, which is what makes the blank survive a restart. Typing
                 // SLOTRESTORE is not one of those: it is a person asking for their
-                // colours back, so it goes through and clears the blank.
+                // colors back, so it goes through and clears the blank.
                 // Blanked slots are skipped by the AUTOMATIC paths, which is what
                 // makes a blank survive a restart. Typing SLOTRESTORE is not one of
-                // those: it is a person asking for their colours back.
+                // those: it is a person asking for their colors back.
                 if (entry.Blanked && !undoBlank)
                 {
                     message = $"CUSTOM {slot + 1} is deliberately blanked (SLOTBLANK). "
-                            + $"Type SLOTRESTORE{slot + 1} to put your colours back.";
+                            + $"Type SLOTRESTORE{slot + 1} to put your colors back.";
                     return false;
                 }
                 entry.Blanked = false;
@@ -13122,7 +13173,7 @@ namespace TrueforceForAll.Plugin
                 // Read it back and compare before calling the debt settled. A
                 // write we merely believe landed is not proof: marking Restored
                 // on an unconfirmed write would let the NEXT borrow re-read the
-                // slot, still holding our colours, and record those as "the
+                // slot, still holding our colors, and record those as "the
                 // original", losing the user's real ones for good.
                 WheelLedChannel.WheelLedSlot after;
                 bool verified = ch.TryReadSlot(slot, out after)
@@ -13161,7 +13212,7 @@ namespace TrueforceForAll.Plugin
         /// Called from End() so a clean exit settles the debt, and again after the
         /// wheel comes up so a session that CRASHED holding a slot is repaid at
         /// the next launch. Both matter: a slot write persists on the wheel, so
-        /// without this the user's own colours stay overwritten indefinitely and
+        /// without this the user's own colors stay overwritten indefinitely and
         /// only a hidden dev code could bring them back.</summary>
         public string RestoreOwedSlots()
         {

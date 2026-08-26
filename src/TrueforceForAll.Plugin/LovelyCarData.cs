@@ -1,4 +1,4 @@
-// Parsing for the community-maintained lovely-car-data dataset
+﻿// Parsing for the community-maintained lovely-car-data dataset
 // (github.com/Lovely-Sim-Racing/lovely-car-data, CC BY-NC-SA 4.0), which
 // carries per-car rev-light data keyed by SimHub's own game and car ids.
 //
@@ -14,7 +14,7 @@
 //
 // TOLERANCE IS DELIBERATE. This is third-party data fetched from the internet
 // and it is measurably imperfect (2026-08-17 census of all 717 files: 6 files
-// break the dataset's own ledColor length rule, 2 colour values are malformed
+// break the dataset's own ledColor length rule, 2 color values are malformed
 // hex, 17 gear ramps carry two or fewer distinct thresholds). A car we cannot
 // read must degrade to "no data, use the built-in ramp", never to an
 // exception on a telemetry thread.
@@ -32,7 +32,7 @@ namespace TrueforceForAll.Plugin
     /// <summary>One gear's light ramp. <see cref="RedlineRpm"/> is that gear's
     /// own redline (the dataset stores it as element 0 of the gear array) and
     /// <see cref="Thresholds"/> holds the per-LED switch-on RPMs in dash order,
-    /// dead slots included as 0 so LED positions stay aligned with the colour
+    /// dead slots included as 0 so LED positions stay aligned with the color
     /// array.</summary>
     public sealed class LovelyGearRamp
     {
@@ -110,13 +110,13 @@ namespace TrueforceForAll.Plugin
         /// not blink (470 of 717 files), NOT "use a default".</summary>
         public int RedlineBlinkIntervalMs { get; set; }
 
-        /// <summary>Per-LED colours in dash order, dead slots included as null.
-        /// The dataset's leading redline colour is split off into
+        /// <summary>Per-LED colors in dash order, dead slots included as null.
+        /// The dataset's leading redline color is split off into
         /// <see cref="RedlineColor"/>, so index 0 here is the car's first LED.</summary>
         public LovelyColor[] LedColors { get; set; } = new LovelyColor[0];
 
-        /// <summary>The colour the dash flashes at redline (element 0 of the
-        /// published colour array). Null when absent or unparseable.</summary>
+        /// <summary>The color the dash flashes at redline (element 0 of the
+        /// published color array). Null when absent or unparseable.</summary>
         public LovelyColor? RedlineColor { get; set; }
 
         /// <summary>Gear key to ramp. Keys are the dataset's own: "R", "N" and
@@ -255,8 +255,8 @@ namespace TrueforceForAll.Plugin
             && Gears.Values.Any(g => g != null && (g.IsUsable || g.RedlineRpm > 0));
     }
 
-    /// <summary>A colour as the dataset publishes it. Kept as components rather
-    /// than a UI colour type so this file stays free of WPF and testable on
+    /// <summary>A color as the dataset publishes it. Kept as components rather
+    /// than a UI color type so this file stays free of WPF and testable on
     /// net8.</summary>
     public struct LovelyColor
     {
@@ -365,7 +365,7 @@ namespace TrueforceForAll.Plugin
             return profile.HasAnyUsefulData ? profile : null;
         }
 
-        // ledColor leads with the redline/blink colour and then runs led1..ledN,
+        // ledColor leads with the redline/blink color and then runs led1..ledN,
         // so a well-formed file holds ledNumber + 1 entries. Six files upstream
         // break that rule, so the count is never trusted: we split element 0 off
         // and take whatever remains, letting the threshold array decide how many
@@ -381,7 +381,7 @@ namespace TrueforceForAll.Plugin
             {
                 var c = ParseColor((string)arr[i]);
                 // An unparseable entry becomes a gap rather than dropping the
-                // position, so colour indices stay aligned with threshold indices.
+                // position, so color indices stay aligned with threshold indices.
                 leds.Add(c ?? new LovelyColor(0, 0, 0, 0));
             }
             profile.LedColors = leds.ToArray();
@@ -443,8 +443,8 @@ namespace TrueforceForAll.Plugin
             return fallback;
         }
 
-        /// <summary>Parse one published colour. The format permits "#AARRGGBB",
-        /// "#RRGGBB" and the HTML colour names, and separately contains two
+        /// <summary>Parse one published color. The format permits "#AARRGGBB",
+        /// "#RRGGBB" and the HTML color names, and separately contains two
         /// malformed values (a 6-digit and a 7-digit string behind an 8-digit
         /// convention), so anything that does not parse cleanly returns null and
         /// the caller treats the slot as a gap.</summary>
@@ -457,7 +457,7 @@ namespace TrueforceForAll.Plugin
             {
                 string hex = s.Substring(1);
                 // Only the two documented widths. The malformed 7-digit value
-                // upstream would otherwise silently parse as a shifted colour.
+                // upstream would otherwise silently parse as a shifted color.
                 if (hex.Length != 8 && hex.Length != 6) return null;
                 foreach (char c in hex)
                     if (!Uri.IsHexDigit(c)) return null;
@@ -476,9 +476,9 @@ namespace TrueforceForAll.Plugin
             return null;
         }
 
-        // The dataset's published colour vocabulary is hex in practice (all 20
+        // The dataset's published color vocabulary is hex in practice (all 20
         // distinct values as of the 2026-08-17 census), but the format also
-        // permits HTML colour names, so the ones a rev strip plausibly uses are
+        // permits HTML color names, so the ones a rev strip plausibly uses are
         // resolved here. An unlisted name is treated as unreadable, not guessed.
         private static readonly Dictionary<string, LovelyColor> HtmlColorNames =
             new Dictionary<string, LovelyColor>(StringComparer.OrdinalIgnoreCase)

@@ -1,4 +1,4 @@
-// The running order behind the wheel's "next light pattern" button, and the
+﻿// The running order behind the wheel's "next light pattern" button, and the
 // question of where in it we currently stand.
 //
 // Extracted from TrueforcePlugin because this logic produced four separate
@@ -36,7 +36,7 @@ namespace TrueforceForAll.Plugin
     ///
     /// Three separate flags used to answer this between them, and nothing owned
     /// the answer. That is exactly how a car with no published data came to keep
-    /// the PREVIOUS car's colours: the auto path set one flag and left another
+    /// the PREVIOUS car's colors: the auto path set one flag and left another
     /// naming a pattern it had already painted over, so the restore looked at the
     /// stale one, decided the pattern was already showing, and did nothing.</summary>
     public enum LightShowing
@@ -45,7 +45,7 @@ namespace TrueforceForAll.Plugin
         WheelEffect,
         /// <summary>One of our library patterns, in a slot we borrowed.</summary>
         LibraryPattern,
-        /// <summary>The active car's own published colours.</summary>
+        /// <summary>The active car's own published colors.</summary>
         CarAutoColors,
     }
 
@@ -63,7 +63,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>Which of the three states the caller's flags describe.
         ///
         /// Auto wins over a library pattern deliberately: while the car's own
-        /// colours are up, a stage slot may well be lent out too, so both flags
+        /// colors are up, a stage slot may well be lent out too, so both flags
         /// can read true at once and only one of them is what the user sees. A
         /// pattern the user PINNED to this car is not Auto, which is what
         /// carChoicePinned rules out.</summary>
@@ -78,7 +78,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>The full running order, wheel-first: Auto, effects 1-4, then
         /// the five slots in order, with the lent slot expanded into every pattern
         /// in the library at its own position.</summary>
-        /// <param name="autoAvailable">Whether the active car has published colours.</param>
+        /// <param name="autoAvailable">Whether the active car has published colors.</param>
         /// <param name="stage">The slot we borrow to show a library pattern, or
         /// negative when there is none to borrow.</param>
         /// <param name="programmed">Per slot: does it actually hold something.</param>
@@ -92,11 +92,11 @@ namespace TrueforceForAll.Plugin
             Func<int, string> label = effectLabel ?? (e => "Pattern " + e);
 
             // Auto first, where the pickers put it. Without a stop of its own a
-            // user who cycles away from the car's own colours can never get back
+            // user who cycles away from the car's own colors can never get back
             // to them from the rim: every other stop pins something, and pinning
             // is precisely what turns Auto off.
             if (autoAvailable)
-                stops.Add(new LightCycleStop { Auto = true, Label = "Auto (this car's colours)" });
+                stops.Add(new LightCycleStop { Auto = true, Label = "Auto (this car's colors)" });
 
             for (int e = 1; e <= 4; e++)
                 stops.Add(new LightCycleStop { Effect = e, Label = label(e) });
@@ -144,7 +144,7 @@ namespace TrueforceForAll.Plugin
         /// cannot be worked out at all.
         ///
         /// The order of the checks is the whole subtlety. Auto is asked FIRST,
-        /// because while the car's own colours are showing a stage slot may well
+        /// because while the car's own colors are showing a stage slot may well
         /// be lent out too, and the library test would otherwise claim the
         /// position and step off from the wrong place.</summary>
         /// <param name="currentPatternId">The library pattern on the wheel, if

@@ -1,4 +1,4 @@
-// Tests for the lovely-car-data parse + light math.
+﻿// Tests for the lovely-car-data parse + light math.
 //
 // The fixtures are REAL published shapes, not invented ones: the BMW M4 GT3
 // iRacing entry is reproduced verbatim (a 12-LED outside-in dash with two dead
@@ -75,7 +75,7 @@ namespace TrueforceForAll.Core.Tests
         // The two malformed values that genuinely exist upstream: a 6-digit and a
         // 7-digit string in an 8-digit convention. The 7-digit one is the reason
         // this rejects rather than left-pads, since padding would silently shift
-        // the channels and paint a wrong colour.
+        // the channels and paint a wrong color.
         [InlineData("#FFFFF00")]
         [InlineData("#GGGGGGGG")]
         [InlineData("#")]
@@ -99,7 +99,7 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void AcceptsTheHtmlColourNamesTheFormatAllows()
+        public void AcceptsTheHtmlColorNamesTheFormatAllows()
         {
             var c = LovelyCarDataParser.ParseColor("CornflowerBlue");
             Assert.True(c.HasValue);
@@ -148,10 +148,10 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void SplitsTheLeadingRedlineColourOffTheLedColours()
+        public void SplitsTheLeadingRedlineColorOffTheLedColors()
         {
             var p = LovelyCarDataParser.Parse(M4Gt3Json);
-            // 13 published entries = 1 redline colour + 12 LEDs.
+            // 13 published entries = 1 redline color + 12 LEDs.
             Assert.Equal(12, p.LedColors.Length);
             Assert.True(p.RedlineColor.HasValue);
             Assert.Equal(0xFF, p.RedlineColor.Value.R);   // red
@@ -329,10 +329,10 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void SurvivesAColourArrayShorterThanTheDataClaims()
+        public void SurvivesAColorArrayShorterThanTheDataClaims()
         {
             // Six files upstream break the ledColor length rule. The ramp is still
-            // usable, so the car must parse; only its colours are short.
+            // usable, so the car must parse; only its colors are short.
             const string shortColors = @"{""carName"":""Short"",""ledNumber"":6,
                 ""ledColor"":[""#FFFF0000"",""#FF00FF00""],
                 ""ledRpm"":[{""1"":[7000,5000,5500,6000,6500,7000]}]}";
@@ -553,7 +553,7 @@ namespace TrueforceForAll.Core.Tests
         public void MirroredTenLedStripIsPairBandedFourFourTwo()
         {
             // Five pairs banded green, green, yellow, yellow, red: still exactly
-            // two red LEDs, and no colour split across a mirrored pair.
+            // two red LEDs, and no color split across a mirrored pair.
             var strip = LovelyLightMath.DefaultRampColors(LightDirection.OutsideIn, 10);
             Assert.Equal(4, CountOf(strip, Green));
             Assert.Equal(4, CountOf(strip, Yellow));
@@ -561,7 +561,7 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void NoColourEverSplitsAPair()
+        public void NoColorEverSplitsAPair()
         {
             foreach (var layout in new[] { LightDirection.OutsideIn, LightDirection.InsideOut })
             {
@@ -616,7 +616,7 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void BuildsAnOutsideInProfileFromTheCarsOwnColours()
+        public void BuildsAnOutsideInProfileFromTheCarsOwnColors()
         {
             var car = M4();
             var profile = LovelyLightMath.BuildProfile(car, car.Gears["1"], 10);
@@ -644,9 +644,9 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void FallsBackToTheConventionalRampWhenTheCarHasNoColours()
+        public void FallsBackToTheConventionalRampWhenTheCarHasNoColors()
         {
-            const string noColors = @"{""carName"":""NoColours"",""ledNumber"":5,
+            const string noColors = @"{""carName"":""NoColors"",""ledNumber"":5,
                 ""ledColor"":[],
                 ""ledRpm"":[{""1"":[7000,5000,5500,6000,6500,7000]}]}";
             var car = LovelyCarDataParser.Parse(noColors);
