@@ -4863,7 +4863,7 @@
                     </Border>
                     <!-- General cloud-backup description (section intro, above the controls). -->
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                               Text="Backs up your settings, presets, defaults, and car facts. Restore the same setup on another PC by signing in there."/>
+                               Text="Backs up your settings, presets, defaults, car facts and light patterns. Restore the same setup on another PC by signing in there."/>
                     <CheckBox x:Name="AutoSyncBackupCheck" Content="Keep my devices in sync"
                               Margin="0,0,0,2" Checked="AutoSyncBackup_Changed" Unchecked="AutoSyncBackup_Changed"
                               ToolTip="Automatically uploads your setup to the cloud as you change it, and pulls those changes down on your other signed-in devices. Sign-in required."/>

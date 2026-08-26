@@ -65,3 +65,6 @@ __*
 /SimHub.Plugins.*.resources
 /*.leonardo.hex
 /UsersmhyteAppDataLocalTemp*
+
+# Scratch from a source-recovery session: decompiled dumps, not source.
+.tmpfix/

@@ -141,7 +141,7 @@ namespace TrueforceForAll.Plugin
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
             "AxleSlip", "KerbThump", "LockupJudder", "ImplementThud",
             // Per-game/car data + the custom-engine library (lives in settings, not files).
-            "GameEnabled", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
+            "GameEnabled", "GameModes", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
             "CustomEngines", "SharingAuthor",
             // Active-slot download tracking. Travels with the preset files it tracks.
             // POST-RESTORE the caller must re-mount slots so this re-references the
@@ -203,7 +203,7 @@ namespace TrueforceForAll.Plugin
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
-            "IRacingTrueforceNoticeDismissed", "HasSeenModeBIntro",
+            "IRacingTrueforceNoticeDismissed", "HasSeenModeBIntro", "GameModeMapMigratedV1",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
             "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed", "LightsyncCycleHintDismissed", "HasSeenLightsyncIntro",

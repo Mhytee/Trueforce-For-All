@@ -207,6 +207,30 @@ namespace TrueforceForAll.Plugin
         // true for games never seen before). Independent of preset assignment.
         public Dictionary<string, bool> GameEnabled { get; set; } = new Dictionary<string, bool>();
 
+        // The per-game choice, as a MODE rather than a bool.
+        //
+        // GameEnabled could only ever say Normal or Off, so "Lightsync only for
+        // this game" was not expressible: it had to be taken globally, which meant
+        // a user who wanted the lights but not the force in ONE title gave up the
+        // force everywhere. That made the per-game switch a narrower thing than the
+        // master switch while wearing the same name.
+        //
+        // GameEnabled is still written alongside this, as mode == Normal, so
+        // everything that reads it keeps working: the share dialogs and the preset
+        // manager enumerate its keys for "games this install has seen", and an
+        // older build reads it and behaves exactly as it did before.
+        //
+        // Dictionary, not a list, for the loader reason on DashTabOrder: SimHub's
+        // serializer reuses a pre-populated instance, which APPENDS to a list but
+        // merely sets keys on a dictionary.
+        public Dictionary<string, TrueforceMasterMode> GameModes { get; set; }
+            = new Dictionary<string, TrueforceMasterMode>();
+
+        // One-time: GameEnabled -> GameModes, false becoming Lightsync only rather
+        // than Off. Excluded from backup like the other migration latches, so a
+        // second PC still runs its own.
+        public bool GameModeMapMigratedV1 { get; set; } = false;
+
         // Per-game audio-capture exe override. Keyed by SimHub GameName
         // (including Custom_xxx codes for user-added games), value is the
         // exe basename (no ".exe" suffix). Takes priority over the curated

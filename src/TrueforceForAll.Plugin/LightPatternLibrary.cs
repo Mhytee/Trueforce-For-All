@@ -120,6 +120,12 @@ namespace TrueforceForAll.Plugin
         private readonly string _path;
         public Action<string> Log;
 
+        /// <summary>The file this store is bound to. Exposed so a caller can tell
+        /// whether the library it is holding still belongs where the plugin now
+        /// reads and writes: the user folder is per-account, so signing in moves
+        /// it underneath a store that captured the old path at construction.</summary>
+        public string FilePath => _path;
+
         public LightPatternStore(string filePath) { _path = filePath; }
 
         public LightPatternLibrary Load()
@@ -168,11 +174,37 @@ namespace TrueforceForAll.Plugin
             {
                 if (string.IsNullOrEmpty(_path)) return;
                 Directory.CreateDirectory(Path.GetDirectoryName(_path));
-                string tmp = _path + ".tmp";
+                // Write beside the target, then REPLACE it in one step.
+                //
+                // Delete-then-move left a window with no library on disk at all:
+                // a crash, a power cut or an antivirus grab in that window loses
+                // every pattern the user ever made, and this file is now the only
+                // copy that backups carry. File.Replace is atomic where the
+                // filesystem supports it and keeps the old bytes until the new
+                // ones are in place.
+                //
+                // The temp name carries the process id so two SimHub instances,
+                // or a stale .tmp left by an earlier crash, cannot collide over
+                // one fixed name and hand each other half a file.
+                string tmp = _path + "." + System.Diagnostics.Process.GetCurrentProcess().Id + ".tmp";
                 File.WriteAllText(tmp, JsonConvert.SerializeObject(lib, Formatting.Indented),
                                   new UTF8Encoding(false));
-                if (File.Exists(_path)) File.Delete(_path);
-                File.Move(tmp, _path);
+                if (File.Exists(_path))
+                {
+                    try { File.Replace(tmp, _path, null); }
+                    catch (PlatformNotSupportedException)
+                    {
+                        // Not every filesystem can replace in place; fall back, but
+                        // only after the replacement is known to be written.
+                        File.Delete(_path);
+                        File.Move(tmp, _path);
+                    }
+                }
+                else
+                {
+                    File.Move(tmp, _path);
+                }
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
             }
             catch (Exception ex) { Warn("library write failed: " + ex.Message); }
         }

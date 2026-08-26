@@ -933,6 +933,14 @@ end;
 // folder, and every failure is silent. An uninstaller is the wrong place to
 // argue with the user about a file they did not ask about.
 
+// LIMITATION, stated rather than papered over: this installer runs elevated
+// (PrivilegesRequired=admin), so {userdocs} is the ELEVATED account's Documents.
+// On the usual single-admin rig that is the same person and this works. Where
+// UAC elevates to a different admin account it resolves elsewhere, finds
+// nothing, and the mod is left behind. There is no Inno constant for "the user
+// who started this", and hunting through every profile on the machine to delete
+// files is a worse trade than leaving one file. The in-app Remove button runs as
+// the real user and is the reliable route; this is the backstop.
 function FsModsOverride(GameDir: string; var ModsDir: string): Boolean;
 var
   Lines: TArrayOfString;

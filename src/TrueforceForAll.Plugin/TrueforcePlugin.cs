@@ -949,9 +949,9 @@ namespace TrueforceForAll.Plugin
                 if (!Settings.PluginEnabled)
                 {
                     if (!string.IsNullOrEmpty(_activeGame)
-                        && Settings.GameEnabled != null
-                        && Settings.GameEnabled.TryGetValue(_activeGame, out var ge)
-                        && !ge)
+                        && Settings.GameModes != null
+                        && Settings.GameModes.TryGetValue(_activeGame, out var gm)
+                        && gm == TrueforceMasterMode.Off)
                         // Only reachable when the USER chose off for this game:
                         // nothing else writes that map any more.
                         // No game id in the text: ActiveGame is SimHub's raw name and
@@ -1496,7 +1496,15 @@ namespace TrueforceForAll.Plugin
         private TrueforceMasterMode ResolveEffectiveMode()
         {
             var stored = StoredMasterMode;
-            if (stored != TrueforceMasterMode.Normal) return stored;
+            // A global OFF is a hard stop and outranks everything: it is the one
+            // choice that means "not anywhere", and a per-game entry left over
+            // from before must not quietly bring the plugin back up.
+            if (stored == TrueforceMasterMode.Off) return TrueforceMasterMode.Off;
+            // A global LIGHTSYNC ONLY is a stance, not a stop, so a per-game
+            // choice is allowed to be more specific than it. Returning it here
+            // unconditionally is what made the two impossible to hold at once:
+            // any in-game choice had to promote the global to Normal first, which
+            // silently switched the force layer on in every other title.
 
             // Offline CAR editing pins _activeGame to the car being edited, which is
             // not a game that is running. Without this, opening an ACC or iRacing car
@@ -1508,10 +1516,18 @@ namespace TrueforceForAll.Plugin
             // does not pin _activeGame and does not stop the game-change block, so
             // exempting it would let a real game change resolve to Full and stream
             // into a native-Trueforce title that had just auto-disabled itself.
-            if (IsOfflineEditingCar) return TrueforceMasterMode.Normal;
+            if (IsOfflineEditingCar)
+                return stored == TrueforceMasterMode.LightsyncOnly ? stored : TrueforceMasterMode.Normal;
 
             string g = _activeGame;
-            if (string.IsNullOrEmpty(g)) return TrueforceMasterMode.Normal;
+            if (string.IsNullOrEmpty(g)) return stored;
+            // The mode map is authoritative. The bool map is still read behind it
+            // for a settings file that reached this build without the migration
+            // (a hand-edited file, a profile written by an older build), where a
+            // stored false still means what it always did.
+            if (Settings?.GameModes != null && Settings.GameModes.TryGetValue(g, out var perGame))
+                return perGame;
+            if (stored == TrueforceMasterMode.LightsyncOnly) return stored;
             if (Settings?.GameEnabled != null && Settings.GameEnabled.TryGetValue(g, out bool on))
                 return on ? TrueforceMasterMode.Normal : TrueforceMasterMode.Off;
             // Unseen game: full, except where the game brings Trueforce of its own.
@@ -1593,8 +1609,8 @@ namespace TrueforceForAll.Plugin
             "1. With iRacing closed, open Documents\\iRacing\\app.ini and set loadTrueForceAPI=0.\n" +
             "2. Start iRacing and turn its force feedback off in the options. Leave its strength number where it is, the plugin reads it.\n" +
             "3. Set the mode at the top of this panel to Normal.\n" +
-            "4. Tick Telemetry Based FFB for iRacing on that tab.\n\n" +
-            "If the wheel stays quiet afterwards, one of the two iRacing switches is still on.";
+            "4. On the FFB tab, tick \"Take over force feedback for iRacing\".\n\n" +
+            "Steps 3 and 4 are ours and step 1 and 2 are iRacing's. If the wheel stays quiet afterwards, one of iRacing's two switches is still on.";
 
         private volatile bool _iracingNoticeShowing;
         private volatile bool _iracingNoticeShownThisSession;
@@ -1671,6 +1687,36 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>Rebuild the per-game MODE map from the per-game BOOL map,
+        /// for an envelope or profile written before GameModes existed.
+        ///
+        /// Every backup that exists today is such an envelope, and so is every
+        /// auto-sync pull from a PC still on the old build. ApplySettings only
+        /// writes the keys the envelope carries, so without this the restored
+        /// per-game choices land in GameEnabled while THIS PC's GameModes stays
+        /// untouched and keeps governing, because the resolver reads it first. The
+        /// restore reports success and changes nothing the user asked it to change,
+        /// and the two maps disagree from then on.
+        ///
+        /// Replaces the map wholesale rather than merging: a restore means "make
+        /// this PC look like that backup", so a per-game choice that is not in the
+        /// backup is not a choice this PC should keep. Uses the same reading as the
+        /// upgrade migration, so a stored false becomes Lightsync only.</summary>
+        private void RebuildGameModesFromEnabled(string context)
+        {
+            if (Settings == null) return;
+            var rebuilt = new Dictionary<string, TrueforceMasterMode>();
+            if (Settings.GameEnabled != null)
+                foreach (var kv in Settings.GameEnabled)
+                    rebuilt[kv.Key] = kv.Value
+                        ? TrueforceMasterMode.Normal
+                        : TrueforceMasterMode.LightsyncOnly;
+            Settings.GameModes = rebuilt;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Per-game modes rebuilt from the restored on/off map ({context}): "
+                + rebuilt.Count + " game(s).");
+        }
+
         /// <summary>Set the master switch. The stored choice moves only here and in
         /// the settings paths that replace Settings wholesale.
         /// If <paramref name="persistForActiveGame"/> is true and a game is
@@ -1681,8 +1727,16 @@ namespace TrueforceForAll.Plugin
             // Remember what they were on before going full, so a two-state control
             // (the home Feedback tile, a wheel button) can put them back where they
             // were instead of dropping them to Off.
-            if (mode == TrueforceMasterMode.Normal && Settings.MasterMode != TrueforceMasterMode.Normal)
-                _preFullMode = Settings.MasterMode;
+            //
+            // The EFFECTIVE mode, not the stored one. Since the per-game map holds
+            // the real answer while the stored choice sits on Normal, reading the
+            // stored value left this latch unarmed for exactly the users it exists
+            // for: someone on lights-only in THIS game, and anyone in a native
+            // Trueforce title that resolves to lights-only by default. Both were
+            // then dropped to Off by a tile that offers no way back.
+            var effectiveBefore = ResolveEffectiveMode();
+            if (mode == TrueforceMasterMode.Normal && effectiveBefore != TrueforceMasterMode.Normal)
+                _preFullMode = effectiveBefore;
 
             bool inGame = persistForActiveGame && !string.IsNullOrEmpty(_activeGame);
 
@@ -1696,19 +1750,35 @@ namespace TrueforceForAll.Plugin
             //
             // Only from Full, though. Coming from Lightsync-only there is no force
             // layer for the per-game switch to talk about, so Off has to mean off.
-            bool perGameOff = inGame
-                && mode == TrueforceMasterMode.Off
-                && Settings.MasterMode == TrueforceMasterMode.Normal;
-
-            Settings.MasterMode = perGameOff ? TrueforceMasterMode.Normal : mode;
+            // In a game, a mode choice is about THAT game, and the global stance is
+            // left exactly as it was. It was already true of Off ("not in this
+            // title"), and now that the per-game memory can hold a mode it is true
+            // of Lightsync only as well: wanting the lights without the force in one
+            // title should not cost the force everywhere else.
+            //
+            // Crucially the global is NOT promoted to Normal on the way. Doing that
+            // turned "lights only everywhere" into "normal everywhere, except this
+            // one game" the first time somebody tapped a two-state control inside a
+            // title, and nothing ever put it back. A global stance is still set the
+            // way it always was: choose it with no game running.
+            if (!inGame) Settings.MasterMode = mode;
 
             // The per-game memory answers one question only: does the force layer
             // run in THIS game. Lightsync-only is not an answer to it, so choosing
             // it leaves the map alone. Stamping every game the user visited with
             // "false" would silently switch the force layer off everywhere the
             // moment they went back to full.
-            if (inGame && mode != TrueforceMasterMode.LightsyncOnly)
+            if (inGame)
+            {
+                if (Settings.GameModes == null)
+                    Settings.GameModes = new Dictionary<string, TrueforceMasterMode>();
+                Settings.GameModes[_activeGame] = mode;
+                // Kept in step so the bool map stays a truthful answer to the only
+                // question it can answer, and so an older build reads something
+                // sane. Lightsync only lands as false there, which is what that
+                // build would have done with it anyway.
                 Settings.GameEnabled[_activeGame] = mode == TrueforceMasterMode.Normal;
+            }
 
             // Apply BEFORE persisting. ApplyEffectiveMode is where the derived
             // PluginEnabled is written, and saving first put a file on disk whose
@@ -3142,6 +3212,7 @@ namespace TrueforceForAll.Plugin
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
+            if (Settings.GameModes    == null) Settings.GameModes    = new Dictionary<string, TrueforceMasterMode>();
             // The spring/FFB-recreation toggle left the UI (owner call
             // 2026-08-08: it is HOW Farming Simulator works, not an option;
             // FS is one of the games that require telemetry-based FFB). A
@@ -3247,6 +3318,31 @@ namespace TrueforceForAll.Plugin
                 }
 
                 Settings.MasterModeMigratedV1 = true;
+                try { PersistSettingsCore(); } catch { }
+            }
+
+            // The per-game choice became a MODE. Every stored "off" becomes Lightsync
+            // only, not Off.
+            //
+            // Off is close to unnecessary now: it was the only way to say "not the
+            // force layer here" back when the alternative was everything, and
+            // Lightsync only says the same thing while still lighting the wheel for
+            // the car you are in. Someone who genuinely wants a title silent can set
+            // Off again in one click, and that choice then sticks, whereas nobody
+            // can choose a mode that was never offered to them.
+            if (!Settings.GameModeMapMigratedV1)
+            {
+                if (Settings.GameEnabled != null && Settings.GameModes != null)
+                {
+                    foreach (var kv in Settings.GameEnabled)
+                    {
+                        if (Settings.GameModes.ContainsKey(kv.Key)) continue;
+                        Settings.GameModes[kv.Key] = kv.Value
+                            ? TrueforceMasterMode.Normal
+                            : TrueforceMasterMode.LightsyncOnly;
+                    }
+                }
+                Settings.GameModeMapMigratedV1 = true;
                 try { PersistSettingsCore(); } catch { }
             }
             // Latch the effective mode from what we just loaded, so nothing reads
@@ -5965,8 +6061,8 @@ namespace TrueforceForAll.Plugin
                 if (Settings != null)
                 {
                     bool sawSaved = !string.IsNullOrEmpty(gameName)
-                        && Settings.GameEnabled != null
-                        && Settings.GameEnabled.ContainsKey(gameName);
+                        && ((Settings.GameModes != null && Settings.GameModes.ContainsKey(gameName))
+                            || (Settings.GameEnabled != null && Settings.GameEnabled.ContainsKey(gameName)));
                     if (!sawSaved && IsNativeTrueforceGame(gameName))
                     {
                         SimHub.Logging.Current.Info(IsIRacingReshapeGame(gameName)
@@ -12294,6 +12390,17 @@ namespace TrueforceForAll.Plugin
             {
                 lock (_lightPatternGate)
                 {
+                    // The user library is per-account, so signing in mid-session
+                    // moves this file. A store built before that keeps the old path
+                    // and would write the library into the account the user just
+                    // left, where nothing reads it again.
+                    if (_lightPatternStore != null
+                        && !string.Equals(_lightPatternStore.FilePath, LightPatternFilePath,
+                                          StringComparison.OrdinalIgnoreCase))
+                    {
+                        _lightPatternStore = null;
+                        _lightPatterns = null;
+                    }
                     if (_lightPatternStore == null)
                     {
                         // Runs before the first read, which is the only moment
@@ -12326,6 +12433,24 @@ namespace TrueforceForAll.Plugin
         }
 
         public void SaveLightPatterns() => LightPatternStoreInstance.Save(LightPatterns);
+
+        /// <summary>Drop the cached light-pattern library so the next access reads
+        /// the file again.
+        ///
+        /// Every path that REPLACES light-patterns.json underneath a running
+        /// session has to call this. The library is held in memory and written back
+        /// whole, so a stale copy does not merely show the wrong patterns: the next
+        /// save puts it back over whatever was just restored, and the restore is
+        /// undone without anything reporting a failure.</summary>
+        private void InvalidateLightPatternCache(string why)
+        {
+            lock (_lightPatternGate)
+            {
+                _lightPatterns = null;
+                _lightPatternStore = null;
+            }
+            SimHub.Logging.Current.Info("[TF4ALL] Light-pattern library reloaded from disk (" + why + ").");
+        }
 
         /// <summary>The slot to borrow, worked out rather than asked for.
         ///
@@ -22744,6 +22869,11 @@ namespace TrueforceForAll.Plugin
                     // map carrying its per-game choices.
                     if (env.Settings["MasterMode"] == null)
                         Settings.MasterMode = TrueforceMasterMode.Normal;
+                    // And the per-game map, for the same reason: a profile stashed
+                    // before GameModes existed would otherwise leave the OUTGOING
+                    // account's per-game choices governing the incoming one.
+                    if (env.Settings["GameModes"] == null)
+                        RebuildGameModesFromEnabled("account profile");
                 }
             }
             catch (Exception ex)
@@ -22767,7 +22897,7 @@ namespace TrueforceForAll.Plugin
         // so they are excluded from the "did the tuning actually change?" comparison; they
         // still travel with whichever profile wins.
         private static readonly string[] LearnedProfileKeys =
-            { "CarGripCalibration", "CarFacts", "CarFactsSelection", "GameEnabled" };
+            { "CarGripCalibration", "CarFacts", "CarFactsSelection", "GameEnabled", "GameModes" };
 
         // True when two portable profiles carry the same DELIBERATE tuning (learned state
         // stripped, field order/formatting insensitive). Parse failure counts as "differs":
@@ -27270,6 +27400,7 @@ namespace TrueforceForAll.Plugin
                     UserPresets.Reload();
                     RebuildPresetCacheFromFolders();
                     LoadAndMigrateCarPresets();
+                    InvalidateLightPatternCache("backup zip");
                 }
             }
             catch (Exception ex)
@@ -27331,6 +27462,7 @@ namespace TrueforceForAll.Plugin
                         UserPresets.Reload();
                         RebuildPresetCacheFromFolders();
                         LoadAndMigrateCarPresets();
+                        InvalidateLightPatternCache("restore rollback");
                     }
                     catch { /* swallow; the user is being shown an error already */ }
                 }
@@ -27557,6 +27689,7 @@ namespace TrueforceForAll.Plugin
                 UserPresets.Reload();
                 RebuildPresetCacheFromFolders();
                 LoadAndMigrateCarPresets();
+                InvalidateLightPatternCache("settings import");
                 ApplyActiveCarOverride();
             }
             // Custom engines: union THIS PC's with the backup's, honoring the same
@@ -28482,6 +28615,13 @@ namespace TrueforceForAll.Plugin
                 && env.Settings["PluginEnabled"] != null)
                 Settings.MasterMode = TrueforceMasterMode.Normal;
 
+            // Same shape of problem one level down: an envelope from before the
+            // per-game map became a mode map carries GameEnabled and no GameModes,
+            // and the resolver reads GameModes first, so this PC's own per-game
+            // choices would quietly outrank everything the restore just landed.
+            if (env?.Settings != null && env.Settings["GameModes"] == null)
+                RebuildGameModesFromEnabled("cloud restore");
+
             // PluginEnabled is Portable and just landed without a SetPluginEnabled
             // transition. Reconcile the device FIRST: everything below does file
             // IO that can throw, and every caller (manual restore, conflict
@@ -28532,6 +28672,7 @@ namespace TrueforceForAll.Plugin
             UserPresets.Reload();
             RebuildPresetCacheFromFolders();
             LoadAndMigrateCarPresets();
+            InvalidateLightPatternCache("cloud restore");
 
             PersistSettingsCore();   // restore is a sync point, not a user change: don't re-arm auto-sync
             // Soft "reload": re-apply everything live via the same paths the settings UI uses, so a

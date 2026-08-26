@@ -45,6 +45,16 @@ namespace TrueforceForAll.Plugin
             ("Inward from the ends",    2),
         };
 
+        /// <summary>Forget the cached library so EnsurePatternUi rebuilds against
+        /// whatever the plugin holds now. Called when a restore has replaced the
+        /// library file underneath us: without it the editor keeps editing the
+        /// pre-restore copy and saves it back over the restored one.</summary>
+        internal void InvalidatePatternUi()
+        {
+            _patternStore = null;
+            _patternLib = null;
+        }
+
         private void EnsurePatternUi()
         {
             if (_patternStore != null) return;

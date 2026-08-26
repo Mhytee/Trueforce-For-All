@@ -429,6 +429,10 @@ namespace TrueforceForAll.Plugin
         // change events so this can't fire a spurious edit / re-sync.
         private void OnLibraryReloadedRefreshUi()
         {
+            // A restore rewrites light-patterns.json along with the presets, and
+            // the editor caches the library instance it was handed. Drop it here
+            // so the next open reads the restored one.
+            InvalidatePatternUi();
             if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnLibraryReloadedRefreshUi)); return; }
             try { RefreshFromPlugin(); } catch { }
         }
@@ -4931,21 +4935,32 @@ namespace TrueforceForAll.Plugin
             switch (effective)
             {
                 case TrueforceMasterMode.Off:
-                    // Off is the per-game disable, so with a game running that is
-                    // what it says. The global variant only happens when someone
-                    // picks Off at the desk, and there is no game to name.
-                    MasterModeNote.Text = string.IsNullOrEmpty(game)
-                        ? "Off: fully disables all plugin features."
+                    // Off is per-game while a game is running and global when it
+                    // was chosen at the desk. Which one the reader is looking at is
+                    // decided by the SAME test the setter uses, so the line cannot
+                    // promise "this game" for a stance that is actually global:
+                    // a global Off short-circuits the resolver before any per-game
+                    // entry is read.
+                    MasterModeNote.Text =
+                        _plugin.StoredMasterMode == TrueforceMasterMode.Off
+                        ? "Off: fully disables all plugin features, in every game."
                         : "Off: fully disables all plugin features for this game.";
                     break;
                 case TrueforceMasterMode.LightsyncOnly:
                     // Says what it switches OFF, deliberately. Describing it by what
                     // it does with the lights read as a promise to light wheels in
                     // games that never light them, which is not something we can do.
+                    //
+                    // Per-game or global on the same test as Off: chosen in a game it
+                    // is remembered for that game, chosen at the desk it is the
+                    // stance everywhere. Saying neither left users assuming the one
+                    // that was not true of their situation.
                     MasterModeNote.Text =
-                        "Lightsync only: disables the plugin's Trueforce effects and FFB tap. "
-                        + "For games with native Trueforce support, or when you only want our "
-                        + "Lightsync patterns and features.";
+                        "Lightsync only: disables the plugin's Trueforce effects and FFB tap, "
+                        + "keeping the Lightsync patterns and features. "
+                        + (string.IsNullOrEmpty(game)
+                            ? "Chosen here, with no game running, it applies everywhere."
+                            : "Chosen while a game is running, it is remembered for that game alone.");
                     break;
                 default:
                     // Deliberately does not list the features. It is the default and
