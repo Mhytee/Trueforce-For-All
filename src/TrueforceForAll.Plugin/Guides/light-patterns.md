@@ -10,9 +10,9 @@ Unbound, the library still works. You just change patterns from the panel instea
 
 ## Color tuning trades brightness for accuracy
 
-An LED package is not a screen. Its three dies have their own brightness, and on these wheels the red die is the weak one, so equal red and green drive mixes green-dominant and a nominal yellow arrives on the rim looking like lime.
+The three colors inside an LED are not equally bright, so a color that looks right on screen can arrive on the rim looking like something else. An even mix of red and green is the one people notice: it should be yellow and it comes out lime.
 
-The plugin corrects that on the way out, using shipped values that suit these wheels, so it is already on.
+The plugin corrects that on the way out, and the correction ships already set, so it is on before you touch anything. The shipped values come from measurements on a G PRO, where red came out the dimmest of the three. Whether that holds on every wheel is something we would like to find out, so if yours looks off, retune it and tell us.
 
 The correction only ever works on the **ratio** between the three channels, so what matters is which slider sits highest, not where any one of them sits. That highest channel is the reference: it keeps the value you authored, and the other two are cut relative to it.
 
