@@ -7150,6 +7150,15 @@ namespace TrueforceForAll.Plugin
                 {
                     // G923 PS (C266): legacy F8-12 rev bar, 5 LEDs. The G923 Xbox
                     // is NOT here; it takes the HID++ 0x807A path above.
+                    //
+                    // modeBLeds carries the ffbQuietProven term, and that is
+                    // deliberate even though this path does not touch HID++. The
+                    // F8 report rides the gamepad/DirectInput collection, which is
+                    // the collection PID FFB rides, so a game producing classic
+                    // force is driving the pipe we would write levels into. Until
+                    // a G923 PS owner has tested that with force flowing, the gate
+                    // stays: dark LEDs are a better failure than dead force. See
+                    // the header of LegacyLedF8Channel for the full reasoning.
                     DriveG923Leds(pct, redline, modeBLeds);
                     // Not mirrored: this path never builds a level or a color
                     // profile, so there is nothing for the dash to follow and it

@@ -14,6 +14,21 @@
 // If the legacy command lands on a collection separate from the HID++ FFB pipe,
 // it's a NON-contending LED path we could use in every game, not just iRacing.
 //
+// UNPROVEN, and do not act on it (owner, 2026-08-27). "Separate from the HID++
+// pipe" is not the same as "separate from all force". A G923 PS taps its
+// Trueforce force into the ep3 endpoint, and this LED report goes down the
+// gamepad/DirectInput collection -- which is the collection PID FFB rides
+// (see JoystickUsages below). A game producing classic DirectInput force is
+// therefore driving the very collection we would be writing LED levels into,
+// and the expectation is that it cuts out the same way HID++ does, for the
+// same reason, just on a different pipe.
+//
+// So the production gate on this path (modeBLeds, which carries the
+// ffbQuietProven term) stays. It fails CLOSED: dark LEDs, not dead force. The
+// obvious "optimisation" is to drop the quiet term because this path is
+// non-contending, and that is the change NOT to make until a G923 PS owner has
+// actually tested it with force flowing.
+//
 // This class reproduces that exact write via HidSharp (same hidclass.sys path as
 // hidapi -- the library doesn't matter, only the report + collection do) so we
 // can confirm on a G PRO whether F8 12 (a) lights the strip and (b) coexists with
