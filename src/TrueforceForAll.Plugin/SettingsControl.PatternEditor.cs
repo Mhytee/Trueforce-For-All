@@ -94,7 +94,8 @@ namespace TrueforceForAll.Plugin
                                                   WheelLedChannel.CustomSlotCount, allowAdd: true,
                                                   wireBytes: p => _plugin != null
                                                       ? _plugin.ToWireBytes(p)
-                                                      : p.Rgb());
+                                                      : p.Rgb(),
+                                                  readName: sl => _plugin?.ReadSlotName(sl));
                 _patternLib.ImportedFromWheel = true;
             }
             LightPatternStore.NormalizeSlots(_patternLib);

@@ -181,8 +181,24 @@ namespace TrueforceForAll.Plugin
                 Visibility = Visibility.Collapsed,
             };
 
+            // Index what the reader SEES, which for an entry with an Extra is
+            // its own file plus the appended one. Indexing only the main file
+            // meant the Forza forwarding half was searchable by nobody: its
+            // words ("ShakeIt", "Buttkicker", "rewind") appear in no other
+            // guide, so the box answered "No guide mentions ..." with the
+            // answer already rendered on the right.
             foreach (var e in _entries)
-                _bodies[e] = GuideText.Load(e.Key) ?? "";
+            {
+                string body = GuideText.Load(e.Key) ?? "";
+                if (e.Extra != null)
+                {
+                    string extra = null;
+                    try { extra = e.Extra(); }
+                    catch { }   // a guide that cannot load its Extra is still searchable by its own text
+                    if (!string.IsNullOrEmpty(extra)) body = body + "\n\n" + extra;
+                }
+                _bodies[e] = body;
+            }
             ApplyFilter(null);
 
             // ---- right: the guide ----------------------------------------------

@@ -464,10 +464,15 @@ namespace TrueforceForAll.Plugin
         /// stored form. Defaults to the stored bytes, which is exactly right for
         /// an uncalibrated wheel and keeps this class free of any dependency on
         /// settings so it still link-compiles into the tests.</param>
+        /// <param name="readName">The slot's own name on the wheel, used to name an
+        /// adopted pattern instead of numbering it by position. Optional so the
+        /// tests and any caller that cannot reach the wheel's name table still
+        /// compile; those fall back to "CUSTOM n" as before.</param>
         public static int AdoptWheelOrder(LightPatternLibrary lib,
                                           Func<int, WheelLedChannel.WheelLedSlot> readSlot,
                                           int slotCount, bool allowAdd,
-                                          Func<LightPattern, byte[]> wireBytes = null)
+                                          Func<LightPattern, byte[]> wireBytes = null,
+                                          Func<int, string> readName = null)
         {
             if (lib == null || readSlot == null) return 0;
             if (wireBytes == null) wireBytes = p => p?.Rgb();
@@ -487,9 +492,23 @@ namespace TrueforceForAll.Plugin
                 if (match == null)
                 {
                     if (!allowAdd) continue;
+                    // The user's own name for this slot, when the wheel gives us
+                    // one. Numbering by position instead threw away a name we
+                    // could read and then wrote the invented one back over it.
+                    // Falls back to the position for a slot that has never been
+                    // named, or a wheel that will not answer.
+                    string onWheel = null;
+                    if (readName != null)
+                    {
+                        try { onWheel = readName(slot); }
+                        catch { }
+                    }
+                    if (!string.IsNullOrWhiteSpace(onWheel)) onWheel = onWheel.Trim();
+                    if (string.IsNullOrWhiteSpace(onWheel)) onWheel = "CUSTOM " + (slot + 1);
+
                     // Straight out of the wheel, so already in the wheel's own
                     // space. Never trim these.
-                    match = Add(lib, "CUSTOM " + (slot + 1), s.DirectionWire, s.Rgb, "wheel", trimExempt: true);
+                    match = Add(lib, onWheel, s.DirectionWire, s.Rgb, "wheel", trimExempt: true);
                     added++;
                 }
 

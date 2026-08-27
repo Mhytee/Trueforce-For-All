@@ -1379,13 +1379,22 @@ namespace TrueforceForAll.Plugin
         // so anyone who deliberately turns it off afterwards stays off.
         public bool LightsyncReleasedMigrated { get; set; } = false;
 
-        // Per-car rev-light data from the community lovely-car-data project
-        // (CC BY-NC-SA 4.0). When on, a car we have data for lights on its own
-        // switch-on points and per-gear redlines instead of our one-size ramp.
-        // Reaches a third-party host (raw.githubusercontent.com) and caches per
-        // machine, so it is off until the user asks for it. Doubly gated for now:
-        // the control lives on the LIGHTSYNC tab, which is itself behind the
-        // access code while the lighting rework is in development.
+        // Whether per-car data from the community lovely-car-data project
+        // (CC BY-NC-SA 4.0) may drive the WHEEL'S LIGHTS: a car we have data for
+        // lights on its own switch-on points instead of our one-size ramp.
+        //
+        // This is the LIGHTING half only. Fetching the dataset, and using the
+        // per-gear redlines and blink rate that come with it, ride
+        // CommunityEnabled instead (see TrueforcePlugin.LovelyDataEnabled),
+        // because those work on every wheel while a pattern needs a wheel that
+        // can show one. Tying the whole feature to this checkbox put it out of
+        // reach of any wheel whose strip has a fixed look, since the LIGHTSYNC
+        // tab that holds the checkbox is collapsed for them.
+        //
+        // Stays default-off and opt-in on its own: lighting a car's pattern
+        // borrows one of the user's five wheel slots, and community features
+        // ship on, so folding the two together would start writing to the wheel
+        // of everyone who upgrades.
         public bool LovelyCarDataEnabled { get; set; } = false;
 
         // Which LIGHTSYNC custom slot the plugin borrows: 0..4 to pin CUSTOM 1..5,
@@ -1393,11 +1402,20 @@ namespace TrueforceForAll.Plugin
         //
         // Automatic is the default because WHICH slot gets borrowed is plumbing,
         // not a decision anyone wants to make. Asked to show a pattern, the
-        // plugin uses the slot the wheel is already displaying when that is a
-        // custom one, so nothing visibly moves; otherwise it takes the last slot.
-        // Either way the contents are read and saved before the first write and
-        // handed back on exit, so borrowing stays reversible. Portable: the five
-        // slots exist on any of these wheelbases, so the preference travels.
+        // plugin takes the first slot that has never been programmed, and only
+        // when all five are in use, the last one. (See StageSlot for the full
+        // order. It does NOT use the slot the wheel is displaying; this comment
+        // said it did, and the guide copied that.)
+        //
+        // The borrowed slot's contents are read and saved before the first write
+        // and handed back on exit, so borrowing stays reversible. That is the
+        // BORROW path only: the top five library entries are written into the
+        // five slots permanently, with no backup, by SyncSlotsToWheel.
+        //
+        // Reachable only via the SLOTPICK<n> access code: there is no control
+        // for it, and SLOTPICK is not in TestCodeCatalog, so HELP does not list
+        // it either. Portable: the five slots exist on any of these wheelbases,
+        // so the preference travels.
         public int LightsyncDynamicSlot { get; set; } = -1;
 
         // Pin every deliberate pattern pick to the car you are in, without having

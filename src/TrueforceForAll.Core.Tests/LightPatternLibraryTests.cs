@@ -61,6 +61,48 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
+        public void AdoptingOffTheWheelKeepsTheSlotsOwnName()
+        {
+            // The wheel's name table is readable, and the sync writes the
+            // library's name back onto the slot. Numbering adopted patterns by
+            // position therefore did not just lose the user's name, it renamed
+            // their slot to a name the plugin had invented.
+            var lib = new LightPatternLibrary();
+            LightPatternStore.AdoptWheelOrder(lib, Slots(Rgb(1, 2, 3)), 5, allowAdd: true,
+                                              readName: slot => slot == 0 ? "RedBull" : null);
+
+            Assert.Single(lib.Patterns);
+            Assert.Equal("RedBull", lib.Patterns[0].Name);
+        }
+
+        [Fact]
+        public void AnUnnamedSlotStillFallsBackToItsPosition()
+        {
+            // A slot the user never named, or a wheel that will not answer the
+            // name query, must not produce a blank or whitespace pattern name.
+            var lib = new LightPatternLibrary();
+            LightPatternStore.AdoptWheelOrder(lib, Slots(null, Rgb(4, 5, 6)), 5, allowAdd: true,
+                                              readName: slot => "   ");
+
+            Assert.Single(lib.Patterns);
+            Assert.Equal("CUSTOM 2", lib.Patterns[0].Name);
+        }
+
+        [Fact]
+        public void AWheelThatThrowsOnTheNameQueryStillAdoptsThePattern()
+        {
+            // The colours are the point; the name is a bonus. A name read that
+            // throws must not cost the user the pattern itself.
+            var lib = new LightPatternLibrary();
+            int added = LightPatternStore.AdoptWheelOrder(
+                lib, Slots(Rgb(7, 8, 9)), 5, allowAdd: true,
+                readName: slot => throw new InvalidOperationException("wheel busy"));
+
+            Assert.Equal(1, added);
+            Assert.Equal("CUSTOM 1", lib.Patterns[0].Name);
+        }
+
+        [Fact]
         public void AnExemptPatternIsMatchedOnItsRawBytesNotItsTrimmedOnes()
         {
             // The failure this guards: a trimmed comparison against an exempt

@@ -150,7 +150,7 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "lovely-car-data", Group = GroupAbout,
-                    Title = "Matching your wheel to the car: where that data comes from",
+                    Title = "Per-car data: what it sets, and where it comes from",
                     ActionLabel = "Open the Lovely dataset",
                     Action = () => OpenUrl("https://github.com/Lovely-Sim-Racing/lovely-car-data"),
                 },

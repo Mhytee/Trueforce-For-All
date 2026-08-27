@@ -41,6 +41,10 @@ namespace TrueforceForAll.Plugin
         private RedlineConsensus _engineRedlineCache;
         private string _lastShownCarId;
         private string _lastShownGame;
+        // Which wheel CAPABILITIES the panel was last built for. Not the product
+        // id: what the panel branches on is whether a wheel is known, whether its
+        // lights can take a pattern, and whether it has a screen.
+        private int _lastShownWheelCaps;
         // Last text we pushed into the CarFacts name / redline boxes. The 16ms
         // panel refresh rewrites a box only when this changes, so clicking
         // Set/Save (which pulls focus off the box mid-click, then holds the
@@ -1277,7 +1281,19 @@ namespace TrueforceForAll.Plugin
                                                   && _plugin.Settings?.LightsyncTabUnlocked != true)
                         ? "Wheel lights and screen" : "Wheel lights";
                 if (LovelyCarDataCheck != null)
+                {
                     LovelyCarDataCheck.IsChecked = _plugin.Settings?.LovelyCarDataEnabled == true;
+                    // The dataset is fetched through community features, so with
+                    // those off this box cannot do anything. Disabling it rather
+                    // than letting it tick and do nothing, because a ticked box
+                    // that changes nothing is the state this feature already had
+                    // a bug about.
+                    LovelyCarDataCheck.IsEnabled = _plugin.LovelyDataEnabled;
+                }
+                if (LovelyNeedsCommunityNote != null)
+                    LovelyNeedsCommunityNote.Visibility = _plugin.LovelyDataEnabled
+                        ? System.Windows.Visibility.Collapsed
+                        : System.Windows.Visibility.Visible;
                 if (AlwaysRememberPatternCheck != null)
                     AlwaysRememberPatternCheck.IsChecked = _plugin.Settings?.AlwaysRememberCarPattern == true;
                 RefreshLightsyncCycleHint();
@@ -2458,6 +2474,9 @@ namespace TrueforceForAll.Plugin
 
             string carId = _plugin?.ActiveCarId;
             string game  = _plugin?.ActiveGame;
+            // Before the car/game check, so a wheel that has just been found
+            // rebuilds the panel on the same tick rather than the next change.
+            RefreshIfWheelChanged();
             if (carId != _lastShownCarId || game != _lastShownGame)
             {
                 bool gameChanged = game != _lastShownGame;
@@ -2475,6 +2494,7 @@ namespace TrueforceForAll.Plugin
                 // PresetManagerControl decides internally whether to skip
                 // the fetch for car-agnostic kinds.
                 _presetManager?.OnActiveCarChanged(gameChanged);
+                _lastShownWheelCaps = WheelCapsSignature();
 
                 // First active-car/game change of the session: nudge the
                 // networked-welcome modal so an upgrader who never opens
@@ -4897,11 +4917,67 @@ namespace TrueforceForAll.Plugin
         /// user starting iRacing has the plugin auto-yield for that game, and a
         /// selector still reading "Full" cannot be used to take it back, because
         /// picking the already-selected item raises no event in WPF.</summary>
+        /// <summary>A signature of everything about the wheel that changes how
+        /// this panel is BUILT: whether a wheel is known at all, whether its lights
+        /// can be given a pattern, and whether it has a screen. Discovery retries
+        /// in the background while no wheel is found, so all three can arrive well
+        /// after the panel opened.</summary>
+        private int WheelCapsSignature()
+        {
+            if (_plugin == null) return 0;
+            return (_plugin.WheelDetected ? 1 : 0)
+                 | (_plugin.WheelHasSelectableLightPattern ? 2 : 0)
+                 | (_plugin.WheelHasOledScreen ? 4 : 0);
+        }
+
+        /// <summary>Rebuild the panel when the wheel underneath it changes.
+        ///
+        /// Its own branch rather than folding into the car/game one, which also
+        /// calls ClearDirty to rebaseline the unsaved-changes marker: a wheel
+        /// being powered on is not a reason to forget the user has edited
+        /// something. Without this the master-mode rows, the LIGHTSYNC tab and
+        /// the capability copy stayed built for "no wheel known" until a car or
+        /// game happened to change.</summary>
+        private void RefreshIfWheelChanged()
+        {
+            int caps = WheelCapsSignature();
+            if (caps == _lastShownWheelCaps) return;
+            _lastShownWheelCaps = caps;
+            RefreshFromPlugin();
+        }
+
         private void RefreshMasterModeUi()
         {
             if (_plugin == null) return;
             var effective = _plugin.MasterMode;
-            if (MasterModeCombo != null) MasterModeCombo.SelectedIndex = IndexForMode(effective);
+
+            RebuildMasterModeItems();
+            if (MasterModeCombo != null)
+            {
+                // Suppressed. Removing the selected row drops the index to -1 and
+                // this puts it back, which raises SelectionChanged for real: unsuppressed
+                // it re-entered the handler and stored the mode of whatever row it
+                // landed on, over the one the user had just chosen. Suppression stops
+                // the handler, not the visual selection, so the selector still shows
+                // the effective mode and a later user pick still raises an event.
+                bool prev = _suppressEvents;
+                _suppressEvents = true;
+                try { MasterModeCombo.SelectedIndex = IndexForMode(effective); }
+                finally { _suppressEvents = prev; }
+
+                // The tooltip lists the modes, so it lists only the ones on offer,
+                // and does not promise a screen to a wheel that has none.
+                bool lightsyncListed = MasterModeLightsyncItem != null
+                                    && MasterModeCombo.Items.Contains(MasterModeLightsyncItem);
+                MasterModeCombo.ToolTip =
+                    "Normal: force feedback, effects, rev lights"
+                    + (_plugin.WheelHasOledScreen ? " and the wheel's screen" : "")
+                    + ". Use this in most games. "
+                    + (lightsyncListed
+                        ? "Lightsync only: disables the plugin's Trueforce effects and FFB tap, for games with native Trueforce support or when you only want our Lightsync patterns and features. "
+                        : "")
+                    + "Off: fully disables all plugin features for the game you are in.";
+            }
 
             string game = _plugin.ActiveGame;
             if (MasterModeNote == null) return;
@@ -4962,6 +5038,10 @@ namespace TrueforceForAll.Plugin
                     // is remembered for that game, chosen at the desk it is the
                     // stance everywhere. Saying neither left users assuming the one
                     // that was not true of their situation.
+                    //
+                    // No wheel qualifier needed: RebuildMasterModeItems only offers
+                    // this row on a wheel that can act on it, so anyone reading this
+                    // line has a wheel with a pattern to set.
                     MasterModeNote.Text =
                         "Lightsync only: disables the plugin's Trueforce effects and FFB tap, "
                         + "and still sets your wheel's pattern and colors for the car you are in. "
@@ -4989,17 +5069,83 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private static int IndexForMode(TrueforceMasterMode m)
-            => m == TrueforceMasterMode.Normal ? 0
-             : m == TrueforceMasterMode.LightsyncOnly ? 1 : 2;
+        /// <summary>Offer Lightsync only on a wheel that can act on it.
+        ///
+        /// It sets the wheel's pattern for the car and leaves the game's force
+        /// feedback alone. A wheel whose strip is one fixed look has no pattern
+        /// to set, and its rev lights need Normal like every other wheel's, so
+        /// there the mode does nothing that Off does not: three choices where two
+        /// are identical is a worse switch than two choices.
+        ///
+        /// Fails OPEN on an undetected wheel, the same rule the LIGHTSYNC tab
+        /// uses, so a wheel powered on after SimHub does not lose the option.</summary>
+        private void RebuildMasterModeItems()
+        {
+            if (MasterModeCombo == null || MasterModeLightsyncItem == null) return;
 
-        private static TrueforceMasterMode ModeForIndex(int i)
-            => i == 0 ? TrueforceMasterMode.Normal
-             : i == 1 ? TrueforceMasterMode.LightsyncOnly : TrueforceMasterMode.Off;
+            // Hidden only when the wheel cannot act on it AND the plugin is not
+            // currently in it. A mode in force always gets a row: the upgrade
+            // migration turns every per-game "off" into Lightsync only, and the
+            // native-Trueforce auto-yield lands there on its own, so these users
+            // exist and are not choosing it. Without the row the selector reads
+            // Off while the plugin is not off, and clicking Off changes nothing
+            // because the row is already selected.
+            bool hide = _plugin != null && _plugin.WheelDetected
+                     && !_plugin.WheelHasSelectableLightPattern
+                     && _plugin.MasterMode != TrueforceMasterMode.LightsyncOnly;
+            bool listed = MasterModeCombo.Items.Contains(MasterModeLightsyncItem);
+            if (hide != listed) return;
+
+            // Removing the SELECTED item drops SelectedIndex to -1 and raises
+            // SelectionChanged. Suppressed, or the handler would read -1 and
+            // write a mode nobody chose; the caller re-selects straight after.
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (hide) MasterModeCombo.Items.Remove(MasterModeLightsyncItem);
+                else      MasterModeCombo.Items.Insert(1, MasterModeLightsyncItem);
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        /// <summary>Which row shows this mode.
+        ///
+        /// RebuildMasterModeItems guarantees a row for whatever mode is in force,
+        /// so this never has to stand one mode in for another. It used to, and
+        /// that was the bug: an aliased row made the selector disagree with the
+        /// status pill beside it and the caption under it, and made clicking the
+        /// aliased row a no-op, because WPF raises nothing for the row that is
+        /// already selected. Falling back to Normal here is the unreachable
+        /// case, not a substitution rule.</summary>
+        private int IndexForMode(TrueforceMasterMode m)
+        {
+            var items = MasterModeCombo?.Items;
+            if (items == null) return 0;
+            for (int i = 0; i < items.Count; i++)
+                if (ModeForIndex(i) == m) return i;
+            return 0;
+        }
+
+        /// <summary>The mode a row stands for, read from its Tag rather than its
+        /// position, because the list is not always the same length.</summary>
+        private TrueforceMasterMode ModeForIndex(int i)
+        {
+            var items = MasterModeCombo?.Items;
+            var item = (items != null && i >= 0 && i < items.Count)
+                ? items[i] as ComboBoxItem : null;
+            switch (item?.Tag as string)
+            {
+                case "LightsyncOnly": return TrueforceMasterMode.LightsyncOnly;
+                case "Off":           return TrueforceMasterMode.Off;
+                default:              return TrueforceMasterMode.Normal;
+            }
+        }
 
         private void MasterMode_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null || MasterModeCombo == null) return;
+            if (MasterModeCombo.SelectedIndex < 0) return;
             // The master mode is a per-game preference (GameEnabled dict) where it is
             // off or full, and a global stance where it is lights only. Neither is
             // preset content, so this does not dirty the active preset.
@@ -5639,7 +5785,12 @@ namespace TrueforceForAll.Plugin
                 // dead until the bus is visible to the capture driver.
                 sb.AppendLine("[FAIL] FFB pass-through: Windows sees your wheel but USBPcap can't capture it on the USB bus.");
                 sb.AppendLine("       Likely the wheel is on a USB port/controller USBPcap doesn't cover, or USBPcap needs a reboot since it was installed.");
-                sb.AppendLine("       Try, in order: reboot (if USBPcap was just installed); move the wheel to a different USB port (rear motherboard ports work best, avoid front-panel ports and hubs); run SimHub as administrator; or use 'Pick device manually' below.");
+                // No "Pick device manually" here. That control ships Collapsed and
+                // only appears after the MANUALPIN access code, which is not
+                // documented anywhere a user in this state would find it, so the
+                // instruction named a button that is on nobody's screen. The three
+                // remaining steps are the ones that actually fix this.
+                sb.AppendLine("       Try, in order: reboot (if USBPcap was just installed); move the wheel to a different USB port (rear motherboard ports work best, avoid front-panel ports and hubs); run SimHub as administrator.");
             }
             else
                 sb.AppendLine("[skip] FFB pass-through: " + (string.IsNullOrEmpty(tap) ? "(not started)" : tap));
@@ -6886,17 +7037,22 @@ namespace TrueforceForAll.Plugin
         internal const string PrivacyPolicyUrl = "https://github.com/Mhytee/Trueforce-For-All/blob/beta/PRIVACY.md";
         private void PrivacyPolicy_Click(object sender, RoutedEventArgs e) => OpenUrl(PrivacyPolicyUrl);
 
-        // Attribution for the light-pattern data. Its licence requires the credit,
-        // so this link is a condition of using the data, not decoration. Keep the
-        // wording scoped to light patterns: our own community car facts supply
-        // redlines, engine data and car names, including for the many games this
-        // project does not cover, and a broader credit would misstate that.
+        // Attribution for the per-car data. Its licence requires the credit, so
+        // this link is a condition of using the data, not decoration. Keep the
+        // wording scoped to what the dataset actually supplies (light patterns,
+        // the per-gear redlines behind them, and each car's blink rate): our own
+        // community car facts supply engine data, car names and the redline
+        // consensus, including for the many games this project does not cover,
+        // and a credit broader than that would misstate it.
         private void LovelyCredit_Click(object sender, RoutedEventArgs e)
             => OpenUrl("https://github.com/Lovely-Sim-Racing/lovely-car-data");
 
-        // Per-car rev-light data master switch. Networked and third-party, so it
-        // is off until asked for. Turning it off drops the in-memory copies at
-        // once so the lights revert this frame rather than at the next car.
+        // The per-car LIGHTING switch. The dataset itself rides community
+        // features (see TrueforcePlugin.LovelyDataEnabled); this governs only
+        // whether it reaches the strip, and stays opt-in because lighting a car
+        // borrows one of the user's wheel slots. Turning it off drops the ramps
+        // and hands the slot back at once, so the lights revert this frame
+        // rather than at the next car, while the redlines stay.
         private void AlwaysRememberPattern_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -7865,6 +8021,12 @@ namespace TrueforceForAll.Plugin
                 try { CommunityEnabledCheck.IsChecked = on; }
                 finally { _suppressEvents = prev; }
             }
+            // The LIGHTSYNC per-car lighting box now depends on this switch,
+            // and the controls that say so are written by RefreshFromPlugin. Not
+            // calling it left the box greyed after community features came back
+            // on, and lit after they went off, until the panel was reopened.
+            // (The sibling UseCommunityCarFacts handler already does this.)
+            RefreshFromPlugin();
             // Re-evaluate the per-car community context next tick (turning
             // networking on lets a stale cache refresh; off stops refreshing
             // but keeps applying the cache via UseCommunityCarFacts).
@@ -13930,7 +14092,9 @@ namespace TrueforceForAll.Plugin
                 _plugin.PersistSettings();
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = n == 0
-                        ? "No slot designated. The plugin will not write any of your slots."
+                        ? "Back to automatic. The plugin picks the slot itself: the first one "
+                          + "never programmed, or CUSTOM 5 when all five are in use. Its contents are "
+                          + "backed up before the first write."
                         : "CUSTOM " + n + " designated. Its contents are backed up before the first write, "
                           + "and SLOTRESTORE" + n + " puts them back.";
                 return;

@@ -952,15 +952,24 @@ namespace TrueforceForAll.Plugin
                         && Settings.GameModes != null
                         && Settings.GameModes.TryGetValue(_activeGame, out var gm)
                         && gm == TrueforceMasterMode.Off)
+                    {
                         // Only reachable when the USER chose off for this game:
                         // nothing else writes that map any more.
                         // No game id in the text: ActiveGame is SimHub's raw name and
                         // the header card names the game right above this.
-                        return IsNativeTrueforceGame(_activeGame)
+                        // The Lightsync only suggestion is dropped on a wheel whose
+                        // strip is one fixed look: the selector does not offer that
+                        // row there (it does nothing on that wheel), so naming it
+                        // would send the reader looking for a choice they do not
+                        // have. Fails OPEN on an undetected wheel, matching the
+                        // selector's own rule.
+                        bool canLightsync = !WheelDetected || WheelHasSelectableLightPattern;
+                        return IsNativeTrueforceGame(_activeGame) && canLightsync
                             ? "You switched the plugin off for this game. Set the mode back to Normal at the top, "
                               + "or to Lightsync only to keep the Lightsync features while the game keeps its "
                               + "own Trueforce."
                             : "Plugin is switched off for this game. Set the mode back to Normal at the top (it is remembered per game).";
+                    }
                     return "Plugin is switched off. Set the mode at the top of the panel to Normal to turn it on.";
                 }
 
@@ -1603,9 +1612,17 @@ namespace TrueforceForAll.Plugin
         // someone opened the panel, which is exactly the wrong order: the point is
         // to tell them how to get the full experience before they conclude the
         // wheel is dead. Shows again on each iRacing session until dismissed.
-        private const string IracingNoticeBody =
+        /// <summary>The iRacing first-launch notice.
+        ///
+        /// A property rather than a const because one clause depends on the wheel:
+        /// "sets the wheel's pattern to match the car you are in" is true of a wheel
+        /// with selectable patterns and false of one whose strip is a fixed look,
+        /// and this notice is shown to both. Fails OPEN on an undetected wheel.</summary>
+        private string IracingNoticeBody =>
             "iRacing keeps working out what the car is doing. It just stops driving the wheel itself and hands those forces to the plugin, so the feel stays the sim's own, and your rev lights and wheel screen come back with it.\n\n" +
-            "We start on Lightsync only, which leaves iRacing completely alone and sets the wheel's pattern to match the car you are in. For the rest, four steps, once:\n\n" +
+            (!WheelDetected || WheelHasSelectableLightPattern
+                ? "We start on Lightsync only, which leaves iRacing completely alone and sets the wheel's pattern to match the car you are in. For the rest, four steps, once:\n\n"
+                : "We start on Lightsync only, which leaves iRacing completely alone. For the rest, four steps, once:\n\n") +
             "1. With iRacing closed, open Documents\\iRacing\\app.ini and set loadTrueForceAPI=0.\n" +
             "2. Start iRacing and turn its force feedback off in the options. Leave its strength number where it is, the plugin reads it.\n" +
             "3. Set the mode at the top of this panel to Normal.\n" +
@@ -4678,7 +4695,7 @@ namespace TrueforceForAll.Plugin
                     // first pattern pick or bound button press acts immediately
                     // instead of being the one that quietly opens it.
                     if (MasterMode != TrueforceMasterMode.Off
-                        && (Settings?.LovelyCarDataEnabled == true || Settings?.LightsyncTabUnlocked == true))
+                        && (LovelyLightingEnabled || Settings?.LightsyncTabUnlocked == true))
                         EnsureLedChannelOpen();
 
                     // RestoreOwedSlots stays unconditional in every mode, Off
@@ -6298,6 +6315,16 @@ namespace TrueforceForAll.Plugin
                     BackfillDisplayNameForActiveCar();
                 }
 
+                // The DATA edge, deliberately out here rather than down in the
+                // LED branch. Redlines and blink rate are not a lighting
+                // feature: they move the shift cue and the limiter buzz, which
+                // every wheel has. Left inside `if (levelWheel)` this never ran
+                // for a G923 PS/PC, which is exactly the wheel the split was
+                // meant to reach. Latched per car inside, so the lighting edge
+                // calling it again a few lines later costs nothing.
+                if (MasterMode != TrueforceMasterMode.Off)
+                    OnLovelyCarChanged(_activeGame, _activeCarId);
+
                 // Lights-only runs no telemetry source, so the car-load edge that
                 // normally arrives on a frame has to be driven from here. Full mode
                 // deliberately keeps using the frame path: it can prove the HID++
@@ -7052,7 +7079,7 @@ namespace TrueforceForAll.Plugin
                         // and we hold some for this car. Null curve = today's
                         // behaviour, unchanged.
                         string gearNow = frame.Gear;
-                        _rpmLeds.LevelCurve = _lovelyCar != null
+                        _rpmLeds.LevelCurve = _lovelyCar != null && LovelyLightingEnabled
                             ? (Func<double, int, int?>)((r, steps) => LovelyLevel(gearNow, r, steps))
                             : null;
 
@@ -7781,6 +7808,7 @@ namespace TrueforceForAll.Plugin
         // ---- per-car rev-light data (lovely-car-data) ----
         private LovelyCarDataStore _lovelyStore;
         private LovelyCarProfile   _lovelyCar;    // active car's published data, null when none
+        private string             _lovelyCarKey; // "game/carId" the above was loaded for
         private string             _lovelyGear;   // gear the ramp below was picked for
         private LovelyGearRamp     _lovelyRamp;   // ramp in force, re-picked on gear change
 
@@ -7803,41 +7831,106 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>Community features were switched, so the dataset that rides
+        /// them has just become available or unavailable. On means read the active
+        /// car now rather than at the next car load; off means drop what is held,
+        /// including anything already published into the rev-limiter cascade.</summary>
+        public void OnLovelyDataAvailabilityChanged()
+        {
+            if (LovelyDataEnabled)
+            {
+                OnLovelyCarChanged(_activeGame, _activeCarId, force: true);
+                return;
+            }
+
+            _lovelyCar  = null;
+            _lovelyRamp = null;
+            _lovelyGear = null;
+            _lovelyCarKey = null;
+            _lovelyStore?.ForgetMemory();
+            PublishLovelyRedlines();
+            if (_rpmLeds != null) _rpmLeds.LevelCurve = null;
+            HandBackLovelyLighting();
+        }
+
+        /// <summary>Whether the Lovely per-car dataset may be fetched and used
+        /// at all.
+        ///
+        /// It follows the community switch rather than a control of its own,
+        /// because it IS a community data source: it is fetched over the network
+        /// and cached, exactly like car facts. Tying it to a checkbox on the
+        /// LIGHTSYNC tab put it out of reach of every wheel whose strip has one
+        /// fixed look, since that tab is collapsed for them. Those wheels cannot
+        /// show a per-car pattern, but the same records carry per-gear redlines
+        /// and each car's blink rate, and those work on any wheel.</summary>
+        public bool LovelyDataEnabled => Settings?.CommunityEnabled == true;
+
+        /// <summary>Whether that data may drive the wheel's LIGHTS.
+        ///
+        /// Deliberately a second, opt-in switch rather than part of the first.
+        /// Lighting a car's own pattern means borrowing one of the user's five
+        /// wheel slots, and community features ship on, so folding the two
+        /// together would start writing to the wheels of everyone who upgrades
+        /// without them asking for it. Reading the data costs them nothing.</summary>
+        public bool LovelyLightingEnabled
+            => LovelyDataEnabled && Settings?.LovelyCarDataEnabled == true;
+
         /// <summary>The per-car data switch was flipped. Turning it ON adopts the
         /// active car immediately rather than waiting for the next car change;
         /// turning it OFF drops what is loaded so the lights fall back to the
         /// built-in ramp on the very next frame.</summary>
         public void OnLovelyEnabledChanged()
         {
-            if (Settings?.LovelyCarDataEnabled == true)
+            if (LovelyLightingEnabled)
             {
-                OnLovelyCarChanged(_activeGame, _activeCarId);
+                OnLovelyCarChanged(_activeGame, _activeCarId, force: true);
             }
             else
             {
-                _lovelyCar  = null;
+                // The LIGHTS stop, the DATA stays. This switch governs only
+                // whether the car's pattern reaches the strip; its redlines and
+                // blink rate are the half that works on every wheel, so dropping
+                // _lovelyCar here would quietly take the shift cue away from a
+                // user who only wanted their own colours back.
                 _lovelyRamp = null;
                 _lovelyGear = null;
-                _lovelyStore?.ForgetMemory();
                 PublishLovelyRedlines();
                 if (_rpmLeds != null) _rpmLeds.LevelCurve = null;
-
-                // Switching the feature off should mean OFF, not "off from the
-                // next restart": give the slot straight back rather than sitting
-                // on the user's colors until shutdown.
-                Task.Run(() =>
-                {
-                    try
-                    {
-                        string restored = RestoreOwedSlots();
-                        if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
-                    }
-                    catch (Exception ex)
-                    {
-                        SimHub.Logging.Current.Info("[TF4ALL] slot restore on disable failed: " + ex.Message);
-                    }
-                });
+                HandBackLovelyLighting();
             }
+        }
+
+        /// <summary>Stop lighting cars: put the user's own pattern back if we are
+        /// the ones who moved it, and hand the borrowed slot over.
+        ///
+        /// Shared by both switches that can turn the lighting off, because they
+        /// mean the same thing to the wheel and had drifted apart once already.
+        /// Switching a feature off means OFF, not "off from the next restart":
+        /// sitting on someone's colours until shutdown is not a thing to do.</summary>
+        private void HandBackLovelyLighting()
+        {
+            if (_autoAppliedColors)
+            {
+                _autoAppliedColors = false;
+                try { ApplyStickyPattern(); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] sticky pattern restore failed: " + ex.Message);
+                }
+            }
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    string restored = RestoreOwedSlots();
+                    if (!string.IsNullOrEmpty(restored)) SimHub.Logging.Current.Info("[TF4ALL] " + restored);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] slot restore on disable failed: " + ex.Message);
+                }
+            });
         }
 
         /// <summary>Car-load edge for the wheel's lights: whatever this car should
@@ -8247,7 +8340,22 @@ namespace TrueforceForAll.Plugin
         /// we already know lights correctly on lap one rather than after a round
         /// trip, and so the telemetry thread never waits on a network call.</summary>
         private void OnLovelyCarChanged(string game, string carId)
+            => OnLovelyCarChanged(game, carId, force: false);
+
+        /// <summary>As above. `force` is for the two switches that have to reload
+        /// the SAME car (the lighting box and community features), where the latch
+        /// would otherwise read the car as already handled and do nothing.</summary>
+        private void OnLovelyCarChanged(string game, string carId, bool force)
         {
+            // Two edges reach this: the wheel-agnostic car change above, and the
+            // lighting edge at the end of ApplyCarLightsForActiveCar. Whichever
+            // arrives first does the work. Without the latch the second one
+            // refetches and republishes on every car load, and re-runs the colour
+            // apply that borrows a wheel slot.
+            string key = (game ?? "") + "/" + (carId ?? "");
+            if (!force && string.Equals(_lovelyCarKey, key, StringComparison.Ordinal)) return;
+            _lovelyCarKey = key;
+
             _lovelyCar  = null;
             _lovelyRamp = null;
             _lovelyGear = null;
@@ -8258,7 +8366,11 @@ namespace TrueforceForAll.Plugin
             // borrowed for the PREVIOUS car survive switching to a car with no
             // id (an unrecognised car) or turning the feature off mid-session,
             // and the wheel keeps showing a car the user is no longer in.
-            if (Settings?.LovelyCarDataEnabled != true
+            //
+            // The gate here is the DATA one: a wheel that cannot show a pattern
+            // still wants this car's redlines, so the fetch has to run for it.
+            // Whether any of it reaches the strip is decided further down.
+            if (!LovelyDataEnabled
                 || string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId))
             {
                 if (_autoAppliedColors)
@@ -8276,6 +8388,10 @@ namespace TrueforceForAll.Plugin
                 PublishLovelyRedlines();
                 // Cached cars light correctly on lap one rather than after a
                 // round trip; the refresh below covers a car we have not seen.
+                // Both calls are unguarded on purpose: ApplyCarColorsOnLoad
+                // gates itself on LovelyLightingEnabled, and it has to run even
+                // when lighting is off so its !haveData branch can hand a
+                // previous car's borrowed colours back.
                 ApplyCarColorsOnLoad(game, carId);
                 Task.Run(() =>
                 {
@@ -8319,7 +8435,7 @@ namespace TrueforceForAll.Plugin
         private int? LovelyLevel(string gear, double rpms, int steps)
         {
             var car = _lovelyCar;
-            if (car == null || Settings?.LovelyCarDataEnabled != true) return null;
+            if (car == null || !LovelyLightingEnabled) return null;
 
             var ramp = RampFor(car, gear);
             if (ramp == null || !ramp.IsUsable) return null;
@@ -8351,7 +8467,7 @@ namespace TrueforceForAll.Plugin
         /// has no entry, which restores the previous behaviour exactly.</summary>
         private void PublishLovelyRedlines()
         {
-            bool have = Settings?.LovelyCarDataEnabled == true && _lovelyCar != null;
+            bool have = LovelyDataEnabled && _lovelyCar != null;
 
             var rl = RevLimiter;
             if (rl != null)
@@ -12020,8 +12136,16 @@ namespace TrueforceForAll.Plugin
             // leave it alone. The caller decides whether the loan should end
             // first: a reorder says yes, opening the tab to look at what you
             // cycled to says no.
-            int onLoan = BorrowedSlot;
-            int writes = 0, renames = 0, failed = 0;
+            //
+            // HeldBorrowedSlot, not BorrowedSlot: the second is an in-memory
+            // cache that starts at -1 and only fills once this process has
+            // borrowed something itself, so a loan left open by a session that
+            // died was invisible here and could be written over permanently,
+            // which settles the loan and throws away the one copy of the user's
+            // colors. The backup file is the authority on what is owed.
+            int onLoan = HeldBorrowedSlot();
+            if (onLoan < 0) onLoan = BorrowedSlot;
+            int writes = 0, renames = 0, failed = 0, unreadable = 0;
             string lastError = null;
 
             for (int slot = 0; slot < WheelLedChannel.CustomSlotCount && slot < want.Count; slot++)
@@ -12033,6 +12157,17 @@ namespace TrueforceForAll.Plugin
                 if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3) continue;
 
                 var have = ReadSlot(slot);
+                if (have?.Rgb == null)
+                {
+                    // Unreadable. Writing anyway is how a slot the plugin never
+                    // managed to read got permanently overwritten with nothing
+                    // standing behind it. A read failure is also not evidence
+                    // the slot is WRONG, so rewriting on every panel open would
+                    // be five flash writes down the shared pipe for nothing.
+                    // Skip it; the next open reads again.
+                    unreadable++;
+                    continue;
+                }
                 // Compare against what we WOULD send, not against what the
                 // library stores. The library holds sRGB intent; the wheel
                 // holds that intent after the color trim. Comparing the two
@@ -12085,15 +12220,25 @@ namespace TrueforceForAll.Plugin
             LightPatternStore.NormalizeSlots(LightPatterns);
             SaveLightPatterns();
 
-            message = failed > 0
+            // A skipped slot is reported rather than swallowed. It means the
+            // wheel did not answer for that slot, so it still holds whatever it
+            // held, and the user's list and their wheel disagree until a read
+            // succeeds. Saying nothing would read as "the wheel matches" when it
+            // does not.
+            string skipped = unreadable == 0 ? string.Empty
+                : " " + (unreadable == 1
+                    ? "One slot could not be read, so it was left as it is."
+                    : unreadable + " slots could not be read, so they were left as they are.");
+
+            message = (failed > 0
                 ? "The wheel refused " + failed + " of the writes. " + (lastError ?? string.Empty)
                 : writes == 0 && renames == 0 ? "The wheel already matches your list."
                 : writes == 0 ? "Renamed " + renames + (renames == 1 ? " slot" : " slots") + " on the wheel."
                 : writes == 1 ? "Updated one slot on the wheel."
-                : "Updated " + writes + " slots on the wheel.";
-            if (writes > 0 || renames > 0)
+                : "Updated " + writes + " slots on the wheel.") + skipped;
+            if (writes > 0 || renames > 0 || unreadable > 0)
                 SimHub.Logging.Current.Info(
-                    $"[TF4ALL] slots synced: {writes} written, {renames} renamed");
+                    $"[TF4ALL] slots synced: {writes} written, {renames} renamed, {unreadable} unreadable (left alone)");
             return writes;
         }
 
@@ -12176,7 +12321,7 @@ namespace TrueforceForAll.Plugin
             // handler slaved them) gave a ticked box that did nothing until it was
             // toggled off and on. Reading the flag the control actually drives
             // makes that state impossible rather than merely unlikely.
-            bool haveData = Settings?.LovelyCarDataEnabled == true && _lovelyCar != null;
+            bool haveData = LovelyLightingEnabled && _lovelyCar != null;
 
             if (!haveData)
             {
@@ -12280,10 +12425,13 @@ namespace TrueforceForAll.Plugin
                         + "and the plugin will back up its contents before ever writing to it.";
                 return false;
             }
-            if (Settings?.LovelyCarDataEnabled != true)
+            if (!LovelyLightingEnabled)
             {
-                message = "Per-car light data is switched off, so there is no pattern to show. "
-                        + "Turn it on in the LIGHTSYNC tab first.";
+                message = LovelyDataEnabled
+                    ? "Per-car lighting is switched off, so there is no pattern to show. "
+                      + "Tick \"Match my wheel to the car I'm driving\" on the LIGHTSYNC tab first."
+                    : "Community features are off, so there is no per-car data to show. "
+                      + "Turn them on in the Settings tab first.";
                 return false;
             }
 
@@ -12454,11 +12602,18 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>The slot to borrow, worked out rather than asked for.
         ///
-        /// Pinned wins if the user set one. Otherwise: the slot the wheel is
-        /// ALREADY displaying, when that is a custom one, because borrowing what
-        /// is on screen means the adopt-on-lend step leaves the wheel looking
-        /// exactly as it did. Failing that, the last slot, on the reasoning that
-        /// a user who has filled slots tends to fill from the front.
+        /// In order: a slot already on loan per the on-disk backup (this session
+        /// or one that died holding it), then a slot the user pinned, then the
+        /// first slot that has never been programmed, and only when all five are
+        /// in use, the last slot.
+        ///
+        /// It does NOT consider what the wheel is currently displaying. An
+        /// earlier version of this comment said it did, and three pieces of
+        /// user-facing copy were written from the comment rather than the body:
+        /// the light-patterns guide, the LightsyncDynamicSlot doc, and the
+        /// LIGHTSYNC tab's own note all told users a rule the code never had.
+        /// The current selection IS known (RpmLedController.KnownSelection) but
+        /// is used only to GIVE a slot back in ReleaseBorrowIfWheelMovedAway.
         ///
         /// Always a real slot, never "none": asking to show a pattern IS the
         /// permission to put it somewhere, and the contents are backed up and
@@ -12700,7 +12855,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>Whether the active car would be driven by its published data
         /// if nothing were pinned. Drives the "Auto" entry in the pickers.</summary>
         public bool AutoCarColorsAvailable()
-            => Settings?.LovelyCarDataEnabled == true && _lovelyCar != null;
+            => LovelyLightingEnabled && _lovelyCar != null;
 
         /// <summary>Hand this car back to its own data by clearing any pinned
         /// choice, then apply it now so the change is visible immediately rather
@@ -20914,6 +21069,16 @@ namespace TrueforceForAll.Plugin
             if (Settings == null) return;
             Settings.CommunityEnabled = on;
             PersistSettingsCore();
+            // The Lovely dataset rides this switch, so the active car has to be
+            // re-read or dropped right now. Without it the redlines already
+            // published keep driving the shift cue after the user has turned
+            // community features off, and turning them back on does nothing
+            // until the next car change.
+            try { OnLovelyDataAvailabilityChanged(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Lovely reload on community toggle failed: " + ex.Message);
+            }
             try { CommunityEnabledChanged?.Invoke(on); }
             catch (Exception ex)
             {
@@ -22874,6 +23039,13 @@ namespace TrueforceForAll.Plugin
                     // account's per-game choices governing the incoming one.
                     if (env.Settings["GameModes"] == null)
                         RebuildGameModesFromEnabled("account profile");
+                    // Same reconcile as the restore path: the incoming profile
+                    // carries both Lovely gates and neither handler has run.
+                    try { OnLovelyDataAvailabilityChanged(); }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Info("[TF4ALL] Lovely re-apply after profile swap failed: " + ex.Message);
+                    }
                 }
             }
             catch (Exception ex)
@@ -28621,6 +28793,17 @@ namespace TrueforceForAll.Plugin
             // choices would quietly outrank everything the restore just landed.
             if (env?.Settings != null && env.Settings["GameModes"] == null)
                 RebuildGameModesFromEnabled("cloud restore");
+
+            // Both Lovely gates are Portable, so a restore can flip either one
+            // without SetCommunityEnabled or the checkbox handler ever running.
+            // Reconciling here is what stops a restored "off" from leaving
+            // redlines already published into the rev-limiter cascade, and a
+            // restored "on" from doing nothing until the next car change.
+            try { OnLovelyDataAvailabilityChanged(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Lovely re-apply after restore failed: " + ex.Message);
+            }
 
             // PluginEnabled is Portable and just landed without a SetPluginEnabled
             // transition. Reconcile the device FIRST: everything below does file

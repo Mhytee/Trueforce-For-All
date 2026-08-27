@@ -889,9 +889,15 @@
                             <ComboBox x:Name="MasterModeCombo" Width="150" VerticalAlignment="Center"
                                       SelectionChanged="MasterMode_Changed"
                                       ToolTip="Normal: force feedback, effects, rev lights and the wheel's screen. Use this in most games. Lightsync only: disables the plugin's Trueforce effects and FFB tap, for games with native Trueforce support or when you only want our Lightsync patterns and features. Off: fully disables all plugin features for the game you are in.">
-                                <ComboBoxItem Content="Normal"/>
-                                <ComboBoxItem Content="Lightsync only"/>
-                                <ComboBoxItem Content="Off"/>
+                                <!-- Tagged with their mode because the list is built
+                                     per wheel: the Lightsync only item is removed for a
+                                     wheel whose lights are one fixed look, where it does
+                                     nothing. Position arithmetic would then quietly mean
+                                     the wrong mode, so the Tag is the mapping. -->
+                                <ComboBoxItem Content="Normal" Tag="Normal"/>
+                                <ComboBoxItem x:Name="MasterModeLightsyncItem"
+                                              Content="Lightsync only" Tag="LightsyncOnly"/>
+                                <ComboBoxItem Content="Off" Tag="Off"/>
                             </ComboBox>
                         </StackPanel>
                         <!-- Live status pill, moved up beside the on/off toggle so the
@@ -3653,13 +3659,17 @@
                              pattern selector are what someone opens this tab for. -->
                         <StackPanel x:Name="LightsyncTabHost"/>
 
-                        <!-- Community per-car data. Networked and third-party, so it
-                             has its own switch rather than riding CommunityEnabled
-                             (which gates OUR backend). Sits up here with the on/off
-                             switch because it is the other thing that changes what
-                             the lights DO without anyone authoring anything.
-                             Attribution is a licence condition, not decoration: do
-                             not remove the credit. -->
+                        <!-- Community per-car data. Fetching it DOES ride
+                             CommunityEnabled, because it is a networked community
+                             data source like any other; this switch governs only
+                             whether it reaches the light strip. The redlines and
+                             blink rate that come with it work on every wheel and
+                             need no switch here, which is what keeps them reachable
+                             on a wheel that never sees this tab. Sits up here with
+                             the on/off switch because it is the other thing that
+                             changes what the lights DO without anyone authoring
+                             anything. Attribution is a licence condition, not
+                             decoration: do not remove the credit. -->
                         <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,20,0,10">
                             <TextBlock Text="Light patterns from car data" Style="{StaticResource SectionHeaderText}"/>
                         </Border>
@@ -3673,19 +3683,29 @@
                                    Text="Pick a pattern while you are in a car and it becomes that car's pattern, with no need to press Remember. Only deliberate picks count."/>
                         <CheckBox x:Name="LovelyCarDataCheck" Content="Match my wheel to the car I'm driving"
                                   Margin="0,0,0,2" Checked="LovelyCarData_Changed" Unchecked="LovelyCarData_Changed"
-                                  ToolTip="Works even in games that light the wheel themselves, because the colors are set once as the car loads and the game drives the lights from there. Downloads a small file the first time you drive a car that has one, then keeps it on this PC and works offline."/>
+                                  ToolTip="Works even in games that light the wheel themselves, because the colors are set once as the car loads and the game drives the lights from there. Needs community features, which is where the car data comes from."/>
+                        <!-- Shown only when community features are off, because the
+                             box above is then dead and nothing else on this tab
+                             would tell the user why. The DATA half of this dataset
+                             (redlines, blink rate) rides community features on its
+                             own and needs no box, which is what makes it reachable
+                             on a wheel that never sees this tab. -->
+                        <TextBlock x:Name="LovelyNeedsCommunityNote" Style="{StaticResource HelpText}"
+                                   Margin="22,0,0,6" TextWrapping="Wrap" Visibility="Collapsed"
+                                   Text="Turn on community features in the Settings tab to use this. The car data is fetched from there."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
                                    Text="Gives your wheel the car's own colors and fill direction as you get in it, and fills the lights at the points that car really lights at. Cars come up unevenly in real life, so the last few arrive fast as you approach the shift."/>
                         <!-- The credit stays here and stays visible: the licence
                              requires it, so it is a condition of using the data
                              rather than decoration. What moved into the guide is
                              the DISCLOSURE around it, which was three more lines
-                             explaining that the dataset supplies patterns only
-                             while redlines, engine data and car names come from
-                             our own community car facts. Precise, worth saying,
-                             and far too much text to sit under one checkbox. -->
+                             drawing the line between what the dataset supplies
+                             (patterns, per-gear redlines, blink rate) and what
+                             comes from our own community car facts (names,
+                             engine data, the redline consensus). Precise, worth
+                             saying, and far too much text under one checkbox. -->
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,10" TextWrapping="Wrap">
-                            <Run Text="Light patterns by "/><Hyperlink Click="LovelyCredit_Click"
+                            <Run Text="Light patterns, per-car redlines and blink rates by "/><Hyperlink Click="LovelyCredit_Click"
                                     ToolTip="Opens the lovely-car-data project on GitHub.">Lovely Sim Racing</Hyperlink><Run Text=", CC BY-NC-SA 4.0. "/><Hyperlink
                                     Click="LovelyGuide_Click"
                                     ToolTip="What the dataset covers, and what comes from our own car facts.">What this covers</Hyperlink>
@@ -3725,10 +3745,11 @@
                                    Text="Make your own wheel light patterns. The wheel only stores five, so Trueforce For All keeps as many as you like and swaps them into one slot you lend it. Bind Rev pattern next on the Controls tab to step through them while you drive."/>
 
                         <!-- No slot picker on purpose. Which of the five slots gets
-                             borrowed is plumbing: the plugin uses whichever one the
-                             wheel is already showing, saves what was in it, and
-                             hands it back on exit. The list below marks the one in
-                             use, so it stays visible without being a decision.
+                             borrowed is plumbing: the plugin takes the first slot
+                             that has never been programmed (the last one when all
+                             five are in use), saves what was in it, and hands it
+                             back on exit. The list below marks the one in use, so
+                             it stays visible without being a decision.
                              SLOTPICK<n> in the access box pins one for anyone who
                              wants to. -->
                         <Grid Margin="0,0,0,10">
@@ -4753,11 +4774,13 @@
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
                     <!-- Networking master toggle (online community features: car-fact
-                         fetch/submit + preset sharing). Does NOT gate account sign-in
-                         or cloud backup, which have their own controls. -->
+                         fetch/submit, preset sharing, and the Lovely per-car dataset).
+                         Does NOT gate account sign-in or cloud backup, which have
+                         their own controls. This is the only consent surface for the
+                         third-party dataset fetch, so its tooltip has to name it. -->
                     <CheckBox x:Name="CommunityEnabledCheck" Content="Enable community features (online)"
                               Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
-                              ToolTip="Lets the plugin go online for community features: downloading and submitting community car facts, and sharing presets. Turn off to stay offline for community features (already-downloaded community car facts still apply if 'Use community car facts' is on). Does not affect account sign-in or cloud backup."/>
+                              ToolTip="Lets the plugin go online for community features: downloading and submitting community car facts, sharing presets, and fetching per-car rev-light data from the Lovely Sim Racing dataset on GitHub. Turn off to stay offline for community features (already-downloaded community car facts still apply if 'Use community car facts' is on). Does not affect account sign-in or cloud backup."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12" TextWrapping="Wrap">
                         <Run Text="Sign-in is only needed for presets. Anything you share there (presets, packs, custom engines) shows your username; car facts are anonymous and need no account. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
                     </TextBlock>

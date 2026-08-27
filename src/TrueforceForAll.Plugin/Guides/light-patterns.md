@@ -1,14 +1,32 @@
 Your wheel holds **five** light patterns. (This is about the patterns themselves; [why the rev lights only follow your revs in some games](guide:wheel-lights) is a separate matter.) The library holds as many as you like, and the extras are swapped into a slot as you drive, so the wheel's five are a window onto the library rather than the whole of it.
 
-## Your own slots are borrowed, not taken
+## Your five slots are written to match your list
 
-Holding more patterns than the wheel does means putting them somewhere, so the
-library borrows one slot: the one the wheel is already showing if that is a
-custom one, otherwise the last. Whatever was in it is backed up before anything
-is written, and put back when the plugin lets go of it.
+The top five patterns in your library are the wheel's five slots. The plugin
+compares the wheel against that list and writes any slot that disagrees, and
+those writes are permanent: nothing is kept, nothing is handed back, and they
+stay on the wheel with SimHub closed. It compares when the settings page opens,
+when a move or a delete changes which patterns are in the top five, and when
+you edit a pattern that is already in a slot. Slot names are replaced with the
+pattern names even where the colors already match.
 
-The other four are never touched, and you can pin which slot gets borrowed if
-you would rather it left a particular one alone.
+The first time the tab is built, the plugin reads your five slots into the top
+of the library, keeping each one's name, so they survive as patterns you can
+move back up and your wheel's own menu still reads the way it did. A slot the
+wheel will not answer for is left exactly as it is rather than guessed at, and
+the panel says so, so nothing is written over a slot the plugin could not read
+first.
+
+Showing a pattern from further down the list borrows a slot instead: the first
+one you have never programmed, or CUSTOM 5 when all five are in use. That one
+is properly borrowed while the loan is open. Its colors and its name are saved
+to disk before anything is written, the write is refused outright if that copy
+cannot be made, and it goes back when you switch to something the wheel holds
+itself, when SimHub closes, and at the next launch if SimHub was closed while
+still holding it. If the wheel cannot be reached at that moment the copy is
+kept and tried again. The one thing that ends a loan without returning it is
+telling the plugin to write that same slot on purpose, by moving a pattern up
+into the top five.
 
 ## Walking the library needs a button
 
