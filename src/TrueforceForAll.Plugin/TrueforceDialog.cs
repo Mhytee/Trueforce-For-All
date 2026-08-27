@@ -342,15 +342,18 @@ namespace TrueforceForAll.Plugin
                     ? (hasCancel ? "Yes" : "OK")
                     : okLabel,
                 Padding = new Thickness(14, 5, 14, 5),
-                Foreground = isDestructive ? DestructiveFg : TextFg,
-                Background = isDestructive ? DestructiveBg : PanelBg,
+                Foreground = TextFg,
+                Background = PanelBg,
                 IsDefault  = !isDestructive,   // destructive: Cancel is the default instead
                 IsCancel   = !hasCancel,       // single-OK dialogs: OK doubles as Esc/close
             };
             // Gold accent when the caller opts in (non-destructive only). Uses
             // the shared modal theme so hover/press feedback matches the rest.
-            if (goldOk && !isDestructive)
-                ModalButtonTheme.Primary(ok);
+            // One palette for both. The destructive red used to be a private
+            // copy in this file, which is how a Remove button in a panel and the
+            // Remove button in its own confirm ended up able to disagree.
+            if (isDestructive) ModalButtonTheme.Destructive(ok);
+            else if (goldOk)   ModalButtonTheme.Primary(ok);
             ok.Click += (s, e) => { DialogResult = true; Close(); };
             btnRow.Children.Add(ok);
         }

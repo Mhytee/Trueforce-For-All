@@ -245,12 +245,9 @@ namespace TrueforceForAll.Plugin
                     ForzaForwardStepsHost.Children.Add(
                         MarkdownView.Render(GuideText.Load("forza-forward", GuideContext.Panel)));
                 }
-                if (FsModStepsHost != null)
-                {
-                    FsModStepsHost.Children.Clear();
-                    FsModStepsHost.Children.Add(MarkdownView.Render(
-                        GuideText.Load("farming-sim", GuideContext.Panel)));
-                }
+                // The Farming Simulator block is NOT rendered here. It is the
+                // one whose text depends on state that changes while the panel is
+                // open, so RefreshFsModTargets owns it.
             }
             catch (Exception ex)
             {
@@ -341,7 +338,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null || FsModTargetsPanel == null) return;
             FsModTargetsPanel.Children.Clear();
 
-            int found = 0;
+            int found = 0, installed = 0;
             foreach (var t in _plugin.FsModTargets())
             {
                 // A title that isn't on this PC gets no row. Offering to install
@@ -349,7 +346,21 @@ namespace TrueforceForAll.Plugin
                 // user cannot act on.
                 if (!t.GameFound) continue;
                 found++;
+                if (t.Installed) installed++;
                 FsModTargetsPanel.Children.Add(BuildFsModRow(t));
+            }
+
+            // Once the mod is in every game that has it, the install steps are
+            // spent: what is left is the one step still to do inside the game,
+            // and how to undo it. Re-rendered on every refresh rather than once,
+            // because Install and Remove both land here.
+            if (FsModStepsHost != null)
+            {
+                bool allIn = found > 0 && installed == found;
+                FsModStepsHost.Children.Clear();
+                FsModStepsHost.Children.Add(MarkdownView.Render(
+                    GuideText.Load(allIn ? "farming-sim-installed" : "farming-sim",
+                                   GuideContext.Panel)));
             }
 
             if (FsModTargetsStatus == null) return;
@@ -410,6 +421,9 @@ namespace TrueforceForAll.Plugin
                     ? "Copy the mod in again, over the one that is there."
                     : "Copy the mod into this game's mods folder."
             };
+            // Gold, the app's affirmative colour, and the same one the modal
+            // uses for its confirm button.
+            ModalButtonTheme.Primary(btn);
             btn.Click += (s, ev) => InstallFsModFor(t);
             buttons.Children.Add(btn);
 
@@ -426,6 +440,10 @@ namespace TrueforceForAll.Plugin
                     Cursor = System.Windows.Input.Cursors.Hand,
                     ToolTip = "Delete the mod from this game's mods folder."
                 };
+                // Red, matching the Remove button in the confirm it opens. This
+                // deletes a file out of another product's folder, which is worth
+                // the one place in this panel that red is spent on.
+                ModalButtonTheme.Destructive(rm);
                 rm.Click += (s, ev) => UninstallFsModFor(t);
                 buttons.Children.Add(rm);
             }

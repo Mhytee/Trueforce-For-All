@@ -1830,10 +1830,32 @@ namespace TrueforceForAll.Plugin
         /// flicks this tile twice ends up back on lights only rather than being
         /// quietly dropped to off with no way back from that tile.</summary>
         public void SetMasterEnabledFromToggle(bool on)
-            => SetMasterMode(on ? TrueforceMasterMode.Normal
-                                : (_preFullMode == TrueforceMasterMode.LightsyncOnly
-                                   ? TrueforceMasterMode.LightsyncOnly
-                                   : TrueforceMasterMode.Off));
+            => SetMasterMode(on ? TrueforceMasterMode.Normal : ToggleOffMode());
+
+        /// <summary>Where a two-state control lands when it is switched off.
+        ///
+        /// _preFullMode alone was not enough, and failed in exactly the case it
+        /// was written for. It arms only on a transition TO Normal within this
+        /// session, so someone sitting in a native Trueforce title that resolved
+        /// to Lightsync only ON ITS OWN never armed it: the latch still held its
+        /// compile-time default of Off, and one tap of the tile wrote Off into
+        /// that game's entry, permanently, from a tile with no way back.
+        ///
+        /// The rule now is that this control never puts a game BELOW where it was
+        /// already sitting. Already non-Normal means the switch is a no-op. In a
+        /// native Trueforce title, off means Lightsync only, which is that
+        /// title's own resting mode and what the user had. Everywhere else off
+        /// still means Off.</summary>
+        private TrueforceMasterMode ToggleOffMode()
+        {
+            var now = ResolveEffectiveMode();
+            if (now != TrueforceMasterMode.Normal) return now;
+            if (_preFullMode == TrueforceMasterMode.LightsyncOnly)
+                return TrueforceMasterMode.LightsyncOnly;
+            return IsNativeTrueforceGame(_activeGame)
+                ? TrueforceMasterMode.LightsyncOnly
+                : TrueforceMasterMode.Off;
+        }
 
 
         // Serializes the device Stop/Pause vs Resume/Start decision between the

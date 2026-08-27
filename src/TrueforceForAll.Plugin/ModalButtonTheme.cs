@@ -22,6 +22,13 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush SecondaryBg     = Frozen(0x33, 0x33, 0x33);
         private static readonly Brush SecondaryFg     = Frozen(0xE0, 0xE0, 0xE0);
         private static readonly Brush SecondaryBorder = Frozen(0x4A, 0x4A, 0x4A);
+        // Destructive = deletes or removes something the user has. Same red the
+        // modal already used for its affirmative button, moved here so a button
+        // in a panel and the button in the confirm it opens are the same colour
+        // by construction rather than by two copies of the same hex.
+        private static readonly Brush DestructiveBg     = Frozen(0x8B, 0x2E, 0x2E);
+        private static readonly Brush DestructiveFg     = Frozen(0xFF, 0xE0, 0xE0);
+        private static readonly Brush DestructiveBorder = Frozen(0xA5, 0x3B, 0x3B);
 
         private static Brush Frozen(byte r, byte g, byte b)
         {
@@ -65,6 +72,11 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Style a cancel/close modal button.</summary>
         public static void Secondary(Button btn) => Apply(btn, SecondaryBg, SecondaryFg, SecondaryBorder);
+
+        /// <summary>Style a button that removes or deletes something (Remove,
+        /// Delete, Uninstall). Reach for this only where the action takes
+        /// something away: red everywhere makes red mean nothing.</summary>
+        public static void Destructive(Button btn) => Apply(btn, DestructiveBg, DestructiveFg, DestructiveBorder);
 
         private static void Apply(Button btn, Brush bg, Brush fg, Brush border)
         {
