@@ -7159,7 +7159,16 @@ namespace TrueforceForAll.Plugin
                     // a G923 PS owner has tested that with force flowing, the gate
                     // stays: dark LEDs are a better failure than dead force. See
                     // the header of LegacyLedF8Channel for the full reasoning.
-                    DriveG923Leds(pct, redline, modeBLeds);
+                    //
+                    // F8ANY lifts the quiet term for THIS path only, so that
+                    // testing it means driving and revving rather than watching a
+                    // synthetic sweep. Everything else about the path is unchanged,
+                    // so what the tester sees is the real feature.
+                    bool f8Gate = (Settings?.ModeBRevLightsEnabled ?? true)
+                               && MasterMode == TrueforceMasterMode.Normal
+                               && sessionActive
+                               && (modeBLeds || (Settings?.F8IgnoreQuietGate ?? false));
+                    DriveG923Leds(pct, redline, f8Gate);
                     // Not mirrored: this path never builds a level or a color
                     // profile, so there is nothing for the dash to follow and it
                     // should draw its own strip instead of a frozen one.
@@ -13665,6 +13674,12 @@ namespace TrueforceForAll.Plugin
         /// picker would read as a feature its owner is missing. Same PID set
         /// as the screen today, but a separate property because the two are
         /// different capabilities that happen to coincide.</summary>
+        /// <summary>Whether this wheel drives its rev lights over the LEGACY F8-12
+        /// report on the gamepad collection rather than HID++ 0x807A. The G923
+        /// PS/PC has no HID++ at all, so it is the only wheel on that path, and
+        /// the only one the F8ANY experiment means anything on.</summary>
+        public bool WheelIsLegacyF8 => _hidWheelPid == 0xC266;
+
         public bool WheelHasSelectableLightPattern =>
             _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268 || _hidWheelPid == 0xC276;
 

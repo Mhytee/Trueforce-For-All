@@ -12877,6 +12877,7 @@ namespace TrueforceForAll.Plugin
             "CYCLEHINT      Re-arm the LIGHTSYNC intro modal and force the cycle-binding hint on screen even though the pattern cycle action is already bound. For testing them, since anyone working on them has it bound. Session only. Toggle.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
             "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
+            "F8ANY          G923 PS/PC only: run the legacy F8 rev lights in ANY game, including ones driving their own force feedback, so you can answer this by playing and revving rather than watching a test sweep. The question is whether the lights come on AND the game's force stays solid; if the force cuts, that is the answer, not a fault. Persists. Toggle.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
             "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
@@ -13874,6 +13875,38 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "OLED gate OFF: the wheel screen now runs in any game, including ones sending their own force feedback. This is the experiment, so EXPECT the force to cut out; if it does, that confirms the screen shares the rev lights' limitation. Type OLEDANY again to put the gate back."
                         : "OLED gate back on: the wheel screen runs only under Telemetry Based FFB again.";
+                return;
+            }
+
+            if (code.Equals("F8ANY", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_plugin?.Settings == null) return;
+                bool on = !_plugin.Settings.F8IgnoreQuietGate;
+                _plugin.Settings.F8IgnoreQuietGate = on;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                {
+                    // Says what it is for, because the person typing it is
+                    // running an experiment for us rather than using a feature,
+                    // and both outcomes are a result worth reporting.
+                    if (!on)
+                        AccessCodeStatus.Text =
+                            "Rev-light gate back on: the legacy F8 lights run only when the game's "
+                            + "own force feedback is quiet.";
+                    else if (_plugin.WheelDetected && !_plugin.WheelIsLegacyF8)
+                        AccessCodeStatus.Text =
+                            "Set, but this wheel does not use the legacy F8 rev lights, so nothing "
+                            + "changes here. It applies to the G923 PS/PC only; every other wheel "
+                            + "drives its lights over HID++, where the answer is already known.";
+                    else
+                        AccessCodeStatus.Text =
+                            "Rev-light gate OFF: the legacy F8 lights now run in any game, including "
+                            + "ones driving their own force feedback. Go and drive. Two things to "
+                            + "watch: do the five lights follow your revs, and does the game's force "
+                            + "stay solid while they move. If the force cuts out, that IS the answer "
+                            + "we need, not a fault. Type F8ANY again to put the gate back.";
+                }
                 return;
             }
 

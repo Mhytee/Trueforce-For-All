@@ -95,7 +95,7 @@ namespace TrueforceForAll.Plugin
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
-            "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate",
+            "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate", "F8IgnoreQuietGate",
             "LightsyncTabUnlocked", "LovelyCarDataEnabled", "LightsyncDynamicSlot",
             "AlwaysRememberCarPattern",
             // LED color trim. Portable because it describes the WHEEL, which

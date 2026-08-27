@@ -186,6 +186,24 @@ namespace TrueforceForAll.Plugin
         // deliberately unsafe switch. Off by default and undocumented.
         public bool OledIgnoreModeBGate { get; set; } = false;
 
+        // Run the LEGACY F8 rev lights (G923 PS/PC, 0xC266 only) regardless of
+        // the quiet-FFB gate, so a G923 PS owner can answer the one question
+        // nobody has been able to: in a game that drives its OWN force, do the
+        // five rev LEDs light, and does writing them cut that force?
+        //
+        // Production cannot answer it. The gate fails closed, so in that case it
+        // clears the strip rather than writing, and the tester learns only that
+        // the gate works. F8SWEEP can write through the gate but sweeps a
+        // synthetic ramp, which means watching a test pattern instead of driving
+        // and revving: it answers "does a write cut force" and not "do my rev
+        // lights work". This runs the REAL rev-light path off real revs.
+        //
+        // Scoped to the F8 path on purpose. For the HID++ wheels the contention
+        // model is settled (any force on that endpoint plus an LED write cuts
+        // the force); the open question is only whether the same holds on the
+        // gamepad collection this report rides. Off by default and undocumented.
+        public bool F8IgnoreQuietGate { get; set; } = false;
+
         // Take the OLED over for a few seconds when a lap finishes: the time
         // alone for a personal best, the time over the delta otherwise.
         public bool OledLapResult { get; set; } = true;
