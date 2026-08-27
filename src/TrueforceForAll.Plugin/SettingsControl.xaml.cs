@@ -4947,9 +4947,16 @@ namespace TrueforceForAll.Plugin
                         : "Off: fully disables all plugin features for this game.";
                     break;
                 case TrueforceMasterMode.LightsyncOnly:
-                    // Says what it switches OFF, deliberately. Describing it by what
-                    // it does with the lights read as a promise to light wheels in
-                    // games that never light them, which is not something we can do.
+                    // Says what it switches OFF first, deliberately: describing the
+                    // mode by what it does with the lights reads as a promise to
+                    // light wheels in games that never light them.
+                    //
+                    // What it DOES keep is named exactly, though, because "Lightsync
+                    // patterns and features" was vague enough to be read as driving
+                    // the rev-light levels. It does not: levels share a channel with
+                    // the game's force feedback and only run when the plugin owns
+                    // that channel, which this mode is precisely the opposite of.
+                    // Setting the pattern is a single write and works anywhere.
                     //
                     // Per-game or global on the same test as Off: chosen in a game it
                     // is remembered for that game, chosen at the desk it is the
@@ -4957,7 +4964,7 @@ namespace TrueforceForAll.Plugin
                     // that was not true of their situation.
                     MasterModeNote.Text =
                         "Lightsync only: disables the plugin's Trueforce effects and FFB tap, "
-                        + "keeping the Lightsync patterns and features. "
+                        + "and still sets your wheel's pattern and colors for the car you are in. "
                         + (string.IsNullOrEmpty(game)
                             ? "Chosen here, with no game running, it applies everywhere."
                             : "Chosen while a game is running, it is remembered for that game alone.");
