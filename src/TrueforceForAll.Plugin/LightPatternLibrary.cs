@@ -118,6 +118,14 @@ namespace TrueforceForAll.Plugin
     public sealed class LightPatternStore
     {
         private readonly string _path;
+        // Serialises writers. The editor saves from ~18 UI-thread handlers and a
+        // car change saves from a thread-pool thread (ApplyLightPattern via
+        // Task.Run), so two saves really can overlap. Without this they share one
+        // temp file and one destination: the pid in the temp name only separates
+        // PROCESSES, and both of these are the same process. One thread deleting
+        // the library while the other is mid-move is how it ends up with no
+        // library and an orphan temp, with the failure swallowed as a log line.
+        private readonly object _io = new object();
         public Action<string> Log;
 
         /// <summary>The file this store is bound to. Exposed so a caller can tell
@@ -130,6 +138,7 @@ namespace TrueforceForAll.Plugin
 
         public LightPatternLibrary Load()
         {
+            lock (_io)
             try
             {
                 if (!string.IsNullOrEmpty(_path) && File.Exists(_path))
@@ -170,6 +179,7 @@ namespace TrueforceForAll.Plugin
         public void Save(LightPatternLibrary lib)
         {
             if (lib == null) return;
+            lock (_io)
             try
             {
                 if (string.IsNullOrEmpty(_path)) return;

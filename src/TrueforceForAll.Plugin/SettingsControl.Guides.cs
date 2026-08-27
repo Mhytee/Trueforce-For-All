@@ -52,6 +52,20 @@ namespace TrueforceForAll.Plugin
         private const string GroupTrouble = "When something is wrong";
         private const string GroupAbout   = "Good to know";
 
+        /// <summary>"Open the &lt;tab&gt; tab", using the name the tab is actually
+        /// wearing right now.
+        ///
+        /// That header is not fixed: it is "Telemetry FFB" normally, "FFB" in the
+        /// reshape games, and "Wheel (FFB, LED)" when the lights have not been
+        /// given their own tab. A hard-coded label sends the reader looking for a
+        /// tab that is not on screen, and it does so worst in iRacing, which is
+        /// the one game whose guide is mostly about that tab.</summary>
+        private string TelemetryFfbTabLabel()
+        {
+            string header = TelemetryFfbTab?.Header as string;
+            return "Open the " + (string.IsNullOrEmpty(header) ? "Telemetry FFB" : header) + " tab";
+        }
+
         private List<GuideEntry> BuildGuideEntries()
         {
             var list = new List<GuideEntry>
@@ -60,7 +74,7 @@ namespace TrueforceForAll.Plugin
                 {
                     Key = "iracing-setup", Group = GroupSetup,
                     Title = "iRacing: setup guide",
-                    ActionLabel = "Open the Telemetry FFB tab",
+                    ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
                 new GuideEntry
@@ -86,7 +100,7 @@ namespace TrueforceForAll.Plugin
                 {
                     Key = "telemetry-ffb", Group = GroupSetup,
                     Title = "Telemetry Based FFB: what it does",
-                    ActionLabel = "Open the Telemetry FFB tab",
+                    ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
 
