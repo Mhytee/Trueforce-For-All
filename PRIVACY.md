@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Trueforce For All** (the SimHub plugin). Effective 2026-07-18.
+**Trueforce For All** (the SimHub plugin). Effective 2026-08-27.
 
 ## The short version
 
