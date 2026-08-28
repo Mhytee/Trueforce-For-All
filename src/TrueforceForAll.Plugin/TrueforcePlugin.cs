@@ -7843,6 +7843,16 @@ namespace TrueforceForAll.Plugin
         private int _oledPrevLastLapMs;           // lap-completion edge detector
         private volatile bool _oledHidppFree;     // last computed gate, for the settings panel
         private volatile bool _ffbQuietNow;       // just the FFB-quiet term, for one-shot writes
+
+        /// <summary>The pipe-safety rule for a one-shot level write: never while a
+        /// game's own force feedback is live. With no telemetry arriving there is
+        /// no game to fight, so the answer is yes; with a game running, only the
+        /// proven-quiet term says so.
+        ///
+        /// Outside Normal mode no telemetry source runs, so NoTelemetryArriving
+        /// is trivially true and this cannot stand in for the mode check. Callers
+        /// test the mode first.</summary>
+        private bool OneShotLevelWritesAllowed => NoTelemetryArriving() || _ffbQuietNow;
         private string _revCarKeyApplied;         // last car whose remembered pattern was applied
 
         // ---- per-car rev-light data (lovely-car-data) ----
@@ -11949,7 +11959,7 @@ namespace TrueforceForAll.Plugin
             // stand in for this outside full mode: no telemetry source runs there,
             // so NoTelemetryArriving is trivially true and the test always passes.
             if (MasterMode == TrueforceMasterMode.Off) return;
-            if (!NoTelemetryArriving() && !_ffbQuietNow) return;
+            if (!OneShotLevelWritesAllowed) return;
             _rpmLeds.OpenInBackground();
         }
 
@@ -12071,12 +12081,20 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>One-cycle rev sweep so a pattern pick is visible the
-        /// moment it is made. Skipped only while the lights are actively
-        /// running, since the live bar is already rendering the new pattern.
-        /// User-initiated like the pick itself, so it is NOT gated on the
-        /// game's force feedback: the person clicking is parked or out of
-        /// the car, and the old gate made parked pattern browsing in a
-        /// native-FFB game impossible.</summary>
+        /// moment it is made.
+        ///
+        /// Runs only in Normal mode, only while no game's force feedback is
+        /// live (OneShotLevelWritesAllowed), and only while our own bar is dark.
+        /// The pick and the slot write still land when it stands down, so in a
+        /// game that lights the wheel itself the new colours show on the game's
+        /// own bar at once, and that is the feedback.
+        ///
+        /// An earlier version of this comment said the sweep was deliberately
+        /// NOT gated on force, because gating it had once made parked browsing
+        /// in a native-FFB game impossible. That gate keyed on a game being
+        /// loaded; this one keys on force actually flowing, which a parked car
+        /// does not do, so parked browsing works and driving does not fight the
+        /// game's bar. Do not remove it on the strength of the old note.</summary>
         public void PreviewRevLightPattern()
         {
             if (_rpmLeds == null) return;
@@ -12089,6 +12107,23 @@ namespace TrueforceForAll.Plugin
             // continuous bar driving lights-only forbids and the wheel traffic off
             // forbids outright.
             if (MasterMode != TrueforceMasterMode.Normal) return;
+            // Not while a game's own force feedback is live. This is the same
+            // pipe-safety rule every other one-shot obeys, and the sweep is the
+            // heaviest one-shot there is: roughly seven seconds of level writes
+            // on the endpoint that force shares.
+            //
+            // The LiveBarIsLit test below is not enough on its own, and the RS50
+            // report that found this shows why. It sees OUR bar, and our bar only
+            // runs when the game's force is proven quiet. In a game that lights
+            // the wheel itself (Assetto Corsa does), the force is never quiet, so
+            // our bar is never lit, so this never self-suppressed: cycling a
+            // pattern mid-session ran the sweep straight over the game's live bar
+            // and the strip flickered between the two writers for seven seconds.
+            // Without the sweep, the slot write still lands and the game's own
+            // bar shows the new colours at once, which is the feedback the user
+            // wanted. That is what "driving: the preview self-suppresses and the
+            // live bar is the feedback" was always meant to mean.
+            if (!OneShotLevelWritesAllowed) return;
             // Only skip when the live bar is actually LIT, not merely when a
             // game is loaded. In the pits at idle the strip is dark, the live
             // feed is showing nothing to fight, and skipping here left a pattern
@@ -12122,12 +12157,17 @@ namespace TrueforceForAll.Plugin
             if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
             { message = "That pattern's colors are unreadable."; return false; }
 
+            // One decision for the write and its follow-up. A blocked show must
+            // not leave a level behind: the sweep and the hold were what ramped
+            // ShowLevel back to zero, so when they stand down the write settles
+            // to the bar's own level (-1) instead of lighting all ten.
+            bool show = MasterMode == TrueforceMasterMode.Normal && OneShotLevelWritesAllowed;
             bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
             {
                 Slot = (byte)slot,
                 DirectionWire = pattern.DirectionWire,
                 Rgb = rgb,
-            }, out message, displayLevel: ShowLevel, slotName: null, permanent: true,
+            }, out message, displayLevel: show ? ShowLevel : -1, slotName: null, permanent: true,
                rawColors: pattern.TrimExempt);
 
             // The user's own slot, not one of ours standing in for a pattern.
@@ -12140,7 +12180,11 @@ namespace TrueforceForAll.Plugin
                 // for eight seconds and ramps it back down, which is around nine
                 // seconds of level traffic per car load on the endpoint the game's
                 // force feedback shares.
-                if (MasterMode == TrueforceMasterMode.Normal)
+                // Same decision the write was made with. Both branches stand
+                // down while a game's own force is live: the sweep also checks
+                // for itself (it has other callers), and HoldLit is the same
+                // kind of traffic.
+                if (show)
                 {
                     if (sweep) PreviewRevLightPattern();
                     else _rpmLeds.HoldLit(WheelLedChannel.LedCount, ShowHoldMs);
@@ -13020,13 +13064,16 @@ namespace TrueforceForAll.Plugin
                 return false;
             }
 
+            // One decision for the write and its follow-up; see WriteOwnSlot for
+            // why the display level has to follow it.
+            bool show = MasterMode == TrueforceMasterMode.Normal && OneShotLevelWritesAllowed;
             bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
             {
                 Slot = (byte)slot,
                 DirectionWire = pattern.DirectionWire,
                 Rgb = rgb,
             }, out message,
-               displayLevel: ShowLevel,
+               displayLevel: show ? ShowLevel : -1,
                slotName: pattern.Name,
                rawColors: pattern.TrimExempt);
 
@@ -13056,7 +13103,11 @@ namespace TrueforceForAll.Plugin
                 // for eight seconds and ramps it back down, which is around nine
                 // seconds of level traffic per car load on the endpoint the game's
                 // force feedback shares.
-                if (MasterMode == TrueforceMasterMode.Normal)
+                // Same decision the write was made with. Both branches stand
+                // down while a game's own force is live: the sweep also checks
+                // for itself (it has other callers), and HoldLit is the same
+                // kind of traffic.
+                if (show)
                 {
                     if (sweep) PreviewRevLightPattern();
                     else _rpmLeds.HoldLit(WheelLedChannel.LedCount, ShowHoldMs);
