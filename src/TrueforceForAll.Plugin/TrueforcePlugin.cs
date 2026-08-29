@@ -776,22 +776,7 @@ namespace TrueforceForAll.Plugin
         // experimental sub-mechanism, if any, was load-bearing). Null until
         // capture is confirmed. Surfaced in the Export-logs manifest and the
         // experimental-success report.
-        public string CaptureFingerprint =>
-            _ffbTap?.CaptureFingerprint
-            ?? (_debugForceSuccessBanner
-                ? "transport=ep0-ctrl reportId=0x12 featIdx=0x10 encoding=hidpp-int16be@10 experimental=ON needed=[report0x12, loweredFloor] (TEST)"
-                : null);
-
-        // Dev/test (FFBOK access code): force the success banner on so both the
-        // Yes (report) and No (troubleshooter) paths can be exercised without
-        // real hardware. CaptureFingerprint returns a synthetic TEST value while
-        // this is set so the prefilled report has something to show.
-        private bool _debugForceSuccessBanner;
-        public void DebugShowSuccessBanner()
-        {
-            _debugForceSuccessBanner = true;
-            if (Settings != null) Settings.ExperimentalSuccessReportDismissed = false;
-        }
+        public string CaptureFingerprint => _ffbTap?.CaptureFingerprint;
 
         // True when experimental FFB detection was actually load-bearing in
         // getting capture working this session (the fingerprint lists a needed
@@ -804,7 +789,6 @@ namespace TrueforceForAll.Plugin
             get
             {
                 if (Settings == null || Settings.ExperimentalSuccessReportDismissed) return false;
-                if (_debugForceSuccessBanner) return true;   // dev/test override
                 if (!Settings.ExperimentalFfbCapture) return false;
                 string fp = _ffbTap?.CaptureFingerprint;
                 if (string.IsNullOrEmpty(fp)) return false;
@@ -814,7 +798,6 @@ namespace TrueforceForAll.Plugin
 
         public void DismissExperimentalSuccessReport()
         {
-            _debugForceSuccessBanner = false;   // clear the test override too
             if (Settings != null) Settings.ExperimentalSuccessReportDismissed = true;
             PersistSettings();
         }
@@ -1451,21 +1434,14 @@ namespace TrueforceForAll.Plugin
             ApplyAudioCaptureSettings(a);
         }
 
-        // Persisted opt-in for the home-screen Feedback gain tile. Toggled by the
-        // HOMEBOX access code. Applies live to the injector so the tile appears /
-        // disappears without a SimHub restart.
+        // Persisted opt-in for the home-screen Feedback gain tile. Applies live
+        // to the injector so the tile appears / disappears without a SimHub
+        // restart.
         public void SetShowFeedbackBox(bool on)
         {
             if (Settings != null) Settings.ShowFeedbackBox = on;
             PersistSettings();
             _feedbackInjector?.SetEnabled(on);
-        }
-
-        public bool DebugToggleFeedbackBox()
-        {
-            bool on = !(Settings?.ShowFeedbackBox ?? false);
-            SetShowFeedbackBox(on);
-            return on;
         }
 
         /// <summary>The master switch as the USER set it. This never moves on a
@@ -3066,48 +3042,6 @@ namespace TrueforceForAll.Plugin
                 ref _springTestEndTicks,
                 Stopwatch.GetTimestamp() + (long)(SpringTestDurationSec * Stopwatch.Frequency));
             _device.ForceActiveFor(ms + 200);
-        }
-
-        /// <summary>REV access-code test. Exercises the rev limiter's real
-        /// RPM-threshold + hold logic (not just the buzz playback the Test
-        /// button gives) by feeding a synthetic redline sequence over a render
-        /// window: silent below threshold, engaged buzz at/over redline, then
-        /// silent once RPM drops off the limiter. Felt on the wheel with no
-        /// game running (mirrors TestEffect's ForceActiveFor + drive loop).</summary>
-        public void DebugRevLimiterBounce()
-        {
-            if (RevLimiter == null || _device == null) return;
-            const double maxRpm = 8000.0;
-            int durationMs = RevLimiter.StartRevTestWindow(5200);
-            _device.ForceActiveFor(durationMs + 200);
-
-            long start = DateTime.UtcNow.Ticks;
-            long end   = start + durationMs * TimeSpan.TicksPerMillisecond;
-            System.Threading.Interlocked.Increment(ref _activeTestTasks);
-            System.Threading.Tasks.Task.Run(() =>
-            {
-                try
-                {
-                    while (DateTime.UtcNow.Ticks < end && !_shuttingDown)
-                    {
-                        double ms = (DateTime.UtcNow.Ticks - start) / (double)TimeSpan.TicksPerMillisecond;
-                        // Below threshold (silent) -> over redline (buzz; the
-                        // 16 ms re-feed keeps the 80 ms hold satisfied so it
-                        // reads like sitting on the limiter) -> dropped off.
-                        double rpm = (ms < 1500) ? maxRpm * 0.95
-                                   : (ms < 4200) ? maxRpm * 0.99
-                                   :               maxRpm * 0.62;
-                        RevLimiter.DebugFeedRpm(rpm, maxRpm);
-                        Thread.Sleep(16);
-                    }
-                }
-                catch { }
-                finally
-                {
-                    try { RevLimiter.Reset(); } catch { }
-                    System.Threading.Interlocked.Decrement(ref _activeTestTasks);
-                }
-            });
         }
 
         /// <summary>FAULT access-code test: force the live device into the
@@ -6205,7 +6139,7 @@ namespace TrueforceForAll.Plugin
             // match SimHub's NewData.CarModel format for Forza, so the
             // SimHub-supplied path and this fallback converge on one key for
             // the same physical car. (Was Forza_<ordinal> historically;
-            // legacy entries are migrated by the NORMALIZEFORZA access code.)
+            // legacy entries are migrated by the startup Forza car-id migration.)
             if (string.IsNullOrEmpty(carId) && IsForzaGameName(_activeGame))
             {
                 var fzForCarId = _telemetrySource as ForzaUdpTelemetrySource;
@@ -6610,7 +6544,7 @@ namespace TrueforceForAll.Plugin
             // actually reports it (AC), so the spring stays disengaged on
             // sources that don't (the freshness check in the provider).
             _lastSpeedKmh = (float)frame.SpeedKmh;
-            // RESETGRIP is consumed here rather than inside the learning block:
+            // The grip re-learn request is consumed here rather than inside the learning block:
             // it must land in EVERY mode and on every source. The learning block
             // needs tire quads and Mode B, so leaving the consumption in there
             // meant a reset typed while in spring or iRacing mode sat queued and
@@ -7043,15 +6977,10 @@ namespace TrueforceForAll.Plugin
                               && _forceMode != ForceModeOff && ffbQuietProven && sessionActive;
                 bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
                 // EXPERIMENTAL wheel-base OLED. Same pipe, same rule, its own
-                // opt-in (default off). OLEDANY lifts the gate on purpose, to
-                // find out whether a screen write really does disturb a game's
-                // own HID++ force.
-                // The OLEDANY override lifts the pipe-safety gate on purpose, so the
-                // mode has to be its own term or that dev code would keep the screen
-                // ours through a switch out of full.
+                // opt-in (default off).
                 bool modeBOled = MasterMode == TrueforceMasterMode.Normal
                             && (Settings?.ModeBOledEnabled ?? false)
-                            && (hidppFree || (Settings?.OledIgnoreModeBGate ?? false));
+                            && hidppFree;
                 // Latched for the settings panel, which needs to know whether a
                 // preview is safe to draw and runs on another thread.
                 _oledHidppFree = hidppFree;
@@ -7501,8 +7430,9 @@ namespace TrueforceForAll.Plugin
         // FFB off: it then sends no FFB and no stream, and we are the wheel's
         // only writer). Force = SatForceModel over slip-angle-derived
         // utilization, with a stall ramp so telemetry loss decays the force
-        // instead of holding it. Toggle: "MODEB 1" / "MODEB 0" access code;
-        // tuning: BSAT / BPEAK / BFLOOR / BFULL / BSPD / BSIGN.
+        // instead of holding it. Toggled per game from the Telemetry Based FFB
+        // tab (ApplyModeBFromSettings); tuned from that tab's sliders and the
+        // surviving Mode B access codes (see SetModeBParam).
         // Which pipeline currently AUTHORS wheel torque. Anything non-zero
         // means "the plugin is the sole writer": that is the contract the
         // rev-light / OLED gate, GameFfbExpected suppression, the tap's
@@ -7517,19 +7447,19 @@ namespace TrueforceForAll.Plugin
         private const int ForceModeIRacing = 3;   // iRacing: the sim's OWN torque reshaped, not synthesized
         private volatile int _forceMode;
         private readonly SatForceModel _satModel = new SatForceModel { DropFloor = 0.50 };   // pre-Init placeholder; ApplyModeBFromSettings owns the live value
-        private float _pModeBSign    = 1f;     // BSIGN: flips SAT direction if Forza's slip sign is inverted vs the wheel
-        private float _pModeBPeakU   = 1.0f;   // BPEAK: combined-slip value treated as the grip limit (u = combined / peak)
-        private float _pModeBEmaMs   = 25f;    // BEMA: input smoothing time constant (raise to calm a noisy slip signal)
+        private float _pModeBSign    = 1f;     // ModeBSign: flips SAT direction if Forza's slip sign is inverted vs the wheel
+        private float _pModeBPeakU   = 1.0f;   // ModeBPeakUtil (manual grip limit): combined-slip value treated as the grip limit (u = combined / peak)
+        private float _pModeBEmaMs   = 25f;    // ModeBEmaMs: input smoothing time constant (raise to calm a noisy slip signal)
         private float _pModeBDirSoft = 0.12f;  // BDIRK: dir-blend center softness (0 = linear; kills center buzz/ring)
         // Mode B damping + centering: their OWN gains, used by the
         // damper/center stages in MaybeReshapeFfb only while Mode B is
         // active. Centering is speed-scaled by the model's trail ramp so a
         // parked wheel isn't spring-loaded.
-        private float _pModeBDamperGain = 0.15f;   // BDAMP / "Damping" slider
-        private float _pModeBLockRecoverMs = 130f; // BRECOVER / "Lockup recovery" slider: slow re-open tau for the lockup gate / friction circle
+        private float _pModeBDamperGain = 0.15f;   // "Damping" slider
+        private float _pModeBLockRecoverMs = 130f; // "Lockup recovery" slider: slow re-open tau for the lockup gate / friction circle
         private float _pModeBLockupPoint = 0.8f;   // BLOCKPT: |slip ratio| = fully spent (gate full point + circle reference); higher = lightens deeper into braking
-        private float _pModeBCenterGain = 0.10f;   // BCENTER / "Centering" slider
-        // Minimum-force floor (BMINF / "Min force" slider): the smallest force
+        private float _pModeBCenterGain = 0.10f;   // "Centering" slider
+        // Minimum-force floor ("Min force" slider): the smallest force
         // the wheel actually renders. Belt-reduction motors (G923 class) eat
         // faint torques as internal friction, so the model's light states
         // (drop floor, trail ramp, recovery fades) read as DEAD instead of
@@ -7539,13 +7469,13 @@ namespace TrueforceForAll.Plugin
         private float _pModeBMinForce = 0f;
         // Per-axle feel terms (ModeBComposer): cornering weight from lateral
         // g, counter torque from rear utilization excess over the front.
-        private float _pModeBLatGain     = 0.6f;   // BLAT / "Cornering weight" slider
+        private float _pModeBLatGain     = 0.6f;   // "Cornering weight" slider
         // Reversal softening (drift-catch snap, issue #38's lateral twin): fade
         // the composed force while a slide collapses toward center, scaled by how
         // fast, so the full-scale sign flip stops snapping and the ring loses loop
         // gain. Default OFF (A/B feel toggle); strength is its own slider.
-        private volatile bool _mbReversalDampOn;   // MBREV / "Reversal damping" feel toggle
-        private float _pModeBReversalGain = 0.4f;  // BREVG / "Reversal damping strength" slider (owner 2026-07-25 baseline)
+        private volatile bool _mbReversalDampOn;   // "Reversal damping" feel toggle
+        private float _pModeBReversalGain = 0.4f;  // "Reversal damping strength" slider (owner 2026-07-25 baseline)
         // Trail spring (drift countersteer settle): the direction ramp saturates
         // at ~1.7deg of slip angle, so during a slide the force is a constant shove
         // with no proportional restoring and the wheel slews to the lock instead of
@@ -7559,8 +7489,8 @@ namespace TrueforceForAll.Plugin
         // Extrapolate the slip angle feeding dir forward by its rate so the force
         // anticipates where the wheel is going and the loop lag is recovered.
         // Default OFF (A/B feel toggle); lead time is its own slider.
-        private volatile bool _mbPhaseLeadOn;        // MBLEAD / "Anticipation" feel toggle
-        private float _pModeBPhaseLeadMs = 40f;      // BLEAD / "Lead" slider: prediction horizon in ms
+        private volatile bool _mbPhaseLeadOn;        // "Anticipation" feel toggle
+        private float _pModeBPhaseLeadMs = 40f;      // "Lead" slider: prediction horizon in ms
         // Direct centering (PD spring): the centering term springs on the
         // wheel's OWN position from the HID steering reader (~report rate,
         // minimal lag) instead of the game's 60 Hz steer report, plus a
@@ -7573,7 +7503,7 @@ namespace TrueforceForAll.Plugin
         // the reader is absent or stale. Default OFF (A/B feel toggle);
         // toggle off = the legacy path bit-for-bit.
         private volatile bool _mbCenterPdOn;         // MBCPD / "Direct centering" feel toggle
-        private float _pModeBCenterLeadMs = 30f;     // BCLEAD / "Look-ahead" slider: velocity lead in ms
+        private float _pModeBCenterLeadMs = 30f;     // "Look-ahead" slider: velocity lead in ms
         // Slew-limited centering position (PD path only), FFB-thread-only.
         // The spring's position source can switch between the HID reader and
         // the game steer when the reader crosses the 500 ms staleness
@@ -7787,7 +7717,7 @@ namespace TrueforceForAll.Plugin
         private readonly GripPeakLearner _gripCal = new GripPeakLearner();
         private volatile float _mbCalPeak = 1f;   // telemetry thread writes
 
-        // Per-car auto strength (BAUTOS / "Auto strength per car"): a SECOND
+        // Per-car auto strength ("Auto strength per car"): a SECOND
         // GripPeakLearner instance watching the composed Mode B force in
         // INTRINSIC units (Strength slider divided out), so each car variant
         // learns its own force ceiling and gets its own scale toward
@@ -7801,7 +7731,7 @@ namespace TrueforceForAll.Plugin
         // force back converges to only sqrt of the correction), so the FFB
         // thread publishes a decaying pre-scale intrinsic peak
         // (_mbForceRawPeak) and this learner ticks on the telemetry thread
-        // next to the grip cal, sharing its variant swap, flush, and RESETGRIP.
+        // next to the grip cal, sharing its variant swap, flush, and re-learn reset.
         private const double AutoStrengthTarget   = 0.90;   // intrinsic (SatGain-normalized) ceiling
         private const double AutoStrengthMinScale = 0.60;
         private const double AutoStrengthMaxScale = 1.60;
@@ -8620,10 +8550,12 @@ namespace TrueforceForAll.Plugin
         private int _lastBlinkIntervalMs = -1;
         private volatile float _shBrake01, _shClutch01, _shHandbrake01;
 
-        // RESETGRIP access code. The learner and the calibration dict are
-        // owned by the telemetry thread (Tick / LoadGripCal / FlushGripCal),
-        // and double writes are not atomic on 32-bit SimHub, so the UI thread
-        // only raises this flag; the telemetry frame path consumes it.
+        // Grip re-learn request (the Re-learn car button on the Telemetry
+        // Based FFB tab and the dash RE-LEARN action). The learner and the
+        // calibration dict are owned by the telemetry thread (Tick /
+        // LoadGripCal / FlushGripCal), and double writes are not atomic on
+        // 32-bit SimHub, so the UI thread only raises this flag; the
+        // telemetry frame path consumes it.
         private volatile bool _gripCalResetRequested;
 
         // WHICH car the queued reset is for, captured at request time. The
@@ -8635,15 +8567,16 @@ namespace TrueforceForAll.Plugin
         // whatever is current would wipe a calibration the user never named.
         private volatile string _gripCalResetKey;
 
-        /// <summary>Queue a RESETGRIP wipe of the active variant's learned
-        /// grip calibration (peak + confidence): the stored slot is removed
-        /// and the learner starts fresh, for when a tune / tire change left
-        /// the old calibration feeling off. Returns user-facing status.</summary>
+        /// <summary>Queue a wipe of the active variant's learned grip
+        /// calibration (peak + confidence), for the Re-learn car button and
+        /// the dash RE-LEARN action: the stored slot is removed and the
+        /// learner starts fresh, for when a tune / tire change left the old
+        /// calibration feeling off. Returns user-facing status.</summary>
         public string RequestGripCalReset()
         {
             string key = _gripCalKey;
             if (string.IsNullOrEmpty(key))
-                return "No car variant loaded yet. Drive with Telemetry Based FFB active, then run RESETGRIP.";
+                return "No car variant loaded yet. Drive with Telemetry Based FFB active, then press Re-learn car again.";
             _gripCalResetKey = key;
             _gripCalResetRequested = true;
             // Only synthesis re-learns. Spring mode and iRacing reshape never
@@ -8655,7 +8588,7 @@ namespace TrueforceForAll.Plugin
             return $"Grip auto-cal reset queued for '{key}' (auto strength included); {tail}";
         }
 
-        /// <summary>Consume a queued RESETGRIP. Called from the telemetry thread
+        /// <summary>Consume a queued grip re-learn. Called from the telemetry thread
         /// on every frame, in every force mode: the learner and the calibration
         /// dictionary are owned by that thread (see RequestGripCalReset), but the
         /// reset itself must not wait for Mode B to be the live mode, or it lands
@@ -8681,7 +8614,7 @@ namespace TrueforceForAll.Plugin
             if (!live)
             {
                 SimHub.Logging.Current.Info(
-                    $"[TF4ALL] Grip auto-cal reset for '{target}' (RESETGRIP): stored calibration removed. "
+                    $"[TF4ALL] Grip auto-cal reset for '{target}' (re-learn): stored calibration removed. "
                     + "The car changed before it applied, so the car now loaded keeps what it has learned.");
                 return;
             }
@@ -8693,7 +8626,7 @@ namespace TrueforceForAll.Plugin
             _calConvergedLogged = false;
             _autoStrengthAnnounced = false;   // re-announce once it re-learns
             SimHub.Logging.Current.Info(
-                $"[TF4ALL] Grip auto-cal reset for '{target}' (RESETGRIP): peak back to {_gripCal.EffectivePeak:0.000}, confidence 0"
+                $"[TF4ALL] Grip auto-cal reset for '{target}' (re-learn): peak back to {_gripCal.EffectivePeak:0.000}, confidence 0"
                 + (_forceMode == ForceModeModeB
                     ? "; re-learning (auto strength included)."
                     : "; it re-learns once you drive a game running Telemetry Based FFB synthesis."));
@@ -8820,7 +8753,7 @@ namespace TrueforceForAll.Plugin
         /// Keyed per variant, not per car, but the signature is ENGINE-derived
         /// (cyl + banded max rpm / redline): engine-visible tunes learn and
         /// store separately, while a tire-only tune keeps its slot and the
-        /// learner re-converges in place (RESETGRIP wipes it on demand).
+        /// learner re-converges in place (Re-learn car wipes it on demand).
         /// A null / empty variant signature (the car just changed
         /// and telemetry has not resolved the signature yet) parks the learner
         /// with no key until the variant-change detector calls again with the
@@ -8888,7 +8821,7 @@ namespace TrueforceForAll.Plugin
             _mbSuspLoadOn   = s.ModeBSuspensionLoad;
             // Early torque peak: plateau the SAT rise from 75% utilization
             // (real pneumatic trail peaks before the grip peak). 1.0 = legacy
-            // shape. Lives on the model, so BPEAK/BRISE still apply below it.
+            // shape. Lives on the model, so the grip limit and rise gamma still apply below it.
             _satModel.PlateauStartU = s.ModeBEarlyTorquePeak ? 0.75 : 1.0;
             // Road kick: reset on disable so a later re-enable can't
             // difference against week-old travel state.
@@ -9251,8 +9184,8 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Seed the FFB-thread Mode B smoothing state from the latest
         /// telemetry on a clean 0->1 engage, so the first tick eases from live
-        /// values instead of stepping from stale ones. Called from BOTH engage
-        /// sites (ApplyModeBFromSettings and the MODEB access code) so they can
+        /// values instead of stepping from stale ones. Kept as the one engage
+        /// seed (ApplyModeBFromSettings calls it) so a second engage site can
         /// never drift, which is how the lockup/circle EMAs were once missed on
         /// the production path.</summary>
         private void SeedModeBEngageState()
@@ -9287,7 +9220,7 @@ namespace TrueforceForAll.Plugin
 
             // Stall ramp: fresh telemetry ramps force in over ~250 ms; stale
             // (>150 ms without a slip sample) ramps out over ~100 ms. Never a
-            // step — also gives MODEB-on a soft engage from zero.
+            // step. This also gives a Mode B engage a soft start from zero.
             double ageMs = (now - stamp) * 1000.0 / Stopwatch.Frequency;
             _mbRamp += ageMs > 150.0 ? (float)(-dtMs / 100.0) : (float)(dtMs / 250.0);
             if (_mbRamp < 0f) _mbRamp = 0f; else if (_mbRamp > 1f) _mbRamp = 1f;
@@ -9304,12 +9237,12 @@ namespace TrueforceForAll.Plugin
             if (_mbRamp <= 0f) return 0;
 
             // Smooth the INPUTS, not the force (the validated reshape
-            // principle). BEMA raises the time constant when the game's slip
+            // principle). ModeBEmaMs raises the time constant when the game's slip
             // signals are noisy.
             float alpha = (float)(1.0 - Math.Exp(-dtMs / Math.Max(2f, _pModeBEmaMs)));
             _mbSlipEma += (_lastFrontSlipAngle - _mbSlipEma) * alpha;
             // Slip-angle rate off the smoothed signal, then a short EMA to tame the
-            // finite-difference noise (BEMA already pre-smooths the slip). Feeds the
+            // finite-difference noise (the input EMA already pre-smooths the slip). Feeds the
             // reversal-softening gate below; ~0 in steady cornering, large only when
             // a slide is being caught fast.
             double slipRate = (_mbSlipEma - _mbPrevSlipEma) * 1000.0 / dtMs;   // rad/s
@@ -9347,7 +9280,7 @@ namespace TrueforceForAll.Plugin
             // else reads the magnitude, which is why the model is unaffected: force
             // SIZE comes from u (combined slip), whose units are right.
             const double dirWindow = 0.03;
-            // Phase lead (MBLEAD): push the slip angle forward by its rate so dir
+            // Phase lead ("Anticipation" toggle): push the slip angle forward by its rate so dir
             // anticipates where the wheel is heading, recovering the telemetry-loop
             // lag that otherwise makes the spring ring near its target (worst on a
             // hands-off release). Uses the already-smoothed rate; sign-safe.
@@ -9358,13 +9291,13 @@ namespace TrueforceForAll.Plugin
                 slipForDir * _pModeBSign / dirWindow, _pModeBDirSoft);
 
             // Utilization from the game's grip metric: combined slip with
-            // ~1.0 = at the limit. BPEAK rescales where we treat the limit;
+            // ~1.0 = at the limit. ModeBPeakUtil rescales where we treat the limit;
             // grip auto-cal multiplies in the per-car learned ceiling (1.0
             // until the learner has near-limit seat time in THIS car). The
             // noise floor zeroes the fuzz the grip channel emits parked /
             // dead straight, the other half of the center-buzz fix.
             // When the per-car learner owns the ceiling (adaptive/auto-cal on),
-            // the manual grip-limit slider (BPEAK) is hidden in the UI and must
+            // the manual grip-limit slider (ModeBPeakUtil) is hidden in the UI and must
             // NOT also scale the learned peak, or a stale slider value silently
             // double-scales it. Learned peak alone when adaptive; the manual
             // slider applies only in manual mode (auto-cal off, _mbCalPeak = 1).
@@ -9455,7 +9388,7 @@ namespace TrueforceForAll.Plugin
             // knee), not fixed to the texture gate's. Asymmetric smoothing:
             // track FAST as grip is being spent
             // (lockup/spin onset) so the mute lands promptly, but recover SLOWLY
-            // (BRECOVER, "Lockup recovery" slider) as grip returns so the force
+            // ("Lockup recovery" slider) as grip returns so the force
             // eases back like a reloading tire instead of snapping from light to
             // heavy (owner on-wheel note); same re-grip philosophy as the grip
             // EMA. A/B (ModeBFrictionCircle): the friction-circle law replaces
@@ -9486,7 +9419,7 @@ namespace TrueforceForAll.Plugin
             // scaled by how fast, so the full-scale sign flip stops snapping and
             // the wheel->slip->force loop loses its gain. Digging deeper into a
             // slide passes untouched, so loaded drift weight survives. Sign-blind
-            // (a product of two signed inputs), so BSIGN needs no undoing.
+            // (a product of two signed inputs), so the direction sign needs no undoing.
             if (_mbReversalDampOn)
                 f01 *= ModeBComposer.ReversalSoften(_mbSlipEma, _mbSlipRateEma, _pModeBReversalGain);
             // Crash duck (eleventh wheel test: wall hit buzzed the wheel).
@@ -9498,7 +9431,7 @@ namespace TrueforceForAll.Plugin
                 + (double)_lastSwayAccel * _lastSwayAccel) / 9.81;
             double duckF = _crashDuck.Tick(gMag, dtMs);
             f01 *= duckF;
-            // Minimum-force floor (BMINF): LAST in the shaping chain by
+            // Minimum-force floor ("Min force"): LAST in the shaping chain by
             // design. The feel fades above (lockup gate/circle, reversal
             // soften) express LIGHTNESS, exactly what a belt wheel's
             // internal-friction floor swallows, so their faded-but-nonzero
@@ -11763,86 +11696,27 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Live-set one Mode B parameter from the "NAME value" access
-        /// codes (MODEB / BSAT / BPEAK / ...). Applies immediately (the FFB
-        /// thread reads these every tick), writes the matching Settings field
-        /// where one exists, and persists. Values are clamped to sane ranges.
-        /// Returns a human-readable status of what was set.</summary>
+        /// codes (BFULL / BSPD / BDIRK / BLOCKPT / BCIRCLE / BLEARN / BGTRIM /
+        /// MBCPD). Applies immediately (the FFB thread reads these every
+        /// tick), writes the matching Settings field where one exists, and
+        /// persists. Values are clamped to sane ranges. Returns a
+        /// human-readable status of what was set.</summary>
         public string SetModeBParam(string name, float value)
         {
             if (_device == null) return "wheel not initialized";
             float C(float v, float lo, float hi) => v < lo ? lo : (v > hi ? hi : v);
             switch ((name ?? string.Empty).ToUpperInvariant())
             {
-                case "MODEB":
-                    bool modeBOn = value >= 0.5f;
-                    if (modeBOn && _forceMode == ForceModeOff)
-                        SeedModeBEngageState();   // clean engage: ramp from zero, EMAs from live state
-                    _forceMode = modeBOn ? ForceModeModeB : ForceModeOff;
-                    // Persist as the active game's per-game opt-in so the tab
-                    // toggle and this dev override stay consistent (when a
-                    // supported game is active). Off unsupported games / menus
-                    // this is a raw _forceMode override only.
-                    if (Settings != null && !string.IsNullOrEmpty(_activeGame)
-                        && IsModeBCapableGame(_activeGame))
-                    {
-                        if (Settings.ModeBGameEnabled == null)
-                            Settings.ModeBGameEnabled = new System.Collections.Generic.Dictionary<string, bool>();
-                        Settings.ModeBGameEnabled[_activeGame] = modeBOn;
-                        PersistSettings();
-                    }
-                    return modeBOn
-                        ? "MODE B: force synthesized from telemetry (game FFB ignored). Run the game with its FFB / TrueForce OFF. Tune: BSAT/BPEAK/BFLOOR/BFULL/BSPD, BSIGN -1 if it pulls the wrong way."
-                        : "MODE A: game-FFB mirror path restored.";
-                case "BSIGN":
-                    _pModeBSign = value < 0 ? -1f : 1f;
-                    if (Settings != null) { Settings.ModeBSign = _pModeBSign; PersistSettings(); }
-                    return $"Mode B SAT direction = {(_pModeBSign > 0 ? "+" : "-")} (flip if the wheel pulls INTO the slide)";
-                case "BSAT":
-                    _satModel.SatGain = C(value, 0.05f, 1.5f);
-                    if (Settings != null) { Settings.ModeBSatGain = (float)_satModel.SatGain; PersistSettings(); }
-                    return $"Mode B SAT gain = {_satModel.SatGain:0.00} (peak torque fraction)";
-                case "BPEAK":
-                    _pModeBPeakU = C(value, 0.4f, 2.0f);
-                    if (Settings != null) { Settings.ModeBPeakUtil = _pModeBPeakU; PersistSettings(); }
-                    return $"Mode B grip limit = combined slip {_pModeBPeakU:0.00} (u=1 there)";
-                case "BFLOOR":
-                    _satModel.DropFloor = C(value, 0.05f, 1f);
-                    if (Settings != null) { Settings.ModeBDropFloor = (float)_satModel.DropFloor; PersistSettings(); }
-                    return $"Mode B drop floor = {_satModel.DropFloor:0.00} (torque left past the limit)";
                 case "BFULL":
                     _satModel.FullU = C(value, 1.1f, 3f);
                     return $"Mode B full-drop utilization = {_satModel.FullU:0.00}";
                 case "BSPD":
                     _satModel.SpeedFullKmh = C(value, 10f, 200f);
                     return $"Mode B trail ramp: full SAT by {_satModel.SpeedFullKmh:0} km/h";
-                case "BRISE":
-                    _satModel.RiseGamma = C(value, 0.3f, 2f);
-                    if (Settings != null) { Settings.ModeBRiseGamma = (float)_satModel.RiseGamma; PersistSettings(); }
-                    return $"Mode B rise gamma = {_satModel.RiseGamma:0.00} (<1 = heavier in normal cornering)";
-                case "BEMA":
-                    _pModeBEmaMs = C(value, 5f, 100f);
-                    if (Settings != null) { Settings.ModeBEmaMs = _pModeBEmaMs; PersistSettings(); }
-                    return $"Mode B input smoothing = {_pModeBEmaMs:0} ms (higher = calmer, laggier)";
-                case "BDAMP":
-                    _pModeBDamperGain = C(value, 0f, 0.6f);
-                    if (Settings != null) { Settings.ModeBDamper = _pModeBDamperGain; PersistSettings(); }
-                    return $"Mode B damping = {_pModeBDamperGain:0.00}";
-                case "BCENTER":
-                    _pModeBCenterGain = C(value, 0f, 0.5f);
-                    if (Settings != null) { Settings.ModeBCenter = _pModeBCenterGain; PersistSettings(); }
-                    return $"Mode B centering = {_pModeBCenterGain:0.00} (speed-scaled)";
-                case "BLAT":
-                    _pModeBLatGain = C(value, 0f, 2f);
-                    if (Settings != null) { Settings.ModeBLatGain = _pModeBLatGain; PersistSettings(); }
-                    return $"Mode B cornering weight = {_pModeBLatGain:0.00} (+{_pModeBLatGain:0.00}x per lateral g)";
                 case "BDIRK":
                     _pModeBDirSoft = C(value, 0f, 0.5f);
                     if (Settings != null) { Settings.ModeBDirSoft = _pModeBDirSoft; PersistSettings(); }
                     return $"Mode B center softness = {_pModeBDirSoft:0.00} (0 = linear/legacy; higher = wider flat spot at center; fixes buzz vs jumpy trade)";
-                case "BRECOVER":
-                    _pModeBLockRecoverMs = C(value, 20f, 400f);
-                    if (Settings != null) { Settings.ModeBLockupRecoverMs = _pModeBLockRecoverMs; PersistSettings(); }
-                    return $"Mode B lockup recovery = {_pModeBLockRecoverMs:0} ms (how fast force returns as grip comes back)";
                 case "BLOCKPT":
                     _pModeBLockupPoint = C(value, 0.2f, 2.0f);
                     if (Settings != null) { Settings.ModeBLockupPoint = _pModeBLockupPoint; PersistSettings(); }
@@ -11868,59 +11742,14 @@ namespace TrueforceForAll.Plugin
                     _pModeBGripTrim = C(value, 0.3f, 1.5f);
                     if (Settings != null) { Settings.ModeBGripTrim = _pModeBGripTrim; PersistSettings(); }
                     return $"Braking-grip trim = {_pModeBGripTrim:0.00} (radius = trim x grip-cal peak; 1.00 = the raw detected grip, lower lightens sooner)";
-                case "BAUTOS":
-                    _mbAutoStrengthOn = value >= 0.5f;
-                    _mbAutoStrengthScale = _mbAutoStrengthOn
-                        ? (float)ModeBComposer.AutoStrengthScale(
-                            _strengthCal.EffectivePeak, AutoStrengthTarget,
-                            AutoStrengthMinScale, AutoStrengthMaxScale)
-                        : 1f;
-                    if (Settings != null) { Settings.ModeBAutoStrength = _mbAutoStrengthOn; PersistSettings(); }
-                    return _mbAutoStrengthOn
-                        ? $"Auto strength per car ON: cars level out at the heaviness your Strength slider sets (this car now x{_mbAutoStrengthScale:0.00}; learns over a few laps)."
-                        : "Auto strength per car OFF: cars keep their natural spread; Strength is a plain multiplier on all of them.";
-                case "BLDEM":
-                    _mbLateralDemandOn = value >= 0.5f;
-                    if (Settings != null) { Settings.ModeBLateralDemand = _mbLateralDemandOn; PersistSettings(); }
-                    return _mbLateralDemandOn
-                        ? "Lateral-demand force ON: steering force follows cornering (lateral) grip, so straight-line braking makes almost none and cannot self-oscillate."
-                        : "Lateral-demand force OFF: steering force uses combined grip (legacy).";
-                case "MBREV":
-                    _mbReversalDampOn = value >= 0.5f;
-                    if (Settings != null) { Settings.ModeBReversalDamp = _mbReversalDampOn; PersistSettings(); }
-                    return _mbReversalDampOn
-                        ? $"Reversal damping ON: force fades while a slide is caught back toward center (strength {_pModeBReversalGain:0.00}), so the direction switch stops snapping. Digging into a slide keeps full weight."
-                        : "Reversal damping OFF.";
-                case "BREVG":
-                    _pModeBReversalGain = C(value, 0f, 1f);
-                    if (Settings != null) { Settings.ModeBReversalDampGain = _pModeBReversalGain; PersistSettings(); }
-                    return $"Reversal damping strength = {_pModeBReversalGain:0.00} (0 = off; 1 = force fades to silent on a hard fast catch)";
-                case "MBLEAD":
-                    _mbPhaseLeadOn = value >= 0.5f;
-                    if (Settings != null) { Settings.ModeBPhaseLead = _mbPhaseLeadOn; PersistSettings(); }
-                    return _mbPhaseLeadOn
-                        ? $"Anticipation ON: the force leads the wheel by {_pModeBPhaseLeadMs:0} ms to cancel telemetry lag, so a released wheel settles instead of oscillating around the countersteer."
-                        : "Anticipation OFF.";
-                case "BLEAD":
-                    _pModeBPhaseLeadMs = C(value, 0f, 120f);
-                    if (Settings != null) { Settings.ModeBPhaseLeadMs = _pModeBPhaseLeadMs; PersistSettings(); }
-                    return $"Anticipation lead = {_pModeBPhaseLeadMs:0} ms (how far ahead the force anticipates; raise until a released wheel stops ringing, back off if it gets jittery)";
-                case "BMINF":
-                    _pModeBMinForce = C(value, 0f, 0.5f);
-                    if (Settings != null) { Settings.ModeBMinForce = _pModeBMinForce; PersistSettings(); }
-                    return $"Min force = {_pModeBMinForce:0.00} (smallest force the wheel renders; raise until faint forces just move YOUR wheel; 0 = off)";
                 case "MBCPD":
                     _mbCenterPdOn = value >= 0.5f;
                     if (Settings != null) { Settings.ModeBCenterPd = _mbCenterPdOn; PersistSettings(); }
                     return _mbCenterPdOn
                         ? $"Direct centering ON: centering springs on the wheel's own position (look-ahead {_pModeBCenterLeadMs:0} ms), so the pull toward straight is fresh and cannot ring. Turn OFF and report your wheel model if centering ever pushes AWAY from center."
                         : "Direct centering OFF: centering uses game-reported steering (legacy).";
-                case "BCLEAD":
-                    _pModeBCenterLeadMs = C(value, 0f, 100f);
-                    if (Settings != null) { Settings.ModeBCenterLeadMs = _pModeBCenterLeadMs; PersistSettings(); }
-                    return $"Direct centering look-ahead = {_pModeBCenterLeadMs:0} ms (how far ahead of the wheel's motion the centering aims; raise if a released wheel still overshoots center, 0 = position only)";
                 default:
-                    return $"unknown Mode B param '{name}' (try MODEB/BSIGN/BSAT/BPEAK/BFLOOR/BFULL/BSPD/BRISE/BEMA/BDAMP/BCENTER/BLAT/BDIRK/BRECOVER/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/BAUTOS/MBREV/BREVG/MBLEAD/BLEAD/BLDEM/BMINF/MBCPD/BCLEAD)";
+                    return $"unknown Mode B param '{name}' (try BFULL/BSPD/BDIRK/BLOCKPT/BCIRCLE/BLEARN/BGTRIM/MBCPD)";
             }
         }
 
@@ -12401,14 +12230,6 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex) { return "Slot probe failed: " + ex.Message; }
         }
 
-        /// <summary>Show the ACTIVE car's own light pattern on the wheel: compose
-        /// its colors and fill direction from the published data and write them
-        /// into the designated slot.
-        ///
-        /// Manual for now, on purpose. The composition and the slot write are both
-        /// proven, but an automatic per-car write fires unattended and possibly
-        /// mid-session, on a pipe shared with the game's force feedback, so it
-        /// wants its own gate before it runs on its own.</summary>
         /// <summary>Car-load edge: put THIS car's own colors and fill direction
         /// into the lent slot, so the wheel matches the car's dash without anyone
         /// touching a setting.
@@ -12527,65 +12348,6 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info("[TF4ALL] car-color apply failed: " + ex.Message);
                 }
             });
-        }
-
-        public bool ShowActiveCarColors(out string message)
-        {
-            message = null;
-
-            int slot = Settings?.LightsyncDynamicSlot ?? -1;
-            if (slot < 0 || slot >= WheelLedChannel.CustomSlotCount)
-            {
-                message = "No slot is designated yet. Pick one with SLOTPICK<n> (1-5), "
-                        + "and the plugin will back up its contents before ever writing to it.";
-                return false;
-            }
-            if (!LovelyLightingEnabled)
-            {
-                message = LovelyDataEnabled
-                    ? "Per-car lighting is switched off, so there is no pattern to show. "
-                      + "Tick \"Match my wheel to the car I'm driving\" on the LIGHTSYNC tab first."
-                    : "Community features are off, so there is no per-car data to show. "
-                      + "Turn them on in the Settings tab first.";
-                return false;
-            }
-
-            var car = _lovelyCar;
-            if (car == null)
-            {
-                message = string.IsNullOrEmpty(_activeCarId)
-                    ? "No car is active yet. Load into a car first."
-                    : $"No published light data for this car ({_activeGame}/{_activeCarId}). "
-                      + "Its lights keep working exactly as they do now.";
-                return false;
-            }
-
-            var ramp = car.RampForGear("1") ?? car.HighestForwardGear();
-            var profile = LovelyLightMath.BuildProfile(car, ramp, WheelLedChannel.LedCount);
-
-            var rgb = new byte[WheelLedChannel.LedCount * 3];
-            for (int i = 0; i < WheelLedChannel.LedCount && i < profile.Colors.Length; i++)
-            {
-                rgb[i * 3 + 0] = profile.Colors[i].R;
-                rgb[i * 3 + 1] = profile.Colors[i].G;
-                rgb[i * 3 + 2] = profile.Colors[i].B;
-            }
-
-            string detail;
-            bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
-            {
-                Slot = (byte)slot,
-                DirectionWire = profile.DirectionWire,
-                Rgb = rgb,
-            }, out detail, displayLevel: WheelLedChannel.LedCount);
-
-            string layout = profile.Layout.ToString();
-            message = ok
-                ? $"{car.CarName ?? _activeCarId}: {layout}, "
-                  + (profile.UsedCarColors ? "the car's own colors" : "no colors published, so the standard ramp")
-                  + ". " + detail
-                : detail;
-            return ok;
         }
 
         // ---- LIGHTSYNC slot borrow / restore ----
@@ -13724,19 +13486,6 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info($"[OLED] Test started, duration={ms} ms ({_oledDash.Status})");
         }
 
-        /// <summary>Dump this wheel's own layout table to the log and show a
-        /// ruler frame on the two layouts in question, so what the panel does
-        /// can be established rather than inferred from another wheel's
-        /// captures.</summary>
-        public void ReportOledLayouts()
-        {
-            if (_oledDash == null) { SimHub.Logging.Current.Info("[OLED] controller not initialized"); return; }
-            if (!OledWritesSafeNow)
-            { SimHub.Logging.Current.Info("[OLED] layout report skipped: the screen is not ours to write in this mode"); return; }
-            int ms = _oledDash.RunLayoutReport();
-            SimHub.Logging.Current.Info($"[OLED] Layout report started, duration={ms} ms");
-        }
-
         /// <summary>Hand the OLED back to the wheel's own firmware (feature
         /// unchecked / plugin disabled). No telemetry frames arrive after that
         /// to drive the gate-off path, so callers must invoke this.</summary>
@@ -13777,7 +13526,7 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Whether writing the screen right now cannot disturb anyone's
         /// force feedback: no game at all, or Mode B holding the HID++ pipe
-        /// free, or the user has taken the gate off deliberately.</summary>
+        /// free.</summary>
         public bool OledWritesSafeNow =>
             // The screen belongs to full mode. Checked FIRST because the two terms
             // below both read true forever outside it: _oledHidppFree is latched by
@@ -13786,9 +13535,7 @@ namespace TrueforceForAll.Plugin
             // off or lights-only this said "safe" while a game was mid-corner with
             // its own force feedback live.
             MasterMode == TrueforceMasterMode.Normal
-            && ((Settings?.OledIgnoreModeBGate ?? false)
-                || _oledHidppFree
-                || NoTelemetryArriving());
+            && (_oledHidppFree || NoTelemetryArriving());
 
         /// <summary>True when no telemetry frame has arrived recently, which is
         /// the honest test for "nothing is driving the wheel right now".
@@ -14075,12 +13822,6 @@ namespace TrueforceForAll.Plugin
         {
             try { AutoRatchetBumped?.Invoke(isTf, oldCap, newCap); } catch { }
         }
-
-        /// <summary>Dev-only hook: fire a synthetic AutoRatchetBumped event so
-        /// the inline notice banner can be exercised without waiting for real
-        /// underruns. Wired through the access-code box ("RATCHET").</summary>
-        public void DebugFireRatchet(bool isTf, int oldCap, int newCap)
-            => FireRatchetEvent(isTf, oldCap, newCap);
 
         /// <summary>Apply a new Trueforce ring size to the live device and persist.
         /// Called by both the auto-ratchet path and Manual-mode UI sliders.</summary>
@@ -16129,8 +15870,9 @@ namespace TrueforceForAll.Plugin
         // Rewrite legacy "Forza_<n>" identifiers to today's "Car_<n>" form.
         // Used by the cleanup pass when matching user car files against
         // BuiltinPresets.CarPresetJsons keys. Mirrors the runtime alias
-        // applied in CarOverridesForCar at ~line 2325 so a pre-NORMALIZEFORZA
-        // file's (CarId, PresetName) tuple finds its current factory entry.
+        // applied in CarOverridesForCar at ~line 2325 so a file predating the
+        // Forza car-id migration finds its current factory entry by its
+        // (CarId, PresetName) tuple.
         private static string NormalizeForzaPrefix(string s)
             => s != null && s.StartsWith("Forza_", StringComparison.Ordinal)
                 ? "Car_" + s.Substring("Forza_".Length)
@@ -16223,7 +15965,7 @@ namespace TrueforceForAll.Plugin
             //       Forza_<n> -> Car_<n>, matches a key in
             //       BuiltinPresets.CarPresetJsons. The normalization
             //       handles legacy Forza_<n> ids that pre-date the
-            //       NORMALIZEFORZA migration; the inside-file CarId
+            //       Forza car-id migration; the inside-file CarId
             //       handles names containing ':' (Wreckfest car11:default)
             //       that the path sanitizes to '_'.
             //   (b) file's own IsBuiltin=true tag (rare for user files but
@@ -16302,7 +16044,7 @@ namespace TrueforceForAll.Plugin
                                 string realCarId     = string.IsNullOrEmpty(carFile.CarId)      ? pathCarId      : carFile.CarId;
                                 string realPresetName = string.IsNullOrEmpty(carFile.PresetName) ? pathPresetName : carFile.PresetName;
                                 // Normalize Forza_<n> -> Car_<n> on BOTH the
-                                // carId and the presetName: pre-NORMALIZEFORZA
+                                // carId and the presetName: pre-migration
                                 // legacy stamped both halves with the same
                                 // string (Save(kv.Key, kv.Key, ...)), and
                                 // factory now uses Car_<n> for both.
@@ -16888,7 +16630,8 @@ namespace TrueforceForAll.Plugin
         public List<string> ValidateBuiltins()
             => BuiltinPresets.Validate(BuiltinGameSections);
 
-        /// <summary>DEV one-shot: normalize legacy "Forza_&lt;n&gt;" car ids
+        /// <summary>Startup migration, latched by Settings.ForzaCarIdsNormalizedV1:
+        /// normalize legacy "Forza_&lt;n&gt;" car ids
         /// to "Car_&lt;n&gt;" so they match what SimHub's data feed reports
         /// (Trueforce's UDP fallback used to emit Forza_&lt;n&gt;; now emits
         /// Car_&lt;n&gt;). Per-car rules:
@@ -17188,98 +16931,6 @@ namespace TrueforceForAll.Plugin
             if (!string.IsNullOrEmpty(importMsg)) msg = importMsg + " " + msg;
             SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
             return msg;
-        }
-
-        /// <summary>DEV-only one-shot car-default consolidation. For each car
-        /// whose active default is a USER preset, promote that user preset to a
-        /// factory built-in (replacing any existing factory built-in(s) for the
-        /// same car), bind the factory car-default to it, and delete the user
-        /// preset + user-side car-default binding. Cars whose default is
-        /// already a built-in are skipped. Other user presets for the same car
-        /// stay put. Returns a summary line + per-car log for the status box.</summary>
-        public int DevConsolidateUserCarDefaults(out string summary)
-        {
-            summary = "";
-            var lines = new List<string>();
-            int promoted = 0, skipped = 0;
-            if (_carStore == null || Settings?.CarDefaults == null)
-            { summary = "No car defaults to consolidate."; return 0; }
-
-            var userLoaded = _carStore.LoadAll();
-            // Iterate a copy: we mutate Settings.CarDefaults inside the loop.
-            foreach (var kv in new Dictionary<string, string>(Settings.CarDefaults))
-            {
-                string carId = kv.Key, defaultName = kv.Value;
-                if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(defaultName)) continue;
-
-                // Default already points at a built-in for this car? Nothing to do.
-                if (BuiltinPresets.CarPresetJsons.ContainsKey(carId + "/" + defaultName))
-                    continue;
-
-                if (!userLoaded.TryGetValue(carId, out var perCar)
-                    || !perCar.TryGetValue(defaultName, out var entry)
-                    || entry == null)
-                { lines.Add($"{carId}: skipped (user preset '{defaultName}' not found)"); skipped++; continue; }
-
-                string game = entry.GameName ?? "";
-
-                // Find every existing factory built-in for this car and delete
-                // them. The new default takes their place.
-                var factoryHits = new List<string>();   // preset names
-                foreach (var bkv in BuiltinPresets.CarPresetJsons)
-                {
-                    int slash = bkv.Key.IndexOf('/');
-                    if (slash < 0) continue;
-                    if (bkv.Key.Substring(0, slash) != carId) continue;
-                    factoryHits.Add(bkv.Key.Substring(slash + 1));
-                }
-                foreach (var name in factoryHits)
-                {
-                    string g = game;
-                    try
-                    {
-                        var bf = Newtonsoft.Json.JsonConvert.DeserializeObject<CarPresetFile>(
-                            BuiltinPresets.CarPresetJsons[carId + "/" + name]);
-                        if (bf != null && !string.IsNullOrEmpty(bf.GameName)) g = bf.GameName;
-                    }
-                    catch { /* fall back to entry's game */ }
-                    BuiltinPresetWriter.DeleteCar(BuiltinPresets.CurrentFolder, g, carId, name);
-                }
-
-                // Write the user preset into factory (IsBuiltin=true), bind the
-                // factory car-default to it, then drop the user-side file and
-                // any user-side binding for this car.
-                var newFile = new CarPresetFile
-                {
-                    Type = CarPresetFile.FileType, Version = 2,
-                    GameName = game, CarId = carId,
-                    PresetName = defaultName, IsBuiltin = true, Override = entry.Override,
-                };
-                string json = Newtonsoft.Json.JsonConvert.SerializeObject(newFile, Newtonsoft.Json.Formatting.Indented);
-                BuiltinPresetWriter.WriteCar(BuiltinPresets.CurrentFolder, game, carId, defaultName, json);
-                BuiltinPresetWriter.SetCarDefault(BuiltinPresets.CurrentFolder, carId, defaultName);
-
-                _carStore.Delete(carId, defaultName);
-                BuiltinPresetWriter.RemoveCarDefault(UserPresets.CurrentFolder, carId);
-
-                lines.Add($"{carId}: promoted '{defaultName}' (replaced {factoryHits.Count} existing built-in(s))");
-                promoted++;
-            }
-
-            if (promoted > 0)
-            {
-                BuiltinPresets.Reload();
-                UserPresets.Reload();
-                LoadAndMigrateCarPresets();
-                PersistSettingsCore();
-                SimHub.Logging.Current.Info($"[TF4ALL] DEV: consolidated {promoted} car default(s) into factory built-ins.");
-            }
-
-            summary = promoted == 0
-                ? "Nothing to consolidate (every car default already points at a built-in)."
-                : $"Promoted {promoted} car default(s) to built-ins (skipped {skipped}).";
-            if (lines.Count > 0) summary += "\n" + string.Join("\n", lines);
-            return promoted;
         }
 
         /// <summary>Give an unmapped game its own preset seeded from the
@@ -28491,8 +28142,7 @@ namespace TrueforceForAll.Plugin
         internal async Task<System.Collections.Generic.List<AchievementClient.AchievementRow>> GetAchievementsAsync(System.Threading.CancellationToken ct)
         {
             if (_achievementClient == null || _auth == null || !_auth.IsSignedIn) return null;
-            bool showAll = Settings?.DevShowAllAchievements == true;   // SHOWALL access code
-            return await _achievementClient.GetMyAchievementsAsync(ct, showAll).ConfigureAwait(false);
+            return await _achievementClient.GetMyAchievementsAsync(ct).ConfigureAwait(false);
         }
 
         /// <summary>Immediately reconcile the signed-in user's Discord roles (claim what they
@@ -30508,8 +30158,8 @@ namespace TrueforceForAll.Plugin
             return _quietSpellHoldDisabled;
         }
 
-        // Opt-in experimental FFB-capture path, shared by the Diagnostics
-        // checkbox and the FFBX access code. Persists Settings.ExperimentalFfbCapture,
+        // Opt-in experimental FFB-capture path, set from the Diagnostics
+        // checkbox. Persists Settings.ExperimentalFfbCapture,
         // applies it to the live tap, and re-arms the feature-index resolver so
         // the change takes effect without a SimHub restart. Off = shipped behaviour.
         public void SetExperimentalFfbCapture(bool on)
@@ -30547,13 +30197,6 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] Experimental FFB detection enabled automatically for Farming Simulator " +
                     "(its wheel FFB rides the report-0x12 path); the global setting is unchanged.");
-        }
-
-        public bool DebugToggleExperimentalCapture()
-        {
-            bool on = !(Settings?.ExperimentalFfbCapture ?? false);
-            SetExperimentalFfbCapture(on);
-            return on;
         }
 
         // ---------- Tap-free AC FFB (ACFFB access code) ----------
@@ -30757,7 +30400,8 @@ namespace TrueforceForAll.Plugin
                     "[TF4ALL] StopStreamOnPause: resumed, restarted Trueforce stream.");
         }
 
-        // NOLOCK access code / future UI. Persists Settings.StopStreamOnPause.
+        // Serves the "Hand the wheel back to the game while paused" checkbox
+        // under Force feedback (advanced). Persists Settings.StopStreamOnPause.
         // When turning it off mid-pause, the gate resumes the stream on its next
         // tick so we never strand the wheel with no stream.
         public void SetStopStreamOnPause(bool on)
@@ -30779,13 +30423,6 @@ namespace TrueforceForAll.Plugin
             _focusCachedPid = 0;
             PersistSettings();
             SimHub.Logging.Current.Info($"[TF4ALL] ReleaseForceOnFocusLoss {(on ? "ON" : "OFF")}.");
-        }
-
-        public bool DebugToggleStopStreamOnPause()
-        {
-            bool on = !(Settings?.StopStreamOnPause ?? false);
-            SetStopStreamOnPause(on);
-            return on;
         }
 
         // SUPPORT TOOL (IRRAW access code). Born as a throwaway bring-up spike
@@ -31373,7 +31010,7 @@ namespace TrueforceForAll.Plugin
 
             // Per-wheel identity (mescon, 2026-07): seed the HID++ 0x8123
             // feature-index resolver (RS50 = 0x10, else the G PRO's 0x0e) and
-            // open the RS50 report-0x12 path without the FFBX opt-in. Seed
+            // open the RS50 report-0x12 path without the experimental opt-in. Seed
             // only: the tap's resolver stays live; a dead-silent wrong seed
             // self-heals (see SetFfbFeatureIndexSeed for the confirm-lock
             // limit). With no wheel matched yet (vid/pid 0, string null) this

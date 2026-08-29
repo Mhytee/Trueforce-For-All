@@ -745,42 +745,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Auto-tuned ring buffer notice. Surfaces when the auto-
-                 ratchet bumps a ring size to recover from sustained
-                 dropouts. One banner consolidates every bump in the
-                 current session: the "from" caps stay pinned to the
-                 sizes that were active when the banner first appeared,
-                 the "to" caps update to the latest after each bump.
-                 Inline and non-modal (never grabs foreground) per user
-                 feedback that the old centered Window was disruptive. -->
-            <Border x:Name="RatchetNoticeBanner" Visibility="Collapsed"
-                    Background="#3A6BBE" CornerRadius="4" Padding="12,8,12,8" Margin="0,0,0,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Foreground="White" FontWeight="SemiBold" FontSize="13"
-                                   Text="Auto-tuned ring buffer"/>
-                        <TextBlock x:Name="RatchetNoticeDetail" Foreground="White" FontSize="11"
-                                   Opacity="0.9" Margin="0,2,0,0" TextWrapping="Wrap" Text=""/>
-                    </StackPanel>
-                    <Button Grid.Column="1" x:Name="RatchetNoticeRevert"
-                            Content="Revert" Padding="10,3" Margin="10,0,0,0"
-                            VerticalAlignment="Center" Cursor="Hand"
-                            Click="RatchetNoticeRevert_Click"
-                            ToolTip="Drop the ring(s) back to the size(s) they were at before this session's auto-bumps. Trades dropout resilience for tighter latency."/>
-                    <Button Grid.Column="2" x:Name="RatchetNoticeDismiss"
-                            Content="✕" Width="22" Height="22" Margin="6,0,0,0"
-                            Click="RatchetNoticeDismiss_Click"
-                            Background="Transparent" Foreground="White"
-                            BorderBrush="Transparent" BorderThickness="0"
-                            Cursor="Hand" ToolTip="Dismiss"/>
-                </Grid>
-            </Border>
-
             <!-- Offline-edit mode banner. Visible when the user clicked Edit
                  on a preset row in the Manage Presets dialog. While shown,
                  the plugin holds back the auto-apply-game-default path so a
@@ -4505,18 +4469,17 @@
                              in if a game that should have force feedback gives
                              none. Widens how the tap recognizes the wheel's FFB
                              on the bus (HID++ report 0x12 + faster index
-                             resolve; helps e.g. the RS50 in Forza, issue #8).
-                             Synced with the FFBX access code. -->
+                             resolve; helps e.g. the RS50 in Forza, issue #8). -->
                         <CheckBox x:Name="ExperimentalFfbCheck" Content="Enable experimental FFB detection"
                                   Margin="0,4,0,2" Checked="ExperimentalFfbDetection_Changed" Unchecked="ExperimentalFfbDetection_Changed"
                                   ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). Load the game and drive for a few seconds after turning it on. Leave it off if your force feedback already works. Turn it back off if it causes any trouble."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
                                    Text="Try this if you are not getting force feedback in a game that should have it."/>
 
-                        <!-- Hand the wheel back to the game while paused (NOLOCK
-                             access code). When on, the plugin fully leaves Trueforce
-                             mode while the game is paused so the wheel reverts to the
-                             game's own FFB / auto-center instead of holding a force.
+                        <!-- Hand the wheel back to the game while paused. When on,
+                             the plugin fully leaves Trueforce mode while the game is
+                             paused so the wheel reverts to the game's own FFB /
+                             auto-center instead of holding a force.
                              Global, not preset-saved. Default ON since 0.2.7: stable
                              shipped it on in v0.1.24, the 0.2.x opt-in was a
                              regression (owner call 2026-08-15). -->
@@ -5060,7 +5023,7 @@
                         ToolTip="Sign in with email (one-time code, no password) to use community features."/>
             </StackPanel>
 
-            <!-- Supporter badge. Real entitlement (or a dev DISPLAY override via SUPPORTER).
+            <!-- Supporter badge. Shows the real entitlement.
                  Display only: the backup gate is enforced server-side. Hidden when not a supporter. -->
             <Border x:Name="SupporterBadge" CornerRadius="9" Padding="9,2,9,2" Margin="0,0,0,8"
                     HorizontalAlignment="Left" Background="#33E5C04A" BorderBrush="#FFE5C04A" BorderThickness="1"

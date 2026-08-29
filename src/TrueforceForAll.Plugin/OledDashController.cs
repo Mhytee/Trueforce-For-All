@@ -837,124 +837,29 @@ namespace TrueforceForAll.Plugin
             return total;
         }
 
-        /// <summary>Two experiments that together settle what this wheel's
-        /// layouts really are, rather than what one RS50's captures implied.
-        ///
-        ///   1. The wheel's own layout table, logged raw. Authoritative, and
-        ///      directly comparable with the same dump from another wheel.
-        ///   2. A ruler frame per interesting layout: every payload byte is a
-        ///      different character, so whatever the panel draws names the
-        ///      offsets each field starts at. Report what you SEE for each and
-        ///      the field boundaries fall straight out.
-        ///
-        /// Layout 7 is the one in question and layout 9 is the control, since
-        /// it has always rendered as documented.</summary>
-        public int RunLayoutReport()
-        {
-            if (_testing) return 0;
-            const int holdMs = 6000;
-            int total = 4 * holdMs + 1500;
-
-            _testing = true;
-            Task.Run(() =>
-            {
-                bool opened = _channel.IsReady;
-                try
-                {
-                    if (!opened)
-                    {
-                        bool ok;
-                        try { ok = _channel.OpenAndResolve(); }
-                        catch (Exception ex) { _log($"[OLED] report open threw: {ex.Message}"); ok = false; }
-                        Interlocked.Exchange(ref _openState, ok ? 2 : 3);
-                        opened = ok;
-                    }
-                    if (!opened)
-                    {
-                        _testStatus = "could not open the OLED channel (see log)";
-                        return;
-                    }
-
-                    // Every write below goes through Hold, which is where the
-                    // abandon latch is checked. It used to call _channel.Show
-                    // directly, so AbandonScreen could clear the panel once and the
-                    // report would then draw over it for the remaining twenty-odd
-                    // seconds, re-starting the sender thread on its next Show.
-                    if (_abandoned) return;
-                    _testStatus = "▶ reading the wheel's layout table…";
-                    _log("[OLED] ---- layout table for THIS wheel ----");
-                    _log("[OLED] " + _channel.ReadLayoutTable());
-                    _log("[OLED] ---- end layout table ----");
-
-                    // Look for a function that CLAIMS the display. The panel
-                    // keeps reverting to the wheel's own view between our
-                    // writes, and the gate is not to blame (it never flapped),
-                    // so we are feeding a surface we never took ownership of.
-                    // Only fn0-fn3 are documented; anything above is unexplored.
-                    _testStatus = "▶ probing undocumented functions…";
-                    _log("[OLED] ---- function probe fn4-fn15 ----");
-                    if (_abandoned) return;
-                    _channel.ProbeFunctions(4, 15);
-                    _log("[OLED] ---- end function probe ----");
-
-                    // Ruler offsets, so a photograph can be read without
-                    // counting: A=5, B=6 ... Z=30, 0=31 ... 9=40, a=41 ... w=63.
-                    _log("[OLED] ruler key: A=offset 5, B=6, ... Z=30, 0=31, ... 9=40, a=41, ... w=63");
-                    Hold("▶ 1/4 layout 7 ruler - is the lower row one run of letters?",
-                         _channel.BuildRuler(OledLayout.TwoRow), holdMs);
-
-                    // The split was reported with a SHORT string and denied with
-                    // a full-width ruler. A full field would look contiguous
-                    // even if the firmware drew it as two adjacent sub-fields,
-                    // so only a short string can tell them apart. These three
-                    // isolate it: the original case verbatim, the same without
-                    // its label in case the label is what moves things, and the
-                    // same string on the layout that has always looked right.
-                    Hold("▶ 2/4 layout 7, \"112%\" with a label - GAP or no gap?",
-                         _channel.BuildTwoRow("TWO ROW 112%", "112%"), holdMs);
-                    Hold("▶ 3/4 layout 7, \"112%\" alone - GAP or no gap?",
-                         _channel.BuildTwoRow("", "112%"), holdMs);
-                    Hold("▶ 4/4 layout 9, \"112%\" alone - the control",
-                         _channel.BuildFourRowCenter("", "112%", "", ""), holdMs);
-                }
-                catch (Exception ex) { _log($"[OLED] layout report error: {ex.Message}"); }
-                finally
-                {
-                    if (opened)
-                    {
-                        try { _channel.Clear(); } catch { }
-                        _showing = false;
-                        _testStatus = "layout report finished - see the log";
-                    }
-                    _testing = false;
-                }
-            });
-            return total;
-        }
-
         private void Hold(string status, byte[] setter, int ms)
         {
             // Abandoned is checked HERE rather than only between calls, because a
-            // single hold is 2.5 to 6 seconds and the layout report is four of them:
-            // without this a master-mode switch two seconds in kept drawing on the
-            // wheel's screen for another twenty.
+            // single hold is several seconds and a test is a run of them: without
+            // this a master-mode switch two seconds in kept drawing on the wheel's
+            // screen for the rest of the sequence.
             if (!_channel.IsReady || _abandoned) return;
             _testStatus = status;
             _channel.Show(setter);
             Thread.Sleep(ms);
         }
 
-        /// <summary>Set while a test or layout report should stop early. Not a
-        /// generation counter like the LED side's, because neither of these can run
-        /// concurrently with itself: _testing already refuses a second one.</summary>
+        /// <summary>Set while a test should stop early. Not a generation counter
+        /// like the LED side's, because a test cannot run concurrently with
+        /// itself: _testing already refuses a second one.</summary>
         private volatile bool _abandoned;
 
         /// <summary>Hand the screen back and stop anything already running.
         ///
         /// ForceOff is not enough on its own: it stands down while _testing is set,
-        /// which covers the whole of a test (about 13 s) or a layout report (about
-        /// 25 s), so a mode switch during either left the panel being written long
-        /// after the plugin had promised to stop.</summary>
+        /// which covers the whole of a test (about 13 s), so a mode switch during
+        /// one left the panel being written long after the plugin had promised to
+        /// stop.</summary>
         public void AbandonScreen()
         {
             _abandoned = true;

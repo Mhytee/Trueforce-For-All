@@ -225,7 +225,7 @@ namespace TrueforceForAll.Core
         // experimental-only: with the 0x10 seed it no longer matters on an
         // identified RS50. With both off, behaviour is byte-identical to the
         // shipped 0.1.18 path (0x11-only, floor 200), so existing users are
-        // untouched; testers opt in via the FFBX access code.
+        // untouched; testers opt in via the experimental FFB detection checkbox.
         private const byte FfbFeatureIndexSeed = 0x0e;
         // Min cumulative func-0x20 samples at a candidate index before the
         // resolver switches off the seed. Default 200 (the shipped value).
@@ -238,15 +238,15 @@ namespace TrueforceForAll.Core
         private long FfbIndexMinSamples =>
             ExperimentalCapture ? FfbIndexMinSamplesExperimental : FfbIndexMinSamplesDefault;
 
-        // Experimental FFB-capture path (opt-in via the FFBX access code,
-        // persisted as Settings.ExperimentalFfbCapture, applied by the plugin
+        // Experimental FFB-capture path (opt-in via the experimental FFB
+        // detection checkbox, persisted as Settings.ExperimentalFfbCapture, applied by the plugin
         // on every tap (re)start). Gates the issue-#8 work and any future
         // self-learning capture heuristics. Off = shipped 0.1.18 behaviour.
         // volatile: UI thread writes, parser thread reads each packet.
         public volatile bool ExperimentalCapture;
         // Positive RS50 identification from discovery (native RS50 PID, or an
         // RS50 product string on a spoofed G PRO PID; mescon, 2026-07). Widens
-        // the report-0x12 gates without the FFBX opt-in. Never set for other
+        // the report-0x12 gates without the experimental opt-in. Never set for other
         // wheels, so G PRO / G923 paths are untouched. volatile: plugin thread
         // writes at wiring time, parser thread reads each packet.
         public volatile bool Rs50Identified;
@@ -386,8 +386,8 @@ namespace TrueforceForAll.Core
         /// compat-mode RS50 keeps feature 0x10 live, so the RS50 seed is
         /// expected correct. Adopts the seed immediately unless extracted
         /// force has already confirmed an index; ResetFeatureIndexResolution
-        /// also re-arms to this value, so an FFBX toggle keeps the per-model
-        /// seed.</summary>
+        /// also re-arms to this value, so an experimental-capture toggle keeps
+        /// the per-model seed.</summary>
         public void SetFfbFeatureIndexSeed(byte seed)
         {
             _ffbSeed = seed;
@@ -397,15 +397,16 @@ namespace TrueforceForAll.Core
         /// <summary>Re-arm the feature-index resolver: drop back to the seed
         /// index and clear the resolved/confirmed latches so the next pass
         /// re-evaluates under the current <see cref="ExperimentalCapture"/> /
-        /// <see cref="Rs50Identified"/> rules. Called when the FFBX toggle
-        /// flips, so a live change takes effect without a SimHub restart.
+        /// <see cref="Rs50Identified"/> rules. Called when the experimental
+        /// capture toggle flips, so a live change takes effect without a
+        /// SimHub restart.
         /// Keeps the accumulated tuple history, so if 0x12 traffic was
         /// already seen the re-resolve to the real index is immediate.</summary>
         public void ResetFeatureIndexResolution()
         {
             // A hardware-pinned index survives re-arms: the pin exists because
             // the statistical path proved unsafe for this wheel, and toggling
-            // FFBX must not reopen that hole. Confirmation/fingerprint state
+            // the experimental path must not reopen that hole. Confirmation/fingerprint state
             // still resets below so the new rules re-record what worked.
             if (!_ffbIndexPinned)
             {
@@ -458,11 +459,11 @@ namespace TrueforceForAll.Core
             if (FfbSamplesCaptured < CaptureConfirmSamples) return;
 
             var needed = new List<string>();
-            // needed=[...] means "the FFBX toggle was load-bearing" (it gates
-            // the experimental-success banner and the graduation evidence).
+            // needed=[...] means "the experimental toggle was load-bearing" (it
+            // gates the experimental-success banner and the graduation evidence).
             // 0x12 counts only if force flowed on 0x12 and never on 0x11 AND
             // RS50 identity had not already opened the gate; when identity
-            // covered it, FFBX wasn't needed even if it is also on, and the
+            // covered it, the experimental path wasn't needed even if it is also on, and the
             // rs50Id=ON marker below carries the attribution instead.
             if (ExperimentalCapture && !Rs50Identified && _forceSeenOn0x12 && !_forceSeenOn0x11)
                 needed.Add("report0x12");
@@ -1369,7 +1370,7 @@ namespace TrueforceForAll.Core
                 // per-wheel-resolved feature index. Both report IDs share the
                 // same header+payload layout (force = signed int16, big-endian,
                 // at offset 10-11). Some wheels (RS50 on FH6, issue #8) send the
-                // bulk of FFB as 0x12; accepting it is gated behind the FFBX
+                // bulk of FFB as 0x12; accepting it is gated behind the experimental
                 // opt-in or positive RS50 identification, so the default path
                 // on other wheels stays 0x11-only.
                 bool is0x11 = reportId == 0x11;
@@ -1803,7 +1804,7 @@ namespace TrueforceForAll.Core
                 {
                     // Key = (reportId<<16)|(featIdx<<8)|(funcByte&0xf0).
                     byte rid = (byte)(kv.Key >> 16);
-                    // Default: 0x11 only (shipped behaviour). The FFBX opt-in
+                    // Default: 0x11 only (shipped behaviour). The experimental opt-in
                     // or an identified RS50 also counts very-long 0x12 toward
                     // the same feature index.
                     bool ridOk = rid == 0x11 || ((ExperimentalCapture || Rs50Identified) && rid == 0x12);

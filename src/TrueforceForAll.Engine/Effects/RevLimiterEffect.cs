@@ -194,8 +194,8 @@ namespace TrueforceForAll.Plugin.Effects
         private static int ParseForwardGear(string g)
             => (!string.IsNullOrEmpty(g) && int.TryParse(g, out int n) && n >= 1) ? n : 0;
 
-        // RPM-threshold + hold logic, shared by live telemetry and the REV
-        // self-test. Sets _amp; RenderAdd plays it. Returns the absolute RPM
+        // RPM-threshold + hold logic, driven by live telemetry. Sets _amp;
+        // RenderAdd plays it. Returns the absolute RPM
         // the limiter should fire at, or null when no value can be resolved
         // (engine not running, no telemetry).
         //
@@ -424,38 +424,6 @@ namespace TrueforceForAll.Plugin.Effects
         {
             _amp = 0;
             _lastActiveTicks = 0;
-        }
-
-        /// <summary>Open a render window for the REV self-test WITHOUT forcing
-        /// _amp (unlike TestPlay, which slams it to ActiveAmp). The plugin then
-        /// drives <see cref="DebugFeedRpm"/> across the window so the real
-        /// threshold + hold logic decides when the buzz is on. Returns the
-        /// duration in ms.</summary>
-        public int StartRevTestWindow(int ms) { StartTest(ms); return ms; }
-
-        /// <summary>Feed a synthetic (rpm, maxRpm) sample through the real
-        /// engagement logic during a self-test. Runs regardless of IsTesting
-        /// so the plugin's scheduled sequence controls the buzz; RenderAdd
-        /// outputs the resulting _amp because the test window is open. The
-        /// self-test sweep is built around the 0.85 x MaxRpm fallback, so we
-        /// suppress the user / community tiers for the duration of the call
-        /// (a pinned redline or per-gear value would otherwise fire across
-        /// the sweep's intended-silent phase).</summary>
-        public void DebugFeedRpm(double rpm, double maxRpm)
-        {
-            var savedRedline   = CarFactsRedline;
-            var savedGears     = UserGearRedlines;
-            var savedCommGears = CommunityGearRedlines;
-            CarFactsRedline = null;
-            UserGearRedlines = null;
-            CommunityGearRedlines = null;
-            try { UpdateEngagement(rpm, 0.0, maxRpm); }
-            finally
-            {
-                CarFactsRedline = savedRedline;
-                UserGearRedlines = savedGears;
-                CommunityGearRedlines = savedCommGears;
-            }
         }
 
         public override void Reset()

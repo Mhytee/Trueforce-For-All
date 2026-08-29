@@ -76,7 +76,7 @@
 //
 // TESTED FOR THIS FEATURE, NOT ASSUMED (2026-08-06, G PRO). Driving under
 // Telemetry Based FFB with the screen live showed no force degradation. With
-// the gate deliberately lifted (the OLEDANY code) in a game running its own
+// the gate deliberately lifted (a since-retired test override) in a game running its own
 // force feedback, THE FORCE CUT OUT. So the restriction is real and permanent,
 // not inherited caution: OLED writes are only safe when the wheel's force is
 // carried on the Trueforce ep3 stream and HID++ is kept force-free, i.e. Mode B
@@ -88,7 +88,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using HidSharp;
 
@@ -458,172 +457,6 @@ namespace TrueforceForAll.Core
                 return resp[4];
             }
             return -1;
-        }
-
-        // ---- Layout table (diagnostic) ---------------------------------------
-
-        /// <summary>Ask the wheel what layouts it actually has: fn0 for the
-        /// count, then fn1 for each index. This is the same pair Logitech's own
-        /// driver issues before it will answer a layout-support query, and fn1
-        /// returns a six-byte descriptor per layout.
-        ///
-        /// The point is evidence. Everything known about these layouts comes
-        /// from captures of ONE RS50, and a G PRO has already been seen drawing
-        /// index 7 differently. Whether that is a different table, a different
-        /// geometry, or a misread of the original, the wheel itself can say.
-        /// Raw bytes are logged undecoded on purpose: guessing at the
-        /// descriptor's meaning is how the current confusion started.</summary>
-        public string ReadLayoutTable()
-        {
-            if (!_ready) return "(channel not open)";
-            lock (_io)
-            {
-                int count = _layoutCount >= 0 ? _layoutCount : TryReadLayoutCount();
-                _log($"[OLED] layout count = {(count < 0 ? "(no reply)" : count.ToString())}");
-                if (count <= 0 || count > 32) return "layout count = " + count;
-
-                for (int i = 0; i < count; i++)
-                {
-                    // fn1 echoes the layout index, so insist on it: see Request.
-                    byte[] reply = Request(FnLayoutDescriptor, (byte)i, expectEcho: true);
-                    // ONE log call per layout. A single multi-line string loses
-                    // everything after the first newline in SimHub's logger,
-                    // which silently swallowed this whole table once already.
-                    if (reply == null)
-                    {
-                        _log($"[OLED] layout {i} ({(char)('A' + i)}): (no reply)");
-                        continue;
-                    }
-                    // Whole reply, undecoded: bytes 0-3 are the HID++ header and
-                    // the descriptor follows, but guessing at its meaning is how
-                    // the confusion this exists to settle got started.
-                    var sb = new StringBuilder();
-                    sb.Append($"[OLED] layout {i} ({(char)('A' + i)}): ");
-                    for (int b = 0; b < 20 && b < reply.Length; b++)
-                        sb.Append(reply[b].ToString("X2")).Append(' ');
-                    _log(sb.ToString());
-                }
-                return $"layout count = {count} (per-layout descriptors logged)";
-            }
-        }
-
-        /// <summary>Ask this feature about functions nobody has documented.
-        /// Only fn0-fn3 are known (count, descriptor, clear, set), and the
-        /// panel keeps reverting to the wheel's own view between our writes,
-        /// which is what a display we FEED but never CLAIM would do. The rev
-        /// lights needed an arm sequence before their stream would hold; if
-        /// there is an equivalent here it is behind one of these.
-        ///
-        /// Writes each function with zero parameters and dumps every reply raw,
-        /// errors included: an HID++ error is itself an answer, since it says
-        /// the function exists but wanted something else. Diagnostic only.</summary>
-        public void ProbeFunctions(int firstFn, int lastFn)
-        {
-            if (!_ready) { _log("[OLED] probe: channel not open"); return; }
-            lock (_io)
-            {
-                for (int fn = firstFn; fn <= lastFn; fn++)
-                {
-                    byte fnByte = Fn(fn);
-                    try
-                    {
-                        var req = new byte[LenShort];
-                        req[0] = _cmdShortRepId; req[1] = DevWired;
-                        req[2] = _idxDisplay; req[3] = fnByte;
-                        _cmdShort.Write(PadShort(req));
-                    }
-                    catch (Exception ex)
-                    {
-                        _log($"[OLED] probe fn{fn}: write failed ({ex.Message})");
-                        continue;
-                    }
-
-                    bool any = false;
-                    for (int attempt = 0; attempt < 3; attempt++)
-                    {
-                        var resp = new byte[LenVeryLong];
-                        int n;
-                        try { n = _veryLong.Read(resp, 0, resp.Length); }
-                        catch (TimeoutException) { break; }
-                        catch (Exception) { break; }
-                        if (n < 4) continue;
-                        var sb = new StringBuilder($"[OLED] probe fn{fn}: ");
-                        for (int b = 0; b < 16 && b < n; b++)
-                            sb.Append(resp[b].ToString("X2")).Append(' ');
-                        // 0xFF in the feature slot is HID++'s "that request was
-                        // wrong", with the offending feature/function echoed.
-                        if (resp[2] == 0xFF) sb.Append(" <- HID++ error");
-                        _log(sb.ToString());
-                        any = true;
-                        break;
-                    }
-                    if (!any) _log($"[OLED] probe fn{fn}: no reply");
-                }
-            }
-        }
-
-        /// <summary>Send a SHORT request on this feature and return the first
-        /// matching VERY_LONG reply, or null.</summary>
-        private byte[] Request(byte fnId, byte param0, bool expectEcho = false)
-        {
-            byte fn = Fn(fnId);
-            try
-            {
-                var req = new byte[LenShort];
-                req[0] = _cmdShortRepId; req[1] = DevWired; req[2] = _idxDisplay;
-                req[3] = fn; req[4] = param0;
-                _cmdShort.Write(PadShort(req));
-            }
-            catch (Exception ex) { _log($"[OLED] fn{fnId} write failed: {ex.Message}"); return null; }
-
-            for (int attempt = 0; attempt < 4; attempt++)
-            {
-                var resp = new byte[LenVeryLong];
-                int n;
-                try { n = _veryLong.Read(resp, 0, resp.Length); }
-                catch (TimeoutException) { return null; }
-                catch (Exception) { return null; }
-                if (n < 5) continue;
-                if (resp[1] != DevWired || resp[2] != _idxDisplay || resp[3] != fn) continue;
-                // Match the ECHOED parameter too. Matching only the header let a
-                // late reply from the previous request satisfy this one, so a
-                // table read after two timeouts came back shifted: request 3
-                // returned layout 0's descriptor, request 4 returned layout 2's.
-                // The descriptors were sound, they were just answering the
-                // wrong question.
-                if (expectEcho && resp[4] != param0) continue;
-                return resp;
-            }
-            return null;
-        }
-
-        /// <summary>A setter whose every writable byte is a different printable
-        /// character, so whatever the panel draws reads back as the payload
-        /// OFFSET each field starts at. This measures a layout's field
-        /// boundaries directly instead of inferring them: if a field shows
-        /// "VWX", it begins at the offset those letters sit at below.
-        ///
-        /// Offsets 5..63 map to: 5='A' 6='B' ... 30='Z' 31='0' ... 40='9'
-        /// 41='a' 42='b' ... 63='w'.</summary>
-        public byte[] BuildRuler(OledLayout layout)
-        {
-            const string alphabet =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvw";
-            var r = NewSetter(layout);
-            for (int i = 5; i < LenVeryLong && (i - 5) < alphabet.Length; i++)
-                r[i] = (byte)alphabet[i - 5];
-            return r;
-        }
-
-        /// <summary>Which payload offset a ruler character came from, so a
-        /// reported string can be turned back into offsets without counting on
-        /// your fingers.</summary>
-        public static int RulerOffsetOf(char c)
-        {
-            const string alphabet =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvw";
-            int i = alphabet.IndexOf(c);
-            return i < 0 ? -1 : i + 5;
         }
 
         // ---- Frame building --------------------------------------------------

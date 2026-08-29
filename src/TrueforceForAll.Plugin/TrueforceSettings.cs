@@ -177,13 +177,11 @@ namespace TrueforceForAll.Plugin
         public bool OledGreetingEnabled { get; set; } = true;
         public string OledGreetingText { get; set; } = "HELLO WORLD";
 
-        // TEST OVERRIDE (access code OLEDANY). Runs the OLED regardless of the
-        // Mode B + quiet-FFB gate, so someone can find out whether a screen
-        // write actually disturbs a game's own HID++ force the way an LED write
-        // does. That has never been tested for this feature: the restriction is
-        // inherited from the rev lights. If it turns out to be harmless the
-        // screen could work in every game, which is why the question is worth a
-        // deliberately unsafe switch. Off by default and undocumented.
+        // Retired 2026-08-28. Was the OLEDANY test override that ran the OLED
+        // regardless of the Mode B + quiet-FFB gate; the question it existed
+        // to answer was settled (a screen write cuts a game's own force). The
+        // property stays only so old settings files and backups deserialize
+        // cleanly.
         public bool OledIgnoreModeBGate { get; set; } = false;
 
         // Run the LEGACY F8 rev lights (G923 PS/PC, 0xC266 only) regardless of
@@ -280,8 +278,8 @@ namespace TrueforceForAll.Plugin
         // redline), so a tune that changes the engine stores separately, but
         // a tire-only (or aero / suspension) tune keeps the same slot: the
         // learner re-converges in place (rises within a lap of pushing, falls
-        // over a few minutes of cornering time), and the RESETGRIP access
-        // code wipes the active slot on demand. Written as the player drives
+        // over a few minutes of cornering time), and the grip auto-cal reset
+        // wipes the active slot on demand. Written as the player drives
         // (where each variant's combined-slip metric actually tops out plus
         // how much near-limit seat time backs that estimate) so the next
         // session starts calibrated. Zero user action; the grip auto-cal
@@ -351,8 +349,8 @@ namespace TrueforceForAll.Plugin
         // any incoming Forza_<n> to Car_<n> before every lookup, so an
         // un-normalized Forza_<n> car file / default binding can never be
         // found again and the user's per-car tuning silently stops applying.
-        // On the first launch after this build ships we run the same
-        // normalization the NORMALIZEFORZA dev tool performs (rename folders,
+        // On the first launch after this build ships we run a one-time
+        // normalization (rename folders,
         // rewrite CarId + PresetName + both car-defaults.json files + the live
         // Settings.CarDefaults/CarOverrides dicts) so those tunings keep
         // applying. Idempotent and content-preserving (a Forza_<n> that
@@ -927,8 +925,8 @@ namespace TrueforceForAll.Plugin
         public bool  FfbSpikeUseSlewLimiter   { get; set; } = true;
         public float FfbSpikeMaxLsbPerMs      { get; set; } = 2508.36f;
 
-        // Hand the wheel back to the game while paused (NOLOCK access code +
-        // the checkbox under Force feedback (advanced)). When on, the plugin
+        // Hand the wheel back to the game while paused (the checkbox under
+        // Force feedback (advanced)). When on, the plugin
         // fully leaves Trueforce mode while the game is paused (SendStopCommand
         // + Pause) so the wheel reverts to its native FFB, e.g. Forza's own
         // auto-center, instead of us streaming a substitute force. This is
@@ -1003,8 +1001,8 @@ namespace TrueforceForAll.Plugin
         // including USB bus traffic in exported logs.
         public bool   LogUsbBytesEnabled         { get; set; } = false;
 
-        // Opt-in experimental FFB-capture path (toggled by the FFBX access
-        // code). Enables in-progress capture work that isn't yet proven on
+        // Opt-in experimental FFB-capture path (toggled by its checkbox in
+        // the settings UI). Enables in-progress capture work that isn't yet proven on
         // hardware across the wheel range: HID++ very-long report 0x12
         // extraction + 0x11/0x12 resolver summing + a lower index-resolve
         // floor (issue #8, RS50 on FH6), and any future self-learning capture
@@ -1488,11 +1486,9 @@ namespace TrueforceForAll.Plugin
         public float? LedTrimG { get; set; }
         public float? LedTrimB { get; set; }
 
-        // Escape hatch for the import preview modal. Toggled by the PREVIEWOFF
-        // access code. When true, RunImportFlow falls back to today's silent
-        // commit-on-pick path (per-file dispatch + summary MessageBox) so a
-        // user can recover if the modal breaks on a specific file. Default
-        // false: preview is on for everyone.
+        // Retired 2026-08-28. Was the PREVIEWOFF escape hatch that bypassed the
+        // import preview modal. The property stays only so old settings files
+        // and backups deserialize cleanly.
         public bool ImportPreviewBypass { get; set; } = false;
 
         // Author name auto-stamped onto exported presets / car presets / packs.
@@ -1556,16 +1552,14 @@ namespace TrueforceForAll.Plugin
         // pushing unprompted.
         public bool AutoSyncBackupEnabled { get; set; } = false;
 
-        // DEV/TEST ONLY: forces the supporter BADGE to display a given tier
-        // ("Supporter" / "Gold Supporter" / "Platinum Supporter"); empty = show the real
-        // entitlement. Set via the SUPPORTER access code. MACHINE-LOCAL + display-only: it
-        // feeds ONLY the badge label, never the backup gate (which is enforced server-side
-        // by RLS), so it can never grant real supporter access.
+        // Retired 2026-08-28. Was the dev-only override that forced the supporter
+        // badge to display a given tier. The property stays only so old settings
+        // files and backups deserialize cleanly.
         public string DevSupporterBadgeOverride { get; set; } = "";
 
-        // Dev/test: when true, the achievements tracker requests secret achievements too (OG,
-        // Founding Supporter) even when unearned, so they can be previewed. Toggled by the SHOWALL
-        // access code. MACHINE-LOCAL (not backed up).
+        // Retired 2026-08-28. Was the dev-only flag that made the achievements
+        // tracker request unearned secret achievements for preview. The property
+        // stays only so old settings files and backups deserialize cleanly.
         public bool DevShowAllAchievements { get; set; }
 
         // Show in-plugin achievement celebration toasts (default on). A global opt-out;

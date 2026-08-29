@@ -78,10 +78,6 @@ namespace TrueforceForAll.Plugin
         private bool _updateLocalInstallerTest;
         private static readonly long ForzaStallExpandTicks =
             System.Diagnostics.Stopwatch.Frequency * 12;   // 12 s sustained zero packets
-        // UDP test code: 0 = off, 1 = force Forza banner.
-        // Lets us exercise the setup-banner -> "Set up..." -> jump flow without a
-        // live (broken) Forza session.
-        private int _forceUdpSetupBanner;
         // FZBANNERS test code: 0 = off, 1 = force the two info-tier Forza banners
         // (SimHub-fallback notice + discovered-port banner) visible so their
         // InfoBannerButton styling can be eyeballed without a live Forza session
@@ -2416,9 +2412,6 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
-
-                // UDP test code override (forces the banner without a session).
-                if (_forceUdpSetupBanner == 1) forzaNeedsSetup = true;
 
                 // The SimHub-fallback notice and the no-telemetry setup banner
                 // are mutually exclusive states: fallback means telemetry IS
@@ -5327,8 +5320,8 @@ namespace TrueforceForAll.Plugin
 
         // Pause hand-back toggle (shipped default-on since 0.2.7). Global
         // setting; SetStopStreamOnPause persists internally, so no extra
-        // PersistSettings() call here. Mirrors the NOLOCK access code (which
-        // keeps this checkbox in sync via the handler in CommitAccessCode).
+        // PersistSettings() call here. This checkbox is the only way to change
+        // it; the access code that used to mirror it has been removed.
         private void StopStreamOnPause_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -5386,9 +5379,10 @@ namespace TrueforceForAll.Plugin
         // was the reason slider ranges had to cover access-code clamp
         // ranges. Readouts still refresh in one pass so they stay in
         // lockstep with settings changed elsewhere.
-        // Slider ranges SHOULD still cover the matching SetModeBParam
-        // access-code clamp range: WPF clamps a loaded out-of-range value to
-        // the slider Max, and dragging THAT slider would persist the clamp.
+        // Slider ranges SHOULD still cover the SetModeBParam clamp range of
+        // the tuning codes that remain (BDIRK, BLOCKPT, BGTRIM): WPF clamps a
+        // loaded out-of-range value to the slider Max, and dragging THAT
+        // slider would persist the clamp.
         private void ModeBSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -6654,9 +6648,9 @@ namespace TrueforceForAll.Plugin
             ModeBAutoStrengthStatus.Text = text;
         }
 
-        // Shares RESETGRIP's path: one saved slot holds this car's grip peak and
-        // its force peak, so there is no honest way to clear one and keep the
-        // other, and the copy says as much.
+        // One saved slot holds this car's grip peak and its force peak, so
+        // there is no honest way to clear one and keep the other, and the
+        // copy says as much.
         private void ModeBRelearnCar_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
@@ -9039,14 +9033,11 @@ namespace TrueforceForAll.Plugin
 
         private int _supporterBadgeGen;
 
-        // Show the supporter tier. A dev DISPLAY override (the SUPPORTER access code) wins for
-        // preview; otherwise the real entitlement from get_my_entitlement. Display-only: this
-        // never gates backup (server-side RLS does). Hidden when not a supporter.
+        // Show the supporter tier from the real entitlement (get_my_entitlement). Display-only:
+        // this never gates backup (server-side RLS does). Hidden when not a supporter.
         private async Task RefreshSupporterBadgeAsync()
         {
             if (SupporterBadge == null) return;
-            string dev = _plugin?.Settings?.DevSupporterBadgeOverride ?? "";
-            if (!string.IsNullOrEmpty(dev)) { ShowSupporterBadge(dev, true); return; }
             if (_plugin == null || !_plugin.AuthIsSignedIn)
             {
                 SupporterBadge.Visibility = System.Windows.Visibility.Collapsed;
@@ -9057,15 +9048,13 @@ namespace TrueforceForAll.Plugin
             {
                 var (isSupporter, tier, _) = await _plugin.GetSupporterTierAsync(System.Threading.CancellationToken.None);
                 if (gen != _supporterBadgeGen || _plugin == null || !_plugin.AuthIsSignedIn) return;
-                string devNow = _plugin.Settings?.DevSupporterBadgeOverride ?? "";   // override set mid-await still wins
-                if (!string.IsNullOrEmpty(devNow)) { ShowSupporterBadge(devNow, true); return; }
-                if (isSupporter) ShowSupporterBadge(string.IsNullOrEmpty(tier) ? "Supporter" : tier, false);
+                if (isSupporter) ShowSupporterBadge(string.IsNullOrEmpty(tier) ? "Supporter" : tier);
                 else SupporterBadge.Visibility = System.Windows.Visibility.Collapsed;
             }
             catch { /* leave hidden */ }
         }
 
-        private void ShowSupporterBadge(string tier, bool preview)
+        private void ShowSupporterBadge(string tier)
         {
             if (SupporterBadge == null || SupporterBadgeText == null) return;
             string t = (tier ?? "").Trim().ToLowerInvariant();
@@ -9081,18 +9070,12 @@ namespace TrueforceForAll.Plugin
                 SupporterBadgeText.Foreground = new System.Windows.Media.SolidColorBrush(col);
             }
             catch { /* keep XAML defaults */ }
-            SupporterBadgeText.Text = (string.IsNullOrEmpty(tier) ? "Supporter" : tier) + (preview ? "  (preview)" : "");
+            SupporterBadgeText.Text = string.IsNullOrEmpty(tier) ? "Supporter" : tier;
             SupporterBadge.Visibility = System.Windows.Visibility.Visible;
         }
 
         // ---- Cloud upload gating (supporter-only) ----
         private int _cloudGatingGen;
-
-        // Dev display-only preview of the lapsed cloud-backup state (LAPSED access code). -1 = off;
-        // otherwise an index into the representative days-out cycle below. Never persisted, never
-        // enables uploads, never touches the real entitlement.
-        private int _lapsedPreviewIndex = -1;
-        private static readonly int[] _lapsedPreviewDays = { 400, 180, 30, 7, 1 };
 
         // Gate the cloud UPLOAD controls (Back up now, Auto-sync) on real supporter status, and the
         // whole section on sign-in. Download (Restore from cloud) stays active for any signed-in user,
@@ -9103,22 +9086,10 @@ namespace TrueforceForAll.Plugin
         //   * lapsed (retain date set): contextual lapsed note + an orange "Data removal in: X"
         //     countdown once the deletion date is within the warning window.
         //   * supporter: uploads enabled, no notes.
-        // Uses the REAL entitlement, never the dev display override, so the SUPPORTER preview code
-        // can't appear to unlock uploads.
+        // Uses the REAL entitlement, so nothing display-side can appear to unlock uploads.
         private async Task RefreshCloudBackupGatingAsync()
         {
             if (BackupNowBtn == null) return;   // panel not built yet
-            if (_lapsedPreviewIndex >= 0)
-            {
-                // Dev preview of the lapsed look. Uploads stay OFF (display only, grants nothing);
-                // download stays active if signed in. Representative removal date from the cycle.
-                if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = _plugin != null && _plugin.AuthIsSignedIn;
-                SetCloudUploadEnabled(false);
-                SetCloudBackupMessage("Preview (lapsed): your support has paused, so new cloud backups are off. You can still use \"Restore from cloud\" to download any backup you saved.");
-                int dp = _lapsedPreviewDays[_lapsedPreviewIndex];
-                SetRemovalCountdown(dp <= 180 ? (DateTime?)DateTime.UtcNow.AddDays(dp) : (DateTime?)null);
-                return;
-            }
             if (_plugin == null || !_plugin.AuthIsSignedIn)
             {
                 if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = false;
@@ -9714,7 +9685,6 @@ namespace TrueforceForAll.Plugin
         private readonly System.Collections.Generic.Queue<(string label, bool needsLink)> _toastQueue = new System.Collections.Generic.Queue<(string label, bool needsLink)>();
         private System.Windows.Threading.DispatcherTimer _toastTimer;
         private int _achievementsRefreshGen;
-        private int _toastPreviewIndex;
         private bool _discordLinked;          // cached link state for the toast's "Link" button
         private bool _achievementsWindowOpen; // single-flight guard for the tracker modal
 
@@ -9939,23 +9909,6 @@ namespace TrueforceForAll.Plugin
         {
             _toastQueue.Clear();
             HideToast();
-        }
-
-        // Dev preview: fire a toast cycling through achievements, WITHOUT touching the real
-        // baseline/"earned once" state (so it never suppresses a genuine first-earn).
-        private async Task PreviewAchievementToastAsync()
-        {
-            string label = "Tuner";
-            try
-            {
-                var list = _plugin != null ? await _plugin.GetAchievementsAsync(System.Threading.CancellationToken.None) : null;
-                if (list != null && list.Count > 0)
-                    label = list[_toastPreviewIndex % list.Count].Label ?? "Achievement";
-            }
-            catch { }
-            bool needsLink = (_toastPreviewIndex % 2 == 1);   // alternate so both toast variants preview
-            _toastPreviewIndex++;
-            EnqueueAchievementToast(label, needsLink);
         }
 
         // WARNEMAIL dev code: which warning stage (1..5) the next trigger sends. Cycles 1->5->1.
@@ -12830,16 +12783,12 @@ namespace TrueforceForAll.Plugin
         private const string TestCodeCatalog =
             "Trueforce For All test codes (type one in the access box):\n\n" +
             "HELP / CODES / ?   Show this list.\n" +
-            "SHARE          Force the 'spread the word' banner on now.\n" +
             "SUPPORT        Preview the periodic Patreon support modal now (pacing untouched).\n" +
             "SUPPORTRESET   Reset the support-prompt ladder back to its first rung.\n" +
-            "RATCHET        Play the auto-tuned ring-buffer banner sequence.\n" +
             "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
             "CAPTURE        Toggle the aligned telemetry+FFB capture CSV (v2 golden fixture format) under Documents\\TrueforceForAll.\n" +
-            "UDP            Toggle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> off.\n" +
             "FZBANNERS      Toggle the two info-tier Forza banners (SimHub-fallback notice + discovered-port) on to eyeball their button styling.\n" +
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
-            "REV            Redline buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
             "WELCOME        Reset the networked-welcome modal AND the Mode B intro seen state and re-trigger them now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt / HasSeenModeBIntro all cleared).\n" +
             "MOTDFLUSH      Clear the Message-of-the-day cache + all MOTD dismissals and refetch now (so dismissed/edited messages reappear; bypasses the ~6h cache).\n" +
@@ -12847,9 +12796,7 @@ namespace TrueforceForAll.Plugin
             "MOTDDATE<MMDDYYYY>  Preview the MOTD strip as if it were that date, e.g. MOTDDATE12252026, to see upcoming messages before they trigger.\n" +
             "MOTDLIVE       Leave MOTD preview and return to today's real messages.\n" +
             "CACHEFACTS     Clear the community car-facts cache (names/engine types/redlines); it refetches per car.\n" +
-            "CACHEBROWSE    Clear the community preset browse cache (the browse/search result lists).\n" +
             "CLEARCACHES    Clear ALL re-fetchable network caches at once: MOTD (+dismissals), community car-facts, browse lists. Leaves your car corrections, local detections, and sign-in alone.\n" +
-            "STALECACHES    Mark all re-fetchable network caches stale (MOTD, community facts, browse lists) so they refetch fresh, WITHOUT wiping the offline copies. Soft version of CLEARCACHES.\n" +
             "PREVIEW        Render the release-notes markdown on your clipboard exactly as the in-app 'What's new' will (copy the GitHub notes first, then type PREVIEW).\n" +
             "UPDATE         Simulate an available update (banner + update dialog).\n" +
             "CLOSESIM       Pick an installer and run it with /CloseSimHub=1 to test the silent SimHub auto-close. Closes SimHub.\n" +
@@ -12858,45 +12805,27 @@ namespace TrueforceForAll.Plugin
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "QUIETOFF       TEMPORARY: switch the quiet-spell hold OFF to reproduce the parked-car bug (effects and the stationary spring die about half a second after the game's force stops changing, and blip back when you touch a pedal); type it again to restore the fix. Session only. Toggle.\n" +
-            "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
             "ACFFB          Tap-free Assetto Corsa FFB: stream the game's own force value read from AC's shared memory (finalFF) instead of the USBPcap capture. Keep in-game FFB ON (gain 0 silences it). AC only; other games are untouched. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
-            "NOLOCK         Toggle 'Hand the wheel back to the game while paused' (on by default; the checkbox lives under Force feedback (advanced)). Off = the plugin keeps hold of the wheel and releases its force to zero while paused. Persists. Toggle.\n" +
-            "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
-            "HOMEBOX        Toggle the TF4ALL master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
-            "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
-            "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
-            "SLOTWRITE<n>   Write a rainbow (red, orange, yellow, green, spring green, cyan, azure, blue, violet, magenta) into LIGHTSYNC custom slot n (1-5, default 5) and light the whole bar. BACKS THE SLOT UP FIRST and refuses to write if it cannot read the original. Asymmetric on purpose: which end the RED lands on tells us which physical LED is index 1. PERSISTS on the wheel until restored.\n" +
-            "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
+            "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup taken before the plugin first wrote the slot. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
             "LEDRATE<ms>    DEV: how often the rev lights may update, 10 to 1000 ms (default 40, measured safe on a G PRO; G HUB itself uses 160). Live only, resets on restart. For finding whether a faster bar costs anything on the shared HID++ pipe: drive it and watch the FORCE.\n" +
             "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up FIRST and refuses if it cannot. PERSISTS across a restart, which is the point, and your colors stay held in the backup the whole time. SLOTRESTORE<n> puts them back. SLOTBLANKALL does all five at once (the real factory-wheel case) and SLOTRESTOREALL gives them all back.\n" +
             "SLOTPICK<n>    Designate which LIGHTSYNC custom slot the plugin may borrow for the live pattern: 1-5 for CUSTOM n, 0 for automatic (the first slot never programmed, or CUSTOM 5 when all five are in use). The slot's contents are backed up before the first write and SLOTRESTORE<n> puts them back. Persists and travels in backups.\n" +
             "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colors (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colors are possible on this wheel at all.\n" +
-            "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
             "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
             "CYCLEHINT      Re-arm the LIGHTSYNC intro modal and force the cycle-binding hint on screen even though the pattern cycle action is already bound. For testing them, since anyone working on them has it bound. Session only. Toggle.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
-            "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); F8FAST / F8SPAM = resend every 16 ms; 'F8SWEEP <ms>' = custom resend interval (0-1000), 'F8SWEEP FAST' / 'F8SWEEP SLOW' also work.\n" +
+            "F8SWEEP        Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. 'F8SWEEP FAST' = resend every 16 ms; 'F8SWEEP SLOW' = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval (0-1000).\n" +
             "F8ANY          G923 PS/PC only: run the legacy F8 rev lights in ANY game, including ones driving their own force feedback, so you can answer this by playing and revving rather than watching a test sweep. The question is whether the lights come on AND the game's force stays solid; if the force cuts, that is the answer, not a fault. Persists. Toggle.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
-            "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BAUTOS 1/0 auto strength per car, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BDIRK 0.5': MBCPD 1/0 direct centering, BDIRK center feel, BLOCKPT lockup slip point, BGTRIM braking-grip trim, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car (these persist); BFULL full-slip point + BSPD full-force speed km/h are live-only. The other tuning values now have sliders or checkboxes on the Telemetry Based FFB tab and the phone dash.\n" +
             "OLEDTEST       Show sample wheel-screen frames on the OLED so you can check it works (no game running).\n" +
-            "OLEDDIAG       Ask the wheel for its own OLED layout table, log it, then show a lettered ruler that maps each layout's field boundaries. How this wheel's layouts were decoded.\n" +
-            "OLEDMS <ms>    How often the wheel's OLED may be redrawn, in milliseconds (20-1000; default 100 = 10 per second). Lower is smoother and uses more of the wheel's shared command channel. Type OLEDMS with no number to read the current value. Persists.\n" +
-            "OLEDANY        Run the wheel's OLED screen regardless of Telemetry Based FFB, to find out whether writing the screen really does cut a game's own force feedback the way the rev lights do (never tested for the screen; the restriction is inherited). EXPECT THE FORCE TO DROP OUT. Persists. Toggle.\n" +
-            "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Also clears that car's learned auto strength, which shares the same saved slot. Use after a tune or tire change that leaves the old calibration feeling off. Same as the Re-learn car button on the Telemetry Based FFB tab.\n" +
-            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
-            "SUPPORTER / BADGE   Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
-            "TOAST / CELEBRATE   Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
-            "SHOWALL / ALLACHIEVEMENTS   Reveal hidden/secret achievements (OG, Founding Supporter) in the tracker even when unearned, for testing. Reopen the tracker after toggling. Persists. Toggle.\n" +
+            "OLEDMS <ms>    How often the wheel's OLED may be redrawn, in milliseconds (20-1000; default 20 = 50 per second). Lower is smoother and uses more of the wheel's shared command channel. Type OLEDMS with no number to read the current value. Persists.\n" +
             "WARNEMAIL / WARN   Email yourself the backup-deletion warning, cycling 6mo -> 3mo -> 1mo -> 1wk -> 1day each use. Preview only; never changes your real data or timer.\n" +
-            "LAPSED / LAPSE   Preview the lapsed cloud-backup look in the Account tab (note + orange 'Data removal in: X'), cycling 400d -> 180d -> 30d -> 7d -> 1d -> off. Display only; uploads stay off, nothing changed.\n" +
-            "TEST           Retired (2026-08-01): used to unlock the iRacing section. Now only answers with a note; rev lights have a toggle on the Telemetry FFB tab.\n" +
-            "IRRAW          Throwaway iRacing probe (delete after use): logs whether SimHub's raw data object reaches us live per tick, whether SteeringWheelTorque carries force while iRacing's own force feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST array is reachable. One arming dump plus one '[TF4ALL] IRRAW' line every 5 s in SimHub.txt. Toggle.";
+            "IRRAW          iRacing raw-data support probe: logs what the user's SimHub build exposes (whether SimHub's raw data object reaches us live per tick, whether SteeringWheelTorque carries force while iRacing's own force feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST array is reachable). One arming dump plus one '[TF4ALL] IRRAW' line every 5 s in SimHub.txt. Toggle.";
 
         private void CommitAccessCode()
         {
@@ -12940,12 +12869,13 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings == null || AccessCodeBox == null) return;
             if (string.IsNullOrEmpty(code)) return;
 
-            // Live Mode B tuning: "NAME value" (e.g. "BSAT 1.2", "BEMA 30",
-            // "MODEB 1"). Two tokens with a numeric second token; single-word
+            // Live Mode B tuning: "NAME value" (e.g. "BDIRK 0.5", "BLOCKPT 0.2",
+            // "MBCPD 1"). Two tokens with a numeric second token; single-word
             // codes below never match. Dispatches to the plugin-side
             // clamp+apply switch (SetModeBParam) and echoes its status. Names
             // that map to a Settings field persist; BFULL/BSPD are live-only
-            // model probes.
+            // model probes. The other Mode B tunables have sliders or
+            // checkboxes on the Telemetry Based FFB tab and the phone dash.
             {
                 var parts = code.Split(new[] { ' ', '=', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 2 && float.TryParse(parts[1],
@@ -12953,17 +12883,8 @@ namespace TrueforceForAll.Plugin
                         System.Globalization.CultureInfo.InvariantCulture, out float mbVal))
                 {
                     string pn = parts[0].ToUpperInvariant();
-                    if (pn == "MODEB" || pn == "BSIGN" || pn == "BSAT"
-                        || pn == "BPEAK" || pn == "BFLOOR" || pn == "BFULL" || pn == "BSPD"
-                        || pn == "BRISE" || pn == "BEMA" || pn == "BDAMP" || pn == "BCENTER"
-                        || pn == "BLAT" || pn == "BDIRK"
-                        || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
-                        || pn == "BLEARN" || pn == "BGTRIM" || pn == "BLDEM"
-                        || pn == "BAUTOS"
-                        || pn == "MBREV" || pn == "BREVG"
-                       
-                        || pn == "MBLEAD" || pn == "BLEAD"
-                        || pn == "BMINF" || pn == "MBCPD" || pn == "BCLEAD")
+                    if (pn == "MBCPD" || pn == "BDIRK" || pn == "BLOCKPT" || pn == "BGTRIM"
+                        || pn == "BCIRCLE" || pn == "BLEARN" || pn == "BFULL" || pn == "BSPD")
                     {
                         string st = _plugin.SetModeBParam(pn, mbVal);
                         // Re-sync ALL controls from the now-updated settings
@@ -13057,13 +12978,6 @@ namespace TrueforceForAll.Plugin
             }
             // Dev-only: clear the community car-facts cache (names/engine types/
             // redlines). Refetches per car on the next car open.
-            if (code.Equals("RESETGRIP", StringComparison.OrdinalIgnoreCase))
-            {
-                string gripStatus = _plugin.RequestGripCalReset();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null) AccessCodeStatus.Text = gripStatus;
-                return;
-            }
             if (code.Equals("CACHEFACTS", StringComparison.OrdinalIgnoreCase))
             {
                 _plugin.Settings.CommunityFactCache?.Clear();
@@ -13072,15 +12986,6 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Community car-facts cache cleared; it refetches per car.";
-                return;
-            }
-            // Dev-only: clear the community preset browse cache (result lists).
-            if (code.Equals("CACHEBROWSE", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.ClearBrowseCache();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Community preset browse cache cleared.";
                 return;
             }
             // Dev-only: clear every re-fetchable NETWORK cache at once. Excludes
@@ -13100,19 +13005,6 @@ namespace TrueforceForAll.Plugin
                 _motdStrip?.Refresh(forceFetch: true);
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Cleared all network caches (MOTD, community facts, browse lists).";
-                return;
-            }
-            // Dev-only: mark every re-fetchable network cache stale WITHOUT wiping
-            // it, so the next access refetches fresh while offline copies still
-            // apply. Soft counterpart to CLEARCACHES.
-            if (code.Equals("STALECACHES", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.MarkAllNetworkCachesStale();
-                _engineCommunityFetchedKey = null;   // active car re-evaluates next tick
-                AccessCodeBox.Text = string.Empty;
-                _motdStrip?.Refresh(forceFetch: true);
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "All network caches marked stale; refetching fresh (offline copies kept).";
                 return;
             }
             // Dev-only: launch a chosen installer with /CloseSimHub=1 so the
@@ -13172,49 +13064,6 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = "Support-prompt pacing reset.";
                 return;
             }
-            // Dev-only: force the one-and-done word-of-mouth banner to show
-            // now (it normally needs ~2h of banked seat time). Lets us see
-            // the real banner + share dialog before any of it ships. Resets
-            // the dismissed latch too, so it's repeatable.
-            if (code.Equals("SHARE", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.Settings.ActiveStreamingSeconds = double.MaxValue;
-                _plugin.Settings.ShareCtaDismissed = false;
-                _plugin.PersistSettings();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Word-of-mouth banner forced on (test).";
-                RefreshShareCtaBanner();
-                return;
-            }
-
-            // Dev-only: fire a synthetic auto-ratchet sequence so the
-            // inline "Auto-tuned ring buffer" banner can be exercised
-            // without waiting for real underruns. The full UP-then-DOWN
-            // arc demonstrates:
-            //   t=0.0s   TF up  8 → 16    → banner appears
-            //   t=0.7s   TF up  16 → 32   → same banner, "8 → 32"
-            //   t=1.4s   Audio up 16 → 32 → same banner, both rings
-            //   t=3.5s   TF down 32 → 16  → TF segment shrinks to "8 → 16"
-            //   t=4.2s   TF down 16 → 8   → TF back to start, segment drops
-            //   t=4.9s   Audio down 32 → 16 → audio back to start, banner auto-dismisses
-            if (code.Equals("RATCHET", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_plugin != null)
-                {
-                    _plugin.DebugFireRatchet(true,  8,  16);
-                    ScheduleDispatcherDelay(700,  () => _plugin.DebugFireRatchet(true,  16, 32));
-                    ScheduleDispatcherDelay(1400, () => _plugin.DebugFireRatchet(false, 16, 32));
-                    ScheduleDispatcherDelay(3500, () => _plugin.DebugFireRatchet(true,  32, 16));
-                    ScheduleDispatcherDelay(4200, () => _plugin.DebugFireRatchet(true,  16, 8));
-                    ScheduleDispatcherDelay(4900, () => _plugin.DebugFireRatchet(false, 32, 16));
-                }
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Synthetic ratchet sequence fired (UP then DOWN; ~5 s total). Banner should appear, evolve, then auto-dismiss as both rings return to start.";
-                return;
-            }
-
             // Dev-only: toggle the aligned telemetry+FFB capture log (v2 golden
             // format, the replay-harness fixture recorder). Pure observation;
             // safe while driving. See TrueforcePlugin.ToggleFfbCapture.
@@ -13244,25 +13093,10 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Toggle the persistent UDP-setup banner so the whole flow (banner ->
-            // "Set up..." -> jump to the Forza UDP section on the Settings tab)
-            // can be tested without a live session: off -> Forza -> off.
-            // Lands on the next refresh tick.
-            if (code.Equals("UDP", StringComparison.OrdinalIgnoreCase))
-            {
-                _forceUdpSetupBanner = (_forceUdpSetupBanner + 1) % 2;
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text =
-                        _forceUdpSetupBanner == 1 ? "UDP setup banner: simulating Forza (type UDP again to clear)."
-                      : "UDP setup banner simulation cleared.";
-                return;
-            }
-
             // Toggle the two info-tier Forza banners (SimHub-fallback notice +
             // discovered-port banner) so their InfoBannerButton styling can be
             // checked without getting Forza into those telemetry states. Lands
-            // on the next refresh tick, same as UDP.
+            // on the next refresh tick.
             if (code.Equals("FZBANNERS", StringComparison.OrdinalIgnoreCase))
             {
                 _forceForzaInfoBanners = (_forceForzaInfoBanners + 1) % 2;
@@ -13292,63 +13126,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Dev-only: cycle the supporter BADGE through tiers so the badge UI can be
-            // previewed without being a real supporter. DISPLAY ONLY: it sets a local
-            // override feeding only the badge label; the real backup gate is enforced
-            // server-side (RLS), so this never grants supporter access. Persists. Cycles
-            // none -> Supporter -> Gold Supporter -> Platinum Supporter -> none.
-            if (code.Equals("SUPPORTER", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("BADGE", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                string cur = _plugin.Settings.DevSupporterBadgeOverride ?? "";
-                string next;
-                switch (cur)
-                {
-                    case "":               next = "Supporter";          break;
-                    case "Supporter":      next = "Gold Supporter";     break;
-                    case "Gold Supporter": next = "Platinum Supporter"; break;
-                    default:               next = "";                   break;
-                }
-                _plugin.Settings.DevSupporterBadgeOverride = next;
-                try { _plugin.PersistSettings(); } catch { }
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = string.IsNullOrEmpty(next)
-                        ? "Supporter badge override cleared (shows your real entitlement again)."
-                        : "Supporter badge preview: " + next + " (DISPLAY ONLY; does not grant supporter access).";
-                _ = RefreshSupporterBadgeAsync();
-                return;
-            }
-
-            // Dev-only: preview the achievement celebration toast, cycling through the
-            // achievements on each use. Does NOT affect the real "earned once" baseline.
-            if (code.Equals("TOAST", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("CELEBRATE", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                _ = PreviewAchievementToastAsync();
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Preview achievement toast fired (does not affect your real progress).";
-                return;
-            }
-
-            // Dev-only: reveal the secret achievements (OG, Founding Supporter) in the tracker even
-            // when unearned, by asking the server to include them (get_my_achievements p_include_secret).
-            // Toggle; persists (machine-local).
-            if (code.Equals("SHOWALL", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("ALLACHIEVEMENTS", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                bool next = !_plugin.Settings.DevShowAllAchievements;
-                _plugin.Settings.DevShowAllAchievements = next;
-                try { _plugin.PersistSettings(); } catch { }
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = next
-                        ? "Showing ALL achievements incl. hidden ones. Reopen the achievements tracker to see them."
-                        : "Hidden achievements back to normal (shown only when earned).";
-                return;
-            }
-
             // Dev-only: email yourself the backup-deletion warning, cycling stage 1..5
             // (6mo / 3mo / 1mo / 1wk / 1day) on each use so you can see the escalating copy.
             // Sends to your signed-in address; never changes your real entitlement / timer.
@@ -13369,47 +13146,25 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Dev-only: cycle a DISPLAY-ONLY preview of the lapsed cloud-backup state in the Account
-            // tab (the contextual note + the orange "Data removal in: X" countdown), stepping the
-            // representative removal date 400d -> 180d -> 30d -> 7d -> 1d -> off. Never enables
-            // uploads and never touches your real entitlement; it only changes what is drawn.
-            if (code.Equals("LAPSED", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("LAPSE", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                _lapsedPreviewIndex++;
-                if (_lapsedPreviewIndex >= _lapsedPreviewDays.Length) _lapsedPreviewIndex = -1;   // wrap to off
-                _ = RefreshCloudBackupGatingAsync();
-                if (AccessCodeStatus != null)
-                {
-                    AccessCodeStatus.Text = _lapsedPreviewIndex < 0
-                        ? "Lapsed cloud-backup preview off (showing your real state). Open the Account tab to see it."
-                        : "Lapsed cloud-backup preview: removal in ~" + _lapsedPreviewDays[_lapsedPreviewIndex]
-                          + " days (display only; uploads stay off, nothing changed). Open the Account tab to see it.";
-                }
-                return;
-            }
-
             // Dev-only: toggle the experimental legacy "F8 12" rev-LED sweep on
             // the wheel's gamepad/DirectInput collection (off the HID++ FFB pipe).
             // Confirms on hardware whether the legacy LED command lights the strip
-            // AND coexists with live FFB -- a non-contending LED path we could use
+            // AND coexists with live FFB: a non-contending LED path we could use
             // in every game, not just iRacing. Toggle: type it again to stop
-            // (LEDs off). See LegacyLedF8Channel + project_led_ffb_contention_model.
+            // (LEDs off). "F8SWEEP FAST" resends every 16 ms, "F8SWEEP SLOW" is
+            // paced write-on-change, "F8SWEEP <ms>" sets a custom resend
+            // interval. See LegacyLedF8Channel + project_led_ffb_contention_model.
             {
                 var f8parts = code.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                 string f8cmd = f8parts.Length > 0 ? f8parts[0].ToUpperInvariant() : string.Empty;
-                if (f8cmd == "F8SWEEP" || f8cmd == "F8" || f8cmd == "F8FAST"
-                    || f8cmd == "F8SPAM" || f8cmd == "F8SLOW")
+                if (f8cmd == "F8SWEEP")
                 {
                     AccessCodeBox.Text = string.Empty;
                     int? resend = null;        // null => simple on/off toggle (paced)
-                    if (f8cmd == "F8FAST" || f8cmd == "F8SPAM") resend = 16;
-                    else if (f8cmd == "F8SLOW") resend = 0;
-                    else if (f8parts.Length > 1)
+                    if (f8parts.Length > 1)
                     {
                         string a = f8parts[1].ToUpperInvariant();
-                        if (a == "FAST" || a == "SPAM") resend = 16;
+                        if (a == "FAST") resend = 16;
                         else if (a == "SLOW") resend = 0;
                         else if (int.TryParse(f8parts[1], out int ms))
                             resend = Math.Max(0, Math.Min(1000, ms));
@@ -13436,50 +13191,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Dev-only one-shot: for every car whose default points at a USER
-            // preset, promote that user preset to a factory built-in (replacing
-            // existing built-in(s) for that car), repoint the factory car-default,
-            // and delete the user preset. Other user presets for the same car
-            // stay put. Idempotent.
-            // Dev-only one-shot: legacy 'Forza_<ordinal>' car ids from the old
-            // UDP fallback get normalized to 'Car_<ordinal>' (what SimHub's
-            // data feed emits for Forza). Per-car rule: if Car_<n> already
-            // exists, drop the Forza_<n>; otherwise rename Forza_<n> to
-            // Car_<n> and rewrite the inner CarId/PresetName fields.
-            if (code.Equals("NORMALIZEFORZA", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                if (_plugin != null)
-                {
-                    int n = _plugin.DevNormalizeForzaCarIds(out var details);
-                    if (n > 0) _presetManager?.RefreshLists();
-                    if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
-                    TrueforceDialog.Show(Window.GetWindow(this),
-                        "Trueforce For All: normalize Forza car ids", details,
-                        DialogKind.Info);
-                }
-                return;
-            }
-
-            if (code.Equals("FOLDDEFAULTS", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                if (_plugin != null)
-                {
-                    int n = _plugin.DevConsolidateUserCarDefaults(out var details);
-                    // The plugin reloads its own caches; the preset manager
-                    // caches its row collections separately and needs an
-                    // explicit refresh.
-                    if (n > 0) _presetManager?.RefreshLists();
-                    if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
-                    if (n > 0)
-                        TrueforceDialog.Show(Window.GetWindow(this),
-                            "Trueforce For All: consolidated car defaults", details,
-                            DialogKind.Info);
-                }
-                return;
-            }
-
             // Dev-only: feel the stationary spring on the desk without a game.
             // Drives a synthetic centering force that flips direction every
             // ~1.5 s for ~6 s, bypassing the enabled/speed/steering gates.
@@ -13492,18 +13203,6 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Stationary-spring test (~6 s): hold the wheel; the motor pushes one way, then the other, every ~1.5 s, so you can feel the spring strength and direction. (Needs the wheel connected and streaming.)";
-                return;
-            }
-
-            // Dev-only: exercise the rev limiter's RPM threshold + hold from
-            // synthetic telemetry (the Test button only plays the buzz). Sweeps
-            // below threshold (silent) -> over redline (buzz) -> off.
-            if (code.Equals("REV", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.DebugRevLimiterBounce();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Rev limiter test (~5 s): silent for ~1.5 s (below redline), buzzes ~2.7 s (at/over redline), then stops. Confirms it engages on RPM and holds, independent of the Test button.";
                 return;
             }
 
@@ -13659,12 +13358,13 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // THROWAWAY DIAGNOSTIC SPIKE. Answers, from SimHub.txt on a live
-            // rig, whether SimHub's raw iRacing object reaches a third-party
-            // plugin per tick, whether SteeringWheelTorque carries force while
-            // iRacing's own force feedback is disabled, and whether the 360 Hz
-            // SteeringWheelTorque_ST array is reachable through the telemetry
-            // object's dictionary base. Delete with the probe in
+            // iRacing raw-data support probe. Answers, from SimHub.txt on a
+            // user's rig, what their SimHub build exposes: whether SimHub's raw
+            // iRacing object reaches a third-party plugin per tick, whether
+            // SteeringWheelTorque carries force while iRacing's own force
+            // feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST
+            // array is reachable through the telemetry object's dictionary base.
+            // Toggle. The probe itself lives in
             // TrueforcePlugin.DebugToggleIracingRawProbe.
             if (code.Equals("IRRAW", StringComparison.OrdinalIgnoreCase))
             {
@@ -13742,29 +13442,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Opt in to the experimental FFB-capture path (issue #8: HID++
-            // very-long report 0x12 + lower index-resolve floor). Persisted and
-            // applied live; drive to let it re-resolve the FFB index. Toggle.
-            if (code.Equals("FFBX", StringComparison.OrdinalIgnoreCase))
-            {
-                bool on = _plugin.DebugToggleExperimentalCapture();
-                // Reflect the new state on both checkboxes without re-firing
-                // their handlers (the plugin setter already ran above).
-                var prevSuppress = _suppressEvents;
-                _suppressEvents = true;
-                try
-                {
-                    if (ExperimentalFfbCheck != null) ExperimentalFfbCheck.IsChecked = on;
-                }
-                finally { _suppressEvents = prevSuppress; }
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "Experimental FFB capture ON (persists). Load a game and drive for a few seconds so the tap re-resolves the FFB index; check the FFB-tap status. Type FFBX again to turn it off."
-                        : "Experimental FFB capture OFF. Back to the standard capture path.";
-                return;
-            }
-
             // Tap-free AC FFB: re-inject AC's shared-memory finalFF instead of
             // the USBPcap wire capture. The shm value wins while fresh; the
             // pcap tap (if present at all) remains the fallback. Persisted and
@@ -13827,8 +13504,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Issue #13 test: stop the Trueforce stream while paused so the wheel
-            // hands back to the game's native FFB / auto-center. Persists. Toggle.
             if (code.Equals("OLEDTEST", StringComparison.OrdinalIgnoreCase))
             {
                 if (_plugin == null) return;
@@ -13840,19 +13515,6 @@ namespace TrueforceForAll.Plugin
                         + "line beside the wheel-screen settings for each step. Run it with no game driving "
                         + "the wheel: writing the screen while a game sends its own force feedback cuts that "
                         + "force feedback out.";
-                return;
-            }
-
-            if (code.Equals("OLEDDIAG", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_plugin == null) return;
-                _plugin.ReportOledLayouts();
-                PollOledStatus();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Reading the wheel's own layout table into the log, then showing "
-                        + "a lettered ruler so each layout's field boundaries can be read off the screen. "
-                        + "Look for [OLED] lines in SimHub.txt.";
                 return;
             }
 
@@ -13876,21 +13538,6 @@ namespace TrueforceForAll.Plugin
                         + "Drive with it and watch the force feedback: if it starts to feel soft or cuts, "
                         + "you have found the limit. OLEDMS with no number just reports the current value.";
                 }
-                return;
-            }
-
-            if (code.Equals("OLEDANY", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_plugin?.Settings == null) return;
-                bool on = !_plugin.Settings.OledIgnoreModeBGate;
-                _plugin.Settings.OledIgnoreModeBGate = on;
-                _plugin.PersistSettings();
-                if (!on) _plugin.TurnOffOled();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "OLED gate OFF: the wheel screen now runs in any game, including ones sending their own force feedback. This is the experiment, so EXPECT the force to cut out; if it does, that confirms the screen shares the rev lights' limitation. Type OLEDANY again to put the gate back."
-                        : "OLED gate back on: the wheel screen runs only under Telemetry Based FFB again.";
                 return;
             }
 
@@ -13926,66 +13573,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            if (code.Equals("NOLOCK", StringComparison.OrdinalIgnoreCase))
-            {
-                bool on = _plugin.DebugToggleStopStreamOnPause();
-                // Keep the visible checkbox in sync without re-firing its handler.
-                var prevSuppress = _suppressEvents;
-                _suppressEvents = true;
-                try { if (StopStreamOnPauseCheck != null) StopStreamOnPauseCheck.IsChecked = on; }
-                finally { _suppressEvents = prevSuppress; }
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "Pause behavior: hand the wheel back to the game while paused, ON (the default; persists)."
-                        : "Pause behavior: hand-back OFF (persists). The plugin keeps hold of the wheel and releases its force to zero while paused. Type NOLOCK again for the default.";
-                return;
-            }
-
-            // Opt in to the experimental home-screen Feedback gain tile. Splices a
-            // Trueforce master + audio gain box into SimHub's hardcoded Feedback
-            // section (next to Motors/Wind) via a defensive visual-tree injection.
-            // Persisted and applied live. Toggle.
-            if (code.Equals("HOMEBOX", StringComparison.OrdinalIgnoreCase))
-            {
-                bool on = _plugin.DebugToggleFeedbackBox();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "Home Feedback gain tile ON (persists). Open SimHub's home screen; a 'Trueforce' box appears next to Motors/Wind. If it doesn't show, the home tab may not be open yet, switch to it. Type HOMEBOX again to turn it off."
-                        : "Home Feedback gain tile OFF. Removed from the home screen.";
-                return;
-            }
-
-            // Escape hatch for the import preview modal. Off by default; flip
-            // on to fall back to today's silent commit-on-pick path if the
-            // modal breaks on a specific file. Persists.
-            if (code.Equals("PREVIEWOFF", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.Settings.ImportPreviewBypass = !_plugin.Settings.ImportPreviewBypass;
-                _plugin.PersistSettings();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = _plugin.Settings.ImportPreviewBypass
-                        ? "Import preview OFF. Picks commit silently on Import. Type PREVIEWOFF again to re-enable."
-                        : "Import preview ON. Import shows a confirmation modal before committing.";
-                return;
-            }
-
-            // Dev/test: force the "is your FFB working?" success banner on now,
-            // so the Yes (prefilled report) and No (troubleshooter) paths can be
-            // exercised without real hardware. Dismiss (or click either button)
-            // clears it.
-            if (code.Equals("FFBOK", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.DebugShowSuccessBanner();
-                RefreshExperimentalSuccessBanner();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Success banner forced on (test). Click 'Yes, it's working' to see the prefilled report, or 'No' for the troubleshooter. The x or either button clears it.";
-                return;
-            }
-
             // Reveal (or hide) the Diagnostics "Pick device manually..."
             // control. Off by default since auto-discovery + identity-based
             // self-heal cover the realistic failure modes and a forgotten
@@ -14012,7 +13599,7 @@ namespace TrueforceForAll.Plugin
                 int now = WheelLedChannel.ChangeMinMsValue;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Rev lights now update at most every " + now
-                        + " ms (about " + (1000 / Math.Max(now, 1)) + " Hz). Live only, back to 160 on restart. "
+                        + " ms (about " + (1000 / Math.Max(now, 1)) + " Hz). Live only, back to 40 on restart. "
                         + "Drive it and watch the FORCE, not just the lights.";
                 return;
             }
@@ -14149,56 +13736,27 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Write an ASYMMETRIC rainbow into a slot, or put the user's own
-            // colors back. Asymmetric on purpose: which end the RED lands on is
-            // what tells us which physical LED the code counts as number 1.
-            if (code.StartsWith("SLOTWRITE", StringComparison.OrdinalIgnoreCase)
-                || code.StartsWith("SLOTRESTORE", StringComparison.OrdinalIgnoreCase))
+            // Put the user's own colors back into a slot from the backup taken
+            // before the plugin first wrote it.
+            if (code.StartsWith("SLOTRESTORE", StringComparison.OrdinalIgnoreCase))
             {
-                bool restore = code.StartsWith("SLOTRESTORE", StringComparison.OrdinalIgnoreCase);
                 int n;
-                if (!int.TryParse(code.Substring(restore ? "SLOTRESTORE".Length : "SLOTWRITE".Length).Trim(), out n)
+                if (!int.TryParse(code.Substring("SLOTRESTORE".Length).Trim(), out n)
                     || n < 1 || n > 5) n = 5;
                 int slot = n - 1;
                 AccessCodeBox.Text = string.Empty;
 
-                bool ok; string msg;
+                string msg;
                 // undoBlank: typing SLOTRESTORE is a person asking for their
                 // colors back, which is exactly the case the automatic paths must
                 // not do on their own.
-                if (restore) ok = _plugin.RestoreSlot(slot, out msg, undoBlank: true);
-                else
-                {
-                    var wheelOrder = new byte[][]
-                    {
-                        new byte[] { 255, 0, 0 },   new byte[] { 255, 96, 0 },  new byte[] { 255, 255, 0 },
-                        new byte[] { 0, 255, 0 },   new byte[] { 0, 255, 128 }, new byte[] { 0, 255, 255 },
-                        new byte[] { 0, 128, 255 }, new byte[] { 0, 0, 255 },   new byte[] { 128, 0, 255 },
-                        new byte[] { 255, 0, 255 },
-                    };
-                    var rgb = new byte[WheelLedChannel.LedCount * 3];
-                    for (int i = 0; i < WheelLedChannel.LedCount; i++)
-                    {
-                        rgb[i * 3 + 0] = wheelOrder[i][0];
-                        rgb[i * 3 + 1] = wheelOrder[i][1];
-                        rgb[i * 3 + 2] = wheelOrder[i][2];
-                    }
-                    ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
-                    { Slot = (byte)slot, DirectionWire = 3, Rgb = rgb }, out msg, WheelLedChannel.LedCount);
-                    if (ok) _plugin.TestRpmLeds();
-                }
+                bool ok = _plugin.RestoreSlot(slot, out msg, undoBlank: true);
 
-                string detail = restore
-                    ? "Check the wheel's own LIGHTSYNC menu: CUSTOM " + n + " should look as it did before."
-                    : "The strip is now sweeping: it fills 0 to 10 and back, twice, then holds the full bar."
-                      + "\n\nColors stored, LED 1 to LED 10: red, orange, yellow, green, spring "
-                      + "green, cyan, azure, blue, violet, magenta."
-                      + "\n\nWhich end does the fill START from, and which color is there? That says "
-                      + "which physical LED the code counts as number 1."
-                      + "\n\nType SLOTRESTORE" + n + " to put your own colors back.";
+                string detail = "Check the wheel's own LIGHTSYNC menu: CUSTOM " + n
+                    + " should look as it did before the plugin first wrote the slot.";
 
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    restore ? "Restore light slot" : "Write light slot",
+                    "Restore light slot",
                     (msg ?? "(no detail)") + "\n\n" + detail,
                     ok ? DialogKind.Info : DialogKind.Warning);
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
@@ -14214,22 +13772,6 @@ namespace TrueforceForAll.Plugin
                 TrueforceDialog.Show(Window.GetWindow(this), "Wheel slot-feature probe (read-only)", body);
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Slot probe done. Full detail is in the dialog and in SimHub.txt.";
-                return;
-            }
-
-            // Show what the ACTIVE car resolves to, and sweep the strip so the
-            // fill is visible rather than just described.
-            if (code.Equals("CARCOLORS", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                string message;
-                bool ok = _plugin.ShowActiveCarColors(out message);
-                if (ok) _plugin.TestRpmLeds();
-                TrueforceDialog.Show(Window.GetWindow(this), "This car's light pattern",
-                    (message ?? "(no detail)")
-                    + (ok ? "\n\nThe strip is sweeping so you can see it fill. Select the designated slot on the wheel if it is not already showing." : ""),
-                    ok ? DialogKind.Info : DialogKind.Warning);
-                if (AccessCodeStatus != null) AccessCodeStatus.Text = message;
                 return;
             }
 
@@ -14294,17 +13836,6 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Manual device picker revealed (Diagnostics + the contextual banner). Persists. Type MANUALPIN again to hide it."
                         : "Manual device picker hidden (persists).";
-                return;
-            }
-
-            if (code.Equals("TEST", StringComparison.OrdinalIgnoreCase))
-            {
-                // Retired 2026-08-01: the iRacing section is permanently
-                // hidden (the external FFB handoff it configured is gone).
-                // Answer instead of silently ignoring a code that used to work.
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "The iRacing section is retired. Rev lights now have a toggle on the Telemetry FFB tab.";
                 return;
             }
 
@@ -15304,12 +14835,11 @@ namespace TrueforceForAll.Plugin
             PreviewOledNow();
         }
 
-        // The OLED sample sequence and the layout report used to be buttons in
-        // the settings section. They are diagnostics, not settings, and the
-        // section had grown too long to spend two controls on them, so they
-        // moved to access codes (OLEDTEST / OLEDDIAG). The code behind them is
-        // unchanged and still worth having: the report is how this wheel's
-        // layout table was read in the first place.
+        // The OLED sample sequence used to be a button in the settings section.
+        // It is a diagnostic, not a setting, and the section had grown too long
+        // to spend a control on it, so it moved to the OLEDTEST access code. The
+        // layout report that sat beside it has been retired: it was how this
+        // wheel's layout table was read in the first place, and that job is done.
 
         /// <summary>Live-poll the controller's status while a sequence runs, so
         /// a wheel that never answers says so in the panel and not only in the
@@ -16768,11 +16298,6 @@ namespace TrueforceForAll.Plugin
             // path or have nothing to choose), but their dispatch still
             // happens in the same loop afterward so the summary at the end
             // covers the whole batch.
-            //
-            // PREVIEWOFF access code bypasses the preview entirely
-            // (commit-on-pick path), kept as an escape hatch while the
-            // modal stabilizes.
-            bool previewBypass = plugin.Settings != null && plugin.Settings.ImportPreviewBypass;
             var candidates = new List<ImportCandidate>(paths.Length);
             foreach (var path in paths)
                 candidates.Add(BuildImportCandidate(plugin, path));
@@ -16783,7 +16308,7 @@ namespace TrueforceForAll.Plugin
                  || c.Kind == ImportCandidateKind.CarPreset)
                 && c.Items != null && c.Items.Count > 0);
 
-            if (anyPreviewable && !previewBypass)
+            if (anyPreviewable)
             {
                 var previewable = candidates
                     .Where(c => c.Kind == ImportCandidateKind.Pack
@@ -16805,26 +16330,6 @@ namespace TrueforceForAll.Plugin
                     {
                         case ImportCandidateKind.Pack:
                         {
-                            if (previewBypass)
-                            {
-                                // Full-pack import via the old commit-on-pick
-                                // path. Bypasses BuildImportCandidate's
-                                // manifest-shaped enumeration so even
-                                // manifest-incomplete zips import the full
-                                // set of zip entries.
-                                var r0 = plugin.ImportPack(c.Path);
-                                if (r0.PresetsImported > 0 || r0.CarsImported > 0)
-                                {
-                                    presetsImported += r0.PresetsImported;
-                                    carsImported    += r0.CarsImported;
-                                    packsImported++;
-                                }
-                                else
-                                {
-                                    filesSkipped++;
-                                }
-                                continue;
-                            }
                             // Preview path: collect the user's per-row choices.
                             // Skip the candidate when every item got unchecked
                             // in the modal — nothing to commit and we'd
@@ -17273,24 +16778,12 @@ namespace TrueforceForAll.Plugin
                 $"Audio ring{auLabel}: {auWindow} glitches/min";
         }
 
-        // Inline ratchet-notice banner state. Per-ring "original" caps are
-        // pinned to whatever was active when the banner first became
-        // visible; "latest" updates with each subsequent bump. Both rings
-        // share one banner so the user gets at most one consolidated
-        // notice no matter how many bumps land in the same session.
-        // Cleared on Revert / Dismiss. Not persisted (the resized caps are
-        // already saved by Apply*RingSize; the banner itself is ephemeral).
-        private int? _ratchetTfOriginalCap;
-        private int  _ratchetTfLatestCap;
-        private int? _ratchetAudioOriginalCap;
-        private int  _ratchetAudioLatestCap;
-
         private void OnAutoRatchetBumped(bool isTf, int oldCap, int newCap)
         {
             // Fired on the producer thread. Marshal to UI to refresh the
             // live Performance-tab readout (ring caps / counters) so it
-            // stays accurate while Auto adjusts. The old inline notice
-            // banner is intentionally NOT shown: in Auto the ratchet is
+            // stays accurate while Auto adjusts. No per-bump notice
+            // banner is shown (the old one was removed): in Auto the ratchet is
             // self-healing (walks all the way back down once things go
             // quiet, and re-drains a warm-started seed next session), so a
             // per-bump banner over-signals a value the user delegated to
@@ -17300,118 +16793,6 @@ namespace TrueforceForAll.Plugin
                 Dispatcher.BeginInvoke(new Action(RefreshFromPlugin));
             }
             catch { }
-        }
-
-        /// <summary>Update (or first-time show) the inline ratchet notice
-        /// banner. Per-ring "original" cap is pinned on first event so
-        /// successive bumps consolidate into one banner that always shows
-        /// the net delta from session start (or first event of this run).
-        /// Handles both UP and DOWN events; if every tracked ring's
-        /// latest cap returns to its pinned original, the banner auto-
-        /// dismisses because there's nothing notable left to show.
-        /// Replaces the old centered Window modal that stole foreground
-        /// and re-opened on every bump.</summary>
-        private void UpdateRatchetNotice(bool isTf, int oldCap, int newCap)
-        {
-            if (isTf)
-            {
-                if (_ratchetTfOriginalCap == null) _ratchetTfOriginalCap = oldCap;
-                _ratchetTfLatestCap = newCap;
-            }
-            else
-            {
-                if (_ratchetAudioOriginalCap == null) _ratchetAudioOriginalCap = oldCap;
-                _ratchetAudioLatestCap = newCap;
-            }
-
-            // If every tracked ring is back to where it started, there's
-            // nothing to report. Auto-dismiss so the user isn't left
-            // staring at a stale "ring was bumped" notice after the
-            // ratchet itself decided to walk it back down.
-            bool tfBackToStart = _ratchetTfOriginalCap is int tfStart
-                                 && _ratchetTfLatestCap == tfStart;
-            bool auBackToStart = _ratchetAudioOriginalCap is int auStart
-                                 && _ratchetAudioLatestCap == auStart;
-            bool anythingToShow =
-                (_ratchetTfOriginalCap    is int && !tfBackToStart) ||
-                (_ratchetAudioOriginalCap is int && !auBackToStart);
-            if (!anythingToShow)
-            {
-                ClearRatchetNotice();
-                return;
-            }
-
-            // Build the consolidated detail line. Each ring contributes a
-            // "label: oldCap → newCap samples (oldMs → newMs ms)" segment;
-            // segments are joined with " · ". Ms = samples * 0.25 (4 kHz
-            // sample rate = 1000 packets/s × 4 per packet; 1 sample =
-            // 0.25 ms). Rings that have returned
-            // to their original cap are omitted from this run's notice.
-            var segments = new System.Collections.Generic.List<string>();
-            if (_ratchetTfOriginalCap is int tfOrig && !tfBackToStart)
-            {
-                segments.Add(
-                    $"Output ring: {tfOrig} → {_ratchetTfLatestCap} samples " +
-                    $"({tfOrig * 0.25:0.#} → {_ratchetTfLatestCap * 0.25:0.#} ms)");
-            }
-            if (_ratchetAudioOriginalCap is int auOrig && !auBackToStart)
-            {
-                segments.Add(
-                    $"Audio ring: {auOrig} → {_ratchetAudioLatestCap} samples " +
-                    $"({auOrig * 0.25:0.#} → {_ratchetAudioLatestCap * 0.25:0.#} ms)");
-            }
-
-            if (RatchetNoticeDetail != null)
-            {
-                RatchetNoticeDetail.Text = string.Join("  ·  ", segments)
-                    + ". Persisted across sessions. Revert restores this run's starting sizes.";
-            }
-            if (RatchetNoticeBanner != null)
-                RatchetNoticeBanner.Visibility = Visibility.Visible;
-        }
-
-        private void RatchetNoticeRevert_Click(object sender, RoutedEventArgs e)
-        {
-            // Revert every ring that bumped this session back to its
-            // original pre-bump cap. Apply* persists and resizes live.
-            if (_ratchetTfOriginalCap is int tfOrig && _plugin != null)
-                _plugin.ApplyTfRingSize(tfOrig);
-            if (_ratchetAudioOriginalCap is int auOrig && _plugin != null)
-                _plugin.ApplyAudioRingSize(auOrig);
-            ClearRatchetNotice();
-            RefreshFromPlugin();
-        }
-
-        private void RatchetNoticeDismiss_Click(object sender, RoutedEventArgs e)
-        {
-            ClearRatchetNotice();
-        }
-
-        private void ClearRatchetNotice()
-        {
-            _ratchetTfOriginalCap = null;
-            _ratchetTfLatestCap = 0;
-            _ratchetAudioOriginalCap = null;
-            _ratchetAudioLatestCap = 0;
-            if (RatchetNoticeBanner != null)
-                RatchetNoticeBanner.Visibility = Visibility.Collapsed;
-        }
-
-        // One-shot dispatcher-thread timer. Used by the RATCHET test code
-        // to stage synthetic ratchet events with visible delays between
-        // them so the consolidation behavior is observable.
-        private void ScheduleDispatcherDelay(int delayMs, Action action)
-        {
-            var t = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(delayMs),
-            };
-            t.Tick += (_, __) =>
-            {
-                t.Stop();
-                try { action(); } catch { }
-            };
-            t.Start();
         }
 
         // ---------- Support ----------
