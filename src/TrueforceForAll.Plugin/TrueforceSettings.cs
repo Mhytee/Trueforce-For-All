@@ -1009,13 +1009,19 @@ namespace TrueforceForAll.Plugin
         // cleanly.
         public bool   ExperimentalFfbCapture     { get; set; } = false;
 
-        // Tap-free AC force feedback (ACFFB access code): while driving
-        // Assetto Corsa, re-inject the game's own final FFB value (finalFF,
-        // read from AC's physics shared memory at 1 kHz) into the Trueforce
-        // stream instead of decoding the wire with the USBPcap tap. finalFF
-        // is AC's post-gain output signal, so in-game FFB must stay ON for
-        // it to carry force. Global, not per-preset: it selects a capture
-        // path, not a tuning. Off = shipped behaviour (pcap tap only).
+        // Read Assetto Corsa's force from the game itself: while driving AC,
+        // re-inject the game's own final FFB value (finalFF, a float in the
+        // vanilla physics shared-memory page, read at 1 kHz) into the
+        // Trueforce stream instead of decoding the wire with the USBPcap tap,
+        // which stays as the fallback. finalFF is AC's post-gain output, so
+        // the in-game force feedback gain must be above 0 for it to carry
+        // force; the source detects a value pinned at zero while driving and
+        // hands back to the tap. Opt-in (checkbox under Force feedback
+        // (advanced)); the tap stays the default. It was default-on for one
+        // evening on 2026-08-28: force came through on the owner's G PRO, but
+        // opening the wheel-base screen on it stalled the game's own rev-light
+        // writes, so the screen stayed gated and the default went back.
+        // Global, not per-preset: it selects a force source, not a tuning.
         public bool   AcShmFfbEnabled            { get; set; } = false;
 
         // EXPERIMENTAL: claim sole wheel ownership through the TFFA kernel

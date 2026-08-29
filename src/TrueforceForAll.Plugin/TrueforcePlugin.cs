@@ -764,7 +764,8 @@ namespace TrueforceForAll.Plugin
         }
         public string CaptureStatus  => _captureStatus;
         public string FfbTapStatus =>
-            (_ffbTap?.Status ?? "Not started")
+            AcForceStatusPrefix()
+            + (_ffbTap?.Status ?? "Not started")
             + (OverridePinIsNonWheel
                 ? "  -  The USB device you pinned isn't a Logitech wheel, so no force feedback will ever be captured. Clear the override (use auto) or pick the wheel."
                 : "")
@@ -4273,14 +4274,16 @@ namespace TrueforceForAll.Plugin
                         chosen = _driverChannel.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "driver";
                     }
-                    // Tap-free AC path (ACFFB access code): the game's own
-                    // finalFF read from AC's shared memory IS the force the
-                    // wheel driver was about to receive (post every in-game
-                    // gain), so it substitutes for the wire capture with no
-                    // USBPcap involved. In-game FFB must stay ON: gain 0
-                    // zeroes finalFF. Consulted before the pcap tap so a
-                    // machine that also has USBPcap running doesn't deliver
-                    // the same signal twice via two decoders. SHORT freshness
+                    // Force from Assetto Corsa itself (opt-in checkbox under
+                    // Force feedback (advanced)): the game's own finalFF read
+                    // from its shared memory IS the force the wheel driver was
+                    // about to receive (post every in-game gain), so it
+                    // substitutes for the wire capture with no USBPcap
+                    // involved. In-game FFB must stay ON: gain 0 zeroes
+                    // finalFF, and the source hands back to the tap when it
+                    // sees that. Consulted before the pcap tap so a machine
+                    // that also has USBPcap running doesn't deliver the same
+                    // signal twice. SHORT freshness
                     // window on purpose: the latch only re-timestamps on new
                     // physics packets, so a paused AC (frozen page) ages out
                     // here within a quarter second instead of replaying a
@@ -6906,7 +6909,7 @@ namespace TrueforceForAll.Plugin
                 // and on the F8 wheel (C266) LED writes interleaving with
                 // classic FFB is native-game behavior (owner's ACC capture:
                 // ~13k f8 12 writes alongside slot traffic).
-                // Tap-free AC (ACFFB): a fresh finalFF latch PROVES the game
+                // Force from AC itself: a fresh finalFF latch PROVES the game
                 // is emitting force, so the bus cannot be quiet no matter
                 // what the tap sees (with the shm path supplying, the user
                 // has no reason to keep USBPcap healthy, so a blind-but-
@@ -6956,21 +6959,20 @@ namespace TrueforceForAll.Plugin
                 bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
                 // EXPERIMENTAL wheel-base OLED. Same pipe, same rule, its own
                 // opt-in (default off).
-                // TEMPORARY (OLEDACFFB access code): run the screen while the
-                // tap-free AC force is supplying and the game's own force is
-                // still on the pipe, to find out whether a screen write cuts
-                // the force in THAT configuration. The 2026-08-06 answer was
-                // "it cuts" on the tap path; the 2026-08-28 pattern-change
-                // result (one-shot slot writes, no cut, ACFFB) reopened the
-                // question for the continuous screen stream. Expect the force
-                // to drop out; either outcome is the result.
-                bool oledAcffbTrial = _oledAcffbTrial && AcShmFfbSupplying() && sessionActive;
+                // Tried and reverted 2026-08-29: opening the screen in AC while
+                // the force came from the game itself (finalFF over ep3) did
+                // not cut the force, but the screen's resend stream on the
+                // shared pipe stalled the game's own rev-light writes for
+                // seconds at a time, and throttling the screen to 100 ms did
+                // not help. The screen stays behind hidppFree until the pipe
+                // can be handed to us for real (pre-gain torque from CSP with
+                // the in-game force off is the path to explore).
                 bool modeBOled = MasterMode == TrueforceMasterMode.Normal
                             && (Settings?.ModeBOledEnabled ?? false)
-                            && (hidppFree || oledAcffbTrial);
+                            && hidppFree;
                 // Latched for the settings panel, which needs to know whether a
                 // preview is safe to draw and runs on another thread.
-                _oledHidppFree = hidppFree || oledAcffbTrial;
+                _oledHidppFree = hidppFree;
                 // The quiet term alone, for one-shot user actions (the rev
                 // pattern picker). hidppFree bundles "force mode armed" and
                 // "session live", which gate CONTINUOUS driving of the
@@ -14153,10 +14155,10 @@ namespace TrueforceForAll.Plugin
                 var ac = new AcSharedMemoryTelemetrySource
                 {
                     Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
-                    // Tap-free AC FFB (ACFFB access code): arm the finalFF
-                    // latch at construction so a session that starts with the
-                    // feature on never needs a toggle round-trip to begin
-                    // supplying force. SetAcShmFfb applies later changes live.
+                    // Force from AC itself: arm the finalFF latch at
+                    // construction so a session that starts with the path on
+                    // never needs a toggle round-trip to begin supplying
+                    // force. SetAcShmFfb applies later changes live.
                     FfbLatchEnabled = Settings?.AcShmFfbEnabled ?? false,
                 };
                 try
@@ -30145,30 +30147,13 @@ namespace TrueforceForAll.Plugin
             return _quietSpellHoldDisabled;
         }
 
-        // Dev/test (OLEDACFFB access code): let the wheel-base screen run
-        // while the tap-free AC force (ACFFB) is supplying and the game's own
-        // force is still on the HID++ pipe. TEMPORARY: it exists to answer one
-        // hardware question (does a continuous screen stream cut the force in
-        // that configuration) and goes with the answer. Only ever lifts the
-        // gate while AcShmFfbSupplying() is true, so it cannot run the screen
-        // in any other game. Session only, never persisted. Read on the
-        // telemetry thread, written from the UI, hence volatile.
-        private volatile bool _oledAcffbTrial;
-        public bool DebugToggleOledAcffbTrial()
-        {
-            _oledAcffbTrial = !_oledAcffbTrial;
-            if (!_oledAcffbTrial) { try { _oledDash?.ForceOff(); } catch { } }
-            SimHub.Logging.Current.Info(
-                $"[TF4ALL] OLED-under-ACFFB trial {(_oledAcffbTrial ? "ON: the screen runs while AC's force is live; watch the force" : "OFF")}.");
-            return _oledAcffbTrial;
-        }
-
-        // ---------- Tap-free AC FFB (ACFFB access code) ----------
+        // ---------- Force from Assetto Corsa itself (finalFF) ----------
 
         // Persists Settings.AcShmFfbEnabled and applies it to the live AC
         // source immediately (the latch is otherwise armed at source
         // construction on the next game swap). Turning it off also drops any
         // latched force so the provider can't consume a final stale value.
+        // Driven by the checkbox under Force feedback (advanced).
         public void SetAcShmFfb(bool on)
         {
             if (Settings != null) Settings.AcShmFfbEnabled = on;
@@ -30182,13 +30167,6 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info($"[TF4ALL] AC shared-memory FFB {(on ? "ON" : "OFF")}.");
         }
 
-        public bool DebugToggleAcShmFfb()
-        {
-            bool on = !(Settings?.AcShmFfbEnabled ?? false);
-            SetAcShmFfb(on);
-            return on;
-        }
-
         // True while the tap-free AC path is armed AND recently delivering,
         // used to keep the tap's no-FFB escalation quiet (it gates a warning,
         // not the force itself, hence the more lenient window than the
@@ -30198,6 +30176,22 @@ namespace TrueforceForAll.Plugin
             if (!(Settings?.AcShmFfbEnabled ?? false)) return false;
             return (_telemetrySource as AcSharedMemoryTelemetrySource)
                 ?.TryGetFreshFfbTarget(1000).HasValue ?? false;
+        }
+
+        /// <summary>What the AC force path is doing, for the status line in
+        /// front of the tap's own text. Empty outside Assetto Corsa or with the
+        /// path switched off.</summary>
+        private string AcForceStatusPrefix()
+        {
+            if (!(Settings?.AcShmFfbEnabled ?? false)) return "";
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return "";
+            if (src.FfbPinnedAtZero)
+                return "Assetto Corsa is reporting zero force while you drive: turn the in-game force "
+                     + "feedback gain up (the plugin reads the game's own force). Using the USB capture meanwhile.  -  ";
+            if (src.TryGetFreshFfbTarget(1000).HasValue)
+                return "Force read from Assetto Corsa itself (no USB capture needed).  -  ";
+            return "";
         }
 
         // ---------- Issue #13: stop the Trueforce stream while paused (test toggle) ----------

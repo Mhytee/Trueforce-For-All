@@ -574,6 +574,8 @@ namespace TrueforceForAll.Plugin
                 SpikeTamingEnabledCheck.IsChecked  = _plugin.Settings?.FfbSpikeTamingEnabled  ?? false;
                 if (StopStreamOnPauseCheck != null)
                     StopStreamOnPauseCheck.IsChecked = _plugin.Settings?.StopStreamOnPause ?? false;
+                if (AcShmFfbCheck != null)
+                    AcShmFfbCheck.IsChecked = _plugin.Settings?.AcShmFfbEnabled ?? false;
                 if (ReleaseOnFocusLossCheck != null)
                     ReleaseOnFocusLossCheck.IsChecked = _plugin.Settings?.ReleaseForceOnFocusLoss ?? true;
                 if (SpringTerrainCheck != null)
@@ -5285,6 +5287,15 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetStopStreamOnPause(StopStreamOnPauseCheck.IsChecked == true);
+        }
+
+        // Force from Assetto Corsa itself (finalFF) instead of the USB capture.
+        // Global setting; SetAcShmFfb persists and applies it to the live AC
+        // source, so no extra PersistSettings() call here.
+        private void AcShmFfb_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || AcShmFfbCheck == null) return;
+            _plugin.SetAcShmFfb(AcShmFfbCheck.IsChecked == true);
         }
 
         private void ReleaseOnFocusLoss_Changed(object sender, RoutedEventArgs e)
@@ -12748,8 +12759,6 @@ namespace TrueforceForAll.Plugin
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "QUIETOFF       TEMPORARY: switch the quiet-spell hold OFF to reproduce the parked-car bug (effects and the stationary spring die about half a second after the game's force stops changing, and blip back when you touch a pedal); type it again to restore the fix. Session only. Toggle.\n" +
-            "OLEDACFFB      TEMPORARY: run the wheel-base screen while ACFFB supplies the force and AC's own force feedback is still live, to find out whether a continuous screen stream cuts the force in that configuration (the tap-path answer was yes; the one-shot pattern change under ACFFB did not). Needs ACFFB on, in-game FFB on, screen enabled. EXPECT THE FORCE TO DROP OUT; either way is the result. Session only. Toggle.\n" +
-            "ACFFB          Tap-free Assetto Corsa FFB: stream the game's own force value read from AC's shared memory (finalFF) instead of the USBPcap capture. Keep in-game FFB ON (gain 0 silences it). AC only; other games are untouched. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
@@ -13383,34 +13392,6 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = off
                         ? "Quiet-spell hold OFF: reproducing the bug. Park the car with the engine running and keep still; the effects should die within a second and blip back when you touch a pedal. Type QUIETOFF again to restore the fix. Session only."
                         : "Quiet-spell hold ON: the fix is back. Park the car and keep still; the effects should keep playing.";
-                return;
-            }
-
-            // Tap-free AC FFB: re-inject AC's shared-memory finalFF instead of
-            // the USBPcap wire capture. The shm value wins while fresh; the
-            // pcap tap (if present at all) remains the fallback. Persisted and
-            // applied to the live AC source immediately. Toggle.
-            if (code.Equals("ACFFB", StringComparison.OrdinalIgnoreCase))
-            {
-                bool on = _plugin.DebugToggleAcShmFfb();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "AC shared-memory FFB ON (persists). Drive in Assetto Corsa with in-game FFB ENABLED (gain above 0): the wheel force now comes from AC's finalFF, no USBPcap involved. If forces feel reversed or wrong in strength, note it; that calibration is exactly what this test decides. Type ACFFB again to turn off."
-                        : "AC shared-memory FFB OFF. Back to the USBPcap capture path.";
-                return;
-            }
-
-            // TEMPORARY (remove with the answer): run the wheel-base screen while
-            // ACFFB supplies the force and AC's own force is still on the pipe.
-            if (code.Equals("OLEDACFFB", StringComparison.OrdinalIgnoreCase))
-            {
-                bool on = _plugin.DebugToggleOledAcffbTrial();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "OLED-under-ACFFB trial ON. Needs ACFFB on, AC's in-game FFB on, and the screen enabled. Drive: the screen should draw while you are moving. The question is whether the FORCE stays solid; a cut or a jerk is the answer, not a fault. Type OLEDACFFB again to stop. Session only."
-                        : "OLED-under-ACFFB trial OFF. The screen obeys the normal gate again.";
                 return;
             }
 

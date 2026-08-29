@@ -4426,6 +4426,18 @@
                         <TextBlock Text="Force feedback (advanced)" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
+                        <!-- Force from Assetto Corsa itself. AC publishes its final
+                             force value in its shared memory, so the plugin can read
+                             it straight from the game instead of capturing the USB
+                             bus. Opt-in; the USB capture stays the default and the
+                             fallback. Needs the in-game force feedback gain above 0,
+                             since the value is post-gain. -->
+                        <CheckBox x:Name="AcShmFfbCheck" Content="Read Assetto Corsa's force from the game itself (experimental)"
+                                  Margin="0,4,0,2" Checked="AcShmFfb_Changed" Unchecked="AcShmFfb_Changed"
+                                  ToolTip="Off by default. In Assetto Corsa the plugin can take the force feedback value the game publishes instead of capturing the USB bus. Try it if the USB capture gives you trouble in AC. Keep the in-game force feedback gain above 0."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
+                                   Text="Assetto Corsa only. With this on, keep the in-game force feedback gain above 0."/>
+
                         <!-- Hand the wheel back to the game while paused. When on,
                              the plugin fully leaves Trueforce mode while the game is
                              paused so the wheel reverts to the game's own FFB /

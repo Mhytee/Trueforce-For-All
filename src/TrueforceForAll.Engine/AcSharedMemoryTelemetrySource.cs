@@ -107,7 +107,7 @@ namespace TrueforceForAll.Core
         // in-game FFB at gain 0 zeroes this field. Offset bracketed by
         // neighbours this file already reads: localAngularVel[3] spans
         // 296..307 (y component at 300 above). Read ONLY by the tap-free FFB
-        // latch below (ACFFB access code); telemetry effects never see it.
+        // latch below (the force-from-AC path); telemetry effects never see it.
         private const int OFF_FINAL_FF        = 308;
 
         // 1 kHz poll cadence, see header comment for rationale. Requires
@@ -177,7 +177,7 @@ namespace TrueforceForAll.Core
         private TireQuad _prevSlip;
         private bool     _prevSlipValid;
 
-        // ---- Tap-free FFB latch (ACFFB access code) ----
+        // ---- Tap-free FFB latch (force from AC itself, opt-in) ----
         // Re-injecting AC's own finalFF into the Trueforce stream substitutes
         // for the USBPcap wire tap on this game: finalFF IS the force the
         // wheel driver was about to receive, so nothing needs capturing off
@@ -201,15 +201,28 @@ namespace TrueforceForAll.Core
         private long _ffbPacked;
         private readonly Stopwatch _ffbSw = Stopwatch.StartNew();
         private volatile bool _ffbLatchEnabled;
+        // finalFF is post-gain: with the in-game gain at 0 it reads exactly
+        // zero forever, and re-injecting that would mute the wheel while the
+        // player thinks the plugin is broken. The pin detector notices
+        // "driving, and the value has been zero the whole time" and the latch
+        // hands back to the wire tap until a non-zero value shows up.
+        private readonly FinalFfZeroPin _ffbZeroPin = new FinalFfZeroPin();
+        private volatile bool _ffbPinnedAtZero;
 
-        /// <summary>Arms the finalFF latch (ACFFB access code). Off = the
-        /// poll loop never touches offset 308 and TryGetFreshFfbTarget always
-        /// returns null, so shipped behaviour is untouched.</summary>
+        /// <summary>Arms the finalFF latch. Off = the poll loop never touches
+        /// offset 308 and TryGetFreshFfbTarget always returns null.</summary>
         public bool FfbLatchEnabled
         {
             get => _ffbLatchEnabled;
             set => _ffbLatchEnabled = value;
         }
+
+        /// <summary>True while AC has reported exactly zero force for the
+        /// whole of the last few seconds of driving: the in-game gain is at 0
+        /// (or the sim is not driving the wheel), so finalFF cannot carry the
+        /// force and the wire tap is the better source. Clears on the first
+        /// non-zero value.</summary>
+        public bool FfbPinnedAtZero => _ffbPinnedAtZero;
 
         public Action<string> Logger { get; set; }
 
@@ -395,7 +408,9 @@ namespace TrueforceForAll.Core
         private void LatchFfb()
         {
             float finalFf = _physicsView.ReadSingle(OFF_FINAL_FF);
+            float speedKmh = _physicsView.ReadSingle(OFF_SPEED_KMH);
             long now = _ffbSw.ElapsedTicks & FfbTimestampMask;
+            _ffbPinnedAtZero = _ffbZeroPin.Note(finalFf, speedKmh, _ffbSw.ElapsedTicks, Stopwatch.Frequency);
             Interlocked.Exchange(ref _ffbPacked, PackFfb(FfbToLsb(finalFf), now));
         }
 
@@ -407,6 +422,7 @@ namespace TrueforceForAll.Core
         /// ticks is paused, closed, or gone.</summary>
         public short? TryGetFreshFfbTarget(int maxAgeMs)
         {
+            if (_ffbPinnedAtZero) return null;   // gain at 0: let the wire tap have it
             long packed = Interlocked.Read(ref _ffbPacked);
             if (packed == 0) return null;
 
