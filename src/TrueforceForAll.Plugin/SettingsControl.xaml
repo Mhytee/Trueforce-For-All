@@ -707,44 +707,6 @@
                 </Grid>
             </Border>
 
-            <!-- Experimental FFB success prompt. Shows once when experimental
-                 FFB detection was load-bearing in getting capture working
-                 (ShouldShowExperimentalSuccessReport). Clicking opens a
-                 prefilled GitHub Discussions post in the "FFB compatibility
-                 reports" category (wheel VID/PID + capture fingerprint already
-                 filled in) so we learn which wheels to graduate out of
-                 experimental; the x declines. Either path latches
-                 ExperimentalSuccessReportDismissed. -->
-            <Border x:Name="ExperimentalSuccessBanner" Visibility="Collapsed"
-                    Background="#2E7D52" CornerRadius="4" Padding="10,8,10,8" Margin="0,0,0,10">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="White"
-                                   FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   Text="Experimental FFB detection started capturing your wheel. Is your force feedback working now?"/>
-                        <Button Grid.Column="1" x:Name="ExperimentalSuccessDismiss"
-                                Content="✕" Width="22" Height="22" Margin="10,0,0,0" VerticalAlignment="Top"
-                                Click="ExperimentalSuccessDismiss_Click"
-                                Background="Transparent" Foreground="White"
-                                BorderBrush="Transparent" BorderThickness="0"
-                                Cursor="Hand" ToolTip="Don't show this again"/>
-                    </Grid>
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button x:Name="ExperimentalSuccessYes" Content="Yes, it's working"
-                                Padding="12,3" Cursor="Hand" Click="ExperimentalSuccessYes_Click"
-                                ToolTip="Opens a prefilled compatibility report (wheel ID + details already filled in)."/>
-                        <Button x:Name="ExperimentalSuccessNo" Content="No, still no FFB"
-                                Padding="12,3" Margin="8,0,0,0" Cursor="Hand" Click="ExperimentalSuccessNo_Click"
-                                ToolTip="Opens the diagnostics / troubleshooter."/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
             <!-- Offline-edit mode banner. Visible when the user clicked Edit
                  on a preset row in the Manage Presets dialog. While shown,
                  the plugin holds back the auto-apply-game-default path so a
@@ -4464,18 +4426,6 @@
                         <TextBlock Text="Force feedback (advanced)" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
-                        <!-- Experimental FFB detection. Off by default so the
-                             proven capture path is unchanged for everyone; opt
-                             in if a game that should have force feedback gives
-                             none. Widens how the tap recognizes the wheel's FFB
-                             on the bus (HID++ report 0x12 + faster index
-                             resolve; helps e.g. the RS50 in Forza, issue #8). -->
-                        <CheckBox x:Name="ExperimentalFfbCheck" Content="Enable experimental FFB detection"
-                                  Margin="0,4,0,2" Checked="ExperimentalFfbDetection_Changed" Unchecked="ExperimentalFfbDetection_Changed"
-                                  ToolTip="Off by default. Turn this on if a game that should have force feedback is giving you none. It widens how the plugin finds your wheel's force feedback on the USB bus (helps some wheels, such as the RS50 in Forza). Load the game and drive for a few seconds after turning it on. Leave it off if your force feedback already works. Turn it back off if it causes any trouble."/>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
-                                   Text="Try this if you are not getting force feedback in a game that should have it."/>
-
                         <!-- Hand the wheel back to the game while paused. When on,
                              the plugin fully leaves Trueforce mode while the game is
                              paused so the wheel reverts to the game's own FFB /

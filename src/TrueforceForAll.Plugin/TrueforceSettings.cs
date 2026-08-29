@@ -1001,14 +1001,12 @@ namespace TrueforceForAll.Plugin
         // including USB bus traffic in exported logs.
         public bool   LogUsbBytesEnabled         { get; set; } = false;
 
-        // Opt-in experimental FFB-capture path (toggled by its checkbox in
-        // the settings UI). Enables in-progress capture work that isn't yet proven on
-        // hardware across the wheel range: HID++ very-long report 0x12
-        // extraction + 0x11/0x12 resolver summing + a lower index-resolve
-        // floor (issue #8, RS50 on FH6), and any future self-learning capture
-        // heuristics. Off = shipped behaviour, so existing users are untouched
-        // until a tester confirms a given wheel/game. Global, not per-preset:
-        // it's a capture-system behaviour, not a tuning.
+        // Retired 2026-08-28. Was the "Enable experimental FFB detection"
+        // opt-in that let the tap read HID++ very-long report 0x12 and use the
+        // lower index-resolve floor. Both are the default now: which report
+        // carries the force is decided per session by FfbReportArbiter. The
+        // property stays only so old settings files and backups deserialize
+        // cleanly.
         public bool   ExperimentalFfbCapture     { get; set; } = false;
 
         // Tap-free AC force feedback (ACFFB access code): while driving
@@ -1037,10 +1035,10 @@ namespace TrueforceForAll.Plugin
         // ShowManualOverrideUi unlock pattern.
         public bool   DriverTestingUnlocked       { get; set; } = false;
 
-        // Latches once the user acts on (or dismisses) the one-time banner that
-        // appears when experimental FFB detection was load-bearing in getting
-        // their wheel working, asking them to file a compatibility report. Keeps
-        // the prompt from re-nagging every session.
+        // Retired 2026-08-28. Latched the one-time "is your force feedback
+        // working now?" banner that followed the experimental FFB detection
+        // opt-in; both are gone. The property stays only so old settings files
+        // and backups deserialize cleanly.
         public bool   ExperimentalSuccessReportDismissed { get; set; } = false;
 
         public float FfbPeakSoftLimitLsb      { get; set; } = 2061.90f;

@@ -772,35 +772,11 @@ namespace TrueforceForAll.Plugin
         public int    ActiveVoiceCount => _mixer.SourceCount;
 
         // The wire shape that produced the first captured FFB sample this
-        // session (transport / report ID / feature index / encoding + which
-        // experimental sub-mechanism, if any, was load-bearing). Null until
-        // capture is confirmed. Surfaced in the Export-logs manifest and the
-        // experimental-success report.
+        // session (transport / report ID / feature index / encoding, and which
+        // HID++ report the arbiter settled on). Null until capture is
+        // confirmed. Surfaced in the Export-logs manifest and the
+        // compatibility report.
         public string CaptureFingerprint => _ffbTap?.CaptureFingerprint;
-
-        // True when experimental FFB detection was actually load-bearing in
-        // getting capture working this session (the fingerprint lists a needed
-        // sub-mechanism), and the user hasn't dismissed the prompt yet. Drives
-        // the one-time "is it working?" banner. Requires the experimental
-        // toggle on AND needed=[...] to be non-empty, so users who had it on but
-        // would have worked anyway are never prompted.
-        public bool ShouldShowExperimentalSuccessReport
-        {
-            get
-            {
-                if (Settings == null || Settings.ExperimentalSuccessReportDismissed) return false;
-                if (!Settings.ExperimentalFfbCapture) return false;
-                string fp = _ffbTap?.CaptureFingerprint;
-                if (string.IsNullOrEmpty(fp)) return false;
-                return fp.Contains("needed=[") && !fp.Contains("needed=[none]");
-            }
-        }
-
-        public void DismissExperimentalSuccessReport()
-        {
-            if (Settings != null) Settings.ExperimentalSuccessReportDismissed = true;
-            PersistSettings();
-        }
 
         // True when a manual override pins a device whose identity we know and
         // it isn't a supported Logitech wheel (so the FFB tap can't possibly get
@@ -2740,7 +2716,6 @@ namespace TrueforceForAll.Plugin
             // next time a supported game's tab is opened. The WELCOME dev code
             // clears this too; keep the two paths in sync.
             Settings.HasSeenModeBIntro = false;
-            Settings.ExperimentalSuccessReportDismissed = false;
             Settings.ShareCtaDismissed = false;
             Settings.LastSeenVersion = null;
             PersistSettings();
@@ -4368,7 +4343,13 @@ namespace TrueforceForAll.Plugin
                         chosen = _ffbTap?.TryGetFreshFfbTarget(pcapStreamMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "pcap";
                         else if (!_quietSpellHoldDisabled && _ffbTap != null
-                                 && _ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000).HasValue)
+                                 && _ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000).HasValue
+                                 // A quiet spell is the GAME going quiet. If the
+                                 // wheel is still receiving force writes we are not
+                                 // decoding (an undecided report, the NOFFB
+                                 // simulation), holding an active zero would cancel
+                                 // the game's own force; keepalive hands it back.
+                                 && !_ffbTap.ForceTrafficSinceLastSample)
                         {
                             chosen = (short)0;
                             ffbSrc = "pcap-quiet";
@@ -6014,9 +5995,6 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info("[TF4ALL] Spring mode disarmed (game changed).");
                 }
                 ApplyModeBFromSettings();
-                // Entering/leaving Farming Simulator flips the effective
-                // experimental-capture state; apply it with the new game.
-                ApplyEffectiveExperimentalCapture();
                 // Traction loss is per-game gated (FS: Axle slip owns slip);
                 // re-apply on every game change so the gate flips even when
                 // the new game has no bound preset to trigger the apply-all.
@@ -6978,12 +6956,21 @@ namespace TrueforceForAll.Plugin
                 bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
                 // EXPERIMENTAL wheel-base OLED. Same pipe, same rule, its own
                 // opt-in (default off).
+                // TEMPORARY (OLEDACFFB access code): run the screen while the
+                // tap-free AC force is supplying and the game's own force is
+                // still on the pipe, to find out whether a screen write cuts
+                // the force in THAT configuration. The 2026-08-06 answer was
+                // "it cuts" on the tap path; the 2026-08-28 pattern-change
+                // result (one-shot slot writes, no cut, ACFFB) reopened the
+                // question for the continuous screen stream. Expect the force
+                // to drop out; either outcome is the result.
+                bool oledAcffbTrial = _oledAcffbTrial && AcShmFfbSupplying() && sessionActive;
                 bool modeBOled = MasterMode == TrueforceMasterMode.Normal
                             && (Settings?.ModeBOledEnabled ?? false)
-                            && hidppFree;
+                            && (hidppFree || oledAcffbTrial);
                 // Latched for the settings panel, which needs to know whether a
                 // preview is safe to draw and runs on another thread.
-                _oledHidppFree = hidppFree;
+                _oledHidppFree = hidppFree || oledAcffbTrial;
                 // The quiet term alone, for one-shot user actions (the rev
                 // pattern picker). hidppFree bundles "force mode armed" and
                 // "session live", which gate CONTINUOUS driving of the
@@ -30158,45 +30145,22 @@ namespace TrueforceForAll.Plugin
             return _quietSpellHoldDisabled;
         }
 
-        // Opt-in experimental FFB-capture path, set from the Diagnostics
-        // checkbox. Persists Settings.ExperimentalFfbCapture,
-        // applies it to the live tap, and re-arms the feature-index resolver so
-        // the change takes effect without a SimHub restart. Off = shipped behaviour.
-        public void SetExperimentalFfbCapture(bool on)
+        // Dev/test (OLEDACFFB access code): let the wheel-base screen run
+        // while the tap-free AC force (ACFFB) is supplying and the game's own
+        // force is still on the HID++ pipe. TEMPORARY: it exists to answer one
+        // hardware question (does a continuous screen stream cut the force in
+        // that configuration) and goes with the answer. Only ever lifts the
+        // gate while AcShmFfbSupplying() is true, so it cannot run the screen
+        // in any other game. Session only, never persisted. Read on the
+        // telemetry thread, written from the UI, hence volatile.
+        private volatile bool _oledAcffbTrial;
+        public bool DebugToggleOledAcffbTrial()
         {
-            if (Settings != null) Settings.ExperimentalFfbCapture = on;
-            PersistSettings();
-            // The tap gets the EFFECTIVE value: inside Farming Simulator the
-            // widened rules stay on regardless of the global toggle.
-            ApplyEffectiveExperimentalCapture();
-            SimHub.Logging.Current.Info($"[TF4ALL] Experimental FFB capture {(on ? "ON" : "OFF")}.");
-        }
-
-        // Effective experimental capture: currently just the user's global
-        // opt-in. An FS-forces-it-on clause lived here for one build and was
-        // reverted the same evening: the owner's G PRO trace (2026-08-07)
-        // proved FS sends only a CONSTANT heartbeat on the 0x12 path
-        // (12 ff 0e 2d 01 86 00, byte-identical for 3676 packets), so
-        // extraction there can only ever decode garbage (it read the
-        // constant as a hard-left force). FS force feedback is owned by
-        // spring mode instead, which replaces the target wholesale.
-        private bool EffectiveExperimentalCapture()
-        {
-            return Settings?.ExperimentalFfbCapture ?? false;
-        }
-
-        private void ApplyEffectiveExperimentalCapture()
-        {
-            var tap = _ffbTap;
-            if (tap == null) return;
-            bool want = EffectiveExperimentalCapture();
-            if (tap.ExperimentalCapture == want) return;
-            tap.ExperimentalCapture = want;
-            tap.ResetFeatureIndexResolution();
-            if (want && !(Settings?.ExperimentalFfbCapture ?? false))
-                SimHub.Logging.Current.Info(
-                    "[TF4ALL] Experimental FFB detection enabled automatically for Farming Simulator " +
-                    "(its wheel FFB rides the report-0x12 path); the global setting is unchanged.");
+            _oledAcffbTrial = !_oledAcffbTrial;
+            if (!_oledAcffbTrial) { try { _oledDash?.ForceOff(); } catch { } }
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] OLED-under-ACFFB trial {(_oledAcffbTrial ? "ON: the screen runs while AC's force is live; watch the force" : "OFF")}.");
+            return _oledAcffbTrial;
         }
 
         // ---------- Tap-free AC FFB (ACFFB access code) ----------
@@ -31004,10 +30968,6 @@ namespace TrueforceForAll.Plugin
             // Re-apply the dev/test no-FFB simulation across tap restarts.
             tap.SimulateNoFfbCapture = _simulateNoFfb;
 
-            // Re-apply the experimental capture opt-in across tap restarts,
-            // using the effective value (forced on inside Farming Simulator).
-            tap.ExperimentalCapture = EffectiveExperimentalCapture();
-
             // Per-wheel identity (mescon, 2026-07): seed the HID++ 0x8123
             // feature-index resolver (RS50 = 0x10, else the G PRO's 0x0e) and
             // open the RS50 report-0x12 path without the experimental opt-in. Seed
@@ -31058,15 +31018,6 @@ namespace TrueforceForAll.Plugin
             // feedback reaches our capture even in whole-bus mode. Surface it.
             tap.OnNoFfbWarning = msg =>
             {
-                // If experimental FFB detection is off, point the user at it:
-                // a wheel sending force in a shape the default path doesn't
-                // recognize (e.g. RS50 on report 0x12) is exactly this case.
-                // Skip the hint for an identified RS50: its report-0x12 path
-                // is already open, so the toggle wouldn't do what the hint
-                // implies (it would only lower the resolver sample floor).
-                if (Settings != null && !Settings.ExperimentalFfbCapture
-                    && !WheelDiscovery.IsRs50(_hidWheelPid, _hidWheelProductString))
-                    msg += " If your wheel should have force feedback, try turning on 'Enable experimental FFB detection' (Effects tab, under FFB tweaks), then drive a few seconds.";
                 _noFfbCaptureNotice = msg;
                 SimHub.Logging.Current.Warn($"[TF4ALL] {msg}");
             };

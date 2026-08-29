@@ -551,8 +551,6 @@ namespace TrueforceForAll.Plugin
                         (StationarySpringCheck.IsChecked == true) ? Visibility.Visible : Visibility.Collapsed;
                 if (LogUsbBytesCheck != null)
                     LogUsbBytesCheck.IsChecked = _plugin.Settings?.LogUsbBytesEnabled ?? false;
-                bool expFfb = _plugin.Settings?.ExperimentalFfbCapture ?? false;
-                if (ExperimentalFfbCheck != null)     ExperimentalFfbCheck.IsChecked     = expFfb;
 
                 // Driver testing mode checkbox: hidden until the DRIVER access
                 // code has been entered (DriverTestingUnlocked persists the
@@ -2122,7 +2120,6 @@ namespace TrueforceForAll.Plugin
                 // the plugin's SeenEffects / LastSeenVersion state.
                 RefreshChangelogBanner();
                 RefreshShareCtaBanner();
-                RefreshExperimentalSuccessBanner();
                 RefreshNewBadges();
 
                 // Forza listener status: the source object exposes packet
@@ -2994,44 +2991,6 @@ namespace TrueforceForAll.Plugin
         // discussions/new chooser, which still works, just unfiltered.
         private const string FfbReportDiscussionsBase =
             "https://github.com/Mhytee/Trueforce-For-All/discussions/new?category=ffb-compatibility-reports";
-
-        private void RefreshExperimentalSuccessBanner()
-        {
-            if (_plugin == null || ExperimentalSuccessBanner == null) return;
-            var want = _plugin.ShouldShowExperimentalSuccessReport
-                ? System.Windows.Visibility.Visible
-                : System.Windows.Visibility.Collapsed;
-            if (ExperimentalSuccessBanner.Visibility != want) ExperimentalSuccessBanner.Visibility = want;
-        }
-
-        // "Yes, it's working": the human confirms FFB actually works, so this
-        // is a real, attributable success. Open the prefilled report and latch.
-        private void ExperimentalSuccessYes_Click(object sender, RoutedEventArgs e)
-        {
-            OpenFfbCompatibilityReport();
-            _plugin?.DismissExperimentalSuccessReport();   // one-and-done, like the share CTA
-            RefreshExperimentalSuccessBanner();
-        }
-
-        // "No, still no FFB": our capture signal was a false positive (or FFB is
-        // there but wrong). Don't generate a success report; send them to the
-        // diagnostics/troubleshooter instead, and latch so we stop asking.
-        private void ExperimentalSuccessNo_Click(object sender, RoutedEventArgs e)
-        {
-            _plugin?.DismissExperimentalSuccessReport();
-            RefreshExperimentalSuccessBanner();
-            // Jump to the Settings tab with Diagnostics expanded: self-test,
-            // the experimental toggle, manual device picker and USBPcap
-            // reinstall all live there.
-            if (DiagnosticsExpander != null) DiagnosticsExpander.IsExpanded = true;
-            OpenAdvancedSettings_Click(this, null);
-        }
-
-        private void ExperimentalSuccessDismiss_Click(object sender, RoutedEventArgs e)
-        {
-            _plugin?.DismissExperimentalSuccessReport();
-            RefreshExperimentalSuccessBanner();
-        }
 
         // Open a prefilled compatibility-report discussion. VID/PID, game,
         // version and the capture fingerprint are filled in automatically so
@@ -5788,12 +5747,6 @@ namespace TrueforceForAll.Plugin
             }
             else
                 sb.AppendLine("[skip] FFB pass-through: " + (string.IsNullOrEmpty(tap) ? "(not started)" : tap));
-            // FFB not confirmed live and experimental detection is off: a wheel
-            // sending force in a shape the default path doesn't recognize is
-            // exactly what experimental mode widens, so suggest it.
-            if (!tapLive && !ffbLiveWatch && !(_plugin.Settings?.ExperimentalFfbCapture ?? false))
-                sb.AppendLine("       If your wheel should have force feedback but you feel none, turn on "
-                    + "'Enable experimental FFB detection' (Effects tab, under FFB tweaks), then drive a few seconds.");
             if (!gameRun && _plugin.IsKnownGameProcessRunning(out string pausedGame))
                 sb.AppendLine($"[skip] Telemetry: '{pausedGame}' is running but paused or in a menu (telemetry resumes on track)");
             else if (!gameRun)
@@ -5841,10 +5794,7 @@ namespace TrueforceForAll.Plugin
                         {
                             string verdict = seen
                                 ? "[OK]   FFB pass-through: LIVE - game forces captured when you moved. Pass-through is working."
-                                : "[skip] FFB pass-through: no game forces seen in 6 s. Be in an ACTIVE session (not a menu/paused) and turn the wheel / drive while the watch runs."
-                                  + ((_plugin.Settings?.ExperimentalFfbCapture ?? false)
-                                      ? ""
-                                      : " If you still feel no force feedback, turn on 'Enable experimental FFB detection' and try again.");
+                                : "[skip] FFB pass-through: no game forces seen in 6 s. Be in an ACTIVE session (not a menu/paused) and turn the wheel / drive while the watch runs.";
                             SelfTestResultText.Text = checklist.Replace(FfbLiveWatchSentinel, verdict);
                             SelfTestButton.IsEnabled = true;
                         });
@@ -6258,7 +6208,6 @@ namespace TrueforceForAll.Plugin
                         $"Stream status: {_plugin?.StreamStatus}\n" +
                         $"FFB tap status: {_plugin?.FfbTapStatus}\n" +
                         $"Capture: {_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}\n" +
-                        $"Experimental FFB capture: {(_plugin?.Settings?.ExperimentalFfbCapture ?? false ? "ON" : "OFF")}\n" +
                         $"Forza UDP: {forzaLine}\n" +
                         $"Manual USBPcap override: {(_plugin?.HasManualUsbPcapDevice ?? false ? $"{_plugin.Settings.ManualUsbPcapInterface} dev {_plugin.Settings.ManualUsbPcapDeviceAddress}" : "(none)")}\n" +
                         $"USB byte logging: {(_plugin?.Settings?.LogUsbBytesEnabled ?? false ? "enabled" : "disabled")}\n" +
@@ -6322,12 +6271,6 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null || LogUsbBytesCheck == null) return;
             _plugin.SetUsbBytesLoggingEnabled(LogUsbBytesCheck.IsChecked == true);
-        }
-
-        private void ExperimentalFfbDetection_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null || ExperimentalFfbCheck == null) return;
-            _plugin.SetExperimentalFfbCapture(ExperimentalFfbCheck.IsChecked == true);
         }
 
         // Standing mod-install banner on the Telemetry FFB tab. The hold flag
@@ -12805,6 +12748,7 @@ namespace TrueforceForAll.Plugin
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "QUIETOFF       TEMPORARY: switch the quiet-spell hold OFF to reproduce the parked-car bug (effects and the stationary spring die about half a second after the game's force stops changing, and blip back when you touch a pedal); type it again to restore the fix. Session only. Toggle.\n" +
+            "OLEDACFFB      TEMPORARY: run the wheel-base screen while ACFFB supplies the force and AC's own force feedback is still live, to find out whether a continuous screen stream cuts the force in that configuration (the tap-path answer was yes; the one-shot pattern change under ACFFB did not). Needs ACFFB on, in-game FFB on, screen enabled. EXPECT THE FORCE TO DROP OUT; either way is the result. Session only. Toggle.\n" +
             "ACFFB          Tap-free Assetto Corsa FFB: stream the game's own force value read from AC's shared memory (finalFF) instead of the USBPcap capture. Keep in-game FFB ON (gain 0 silences it). AC only; other games are untouched. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
@@ -13454,6 +13398,19 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "AC shared-memory FFB ON (persists). Drive in Assetto Corsa with in-game FFB ENABLED (gain above 0): the wheel force now comes from AC's finalFF, no USBPcap involved. If forces feel reversed or wrong in strength, note it; that calibration is exactly what this test decides. Type ACFFB again to turn off."
                         : "AC shared-memory FFB OFF. Back to the USBPcap capture path.";
+                return;
+            }
+
+            // TEMPORARY (remove with the answer): run the wheel-base screen while
+            // ACFFB supplies the force and AC's own force is still on the pipe.
+            if (code.Equals("OLEDACFFB", StringComparison.OrdinalIgnoreCase))
+            {
+                bool on = _plugin.DebugToggleOledAcffbTrial();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "OLED-under-ACFFB trial ON. Needs ACFFB on, AC's in-game FFB on, and the screen enabled. Drive: the screen should draw while you are moving. The question is whether the FORCE stays solid; a cut or a jerk is the answer, not a fault. Type OLEDACFFB again to stop. Session only."
+                        : "OLED-under-ACFFB trial OFF. The screen obeys the normal gate again.";
                 return;
             }
 
@@ -16938,8 +16895,7 @@ namespace TrueforceForAll.Plugin
         // Performance, Sidechain ducking, and Diagnostics live inline in
         // AdvancedSettingsHost at the bottom of the Settings tab. This entry
         // point used to open a modal; now it just brings the Settings tab
-        // forward and expands Diagnostics. Kept because the "No, still no FFB"
-        // path (ExperimentalSuccessNo_Click) routes users here.
+        // forward and expands Diagnostics.
         private void OpenAdvancedSettings_Click(object sender, RoutedEventArgs e)
         {
             if (MainTabs != null && SettingsTab != null)
