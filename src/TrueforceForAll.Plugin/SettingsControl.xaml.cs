@@ -12829,7 +12829,7 @@ namespace TrueforceForAll.Plugin
         // HELP stays accurate as the set of codes grows.
         private const string TestCodeCatalog =
             "Trueforce For All test codes (type one in the access box):\n\n" +
-            "HELP / CODES   Show this list.\n" +
+            "HELP / CODES / ?   Show this list.\n" +
             "SHARE          Force the 'spread the word' banner on now.\n" +
             "SUPPORT        Preview the periodic Patreon support modal now (pacing untouched).\n" +
             "SUPPORTRESET   Reset the support-prompt ladder back to its first rung.\n" +
@@ -12857,6 +12857,7 @@ namespace TrueforceForAll.Plugin
             "UPDATEPOLL     Simulate a release shipping AFTER launch: arms a fake newer release that only a BACKGROUND re-check applies, on a fast cadence (every 5s; UPDATEPOLL<n> for n seconds), so the 'Update to vX.Y.Z' banner appears on its own within seconds, no restart. Tests the periodic re-check end-to-end. Run again to stop + clear. Toggle.\n" +
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
+            "QUIETOFF       TEMPORARY: switch the quiet-spell hold OFF to reproduce the parked-car bug (effects and the stationary spring die about half a second after the game's force stops changing, and blip back when you touch a pedal); type it again to restore the fix. Session only. Toggle.\n" +
             "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
             "ACFFB          Tap-free Assetto Corsa FFB: stream the game's own force value read from AC's shared memory (finalFF) instead of the USBPcap capture. Keep in-game FFB ON (gain 0 silences it). AC only; other games are untouched. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
@@ -12871,12 +12872,13 @@ namespace TrueforceForAll.Plugin
             "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup SLOTWRITE took. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
             "LEDRATE<ms>    DEV: how often the rev lights may update, 10 to 1000 ms (default 40, measured safe on a G PRO; G HUB itself uses 160). Live only, resets on restart. For finding whether a faster bar costs anything on the shared HID++ pipe: drive it and watch the FORCE.\n" +
             "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up FIRST and refuses if it cannot. PERSISTS across a restart, which is the point, and your colors stay held in the backup the whole time. SLOTRESTORE<n> puts them back. SLOTBLANKALL does all five at once (the real factory-wheel case) and SLOTRESTOREALL gives them all back.\n" +
+            "SLOTPICK<n>    Designate which LIGHTSYNC custom slot the plugin may borrow for the live pattern: 1-5 for CUSTOM n, 0 for automatic (the first slot never programmed, or CUSTOM 5 when all five are in use). The slot's contents are backed up before the first write and SLOTRESTORE<n> puts them back. Persists and travels in backups.\n" +
             "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colors (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colors are possible on this wheel at all.\n" +
             "CARCOLORS      Show what the ACTIVE car resolves to on the strip and sweep it so the fill is visible. Reports the pattern, its source and why, in a dialog and on the status line.\n" +
             "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
             "CYCLEHINT      Re-arm the LIGHTSYNC intro modal and force the cycle-binding hint on screen even though the pattern cycle action is already bound. For testing them, since anyone working on them has it bound. Session only. Toggle.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
-            "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
+            "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); F8FAST / F8SPAM = resend every 16 ms; 'F8SWEEP <ms>' = custom resend interval (0-1000), 'F8SWEEP FAST' / 'F8SWEEP SLOW' also work.\n" +
             "F8ANY          G923 PS/PC only: run the legacy F8 rev lights in ANY game, including ones driving their own force feedback, so you can answer this by playing and revving rather than watching a test sweep. The question is whether the lights come on AND the game's force stays solid; if the force cuts, that is the answer, not a fault. Persists. Toggle.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
@@ -12888,11 +12890,12 @@ namespace TrueforceForAll.Plugin
             "OLEDANY        Run the wheel's OLED screen regardless of Telemetry Based FFB, to find out whether writing the screen really does cut a game's own force feedback the way the rev lights do (never tested for the screen; the restriction is inherited). EXPECT THE FORCE TO DROP OUT. Persists. Toggle.\n" +
             "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Also clears that car's learned auto strength, which shares the same saved slot. Use after a tune or tire change that leaves the old calibration feeling off. Same as the Re-learn car button on the Telemetry Based FFB tab.\n" +
             "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
-            "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
-            "TOAST          Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
-            "SHOWALL        Reveal hidden/secret achievements (OG, Founding Supporter) in the tracker even when unearned, for testing. Reopen the tracker after toggling. Persists. Toggle.\n" +
-            "WARNEMAIL      Email yourself the backup-deletion warning, cycling 6mo -> 3mo -> 1mo -> 1wk -> 1day each use. Preview only; never changes your real data or timer.\n" +
-            "LAPSED         Preview the lapsed cloud-backup look in the Account tab (note + orange 'Data removal in: X'), cycling 400d -> 180d -> 30d -> 7d -> 1d -> off. Display only; uploads stay off, nothing changed.\n" +
+            "SUPPORTER / BADGE   Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
+            "TOAST / CELEBRATE   Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
+            "SHOWALL / ALLACHIEVEMENTS   Reveal hidden/secret achievements (OG, Founding Supporter) in the tracker even when unearned, for testing. Reopen the tracker after toggling. Persists. Toggle.\n" +
+            "WARNEMAIL / WARN   Email yourself the backup-deletion warning, cycling 6mo -> 3mo -> 1mo -> 1wk -> 1day each use. Preview only; never changes your real data or timer.\n" +
+            "LAPSED / LAPSE   Preview the lapsed cloud-backup look in the Account tab (note + orange 'Data removal in: X'), cycling 400d -> 180d -> 30d -> 7d -> 1d -> off. Display only; uploads stay off, nothing changed.\n" +
+            "TEST           Retired (2026-08-01): used to unlock the iRacing section. Now only answers with a note; rev lights have a toggle on the Telemetry FFB tab.\n" +
             "IRRAW          Throwaway iRacing probe (delete after use): logs whether SimHub's raw data object reaches us live per tick, whether SteeringWheelTorque carries force while iRacing's own force feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST array is reachable. One arming dump plus one '[TF4ALL] IRRAW' line every 5 s in SimHub.txt. Toggle.";
 
         private void CommitAccessCode()
@@ -13723,6 +13726,19 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Simulating no-FFB capture. Drive for ~15s: the FFB tap should switch to whole-bus capture (~8s), then the FFB-tap status should show a 'try a different USB port' notice. Type NOFFB again to stop (FFB stays limp until you do)."
                         : "Stopped simulating no-FFB capture. Force feedback pass-through restored.";
+                return;
+            }
+
+            // TEMPORARY (remove once the parked-car fix is confirmed): switch the
+            // quiet-spell hold off to reproduce the bug, on again to see the fix.
+            if (code.Equals("QUIETOFF", StringComparison.OrdinalIgnoreCase))
+            {
+                bool off = _plugin.DebugToggleQuietSpellHold();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = off
+                        ? "Quiet-spell hold OFF: reproducing the bug. Park the car with the engine running and keep still; the effects should die within a second and blip back when you touch a pedal. Type QUIETOFF again to restore the fix. Session only."
+                        : "Quiet-spell hold ON: the fix is back. Park the car and keep still; the effects should keep playing.";
                 return;
             }
 

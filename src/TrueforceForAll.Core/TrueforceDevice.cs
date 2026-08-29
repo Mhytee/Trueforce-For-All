@@ -127,19 +127,26 @@ namespace TrueforceForAll.Core
         // Single-threaded use (only StreamTick touches it) so no sync needed.
         private readonly ushort[] _newSamplesScratch = new ushort[NewPerPacket];
 
-        // Optional FFB target source. Returns AC's most-recent FFB target as a
-        // signed int16 if it was captured within FfbTargetMaxAgeMs, or null
-        // otherwise. We use this as cur (bytes 6-9) for active packets so AC's
-        // FFB drives the motor while our audio overlays in the rolling window
-        // (cur = torque target, window = additive overlay: confirmed by
-        // mescon's Linux driver on RS50, 2026-07).
+        // Optional FFB target source. Returns the game's FFB target as a signed
+        // int16, or null when the game is not driving the wheel. We use this as
+        // cur (bytes 6-9) for active packets so the game's FFB drives the motor
+        // while our audio overlays in the rolling window (cur = torque target,
+        // window = additive overlay: confirmed by mescon's Linux driver on RS50,
+        // 2026-07).
         //
-        // Threshold is large (10 seconds) because AC drops its HID++ FFB update
-        // rate dramatically when the FFB target hasn't changed (stationary wheel,
-        // straight road), a tight threshold makes us flap between active and
-        // keepalive on every quiet moment, which drops Trueforce audio. The
-        // wheel firmware itself maintains the last-commanded force indefinitely
-        // when AC stops sending updates, so mirroring that semantic is correct.
+        // The ONLY arbitration this class does is HasValue: a value means the
+        // active shape (cur + audio window), null means keepalive (no audio,
+        // the wheel reverts to its native FFB). Everything about freshness
+        // lives in the provider. The plugin's provider keeps two windows: a
+        // value older than 500 ms is never replayed (a held force must not
+        // walk the wheel to lock), but a game that sent force within
+        // FfbTargetMaxAgeMs still gets an active packet with zero force, so the
+        // effects keep playing through the quiet spells of a parked or held
+        // wheel. The Logitech force path never resends an unchanged value
+        // (owner's captures, 2026-08-28: 0.5 to 7.5 s holes are routine at a
+        // standstill), which is why the second window has to be this long. The
+        // wheel firmware itself maintains the last-commanded ep0 force
+        // indefinitely when the game stops sending updates.
         public Func<short?> FfbTargetProvider { get; set; }
         public int FfbTargetMaxAgeMs { get; set; } = 10000;
 
@@ -803,9 +810,11 @@ namespace TrueforceForAll.Core
             // ep3 cur (active mode), and switching between them at audio start/end
             // is felt as "jerky" FFB. Window carries audio if we have any, else
             // silence-center samples (additive zero, wheel feels only cur).
-            // Keepalive only fires when the FFB tap is stale (AC closed / idle
-            // > FfbTargetMaxAgeMs), so any other game's native FFB still works
-            // when our plugin is running but AC isn't.
+            // Keepalive only fires when the provider returns null: no game has
+            // driven the wheel within FfbTargetMaxAgeMs (the provider's own
+            // rule; a quiet spell shorter than that arrives here as an active
+            // zero). So any other game's native FFB still works when our
+            // plugin is running but the tapped game isn't.
             bool hasAudio = (n > 0);
             if (hasAudio)
             {

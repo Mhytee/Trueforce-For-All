@@ -4384,31 +4384,62 @@ namespace TrueforceForAll.Plugin
                             ?.TryGetFreshFfbTarget(acShmMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "acshm";
                     }
+                    // True when the value below is a quiet-spell substitute, not
+                    // a captured force. The trace must record the tap as stale
+                    // then, or a TRACE CSV could no longer tell a stale edge
+                    // from a captured zero (a classic STOP publishes a real 0).
+                    bool tapQuiet = false;
                     if (!chosen.HasValue)
                     {
-                        // SHORT window, for the same reason the AC path above
-                        // uses one, and it is the exe-independent half of the
-                        // full-lock fix. FfbTargetMaxAgeMs is 10 s because it
-                        // answers a DIFFERENT question, "has this game produced
-                        // any force lately", which arbitrates active vs keepalive
-                        // mode in TrueforceDevice. Asking it "is this value still
-                        // current" was the bug: the tap re-timestamps only on a
-                        // captured packet, so a game that stops sending, on a
-                        // pause it never announces or on losing focus, left us
-                        // streaming its last force for ten seconds with no
-                        // self-aligning torque to oppose it, and the wheel walked
-                        // to its rotational stop (Wreckfest alt-tab, owner
-                        // 2026-08-16; same class as issue #13).
+                        // The wire tap answers TWO questions, on two windows.
                         //
-                        // 500 ms is generous: real force feedback updates tens to
-                        // hundreds of times a second, so anything quieter than
-                        // 2 Hz is not driving the wheel. The failure mode of a
-                        // short window is emitting zero where the game wanted a
-                        // HELD non-zero force, and games do not hold force
-                        // without resending it.
+                        // "Is this value still current?" 500 ms. The tap
+                        // re-timestamps only on a captured packet, so a game
+                        // that stops sending, on a pause it never announces or
+                        // on losing focus, used to leave us streaming its last
+                        // force for ten seconds with no self-aligning torque to
+                        // oppose it, and the wheel walked to its rotational stop
+                        // (Wreckfest alt-tab, owner 2026-08-16; same class as
+                        // issue #13). Nothing older than 500 ms is replayed.
+                        //
+                        // "Is the game still driving the wheel?" FfbTargetMaxAgeMs
+                        // (10 s). This one decides the PACKET SHAPE, and that
+                        // matters because the audio window only rides active
+                        // packets: a null here means keepalive, and keepalive
+                        // carries no effects at all (TrueforceDevice.StreamTick).
+                        // The Logitech force path never resends an unchanged
+                        // value (owner's captures, 2026-08-28: holes of 0.5 to
+                        // 7.5 s are routine with a parked or held wheel; driving
+                        // never gaps past 100 ms), so a parked car goes quiet on
+                        // the wire within a second. Collapsing both questions
+                        // into the 500 ms window (2026-08-17 to 2026-08-28) muted
+                        // every effect and the stationary spring at any
+                        // standstill, and touching a pedal brought them back
+                        // for half a second at a time.
+                        //
+                        // So: a current value streams as is; a game that sent
+                        // force within the last 10 s but nothing in the last
+                        // 500 ms gets ZERO force in the ACTIVE shape (the audio
+                        // window survives, the spring can still center a parked
+                        // car, and a held force still cannot outlive 500 ms);
+                        // only a game silent for 10 s drops to keepalive and
+                        // hands the wheel back to its native force feedback.
+                        // Tap-less rigs (USBPcap missing, Secure Boot, a deaf
+                        // capture) never stamp the tap, so both windows read
+                        // null there and they stay on native FFB as before.
+                        // The 10 s bound is deliberate: a capture that dies
+                        // mid-session zeroes the game's force for at most that
+                        // long before native FFB returns.
                         const int pcapStreamMaxAgeMs = 500;
                         chosen = _ffbTap?.TryGetFreshFfbTarget(pcapStreamMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "pcap";
+                        else if (!_quietSpellHoldDisabled && _ffbTap != null
+                                 && _ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000).HasValue)
+                        {
+                            chosen = (short)0;
+                            ffbSrc = "pcap-quiet";
+                            tapQuiet = true;
+                        }
                     }
                     // Farming Simulator streams NO real force values on any
                     // wheel (trace-proven): a captured scalar there is by
@@ -4440,7 +4471,7 @@ namespace TrueforceForAll.Plugin
                     // whole Forza session, and all Mode B games are Forza).
                     var afterSpring = ApplyStationarySpringIfActive(chosen);
                     var finalOut    = MaybeReshapeFfb(afterSpring);
-                    TraceFfb(chosen, afterSpring, finalOut);
+                    TraceFfb(tapQuiet ? (short?)null : chosen, afterSpring, finalOut);
                     return finalOut;
                 };
                 _device.FfbScale                 = Settings.FfbScale;
@@ -30458,6 +30489,23 @@ namespace TrueforceForAll.Plugin
             if (!_simulateNoFfb) _noFfbCaptureNotice = null;
             SimHub.Logging.Current.Info($"[TF4ALL] Simulate-no-FFB-capture {(_simulateNoFfb ? "ON" : "OFF")}.");
             return _simulateNoFfb;
+        }
+
+        // Dev/test (QUIETOFF access code): drop the quiet-spell hold in the FFB
+        // provider, so the 2026-08-17 to 2026-08-28 dev behaviour can be
+        // reproduced on demand: every effect and the stationary spring die
+        // about half a second after a parked car's force stops changing, and
+        // come back for half a second when a pedal is touched. TEMPORARY: it
+        // exists so the fix can be confirmed against the bug on the same build,
+        // and it goes once that is done. Read on the 1 kHz FFB thread, written
+        // from the UI, hence volatile. Session only, never persisted.
+        private volatile bool _quietSpellHoldDisabled;
+        public bool DebugToggleQuietSpellHold()
+        {
+            _quietSpellHoldDisabled = !_quietSpellHoldDisabled;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Quiet-spell hold {(_quietSpellHoldDisabled ? "OFF (reproducing the parked-car silence)" : "ON (the fix)")}.");
+            return _quietSpellHoldDisabled;
         }
 
         // Opt-in experimental FFB-capture path, shared by the Diagnostics

@@ -1430,10 +1430,9 @@ namespace TrueforceForAll.Plugin
         // BORROW path only: the top five library entries are written into the
         // five slots permanently, with no backup, by SyncSlotsToWheel.
         //
-        // Reachable only via the SLOTPICK<n> access code: there is no control
-        // for it, and SLOTPICK is not in TestCodeCatalog, so HELP does not list
-        // it either. Portable: the five slots exist on any of these wheelbases,
-        // so the preference travels.
+        // Reachable only via the SLOTPICK<n> access code (listed by HELP): there
+        // is no control for it. Portable: the five slots exist on any of these
+        // wheelbases, so the preference travels.
         public int LightsyncDynamicSlot { get; set; } = -1;
 
         // Pin every deliberate pattern pick to the car you are in, without having
