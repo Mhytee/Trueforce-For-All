@@ -1049,6 +1049,12 @@ namespace TrueforceForAll.Plugin
                     return "Sidechain ducker is muting nearly all output. Try lowering Depth in the Sidechain ducking section.";
                 }
 
+                // 10. Working, but degraded: MAIRA's force on the capture path
+                //     keeps the rev lights and the screen locked. Last, because
+                //     everything above is a wheel that does nothing, and this
+                //     one drives fine.
+                if (_mairaTapDegraded) return MairaTapDegradedText();
+
                 return null;   // healthy
             }
         }
@@ -5945,6 +5951,7 @@ namespace TrueforceForAll.Plugin
             // only (see UpdateNativeTrueforceStreamWatch). Runs before the pause
             // gate so that gate sees the mode change on the same tick.
             UpdateNativeTrueforceStreamWatch();
+            UpdateMairaTapWatch();
 
             // Issue #13 test path: when StopStreamOnPause is on, hand the wheel
             // fully back to the game while paused (see UpdateStopStreamOnPauseGate).
@@ -6110,6 +6117,9 @@ namespace TrueforceForAll.Plugin
                 // game on its own default.
                 _nativeStreamDemoted = false;
                 _standDownNoticeShownThisDemotion = false;
+                _mairaTapDegraded = false;
+                _mairaTapWarned = false;
+                _mairaTapCheckTicks = 0;
                 _tfContention.Reset();
                 // New game (or game gone): the FS pipe's fed-this-game latch
                 // belongs to the session that set it (it lengthens the
@@ -31474,6 +31484,63 @@ namespace TrueforceForAll.Plugin
             }
             catch { }
             return false;
+        }
+
+        // ---- MAIRA on the capture path ----------------------------------------
+        // MAIRA with its RPM lights OFF sends its force as DirectInput, which
+        // lands on the wheel's HID++ pipe and reaches us through the tap like
+        // any game's. The wheel works, but with force on that pipe the rev
+        // lights and the screen stay locked (the settled contention rule), and
+        // closing MAIRA on its own leaves nothing driving the wheel, because a
+        // MAIRA setup has iRacing's own force feedback off. Not supported
+        // (owner, 2026-08-30); the user is told, once per session in the log
+        // and for as long as it lasts in the panel, that the cure is "close
+        // MAIRA, then the iRacing setup". Evidence-based, all four: iRacing
+        // active, Normal, fresh force on the tap, MAIRA's process present. The
+        // process scan runs at most every 5 s and only once the cheap
+        // conditions hold. A 10 s freshness window keeps a menu visit from
+        // flapping the verdict.
+        private long _mairaTapCheckTicks;
+        private bool _mairaTapDegraded;
+        private bool _mairaTapWarned;
+        /// <summary>True while MAIRA's force is arriving through the capture
+        /// (UI surface: the amber line, with the guide link).</summary>
+        public bool MairaTapDegraded => _mairaTapDegraded;
+
+        private void UpdateMairaTapWatch()
+        {
+            if (_shuttingDown) return;
+            long now = Stopwatch.GetTimestamp();
+            if (_mairaTapCheckTicks != 0 && (now - _mairaTapCheckTicks) < Stopwatch.Frequency * 5) return;
+            _mairaTapCheckTicks = now;
+            var tap = _ffbTap;
+            bool cheap = Settings != null && MasterMode == TrueforceMasterMode.Normal
+                      && IsIRacingReshapeGame(_activeGame) && tap != null && tap.IsRunning
+                      && tap.TryGetFreshFfbTarget(10000).HasValue;
+            bool degraded = cheap && IsMairaRunning();
+            if (degraded == _mairaTapDegraded) return;
+            _mairaTapDegraded = degraded;
+            if (degraded)
+            {
+                if (_mairaTapWarned) return;
+                _mairaTapWarned = true;
+                SimHub.Logging.Current.Warn("[TF4ALL] " + MairaTapDegradedText());
+            }
+            else
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] MAIRA's force is no longer arriving through the USBPcap capture.");
+            }
+        }
+
+        /// <summary>One text for the log and the panel; the panel adds the
+        /// guide link after it.</summary>
+        private string MairaTapDegradedText()
+        {
+            bool screen = WheelHasOledScreen;
+            return "MAIRA is running and its force is reaching the wheel through the plugin's USBPcap capture. That "
+                 + "works, but with force on that path the rev lights" + (screen ? " and the wheel's screen" : "")
+                 + " stay off. Close MAIRA, then follow the iRacing setup for the sim's own force with the "
+                 + "plugin's effects" + (screen ? ", lights and screen." : " and lights.");
         }
 
         // Serves the "Hand the wheel back to the game while paused" checkbox

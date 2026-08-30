@@ -2740,9 +2740,9 @@ namespace TrueforceForAll.Plugin
             if (wantQuiet && WheelQuietDiagnosticText != null && !string.Equals(_lastQuietDiag, diag, StringComparison.Ordinal))
             {
                 _lastQuietDiag = diag;
-                if (_plugin != null && _plugin.NativeTrueforceStreamDemoted)
+                if (_plugin != null && (_plugin.NativeTrueforceStreamDemoted || _plugin.MairaTapDegraded))
                 {
-                    string guideKey = _plugin.StandDownGuideKey;
+                    string guideKey = _plugin.NativeTrueforceStreamDemoted ? _plugin.StandDownGuideKey : "iracing-setup";
                     WheelQuietDiagnosticText.Inlines.Clear();
                     WheelQuietDiagnosticText.Inlines.Add(new Run(diag + " "));
                     var why = new Hyperlink(new Run("Open the guide"));
