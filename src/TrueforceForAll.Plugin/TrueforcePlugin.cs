@@ -31418,22 +31418,36 @@ namespace TrueforceForAll.Plugin
                  + "pick Normal again" + (withGuideHint ? " (see Games with native Trueforce in the guides)." : ".");
         }
 
-        // MAIRA's process (MarvinsAIRARefactored.exe; matched loosely so a
-        // renamed build still counts). Scanned once per verdict.
+        // MAIRA's process. The build is MarvinsAIRARefactored.exe, but its
+        // installer renames on the way in (the AdminBoxx flavour ships as
+        // AdminBoxx.exe), and older releases were MarvinsAIRA.exe, so the match
+        // is on the letters alone: anything whose name reduces to
+        // "marvinsaira..." counts, apostrophes and spaces ignored. Scanned once
+        // per verdict; each Process handle is released on the way past.
+        internal static bool IsMairaProcessName(string processName)
+        {
+            if (string.IsNullOrEmpty(processName)) return false;
+            var sb = new System.Text.StringBuilder(processName.Length);
+            foreach (char c in processName)
+                if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+            return sb.ToString().Contains("marvinsaira");
+        }
+
         private static bool IsMairaRunning()
         {
-            try
+            System.Diagnostics.Process[] all = null;
+            try { all = System.Diagnostics.Process.GetProcesses(); } catch { return false; }
+            bool found = false;
+            foreach (var p in all)
             {
-                foreach (var p in System.Diagnostics.Process.GetProcesses())
+                try
                 {
-                    string n = null;
-                    try { n = p.ProcessName; } catch { }
-                    if (n != null && n.IndexOf("MarvinsAIRA", StringComparison.OrdinalIgnoreCase) >= 0)
-                        return true;
+                    if (!found && IsMairaProcessName(p.ProcessName)) found = true;
                 }
+                catch { }
+                finally { try { p.Dispose(); } catch { } }
             }
-            catch { }
-            return false;
+            return found;
         }
 
         // True when Documents\iRacing\app.ini carries loadTrueForceAPI=0, so
