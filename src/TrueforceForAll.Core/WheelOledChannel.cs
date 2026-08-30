@@ -230,6 +230,10 @@ namespace TrueforceForAll.Core
                 try
                 {
                     var list = DeviceList.Local;
+                    // A G PRO in G923 compatibility mode is deliberately NOT
+                    // probed: its firmware drops 0x8130 along with the PID
+                    // (measured 2026-08-29), so the probe would only time out
+                    // on the HID++ pipe every retry.
                     foreach (ushort pid in OledPids)
                     {
                         foreach (var dev in list.GetHidDevices(WheelDiscovery.LogitechVid, pid))

@@ -168,6 +168,11 @@ namespace TrueforceForAll.Core
         private byte _cmdShortRepId;    // report id for SHORT commands (0x10 or 0x11)
 
         private byte _idxRev;       // resolved feature index of page 0x807A
+
+        /// <summary>The HID++ feature index the rev lights live at on this
+        /// wheel (0 until resolved). Lets the plugin look up what the wire tap
+        /// last saw written to the strip.</summary>
+        public byte RevFeatureIndex => _idxRev;
         private HidStream _replyStream;     // the collection that carried the getFeature reply
         private volatile int _stripLen = LedCount;  // fn0's strip length (10 G PRO/RS50, 5 G923)
 
@@ -228,12 +233,19 @@ namespace TrueforceForAll.Core
                         // ep3 Trueforce stream, so skip it for those PIDs; the HID++
                         // rev-light collections live on mi_00 (col02 = command,
                         // col03 = reply).
-                        bool skipMi01 = pid == 0xC26D || pid == 0xC26E;
+                        bool xboxG923Pid = pid == 0xC26D || pid == 0xC26E;
                         foreach (var dev in list.GetHidDevices(WheelDiscovery.LogitechVid, pid))
                         {
                             string path = dev.DevicePath ?? string.Empty;
                             if (path.IndexOf("mi_02", StringComparison.OrdinalIgnoreCase) >= 0)
                                 continue;   // Trueforce audio interface, never HID++
+                            // A G PRO in G923 compatibility mode wears this PID
+                            // but keeps the G PRO layout, where mi_01 IS the
+                            // HID++ interface (owner, 2026-08-29: skipping it
+                            // left only the input-only joystick collection and
+                            // no lights). The product string tells them apart.
+                            bool skipMi01 = xboxG923Pid
+                                && !WheelDiscovery.IsGProInG923Mode(pid, SafeProductName(dev));
                             if (skipMi01 && path.IndexOf("mi_01", StringComparison.OrdinalIgnoreCase) >= 0)
                                 continue;   // G923 Xbox Trueforce interface
                             string stem = GroupStem(path);
@@ -425,6 +437,12 @@ namespace TrueforceForAll.Core
         private static void DisposeAll(List<HidStream> streams)
         {
             foreach (var s in streams) { try { s.Dispose(); } catch { } }
+        }
+
+        private static string SafeProductName(HidDevice d)
+        {
+            try { return d.GetProductName() ?? string.Empty; }
+            catch { return string.Empty; }
         }
 
         private static int SafeOutLen(HidDevice d)
