@@ -323,6 +323,36 @@ namespace TrueforceForAll.Core
         // tell "the game has gone quiet" from "the game is writing force we
         // are not decoding": the quiet-spell hold is only right for the first.
         private long _lastForceTrafficTicks;
+
+        // The rev-light LEVEL the wheel was last told to show, per HID++
+        // feature index, from any host writer (the game's own lighting, G HUB,
+        // or us): a long-report fn6 on the rev-light feature carries the lit
+        // step count in byte 9. When we rewrite a colour slot mid-game the
+        // upload has to raise the level to at least one to land, and this is
+        // what lets the write settle the strip back to what the game had on it
+        // instead of to dark. Parser thread writes, UI thread reads; both are
+        // whole-int stores so a torn read is impossible.
+        private readonly int[]  _lastLevelByFeature      = new int[256];
+        private readonly long[] _lastLevelTicksByFeature = new long[256];
+
+        private void NoteLevelWrite(byte featIdx, int level)
+        {
+            _lastLevelByFeature[featIdx] = level;
+            Interlocked.Exchange(ref _lastLevelTicksByFeature[featIdx], _sw.ElapsedTicks & TimestampMask);
+        }
+
+        /// <summary>The strip level most recently written to
+        /// <paramref name="featIdx"/> by anyone, if that write is no older than
+        /// <paramref name="maxAgeMs"/>.</summary>
+        public bool TryGetLastLevelWrite(byte featIdx, int maxAgeMs, out int level)
+        {
+            level = _lastLevelByFeature[featIdx];
+            long t = Interlocked.Read(ref _lastLevelTicksByFeature[featIdx]);
+            if (t == 0) return false;
+            long now = _sw.ElapsedTicks & TimestampMask;
+            long ageTicks = (now - t) & TimestampMask;
+            return ageTicks <= (Stopwatch.Frequency / 1000L) * maxAgeMs;
+        }
         // Shape of the first extraction, stashed for the fingerprint string.
         private bool   _firstShapeSet;
         private string _firstTransport;
@@ -516,6 +546,28 @@ namespace TrueforceForAll.Core
         // Milliseconds since the last FFB sample was latched, or long.MaxValue
         // if we've never latched one. Used by the UI to detect the "process
         // running but no data flowing" state.
+        // Newest packet of any kind parsed for our device. While the plugin
+        // streams ep3 at 1 kHz this advances every millisecond, so a stall
+        // here means the CAPTURE has died (USBPcap stalled, the wheel moved
+        // address), not that the game has gone quiet. The plugin's quiet-spell
+        // hold reads it so a dead capture can never keep an active zero on the
+        // wheel: with no capture there is nothing to know the game by.
+        private long _lastDevicePacketTicks;
+
+        /// <summary>Milliseconds since the capture last delivered a packet for
+        /// the wheel, or long.MaxValue if it never has.</summary>
+        public long MsSinceDevicePacket
+        {
+            get
+            {
+                long last = Interlocked.Read(ref _lastDevicePacketTicks);
+                if (last == 0) return long.MaxValue;
+                long now = _sw.ElapsedTicks & TimestampMask;
+                long ageTicks = (now - last) & TimestampMask;
+                return ageTicks * 1000L / Stopwatch.Frequency;
+            }
+        }
+
         public long MsSinceLastSample
         {
             get
@@ -1231,6 +1283,7 @@ namespace TrueforceForAll.Core
 
                 if (dev != _deviceAddress) continue;
                 Interlocked.Increment(ref _packetsForOurDevice);
+                Interlocked.Exchange(ref _lastDevicePacketTicks, _sw.ElapsedTicks & TimestampMask);
 
                 // Per-direction / per-transfer-type / per-endpoint breakdown.
                 // OUT direction is the host writing to the wheel (FFB and our
@@ -1274,6 +1327,7 @@ namespace TrueforceForAll.Core
                     byte iFeat = payload[headerLen + 2];
                     byte iFunc = payload[headerLen + 3];
                     RecordTupleSeen(0x11, iFeat, iFunc);
+                    if ((iFunc & 0xf0) == 0x60) NoteLevelWrite(iFeat, payload[headerLen + 9]);
                     if (iFeat == _ffbFeatureIndex && (iFunc & 0xf0) == 0x20)
                     {
                         NoteForceTraffic(0x11);
@@ -1330,6 +1384,10 @@ namespace TrueforceForAll.Core
                 byte featIdx  = payload[dataOffset + 2];
                 byte funcByte = payload[dataOffset + 3];
                 RecordTupleSeen(reportId, featIdx, funcByte);
+                // A rev-light level write (long report, fn6): remember what the
+                // strip was told to show so a slot rewrite can put it back.
+                if (reportId == 0x11 && (funcByte & 0xf0) == 0x60)
+                    NoteLevelWrite(featIdx, payload[dataOffset + 9]);
 
                 // G-series FFB: HID++ page 0x8123 long (0x11) or very-long
                 // (0x12) form, function 2 (high nibble of funcByte), at the

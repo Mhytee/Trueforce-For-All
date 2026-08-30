@@ -137,16 +137,17 @@ namespace TrueforceForAll.Core
         // The ONLY arbitration this class does is HasValue: a value means the
         // active shape (cur + audio window), null means keepalive (no audio,
         // the wheel reverts to its native FFB). Everything about freshness
-        // lives in the provider. The plugin's provider keeps two windows: a
-        // value older than 500 ms is never replayed (a held force must not
-        // walk the wheel to lock), but a game that sent force within
-        // FfbTargetMaxAgeMs still gets an active packet with zero force, so the
-        // effects keep playing through the quiet spells of a parked or held
-        // wheel. The Logitech force path never resends an unchanged value
-        // (owner's captures, 2026-08-28: 0.5 to 7.5 s holes are routine at a
-        // standstill), which is why the second window has to be this long. The
-        // wheel firmware itself maintains the last-commanded ep0 force
-        // indefinitely when the game stops sending updates.
+        // lives in the provider. The plugin's provider separates two questions:
+        // a value older than 500 ms is never replayed (a held force must not
+        // walk the wheel to lock), but while the game session is live and the
+        // capture healthy the pump still gets an active packet with zero
+        // force, so the effects keep playing through the quiet spells of a
+        // parked or held wheel. The Logitech force path never resends an
+        // unchanged value (owner's captures, 2026-08-28: 0.5 to 7.5 s holes
+        // are routine at a standstill; a tester's RS50 sat 25 s), which is
+        // why no clock window is right for that. The wheel firmware itself
+        // maintains the last-commanded ep0 force indefinitely when the game
+        // stops sending updates.
         public Func<short?> FfbTargetProvider { get; set; }
         public int FfbTargetMaxAgeMs { get; set; } = 10000;
 
