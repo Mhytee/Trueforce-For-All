@@ -3,7 +3,7 @@ A few games ship Trueforce on PC themselves. The plugin defaults to **Lightsync 
 You can take over from the game if you would rather tune the feel yourself than accept whatever it hardcodes: switch the game's own Trueforce off, then set the mode at the top of the panel to **Normal**.
 
 > [!WARNING]
-> A slider at 0 is not off. Several of these games keep the Trueforce API live even at zero, so the plugin drives a channel the game is still holding and the wheel whines. Only a real switch or a config setting releases it.
+> A slider at 0 is not off. Several of these games keep the Trueforce API live even at zero. The plugin can see that stream on the USB capture: if it is still there when you pick **Normal**, the plugin drops back to Lightsync only for the session rather than whine beside it, and the status panel says so. Only a real switch or a config setting hands the wheel over.
 
 Where a real off switch exists:
 

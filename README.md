@@ -394,6 +394,17 @@ live even at 0, so the plugin fights a channel the game is still driving and
 the wheel whines. Only a real on/off switch or a config-file setting fully
 releases the wheel.
 
+The plugin now catches this itself. The USB capture sees every Trueforce
+packet on the wheel, so when a game streams beside the plugin, the plugin
+drops to Lightsync only for that game session within a couple of seconds
+(the log and the status panel say why) instead of whining beside it. Pick
+Normal to try again once the game's Trueforce is off. Without USBPcap there
+is nothing to watch, and nothing changes.
+
+Running MAIRA and the plugin at the same time is not supported: with MAIRA's
+RPM lights on, the plugin steps aside for it. Close MAIRA, then set the mode
+to Normal.
+
 | Game | How to disable native Trueforce | Plugin takes over? |
 |---|---|---|
 | iRacing | Set `loadTrueForceAPI=0` in `app.ini` | Yes |
