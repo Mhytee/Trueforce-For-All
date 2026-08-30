@@ -902,7 +902,7 @@ namespace TrueforceForAll.Plugin
                     // Unless we put ourselves here. That one the user did not
                     // choose, so it gets the line: what happened, and the one
                     // thing that changes it.
-                    if (_nativeStreamDemoted) return NativeStreamStandDownText(0);
+                    if (_nativeStreamDemoted) return NativeStreamStandDownText(0, withGuideHint: false);
                     return null;
                 }
 
@@ -2771,6 +2771,10 @@ namespace TrueforceForAll.Plugin
             Settings.WelcomeDeclineCount = 0;
             Settings.WelcomeNextShowAt = null;
             Settings.IRacingTrueforceNoticeDismissed = false;
+            // The stepped-aside notice, for every game it was dismissed in, and
+            // its once-per-demotion guard.
+            Settings.StandDownNoticeDismissedGames?.Clear();
+            _standDownNoticeShownThisDemotion = false;
             // Re-arm the Assetto Corsa CSP setup offer (its dismiss latch doubles
             // as the notice latch) and its once-a-session guard.
             Settings.CspBridgeInstallDeclined = false;
@@ -6105,6 +6109,7 @@ namespace TrueforceForAll.Plugin
                 // game session that earned it. The resolve below lands the new
                 // game on its own default.
                 _nativeStreamDemoted = false;
+                _standDownNoticeShownThisDemotion = false;
                 _tfContention.Reset();
                 // New game (or game gone): the FS pipe's fed-this-game latch
                 // belongs to the session that set it (it lengthens the
@@ -31235,6 +31240,116 @@ namespace TrueforceForAll.Plugin
         /// <summary>The stream that demoted us was MAIRA's, not the game's.</summary>
         public bool NativeTrueforceStreamFromMaira => _nativeStreamFromMaira;
 
+        // ---- "The plugin stepped aside" notice --------------------------------
+        // A stand-down is a surprise from the driver's seat: the wheel goes
+        // quiet with no gesture from the user, and nothing in the game (or in
+        // MAIRA) says it took the wheel. So every demotion gets a popup, once
+        // per demotion, with the guide one click away. Dismissable for good
+        // like the iRacing notice; the panel keeps its own link in the amber
+        // line and under the selector regardless.
+        private volatile bool _standDownNoticeShowing;
+        private volatile bool _standDownNoticeShownThisDemotion;
+
+        /// <summary>Which guide explains this stand-down: MAIRA and iRacing are
+        /// covered by the iRacing setup guide, every other title by the
+        /// native-Trueforce one.</summary>
+        public string StandDownGuideKey
+            => (_nativeStreamFromMaira || IsIRacingReshapeGame(_activeGame)) ? "iracing-setup" : "native-trueforce";
+
+        private string StandDownNoticeTitle
+            => _nativeStreamFromMaira ? "MAIRA detected: the plugin stepped aside"
+             : IsIRacingReshapeGame(_activeGame) ? "iRacing's Trueforce is on: the plugin stepped aside"
+             : "The game's Trueforce is on: the plugin stepped aside";
+
+        private bool StandDownNoticeDismissedFor(string game)
+        {
+            var list = Settings?.StandDownNoticeDismissedGames;
+            if (list == null || string.IsNullOrEmpty(game)) return false;
+            foreach (var g in list)
+                if (string.Equals(g, game, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        private void ShowStandDownNotice()
+        {
+            // Captured now: the dismissal is stamped on the game that earned the
+            // notice, not on whatever is active when the dialog closes.
+            string game = _activeGame;
+            if (Settings == null || StandDownNoticeDismissedFor(game)) return;
+            if (_standDownNoticeShowing || _standDownNoticeShownThisDemotion) return;
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            _standDownNoticeShownThisDemotion = true;
+            string title = StandDownNoticeTitle;
+            string body = NativeStreamStandDownText(0, withGuideHint: false);
+            string guideKey = StandDownGuideKey;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_standDownNoticeShowing) return;
+                if (Settings == null || StandDownNoticeDismissedFor(game)) return;
+                _standDownNoticeShowing = true;
+                try
+                {
+                    // A real link to the guide, the way the Game Mods card's
+                    // dialogs carry theirs, rather than directions to the ? menu.
+                    var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
+                    var link = new System.Windows.Documents.Hyperlink(
+                        new System.Windows.Documents.Run("Open the guide"))
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                    };
+                    link.Click += (s2, e2) => OpenGuideFromAnywhere(guideKey);
+                    guideLink.Inlines.Add(link);
+                    bool? r = TrueforceDialog.Show(app.MainWindow, title, body,
+                        DialogKind.Info,
+                        okLabel: "Don't show again for this game", cancelLabel: "Remind me later",
+                        goldOk: true, extraContent: guideLink);
+                    if (r == true && !string.IsNullOrEmpty(game))
+                    {
+                        if (Settings.StandDownNoticeDismissedGames == null)
+                            Settings.StandDownNoticeDismissedGames = new List<string>();
+                        if (!StandDownNoticeDismissedFor(game))
+                            Settings.StandDownNoticeDismissedGames.Add(game);
+                        try { PersistSettings(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                { SimHub.Logging.Current.Info("[TF4ALL] Stand-down notice failed: " + ex.Message); }
+                finally { _standDownNoticeShowing = false; }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        // The settings panel registers itself so a plugin-side dialog can open
+        // the in-app guides, which live on the panel (their entries jump to its
+        // tabs). Weak: SimHub owns the panel's lifetime. With no panel yet (the
+        // plugin page never opened this run), the same text lives in the README.
+        private WeakReference<SettingsControl> _panelRef;
+        internal void NotePanel(SettingsControl panel)
+            => _panelRef = panel == null ? null : new WeakReference<SettingsControl>(panel);
+
+        internal void OpenGuideFromAnywhere(string key)
+        {
+            SettingsControl panel = null;
+            try { _panelRef?.TryGetTarget(out panel); } catch { panel = null; }
+            if (panel != null)
+            {
+                try
+                {
+                    panel.OpenGuidesFrom(System.Windows.Application.Current?.MainWindow, key);
+                    return;
+                }
+                catch (Exception ex)
+                { SimHub.Logging.Current.Info("[TF4ALL] Guide open via panel failed: " + ex.Message); }
+            }
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "https://github.com/Mhytee/Trueforce-For-All#games-with-native-trueforce")
+                { UseShellExecute = true });
+            }
+            catch { }
+        }
+
         private void UpdateNativeTrueforceStreamWatch()
         {
             if (_shuttingDown) return;
@@ -31273,12 +31388,15 @@ namespace TrueforceForAll.Plugin
             }
             SimHub.Logging.Current.Warn("[TF4ALL] " + NativeStreamStandDownText(perSec));
             ApplyEffectiveMode("a second Trueforce stream on the wheel");
+            ShowStandDownNotice();
         }
 
-        /// <summary>The stand-down explanation, one source for the log and the
-        /// panel: who is streaming, why we left, and the one thing that changes
-        /// it. Rate shown when known (the log); the panel passes 0.</summary>
-        private string NativeStreamStandDownText(int perSec)
+        /// <summary>The stand-down explanation, one source for the log, the
+        /// panel and the popup: who is streaming, why we left, and the one thing
+        /// that changes it. Rate shown when known (the log); the panel passes 0.
+        /// The "see the guides" hint is for the log; the panel and the popup
+        /// carry a real link and pass withGuideHint false.</summary>
+        private string NativeStreamStandDownText(int perSec, bool withGuideHint = true)
         {
             string rate = perSec > 0 ? $" ({perSec}/s beside ours)" : "";
             const string why = "Two Trueforce streams on one wheel alternate and the wheel whines, so the "
@@ -31297,7 +31415,7 @@ namespace TrueforceForAll.Plugin
                       + "(step 1 of the iRacing setup), then pick Normal again.";
             return "The game is streaming its own Trueforce" + rate + ". " + why
                  + "To run the plugin's Trueforce here instead, switch the game's own Trueforce off, then "
-                 + "pick Normal again (see Games with native Trueforce in the guides).";
+                 + "pick Normal again" + (withGuideHint ? " (see Games with native Trueforce in the guides)." : ".");
         }
 
         // MAIRA's process (MarvinsAIRARefactored.exe; matched loosely so a

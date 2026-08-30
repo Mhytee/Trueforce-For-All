@@ -4634,13 +4634,9 @@
                         <!-- Issue reporting moved to the bottom of this tab,
                              outside any expander: beta users shouldn't have to
                              know which section to open to file a bug.
-                             Reset-notices stays with the diagnostics tools. -->
-                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                            <Button x:Name="ResetNoticesButton" Content="Show one-time messages again" Width="220" Height="26"
-                                    Click="ResetNotices_Click"
-                                    ToolTip="Reset the pop-ups that only show once or were dismissed with 'Don't show again' (welcome, what's new, the iRacing Trueforce notice, share prompt) so they can appear again."/>
-                            <TextBlock x:Name="ResetNoticesStatus" Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center" Opacity="0.85"/>
-                        </StackPanel>
+                             "Show one-time messages again" lives under
+                             Widgets & Display: it is about what the panel shows,
+                             not a diagnostic. -->
                     </StackPanel>
                 </Expander>
 
@@ -4665,6 +4661,12 @@
                               ToolTip="Shows the per-gear redline editor in the Car facts panel, for cars where you shift at a different point in specific gears. Cars whose current engine already has per-gear redlines saved keep showing the editor, and saved values keep working either way."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
                                Text="Off by default to keep the Car facts panel small."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button x:Name="ResetNoticesButton" Content="Show one-time messages again" Width="220" Height="26"
+                                Click="ResetNotices_Click"
+                                ToolTip="Reset the pop-ups that only show once or were dismissed with 'Don't show again' (welcome, what's new, the iRacing Trueforce notice, the stepped-aside notice for every game, share prompt) so they can appear again."/>
+                        <TextBlock x:Name="ResetNoticesStatus" Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center" Opacity="0.85"/>
+                    </StackPanel>
                 </StackPanel>
             </Expander>
 

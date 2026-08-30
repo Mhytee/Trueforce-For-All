@@ -48,6 +48,15 @@ namespace TrueforceForAll.Plugin
             GuideBrowserWindow.Show(Window.GetWindow(this), BuildGuideEntries(), initialKey, GoToPanelTab);
         }
 
+        /// <summary>Open the guides from outside the panel (a plugin-side
+        /// dialog), with an owner the caller supplies: the panel may not be the
+        /// visible page, so its own window can be null.</summary>
+        internal void OpenGuidesFrom(Window owner, string initialKey)
+        {
+            if (_plugin == null) return;
+            GuideBrowserWindow.Show(owner ?? Window.GetWindow(this), BuildGuideEntries(), initialKey, GoToPanelTab);
+        }
+
         /// <summary>Resolve a [label](tab:key) link inside a guide to a place in
         /// the settings panel: a tab, or a section within one. The browser has
         /// already closed when this runs.</summary>

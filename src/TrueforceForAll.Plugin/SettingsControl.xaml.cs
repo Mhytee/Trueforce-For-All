@@ -223,6 +223,8 @@ namespace TrueforceForAll.Plugin
         public SettingsControl(TrueforcePlugin plugin) : this()
         {
             _plugin = plugin;
+            // So a plugin-side dialog (the MAIRA notice) can open the guides.
+            try { plugin?.NotePanel(this); } catch { }
 
             // Support prompt fires on entering the plugin page, so it is scoped to
             // our own surface and never intrudes elsewhere in SimHub.
@@ -2732,8 +2734,27 @@ namespace TrueforceForAll.Plugin
             if (wantQuiet && string.Equals(diag, TrueforcePlugin.GHubQuietDiagnosticMessage, StringComparison.Ordinal))
                 wantQuiet = false;
 
-            if (wantQuiet && WheelQuietDiagnosticText != null && WheelQuietDiagnosticText.Text != diag)
-                WheelQuietDiagnosticText.Text = diag;
+            // Compared against what we last rendered, not the TextBlock's Text:
+            // the MAIRA case renders inlines with a link, whose Text would never
+            // equal the diagnostic string and would re-render every tick.
+            if (wantQuiet && WheelQuietDiagnosticText != null && !string.Equals(_lastQuietDiag, diag, StringComparison.Ordinal))
+            {
+                _lastQuietDiag = diag;
+                if (_plugin != null && _plugin.NativeTrueforceStreamDemoted)
+                {
+                    string guideKey = _plugin.StandDownGuideKey;
+                    WheelQuietDiagnosticText.Inlines.Clear();
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(diag + " "));
+                    var why = new Hyperlink(new Run("Open the guide"));
+                    why.Click += (s2, e2) => OpenGuides(guideKey);
+                    WheelQuietDiagnosticText.Inlines.Add(why);
+                    WheelQuietDiagnosticText.Inlines.Add(new Run("."));
+                }
+                else
+                {
+                    WheelQuietDiagnosticText.Text = diag;
+                }
+            }
 
             bool wantGHub  = _plugin?.IsLogitechGHubRunning ?? false;
             bool wantAdmin = _plugin != null && !_plugin.IsRunningElevated;
@@ -2759,6 +2780,9 @@ namespace TrueforceForAll.Plugin
                 new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner, DefaultDroppedBanner },
                 new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified,        wantDropped });
         }
+
+        // The diagnostic string last rendered into the amber box (see above).
+        private string _lastQuietDiag;
 
         private void DefaultDroppedDismiss_Click(object sender, RoutedEventArgs e)
         {
@@ -4998,11 +5022,20 @@ namespace TrueforceForAll.Plugin
             // carries the steps.
             if (effective == TrueforceMasterMode.LightsyncOnly && _plugin.NativeTrueforceStreamDemoted)
             {
-                MasterModeNote.Text = _plugin.NativeTrueforceStreamFromMaira
+                // Inlines, so "Open the guide" is a link to the guide that explains
+                // this stand-down rather than a description of where it is.
+                string guideKey = _plugin.StandDownGuideKey;
+                MasterModeNote.Inlines.Clear();
+                MasterModeNote.Inlines.Add(new Run(_plugin.NativeTrueforceStreamFromMaira
                     ? "Lightsync only for this session: MAIRA is streaming to the wheel. Running both at the "
-                      + "same time is not supported; close MAIRA, then pick Normal."
-                    : "Lightsync only for this session: the game is streaming its own Trueforce, and two "
-                      + "streams on one wheel make it whine. Pick Normal to try again.";
+                      + "same time is not supported; close MAIRA, then pick Normal. "
+                    : "Lightsync only for this session: " + (_plugin.ActiveGameIsReshapeGame ? "iRacing" : "the game")
+                      + " is streaming its own Trueforce, and two streams on one wheel make it whine. "
+                      + "Pick Normal to try again. "));
+                var why = new Hyperlink(new Run("Open the guide"));
+                why.Click += (s2, e2) => OpenGuides(guideKey);
+                MasterModeNote.Inlines.Add(why);
+                MasterModeNote.Inlines.Add(new Run("."));
                 return;
             }
 

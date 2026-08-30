@@ -218,6 +218,16 @@ namespace TrueforceForAll.Plugin
         // so a restored backup on a new machine should show the notice again.
         public bool IRacingTrueforceNoticeDismissed { get; set; } = false;
 
+        // The games (SimHub names) whose "the plugin stepped aside" notice the
+        // user dismissed for good: a stand-down for a second Trueforce stream
+        // (a native game's, MAIRA's) pops it once per demotion until the game
+        // is in here. Per game, because the answer differs per title: someone
+        // who leaves iRacing's Trueforce on by choice still wants to hear about
+        // it in ACC. Machine-local in backup like the iRacing notice; which
+        // programs share this PC's wheel is a per-PC fact. Defaults EMPTY: the
+        // settings loader appends onto collections it finds.
+        public List<string> StandDownNoticeDismissedGames { get; set; } = new List<string>();
+
         // Per-game auto-remembered enable state. When the active game changes,
         // the plugin looks up this dict and applies the saved value (default
         // true for games never seen before). Independent of preset assignment.
