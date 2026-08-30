@@ -1,6 +1,6 @@
 Forza sends its telemetry to **one place only**. For the plugin to do its best work, that place has to be the plugin rather than SimHub.
 
-Telemetry that arrives secondhand through SimHub is thinner: less road texture detail, no airborne feel, and [Telemetry Based FFB](guide:telemetry-ffb) cannot run on it at all. The plugin falls back to that feed so the wheel is never dead, but it is a fallback, not the intended path.
+Telemetry that arrives secondhand through SimHub is thinner: less road texture detail, no airborne feel, and [Telemetry Based FFB](guide:telemetry-ffb) cannot run on it at all. The plugin falls back to that feed so the wheel is never dead, but it is not the intended path.
 
 ## Point Forza at the plugin
 

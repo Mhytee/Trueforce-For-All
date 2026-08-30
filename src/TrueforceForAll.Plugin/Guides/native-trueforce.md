@@ -1,6 +1,6 @@
 A few games ship Trueforce on PC themselves. The plugin defaults to **Lightsync only** in those, rather than fighting the game for the same channel on the wheel.
 
-You can take it over if you would rather tune the feel yourself than take whatever the game hardcodes: switch the game's own Trueforce off, then set the mode at the top of the panel to **Normal**.
+You can take over from the game if you would rather tune the feel yourself than accept whatever it hardcodes: switch the game's own Trueforce off, then set the mode at the top of the panel to **Normal**.
 
 > [!WARNING]
 > A slider at 0 is not off. Several of these games keep the Trueforce API live even at zero, so the plugin drives a channel the game is still holding and the wheel whines. Only a real switch or a config setting releases it.
@@ -14,4 +14,4 @@ Where a real off switch exists:
 
 Assetto Corsa Competizione, EVO and Rally offer a slider and no off switch that anyone has found, so the plugin stays out of the way in those. Plain Assetto Corsa is not one of these games at all: it ships no Trueforce, so the plugin runs there normally and reads its telemetry directly.
 
-The full table, including the titles nobody has tested yet, is in the README on GitHub.
+The full table, including the titles nobody has tested yet, is in the [README on GitHub](https://github.com/Mhytee/Trueforce-For-All#readme).
