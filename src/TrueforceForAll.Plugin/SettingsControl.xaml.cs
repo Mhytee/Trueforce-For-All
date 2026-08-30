@@ -2740,15 +2740,26 @@ namespace TrueforceForAll.Plugin
             if (wantQuiet && WheelQuietDiagnosticText != null && !string.Equals(_lastQuietDiag, diag, StringComparison.Ordinal))
             {
                 _lastQuietDiag = diag;
-                if (_plugin != null && (_plugin.NativeTrueforceStreamDemoted || _plugin.MairaTapDegraded))
+                if (_plugin != null && _plugin.NativeTrueforceStreamDemoted)
                 {
-                    string guideKey = _plugin.NativeTrueforceStreamDemoted ? _plugin.StandDownGuideKey : "iracing-setup";
+                    string guideKey = _plugin.StandDownGuideKey;
                     WheelQuietDiagnosticText.Inlines.Clear();
                     WheelQuietDiagnosticText.Inlines.Add(new Run(diag + " "));
                     var why = new Hyperlink(new Run("Open the guide"));
                     why.Click += (s2, e2) => OpenGuides(guideKey);
                     WheelQuietDiagnosticText.Inlines.Add(why);
                     WheelQuietDiagnosticText.Inlines.Add(new Run("."));
+                }
+                else if (_plugin != null && _plugin.MairaTapDegraded)
+                {
+                    // "iRacing setup" is the link, inside the sentence.
+                    WheelQuietDiagnosticText.Inlines.Clear();
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(
+                        _plugin.MairaTapDegradedLead + " " + TrueforcePlugin.MairaTapDegradedTailBeforeLink));
+                    var setup = new Hyperlink(new Run(TrueforcePlugin.MairaTapDegradedLinkText));
+                    setup.Click += (s2, e2) => OpenGuides("iracing-setup");
+                    WheelQuietDiagnosticText.Inlines.Add(setup);
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(_plugin.MairaTapDegradedTailAfterLink));
                 }
                 else
                 {

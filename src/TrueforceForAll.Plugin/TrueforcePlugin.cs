@@ -2781,6 +2781,8 @@ namespace TrueforceForAll.Plugin
             // its once-per-demotion guard.
             Settings.StandDownNoticeDismissedGames?.Clear();
             _standDownNoticeShownThisDemotion = false;
+            Settings.MairaTapNoticeDismissed = false;
+            _mairaTapWarned = false;
             // Re-arm the Assetto Corsa CSP setup offer (its dismiss latch doubles
             // as the notice latch) and its once-a-session guard.
             Settings.CspBridgeInstallDeclined = false;
@@ -31525,6 +31527,7 @@ namespace TrueforceForAll.Plugin
                 if (_mairaTapWarned) return;
                 _mairaTapWarned = true;
                 SimHub.Logging.Current.Warn("[TF4ALL] " + MairaTapDegradedText());
+                ShowMairaTapNotice();
             }
             else
             {
@@ -31532,16 +31535,78 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>One text for the log and the panel; the panel adds the
-        /// guide link after it.</summary>
-        private string MairaTapDegradedText()
+        // The popup for it (owner, 2026-08-30): a banner in a panel nobody has
+        // open while driving is not a warning. Once per episode, gated by the
+        // same latch as the log line; the primary button opens the iRacing
+        // setup guide, the other dismisses for good (persisted, cleared by
+        // "Show one-time messages again"). The amber line is NOT gated by the
+        // dismissal: someone who chose to run this way still sees, every time
+        // they open the panel, that the lights and screen are off because of it.
+        private volatile bool _mairaTapNoticeShowing;
+
+        private void ShowMairaTapNotice()
         {
-            bool screen = WheelHasOledScreen;
-            return "MAIRA is running and its force is reaching the wheel through the plugin's USBPcap capture. That "
-                 + "works, but with force on that path the rev lights" + (screen ? " and the wheel's screen" : "")
-                 + " stay off. Close MAIRA, then follow the iRacing setup for the sim's own force with the "
-                 + "plugin's effects" + (screen ? ", lights and screen." : " and lights.");
+            var app = System.Windows.Application.Current;
+            if (app == null || _mairaTapNoticeShowing) return;
+            if (Settings == null || Settings.MairaTapNoticeDismissed) return;
+            string title = "MAIRA detected: rev lights" + (WheelHasOledScreen ? " and screen" : "") + " are off";
+            string body = MairaTapDegradedLead;
+            string tailAfter = MairaTapDegradedTailAfterLink;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_mairaTapNoticeShowing) return;
+                if (Settings == null || Settings.MairaTapNoticeDismissed) return;
+                _mairaTapNoticeShowing = true;
+                try
+                {
+                    // The cure as its own line under the body, with "iRacing setup"
+                    // a link. Styled like the dialog's body text (12 px, muted).
+                    var cure = new TextBlock
+                    {
+                        Margin = new System.Windows.Thickness(0, 8, 0, 0),
+                        TextWrapping = System.Windows.TextWrapping.Wrap,
+                        FontSize = 12,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A)),
+                    };
+                    cure.Inlines.Add(new System.Windows.Documents.Run(MairaTapDegradedTailBeforeLink));
+                    var setup = new System.Windows.Documents.Hyperlink(
+                        new System.Windows.Documents.Run(MairaTapDegradedLinkText))
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                    };
+                    setup.Click += (s2, e2) => OpenGuideFromAnywhere("iracing-setup");
+                    cure.Inlines.Add(setup);
+                    cure.Inlines.Add(new System.Windows.Documents.Run(tailAfter));
+                    bool? r = TrueforceDialog.Show(app.MainWindow, title, body, DialogKind.Info,
+                        okLabel: "Open the iRacing setup guide", cancelLabel: "Don't show again", goldOk: true,
+                        extraContent: cure);
+                    if (r == true) OpenGuideFromAnywhere("iracing-setup");
+                    else if (r == false)
+                    {
+                        Settings.MairaTapNoticeDismissed = true;
+                        try { PersistSettings(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                { SimHub.Logging.Current.Info("[TF4ALL] MAIRA notice failed: " + ex.Message); }
+                finally { _mairaTapNoticeShowing = false; }
+            }), System.Windows.Threading.DispatcherPriority.Background);
         }
+
+        /// <summary>The text, in the parts the panel and the popup need to make
+        /// "iRacing setup" a link: the lead (what is happening), then the cure
+        /// split around the link text. The log joins them into one line.</summary>
+        public string MairaTapDegradedLead =>
+            "MAIRA is running and its force is reaching the wheel through the plugin's USBPcap capture. That "
+            + "works, but with force on that path the rev lights" + (WheelHasOledScreen ? " and the wheel's screen" : "")
+            + " stay off.";
+        public const string MairaTapDegradedTailBeforeLink = "Close MAIRA, then follow the ";
+        public const string MairaTapDegradedLinkText = "iRacing setup";
+        public string MairaTapDegradedTailAfterLink =>
+            " for the sim's own force with the plugin's effects" + (WheelHasOledScreen ? ", lights and screen." : " and lights.");
+
+        private string MairaTapDegradedText()
+            => MairaTapDegradedLead + " " + MairaTapDegradedTailBeforeLink + MairaTapDegradedLinkText + MairaTapDegradedTailAfterLink;
 
         // Serves the "Hand the wheel back to the game while paused" checkbox
         // under Force feedback (advanced). Persists Settings.StopStreamOnPause.

@@ -228,6 +228,12 @@ namespace TrueforceForAll.Plugin
         // settings loader appends onto collections it finds.
         public List<string> StandDownNoticeDismissedGames { get; set; } = new List<string>();
 
+        // The "MAIRA detected: rev lights are off" popup, dismissed for good.
+        // Only the popup: the amber line in the panel keeps showing for as long
+        // as MAIRA's force is arriving through the capture, so the state never
+        // goes unseen. Machine-local in backup like the other notice latches.
+        public bool MairaTapNoticeDismissed { get; set; } = false;
+
         // Per-game auto-remembered enable state. When the active game changes,
         // the plugin looks up this dict and applies the saved value (default
         // true for games never seen before). Independent of preset assignment.
