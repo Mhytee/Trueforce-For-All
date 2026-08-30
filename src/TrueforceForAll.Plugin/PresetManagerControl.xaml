@@ -324,7 +324,7 @@
                  buttons, then details above them. LastChildFill: list. -->
             <DockPanel x:Name="GamePanel">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Select a preset to see what it contains. Built-ins can't be renamed or deleted; saving over one forks a copy."/>
+                               Text="Select a preset to see what it contains. Built-ins can't be renamed or deleted; saving over one makes a copy."/>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
                                    Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
@@ -342,9 +342,9 @@
                                  share, destructive last, DEV trailing. Wraps to a
                                  second row instead of clipping on a narrow panel. -->
                             <Button x:Name="GameSetDefaultBtn" Content="Set default games…" Style="{StaticResource SharePrimaryButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
-                                    ToolTip="Check the games this preset should auto-load for. Uncheck to drop a game's binding. Replaces the older Set / Clear pair."/>
+                                    ToolTip="Check the games this preset should auto-load for. Uncheck to drop a game's binding."/>
                             <Button x:Name="GameEditBtn"       Content="Edit"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
-                                    ToolTip="Open this preset for editing on the Effects tab, with an Editing banner. Edit and save the usual way; Done returns you to your previously-active preset (saving over a built-in forks a copy)."/>
+                                    ToolTip="Open this preset for editing on the Effects tab, with an Editing banner. Edit and save the usual way; Done returns you to your previously-active preset (saving over a built-in makes a copy)."/>
                             <Button x:Name="GameDuplicateBtn"  Content="Duplicate…"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
                             <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
                             <Button x:Name="GameShareBtn"      Content="Share"          Style="{StaticResource RowButton}" Click="GameShare_Click"      IsEnabled="False"

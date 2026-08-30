@@ -46,7 +46,7 @@ namespace TrueforceForAll.Plugin
 
         public WelcomeWindow()
         {
-            Title         = "Welcome to networked Trueforce For All";
+            Title         = "Trueforce For All: community features";
             Width         = 500;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;

@@ -57,7 +57,7 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(new TextBlock
             {
-                Text = "A moderator flagged some of your community content. Fix it (for example, rename it) and request a review, or appeal if you think it was a mistake.",
+                Text = "A moderator flagged some of your community content. Fix it (for example, rename it), or explain why it was a mistake, then request a review.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
                 Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
