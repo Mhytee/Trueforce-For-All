@@ -88,6 +88,17 @@ namespace TrueforceForAll.Core
         private long _packetsSent;
         public long PacketsSent => System.Threading.Interlocked.Read(ref _packetsSent);
 
+        // Every packet this object has put on the stream endpoint: the init
+        // sequence, the mode commands, samples, keepalives, the teardown
+        // silence. Counted BEFORE each write, so a capture of the same wire
+        // can never run ahead of it. The plugin subtracts this from what the
+        // FFB tap saw on that endpoint to find packets that are not ours (a
+        // game's native Trueforce streaming beside us; see
+        // TrueforceStreamContentionDetector). PacketsSent stays what it was:
+        // sample packets only, the liveness heartbeat.
+        private long _ep3Writes;
+        public long Ep3Writes => System.Threading.Interlocked.Read(ref _ep3Writes);
+
         // 13-slot rolling window of u16 offset-binary samples (newest at index Window-1).
         private readonly ushort[] _window = new ushort[Window];
         private ushort _lastCurrent = 0x8000;
@@ -370,6 +381,7 @@ namespace TrueforceForAll.Core
                 {
                     Buffer.BlockCopy(InitData.Packets[i], 0, pkt, 0, InitData.PacketLen);
                     pkt[InitData.SeqOffset] = (byte)((i + 1) & 0xFF);
+                    System.Threading.Interlocked.Increment(ref _ep3Writes);
                     _stream.Write(pkt);
                     PrecisionSleepUs(InitInterPacketUs);
                 }
@@ -720,6 +732,7 @@ namespace TrueforceForAll.Core
                 try
                 {
                     BuildSilentPacket(_packetBuf, _seq++);
+                    System.Threading.Interlocked.Increment(ref _ep3Writes);
                     _stream?.Write(_packetBuf);
                     _lastCurrent = 0x8000;
                     _lastFfbOutput = 0;
@@ -742,6 +755,7 @@ namespace TrueforceForAll.Core
                 int templateIdx = (cmd == 0x04) ? 66 : 67;       // packet #67 / #68 (0-indexed)
                 Buffer.BlockCopy(InitData.Packets[templateIdx], 0, _packetBuf, 0, PacketLen);
                 _packetBuf[InitData.SeqOffset] = _seq++;
+                System.Threading.Interlocked.Increment(ref _ep3Writes);
                 try { _stream.Write(_packetBuf); }
                 catch { _streamFaulted = true; _shuttingDown = true; return; }
                 _paused = (cmd == 0x04);
@@ -1063,6 +1077,7 @@ namespace TrueforceForAll.Core
 
             try
             {
+                System.Threading.Interlocked.Increment(ref _ep3Writes);
                 _stream.Write(_packetBuf);
                 System.Threading.Interlocked.Increment(ref _packetsSent);
             }

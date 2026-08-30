@@ -176,6 +176,14 @@ namespace TrueforceForAll.Core
         public long InterruptOutOnOurDevice => _outTransferTypeCounts[1];
         public long ControlOutOnOurDevice   => _outTransferTypeCounts[2];
         public long BulkOutOnOurDevice      => _outTransferTypeCounts[3];
+        // Trueforce stream packets seen on the wheel from ANY writer: ours, a
+        // game's native SDK, G HUB. Counted in the parse loop by shape (one
+        // 64-byte report 0x01 on an interrupt OUT request). The plugin
+        // subtracts its own write count (TrueforceDevice.Ep3Writes) to find a
+        // second writer; see TrueforceStreamContentionDetector.
+        private long _trueforceStreamPackets;
+        public long TrueforceStreamPacketsOnOurDevice => Interlocked.Read(ref _trueforceStreamPackets);
+
         public long[] SnapshotOutEndpointCounts()
         {
             var snap = new long[16];
@@ -1294,6 +1302,20 @@ namespace TrueforceForAll.Core
                 {
                     if (xfer < _outTransferTypeCounts.Length) _outTransferTypeCounts[xfer]++;
                     _outEndpointCounts[epNum]++;
+
+                    // Trueforce stream packets, whoever wrote them: an interrupt
+                    // OUT request (info bit 0 clear: USBPcap logs OUT data on the
+                    // request record, and the completion carries none, which is
+                    // why the per-endpoint count above runs at twice the stream
+                    // rate) whose data is exactly one 64-byte report 0x01, the
+                    // shape of every packet on the stream endpoint. HID++ very
+                    // long reports are 64 bytes too but carry id 0x12; classic
+                    // slot commands are 7 bytes. Not keyed on the endpoint
+                    // number, which differs by wheel.
+                    if (xfer == 0x01 && (payload[16] & 0x01) == 0
+                        && caplen - headerLen == TrueforceDevice.PacketLen
+                        && payload[headerLen] == 0x01)
+                        Interlocked.Increment(ref _trueforceStreamPackets);
                 }
 
                 // Classic Logitech FFB path: a non-Trueforce game writes force

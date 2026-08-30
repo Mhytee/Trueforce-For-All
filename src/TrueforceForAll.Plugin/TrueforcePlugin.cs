@@ -897,7 +897,14 @@ namespace TrueforceForAll.Plugin
                 //    the mode here would show a permanent fault for behaviour the
                 //    user chose. The status pill and the line under the mode
                 //    selector already say what is happening.
-                if (MasterMode == TrueforceMasterMode.LightsyncOnly) return null;
+                if (MasterMode == TrueforceMasterMode.LightsyncOnly)
+                {
+                    // Unless we put ourselves here. That one the user did not
+                    // choose, so it gets the line: what happened, and the one
+                    // thing that changes it.
+                    if (_nativeStreamDemoted) return NativeStreamStandDownText(0);
+                    return null;
+                }
 
                 // A chosen GLOBAL off is the same case: the user set the switch and
                 // the wheel being quiet is the result they asked for, so it must not
@@ -1477,6 +1484,22 @@ namespace TrueforceForAll.Plugin
         /// starts everyone on Full and lets the map keep doing the demoting.</summary>
         private TrueforceMasterMode ResolveEffectiveMode()
         {
+            var chosen = ResolveChosenMode();
+            // A game found streaming its own Trueforce beside ours demotes Normal
+            // to Lightsync only for the rest of that game session (see
+            // UpdateNativeTrueforceStreamWatch). Applied here, over the choice, so
+            // every path that lands on the effective mode (the combo, the pill,
+            // the pipeline reconcile) agrees; never written into the per-game
+            // map, which records the user's choices only.
+            if (chosen == TrueforceMasterMode.Normal && _nativeStreamDemoted)
+                return TrueforceMasterMode.LightsyncOnly;
+            return chosen;
+        }
+
+        /// <summary>The mode the stored choice plus the active game resolve to,
+        /// before any session demotion.</summary>
+        private TrueforceMasterMode ResolveChosenMode()
+        {
             var stored = StoredMasterMode;
             // A global OFF is a hard stop and outranks everything: it is the one
             // choice that means "not anywhere", and a per-game entry left over
@@ -1553,7 +1576,13 @@ namespace TrueforceForAll.Plugin
                 effective = Settings.PluginEnabled;
                 if (!effective)
                 {
-                    _device?.SendStopCommand();
+                    // Leaving because the game is streaming its own Trueforce:
+                    // send NOTHING. The stop command (0x04) halts the wheel's
+                    // engine, and that engine now belongs to the game's session;
+                    // the pause is enough, our packets simply stop. Every other
+                    // exit keeps the stop, which is what hands the wheel back to
+                    // native FFB.
+                    if (!_nativeStreamDemoted) _device?.SendStopCommand();
                     _device?.Pause();
                 }
                 else
@@ -1592,7 +1621,7 @@ namespace TrueforceForAll.Plugin
         /// with selectable patterns and false of one whose strip is a fixed look,
         /// and this notice is shown to both. Fails OPEN on an undetected wheel.</summary>
         private string IracingNoticeBody =>
-            "iRacing keeps working out what the car is doing. It just stops driving the wheel itself and hands those forces to the plugin, so the feel stays the sim's own, and your rev lights and wheel screen come back with it.\n\n" +
+            "Set up once, this turns on the plugin's effects, rev lights and wheel screen in iRacing. The force stays iRacing's own: the sim keeps computing it, and the plugin delivers it to the wheel.\n\n" +
             (!WheelDetected || WheelHasSelectableLightPattern
                 ? "We start on Lightsync only, which leaves iRacing completely alone and sets the wheel's pattern to match the car you are in. For the rest, four steps, once:\n\n"
                 : "We start on Lightsync only, which leaves iRacing completely alone. For the rest, four steps, once:\n\n") +
@@ -1727,6 +1756,12 @@ namespace TrueforceForAll.Plugin
             var effectiveBefore = ResolveEffectiveMode();
             if (mode == TrueforceMasterMode.Normal && effectiveBefore != TrueforceMasterMode.Normal)
                 _preFullMode = effectiveBefore;
+
+            // An explicit choice outranks the session demotion for the game's own
+            // Trueforce stream: Normal means "try again" (the watch re-runs and
+            // demotes again if the game still streams), and either other mode is
+            // now the user's own.
+            _nativeStreamDemoted = false;
 
             bool inGame = persistForActiveGame && !string.IsNullOrEmpty(_activeGame);
 
@@ -1873,7 +1908,10 @@ namespace TrueforceForAll.Plugin
                     // Same sequence as the toggle-off path; redundant Stops
                     // are harmless (already exercised when the user disables
                     // during a StopStreamOnPause hold).
-                    dev.SendStopCommand();
+                    // No stop command while demoted for the game's own stream:
+                    // same reasoning as ApplyEffectiveMode, the engine is the
+                    // game's now.
+                    if (!_nativeStreamDemoted) dev.SendStopCommand();
                     dev.Pause();
                     outcome = "plugin is disabled; left Trueforce mode so the wheel stays on native FFB";
                 }
@@ -5899,6 +5937,11 @@ namespace TrueforceForAll.Plugin
             // is a few field reads, and any reopen runs off-thread inside.
             _steeringReader?.EnsureAlive();
 
+            // A game streaming its own Trueforce beside ours: drop to Lightsync
+            // only (see UpdateNativeTrueforceStreamWatch). Runs before the pause
+            // gate so that gate sees the mode change on the same tick.
+            UpdateNativeTrueforceStreamWatch();
+
             // Issue #13 test path: when StopStreamOnPause is on, hand the wheel
             // fully back to the game while paused (see UpdateStopStreamOnPauseGate).
             UpdateStopStreamOnPauseGate();
@@ -6058,6 +6101,11 @@ namespace TrueforceForAll.Plugin
             if (gameName != _activeGame && !IsOfflineEditingCar)
             {
                 _activeGame = gameName;
+                // The demotion for a game's own Trueforce stream belongs to the
+                // game session that earned it. The resolve below lands the new
+                // game on its own default.
+                _nativeStreamDemoted = false;
+                _tfContention.Reset();
                 // New game (or game gone): the FS pipe's fed-this-game latch
                 // belongs to the session that set it (it lengthens the
                 // SimHub-fallback dwell in EvaluateFsTelemetryFallback).
@@ -6157,8 +6205,9 @@ namespace TrueforceForAll.Plugin
                               + "iRacing's own force feedback through the plugin with our effects and the wheel's "
                               + "screen on top, after a short setup in iRacing."
                             : $"[TF4ALL] '{gameName}' brings Trueforce of its own, so we start on Lightsync only: "
-                              + "our Trueforce effects and FFB tap are off, the Lightsync features stay. Switch to "
-                              + "Normal if you would rather have our Trueforce instead of the game's.");
+                              + "our Trueforce effects and FFB tap are off, the Lightsync features stay. For our "
+                              + "Trueforce instead of the game's, switch the game's own off and pick Normal; while "
+                              + "the game is still streaming, Normal drops back to Lightsync only by itself.");
                     }
                     // iRacing's setup notice, on sight rather than on panel-open.
                     MaybeFireIracingNotice(gameName);
@@ -31076,6 +31125,150 @@ namespace TrueforceForAll.Plugin
             if (resumed)
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] StopStreamOnPause: resumed, restarted Trueforce stream.");
+        }
+
+        // ---- A game streaming its own Trueforce beside ours -----------------
+        // The wheel's stream endpoint takes one packet per millisecond in total
+        // and holds its torque bytes as a level, so two 1 kHz writers alternate
+        // frames and the motor steps between two targets every millisecond.
+        // mescon measured it on an RS50 as a 500 Hz square wave on the torque
+        // field (logitech-trueforce-linux-driver, "One writer at a time"); users
+        // hear a loud whine, and issue #29 is the sound of it. Native titles
+        // default to Lightsync only for that reason, but a saved Normal, or an
+        // iRacing whose loadTrueForceAPI is still 1, lands straight in it.
+        //
+        // The FFB tap sees every packet on that endpoint, ours included, and the
+        // device counts its own writes; the difference is a second writer
+        // (TrueforceStreamContentionDetector, whose hysteresis wants about two
+        // seconds of it before a verdict). On the verdict the effective mode
+        // drops to Lightsync only for the rest of the game session: our stream
+        // pauses at once, the force pipeline stands down the way that mode
+        // always does, and the selector shows where we are. Session-scoped and
+        // never written into the per-game map, which holds the user's choices;
+        // it clears on game change, and an explicit mode choice overrides it
+        // (Normal = try again). No auto-resume: the tap goes down with the
+        // pipeline, so there is nothing left to watch, and the games that
+        // stream do so for the whole session. Needs the tap; without USBPcap
+        // nothing changes.
+        private readonly TrueforceStreamContentionDetector _tfContention = new TrueforceStreamContentionDetector();
+        private volatile bool _nativeStreamDemoted;
+        // Who the other writer was, decided once at the verdict (the panel polls
+        // the text, and a process scan per tick is not a price to pay for it).
+        private volatile bool _nativeStreamFromMaira;
+        private volatile bool _nativeStreamIRacingApiOff;
+        /// <summary>True while the effective mode sits on Lightsync only because
+        /// the game was found streaming its own Trueforce (UI surface).</summary>
+        public bool NativeTrueforceStreamDemoted => _nativeStreamDemoted;
+        /// <summary>The stream that demoted us was MAIRA's, not the game's.</summary>
+        public bool NativeTrueforceStreamFromMaira => _nativeStreamFromMaira;
+
+        private void UpdateNativeTrueforceStreamWatch()
+        {
+            if (_shuttingDown) return;
+            var dev = _device;
+            var tap = _ffbTap;
+            if (_nativeStreamDemoted || Settings == null || dev == null || tap == null || !tap.IsRunning
+                || MasterMode != TrueforceMasterMode.Normal)
+            {
+                _tfContention.Reset();
+                return;
+            }
+            long nowMs = Stopwatch.GetTimestamp() * 1000L / Stopwatch.Frequency;
+            if (!_tfContention.Observe(tap.TrueforceStreamPacketsOnOurDevice, dev.Ep3Writes, nowMs)
+                || !_tfContention.Detected)
+                return;
+
+            // Who the other writer is decides the advice. MAIRA with its RPM
+            // lights on streams its force over this same endpoint (its release
+            // notes: "force feedback is sent through the TrueForce channel so
+            // the lights and forces coexist") and reads exactly like a native
+            // game; running our effects on top of MAIRA is not supported (owner,
+            // 2026-08-30: with MAIRA's lights off its force takes the HID++ pipe
+            // our rev lights and screen need, and the two cut each other). An
+            // iRacing whose loadTrueForceAPI is already 0 cannot be the writer,
+            // so it must not be told to set it again.
+            _nativeStreamFromMaira = IsMairaRunning();
+            _nativeStreamIRacingApiOff = IsIRacingReshapeGame(_activeGame) && IRacingTrueforceApiOff();
+
+            // Silence first, this millisecond; the mode change below stands the
+            // rest down on a background thread.
+            int perSec = _tfContention.LastForeignPerSec;
+            lock (_enableDeviceLock)
+            {
+                dev.Pause();
+                _nativeStreamDemoted = true;
+            }
+            SimHub.Logging.Current.Warn("[TF4ALL] " + NativeStreamStandDownText(perSec));
+            ApplyEffectiveMode("a second Trueforce stream on the wheel");
+        }
+
+        /// <summary>The stand-down explanation, one source for the log and the
+        /// panel: who is streaming, why we left, and the one thing that changes
+        /// it. Rate shown when known (the log); the panel passes 0.</summary>
+        private string NativeStreamStandDownText(int perSec)
+        {
+            string rate = perSec > 0 ? $" ({perSec}/s beside ours)" : "";
+            const string why = "Two Trueforce streams on one wheel alternate and the wheel whines, so the "
+                             + "plugin dropped to Lightsync only for this session. ";
+            if (_nativeStreamFromMaira)
+                return "MAIRA is streaming to the wheel" + rate + ", so the plugin dropped to Lightsync only for "
+                     + "this session. Running MAIRA and TF4ALL at the same time is not supported: close MAIRA, "
+                     + "then set the mode to Normal.";
+            if (IsIRacingReshapeGame(_activeGame))
+                return _nativeStreamIRacingApiOff
+                    ? "Another program is streaming Trueforce to the wheel" + rate
+                      + " (not iRacing: its loadTrueForceAPI is already 0). " + why
+                      + "Close whatever else drives the wheel, then pick Normal again."
+                    : "iRacing is streaming its own Trueforce" + rate + ". " + why
+                      + "With iRacing closed, set loadTrueForceAPI=0 in Documents\\iRacing\\app.ini "
+                      + "(step 1 of the iRacing setup), then pick Normal again.";
+            return "The game is streaming its own Trueforce" + rate + ". " + why
+                 + "To run the plugin's Trueforce here instead, switch the game's own Trueforce off, then "
+                 + "pick Normal again (see Games with native Trueforce in the guides).";
+        }
+
+        // MAIRA's process (MarvinsAIRARefactored.exe; matched loosely so a
+        // renamed build still counts). Scanned once per verdict.
+        private static bool IsMairaRunning()
+        {
+            try
+            {
+                foreach (var p in System.Diagnostics.Process.GetProcesses())
+                {
+                    string n = null;
+                    try { n = p.ProcessName; } catch { }
+                    if (n != null && n.IndexOf("MarvinsAIRA", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        // True when Documents\iRacing\app.ini carries loadTrueForceAPI=0, so
+        // iRacing itself cannot be streaming. Unknown reads as false: the
+        // default advice (set it to 0) is then still the right one.
+        private static bool IRacingTrueforceApiOff()
+        {
+            try
+            {
+                string ini = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "iRacing", "app.ini");
+                if (!File.Exists(ini)) return false;
+                foreach (var raw in File.ReadAllLines(ini))
+                {
+                    string line = raw.Trim();
+                    if (!line.StartsWith("loadTrueForceAPI", StringComparison.OrdinalIgnoreCase)) continue;
+                    int eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+                    string val = line.Substring(eq + 1).Trim();
+                    int semi = val.IndexOf(';');
+                    if (semi >= 0) val = val.Substring(0, semi).Trim();
+                    return val == "0";
+                }
+            }
+            catch { }
+            return false;
         }
 
         // Serves the "Hand the wheel back to the game while paused" checkbox

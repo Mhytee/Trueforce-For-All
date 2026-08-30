@@ -4980,6 +4980,19 @@ namespace TrueforceForAll.Plugin
             // Everywhere else the mode name plus its plain description is enough, and
             // a per-game explanation under every game was more words than the fact
             // was worth.
+            // Put here by the plugin, not by the user: the game was found
+            // streaming its own Trueforce. Says so, briefly; the amber diagnostic
+            // carries the steps.
+            if (effective == TrueforceMasterMode.LightsyncOnly && _plugin.NativeTrueforceStreamDemoted)
+            {
+                MasterModeNote.Text = _plugin.NativeTrueforceStreamFromMaira
+                    ? "Lightsync only for this session: MAIRA is streaming to the wheel. Running both at the "
+                      + "same time is not supported; close MAIRA, then pick Normal."
+                    : "Lightsync only for this session: the game is streaming its own Trueforce, and two "
+                      + "streams on one wheel make it whine. Pick Normal to try again.";
+                return;
+            }
+
             if (effective == TrueforceMasterMode.LightsyncOnly
                 && _plugin.StoredMasterMode == TrueforceMasterMode.Normal
                 && _plugin.ActiveGameIsReshapeGame)
