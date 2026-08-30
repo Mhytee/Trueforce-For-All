@@ -45,7 +45,34 @@ namespace TrueforceForAll.Plugin
         private void OpenGuides(string initialKey)
         {
             if (_plugin == null) return;
-            GuideBrowserWindow.Show(Window.GetWindow(this), BuildGuideEntries(), initialKey);
+            GuideBrowserWindow.Show(Window.GetWindow(this), BuildGuideEntries(), initialKey, GoToPanelTab);
+        }
+
+        /// <summary>Resolve a [label](tab:key) link inside a guide to a place in
+        /// the settings panel: a tab, or a section within one. The browser has
+        /// already closed when this runs.</summary>
+        private void GoToPanelTab(string key)
+        {
+            switch ((key ?? "").Trim().ToLowerInvariant())
+            {
+                case "controls":  SelectTab(ControlsTab); break;
+                case "effects":   SelectTab(EffectsTab); break;
+                case "lightsync": SelectTab(LightsyncTab); break;
+                case "settings":  SelectTab(SettingsTab); break;
+                case "ffb":       SelectTab(TelemetryFfbTab); break;
+                case "color-trim":
+                    // A section rather than a tab: LIGHTSYNC forward, the Color
+                    // Trim expander open, and the scroll deferred until the tab
+                    // has laid out (the JumpToForzaTelemetrySetup pattern).
+                    SelectTab(LightsyncTab);
+                    if (LedTrimExpander != null)
+                    {
+                        LedTrimExpander.IsExpanded = true;
+                        Dispatcher.BeginInvoke(new Action(() => LedTrimExpander.BringIntoView()),
+                            DispatcherPriority.Background);
+                    }
+                    break;
+            }
         }
 
         private const string GroupSetup   = "Game setup";
@@ -95,6 +122,13 @@ namespace TrueforceForAll.Plugin
                     Title = "Farming Simulator: install the telemetry mod",
                     ActionLabel = "Open the mod installer",
                     Action = JumpToFsModSetup,
+                },
+                new GuideEntry
+                {
+                    Key = "assetto-corsa-setup", Group = GroupSetup,
+                    Title = "Assetto Corsa: the TF4ALL CSP Bridge",
+                    ActionLabel = "Install the TF4ALL CSP Bridge",
+                    Action = () => _plugin.InstallAcCspBridgeInteractive(),
                 },
                 new GuideEntry
                 {
@@ -206,7 +240,7 @@ namespace TrueforceForAll.Plugin
                      + "the rate you are getting.";
             return $"**Right now: {src.Name} at {hz:0} Hz.**"
                  + (src.IsEnhanced
-                     ? " That is one of the direct sources. It arrives as fast as the game sends "
+                     ? " This data comes straight from the game, as fast as it sends "
                        + "it, which in the Forza titles follows your frame rate, so a licence "
                        + "changes nothing here."
                      : "");
@@ -247,7 +281,7 @@ namespace TrueforceForAll.Plugin
                 }
                 // The Farming Simulator block is NOT rendered here. It is the
                 // one whose text depends on state that changes while the panel is
-                // open, so RefreshFsModTargets owns it.
+                // open, so RefreshModsList owns it.
             }
             catch (Exception ex)
             {
@@ -319,118 +353,139 @@ namespace TrueforceForAll.Plugin
             // Expanding raises Expanded, which refreshes the rows, so the state
             // shown is read at the moment it is looked at.
             if (FsModExpander == null) return;
-            if (FsModExpander.IsExpanded) RefreshFsModTargets();
+            if (FsModExpander.IsExpanded) RefreshModsList();
             else FsModExpander.IsExpanded = true;
             Dispatcher.BeginInvoke(new Action(() => FsModExpander.BringIntoView()),
                 DispatcherPriority.Background);
         }
 
         private void FsModExpander_Expanded(object sender, RoutedEventArgs e)
-            => RefreshFsModTargets();
+            => RefreshModsList();
 
         /// <summary>Rebuild one row per Farming Simulator title found on this PC.
         ///
         /// Read on open rather than on the refresh tick: this is disk state that
         /// only changes when someone installs something, and rebuilding buttons
         /// under the pointer several times a second is its own bug.</summary>
-        private void RefreshFsModTargets()
+        // Rebuild the mods list: one card per installable mod found on this PC.
+        // This is the home for every game mod (Farming Simulator telemetry, the
+        // Assetto Corsa TF4ALL CSP Bridge, and any future one). Each card is
+        // uniform: title + version, a short description, a status line, and
+        // Install/Remove buttons.
+        private void RefreshModsList()
         {
             if (_plugin == null || FsModTargetsPanel == null) return;
             FsModTargetsPanel.Children.Clear();
 
-            int found = 0, installed = 0;
+            // Group as we build so installed mods can lead the list, then the
+            // available-but-not-installed, then the greyed unavailable ones.
+            var installedCards = new List<UIElement>();
+            var availableCards = new List<UIElement>();
+            var otherCards = new List<UIElement>();
+            void Add(bool installed, bool available, UIElement card)
+                => (installed ? installedCards : available ? availableCards : otherCards).Add(card);
+
+            // Farming Simulator: one card per title we ship a mod for, whether
+            // or not it is on this PC. A title that is not installed still shows,
+            // greyed, with a note, so the list is the same on every machine.
             foreach (var t in _plugin.FsModTargets())
             {
-                // A title that isn't on this PC gets no row. Offering to install
-                // into a folder that does not exist only produces a failure the
-                // user cannot act on.
-                if (!t.GameFound) continue;
-                found++;
-                if (t.Installed) installed++;
-                FsModTargetsPanel.Children.Add(BuildFsModRow(t));
+                var target = t;
+                bool found = t.GameFound;
+                bool inst = found && t.Installed;
+                string status = !found
+                    ? "Game not installed on this PC."
+                    : t.Installed
+                        ? "Installed. Tick it in the game's mod list when you load your save."
+                        : "Not installed.";
+                Add(inst, found, BuildModCard(
+                    t.DisplayName,
+                    "Enhanced telemetry: ground texture through the wheel, the implement thud, and the vibration cut while your wheels are off the ground.",
+                    "v" + _plugin.FsModVersionString,
+                    found, t.Installed, status,
+                    found ? (Action)(() => InstallFsModFor(target)) : null,
+                    inst ? (Action)(() => UninstallFsModFor(target)) : null));
             }
 
-            // Once the mod is in every game that has it, the install steps are
-            // spent: what is left is the one step still to do inside the game,
-            // and how to undo it. Re-rendered on every refresh rather than once,
-            // because Install and Remove both land here.
-            if (FsModStepsHost != null)
-            {
-                bool allIn = found > 0 && installed == found;
-                FsModStepsHost.Children.Clear();
-                FsModStepsHost.Children.Add(MarkdownView.Render(
-                    GuideText.Load(allIn ? "farming-sim-installed" : "farming-sim",
-                                   GuideContext.Panel)));
-            }
+            // Assetto Corsa: the TF4ALL CSP Bridge. Greyed when Assetto Corsa
+            // with Custom Shaders Patch is not on this PC.
+            bool avail = _plugin.AcCspAvailable();
+            bool acIn = avail && _plugin.AcCspBridgeInstalled();
+            string acStatus = !avail
+                ? "Needs Assetto Corsa with Custom Shaders Patch."
+                : acIn
+                    ? "Installed. Restart Assetto Corsa so CSP loads it."
+                    : "Not installed.";
+            Add(acIn, avail, BuildModCard(
+                "Assetto Corsa: TF4ALL CSP Bridge",
+                "Requires Custom Shaders Patch. Unlocks the wheel's Dynamic OLED display and keeps LIGHTSYNC pattern changes from cutting the force feedback.",
+                "v" + _plugin.AcCspBridgeVersionString,
+                avail, acIn, acStatus,
+                avail ? (Action)(() => InstallAcCspRow()) : null,
+                acIn ? (Action)(() => UninstallAcCspRow()) : null));
 
-            if (FsModTargetsStatus == null) return;
-            if (found == 0)
-            {
-                // Deliberately does not name Documents\My Games. Farming Simulator
-                // lets players relocate their mods folder, and TryGetFsModInfo
-                // honours that override, so the folder we looked in is not always
-                // the one this sentence used to name. Sending a heavy modder to
-                // inspect the wrong path is worse than not naming one.
-                FsModTargetsStatus.Text =
-                    "No Farming Simulator mods folder was found on this PC. Start the game "
-                    + "once so it creates its folders, then come back.";
-                FsModTargetsStatus.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                FsModTargetsStatus.Visibility = Visibility.Collapsed;
-            }
+            foreach (var c in installedCards) FsModTargetsPanel.Children.Add(c);
+            foreach (var c in availableCards) FsModTargetsPanel.Children.Add(c);
+            foreach (var c in otherCards) FsModTargetsPanel.Children.Add(c);
+
+            // The bottom line is only for install/remove outcomes now; every mod
+            // has its own card, so there is no "nothing found" case to report.
+            if (FsModTargetsStatus != null) FsModTargetsStatus.Visibility = Visibility.Collapsed;
         }
 
-        private UIElement BuildFsModRow(TrueforcePlugin.FsModTarget t)
+        private static System.Windows.Media.Brush ModCardBrush(string hex)
+            => new System.Windows.Media.SolidColorBrush(
+                   (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
+
+        // One uniform mod card, drawn in a bordered panel: title + version across
+        // the top with the Install/Remove buttons, a wrapped description, then a
+        // status line. When the mod is not available on this PC (game or CSP
+        // missing) the whole card is dimmed and Install is disabled.
+        private UIElement BuildModCard(string title, string description, string version,
+                                       bool available, bool installed, string status,
+                                       Action onInstall, Action onRemove)
         {
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var card = new StackPanel();
 
-            var name = new TextBlock
+            var head = new Grid();
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var titleWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            titleWrap.Children.Add(new TextBlock
             {
-                Text = t.DisplayName,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            Grid.SetColumn(name, 0);
+                Text = title,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            if (!string.IsNullOrEmpty(version))
+                titleWrap.Children.Add(new TextBlock
+                {
+                    Text = "  " + version,
+                    FontSize = 11,
+                    Opacity = 0.6,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+            Grid.SetColumn(titleWrap, 0);
 
-            var state = new TextBlock
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(buttons, 1);
+            var install = new Button
             {
-                Text = t.Installed ? "Mod installed" : "Mod not installed",
-                FontSize = 11,
-                Opacity = 0.7,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            Grid.SetColumn(state, 1);
-
-            // Reinstall is the repair path: same copy, over whatever is there. It
-            // is also how someone picks up a newer mod after a plugin update
-            // without waiting for the game-detection refresh to notice.
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-            Grid.SetColumn(buttons, 2);
-
-            var btn = new Button
-            {
-                Content = t.Installed ? "Reinstall" : "Install",
+                Content = installed ? "Reinstall" : "Install",
                 Padding = new Thickness(12, 3, 12, 3),
+                IsEnabled = available && onInstall != null,
                 Cursor = System.Windows.Input.Cursors.Hand,
-                ToolTip = t.Installed
-                    ? "Copy the mod in again, over the one that is there."
-                    : "Copy the mod into this game's mods folder."
+                ToolTip = installed ? "Copy the mod in again, over the one that is there." : "Install this mod.",
             };
-            // Gold, the app's affirmative colour, and the same one the modal
-            // uses for its confirm button.
-            ModalButtonTheme.Primary(btn);
-            btn.Click += (s, ev) => InstallFsModFor(t);
-            buttons.Children.Add(btn);
-
-            // Only where there is something to remove. We put the file in that
-            // folder, so taking it back out belongs here rather than in a
-            // support answer telling someone to go and delete it themselves.
-            if (t.Installed)
+            if (install.IsEnabled)
+            {
+                ModalButtonTheme.Primary(install);
+                install.Click += (s, ev) => onInstall?.Invoke();
+            }
+            buttons.Children.Add(install);
+            if (onRemove != null)
             {
                 var rm = new Button
                 {
@@ -438,20 +493,83 @@ namespace TrueforceForAll.Plugin
                     Padding = new Thickness(12, 3, 12, 3),
                     Margin = new Thickness(6, 0, 0, 0),
                     Cursor = System.Windows.Input.Cursors.Hand,
-                    ToolTip = "Delete the mod from this game's mods folder."
+                    ToolTip = "Remove this mod.",
                 };
-                // Red, matching the Remove button in the confirm it opens. This
-                // deletes a file out of another product's folder, which is worth
-                // the one place in this panel that red is spent on.
                 ModalButtonTheme.Destructive(rm);
-                rm.Click += (s, ev) => UninstallFsModFor(t);
+                rm.Click += (s, ev) => onRemove.Invoke();
                 buttons.Children.Add(rm);
             }
 
-            row.Children.Add(name);
-            row.Children.Add(state);
-            row.Children.Add(buttons);
-            return row;
+            head.Children.Add(titleWrap);
+            head.Children.Add(buttons);
+            card.Children.Add(head);
+
+            var help = TryFindResource("HelpText") as Style;
+            card.Children.Add(new TextBlock
+            {
+                Text = description,
+                Style = help,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 2, 0, 0),
+            });
+            if (!string.IsNullOrEmpty(status))
+                card.Children.Add(new TextBlock
+                {
+                    Text = status,
+                    FontSize = 11,
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 2, 0, 0),
+                });
+
+            var border = new Border
+            {
+                Background = ModCardBrush("#14FFFFFF"),
+                BorderBrush = ModCardBrush("#33FFFFFF"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10),
+                Margin = new Thickness(0, 0, 0, 8),
+                Child = card,
+                Opacity = available ? 1.0 : 0.55,
+            };
+            return border;
+        }
+
+        // Mods-list Install/Remove for the Assetto Corsa bridge, with inline
+        // status like the Farming Simulator rows. Remove is confirmed.
+        private void InstallAcCspRow()
+        {
+            if (_plugin == null) return;
+            string err = _plugin.InstallAndEnableAcCspBridge();
+            string outcome = err == null
+                ? "TF4ALL CSP Bridge: installed. Restart Assetto Corsa if it is running, and keep your in-game gain up."
+                : "TF4ALL CSP Bridge: install failed. " + err;
+            RefreshModsList();
+            if (FsModTargetsStatus == null) return;
+            FsModTargetsStatus.Text = outcome;
+            FsModTargetsStatus.Visibility = Visibility.Visible;
+        }
+
+        private void UninstallAcCspRow()
+        {
+            if (_plugin == null) return;
+            bool? go = TrueforceDialog.Show(Window.GetWindow(this),
+                "Remove the TF4ALL CSP Bridge?",
+                "This deletes the bridge script from Assetto Corsa and unselects it in CSP's FFB Tweaks.\n\n"
+                + "Your force feedback keeps working through the USB capture. What you lose is the wheel's "
+                + "Dynamic OLED display and drop-free LIGHTSYNC pattern changes in Assetto Corsa.\n\n"
+                + "It stops loading the next time Assetto Corsa starts.",
+                DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Keep it");
+            if (go != true) return;
+            string err = _plugin.UninstallAcCspBridge();
+            string outcome = err == null
+                ? "TF4ALL CSP Bridge: removed. It stops loading the next time Assetto Corsa starts."
+                : "TF4ALL CSP Bridge: could not remove it. " + err;
+            RefreshModsList();
+            if (FsModTargetsStatus == null) return;
+            FsModTargetsStatus.Text = outcome;
+            FsModTargetsStatus.Visibility = Visibility.Visible;
         }
 
         /// <summary>Confirm, then remove. Confirmed because it deletes a file
@@ -477,7 +595,7 @@ namespace TrueforceForAll.Plugin
             string outcome = err == null
                 ? t.DisplayName + ": removed. It stops loading the next time the game starts."
                 : t.DisplayName + ": could not remove it. " + err + ".";
-            RefreshFsModTargets();
+            RefreshModsList();
             if (FsModTargetsStatus == null) return;
             FsModTargetsStatus.Text = outcome;
             FsModTargetsStatus.Visibility = Visibility.Visible;
@@ -493,7 +611,7 @@ namespace TrueforceForAll.Plugin
                 : t.DisplayName + ": install failed. " + err + ".";
             // Rebuild first so the row reads Installed / Reinstall, THEN write the
             // outcome: the rebuild owns that line and would clear it.
-            RefreshFsModTargets();
+            RefreshModsList();
             if (FsModTargetsStatus == null) return;
             FsModTargetsStatus.Text = outcome;
             FsModTargetsStatus.Visibility = Visibility.Visible;

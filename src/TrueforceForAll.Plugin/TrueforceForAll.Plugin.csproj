@@ -70,6 +70,15 @@
          is no folder to go stale. Wildcarded on purpose: adding a guide is
          adding a .md file and one menu line, never a csproj edit. The logical
          name is what GuideText.Load builds from the file name. -->
+    <!-- The Assetto Corsa CSP bridge script, embedded so a three-DLL deploy
+         carries it and InstallAcCspBridge can write it into AC's ffb-postprocess
+         folder. Same reasoning as the FS telemetry mod zip. -->
+    <EmbeddedResource Include="..\..\gamemods\AssettoCorsaCsp\tf4all\ffb.lua">
+      <LogicalName>TrueforceForAll.Plugin.AcCspBridge.ffb.lua</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\gamemods\AssettoCorsaCsp\tf4all\manifest.ini">
+      <LogicalName>TrueforceForAll.Plugin.AcCspBridge.manifest.ini</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Guides\*.md">
       <LogicalName>TrueforceForAll.Plugin.Guides.%(Filename).md</LogicalName>
     </EmbeddedResource>

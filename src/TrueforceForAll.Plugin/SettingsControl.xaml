@@ -726,7 +726,7 @@
                                    FontSize="13" Text="Editing preset"/>
                         <TextBlock x:Name="OfflineEditHint" Foreground="White" Opacity="0.85" FontSize="11"
                                    Margin="0,2,0,0" TextWrapping="Wrap"
-                                   Text="Game defaults are locked for context; only the per-car effects are editable."/>
+                                   Text="Game defaults are shown for reference and can't be edited here; only the per-car effects are editable."/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
                         <Button x:Name="OfflineEditDoneBtn" Content="Done" Width="84" Height="26"
@@ -814,7 +814,7 @@
                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <ComboBox x:Name="MasterModeCombo" Width="150" VerticalAlignment="Center"
                                       SelectionChanged="MasterMode_Changed"
-                                      ToolTip="Normal: force feedback, effects, rev lights and the wheel's screen. Use this in most games. Lightsync only: disables the plugin's Trueforce effects and FFB tap, for games with native Trueforce support or when you only want our Lightsync patterns and features. Off: fully disables all plugin features for the game you are in.">
+                                      ToolTip="Normal: force feedback, effects, rev lights and the wheel's screen. Use this in most games. Lightsync only: turns off the plugin's effects and force feedback, for games with native Trueforce support or when you only want the light patterns and screen. Off: disables the plugin for the game you are in.">
                                 <!-- Tagged with their mode because the list is built
                                      per wheel: the Lightsync only item is removed for a
                                      wheel whose lights are one fixed look, where it does
@@ -1102,7 +1102,7 @@
                     <Expander x:Name="CarFactsExpander" IsExpanded="True" Margin="0,10,0,0"
                               ToolTip="What the plugin currently believes about the car you're driving. Correct anything that looks wrong.">
                         <Expander.Header>
-                            <TextBlock Text="Car facts" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                            <TextBlock Text="Car Facts" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,0">
                             <!-- No-car placeholder: tells the user what will appear
@@ -1183,7 +1183,7 @@
                                  (so stored data is never invisibly active). -->
                             <Expander x:Name="CarFactsPerGearExpander" IsExpanded="False" Margin="0,6,0,0" Visibility="Collapsed">
                                 <Expander.Header>
-                                    <TextBlock Text="Per-gear redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Per-Gear Redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
                                 </Expander.Header>
                                 <StackPanel Margin="0,4,0,0">
                                     <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
@@ -1289,7 +1289,7 @@
                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Grid.Column="1" Foreground="#222"
                                        FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
-                                       Text="Your wheel is connected, but FFB pass-through can't find it on the USB bus, so your game's force feedback may feel wrong or be silenced. This is most often fixed by restarting your computer (USBPcap's capture driver only loads at boot, especially right after it was installed). If a reboot doesn't fix it, please use the in-app Report an issue flow with a log attached."/>
+                                       Text="Your wheel is connected, but FFB pass-through can't find it on the USB bus, so your game's force feedback may feel wrong or be silenced. This is most often fixed by restarting your computer: the capture driver only loads at boot, so a fresh install needs one reboot. Replugging the wheel or moving it to a different USB port can also bring it back. If that doesn't fix it, please use Report an issue with a log attached."/>
                             <!-- Manual-pick fallback is hidden by default
                                  (forgotten pins silently broke FFB after a
                                  replug; the report-an-issue path gives us the
@@ -1579,7 +1579,7 @@
                             <CheckBox Grid.Column="0" x:Name="EngineHighRpmBoostCheck"
                                       Content="High-RPM boost" VerticalAlignment="Center"
                                       Checked="EngineHighRpmBoost_Changed" Unchecked="EngineHighRpmBoost_Changed"
-                                      ToolTip="Pre-emphasis: extra firing-pulse gain ramping in above 50% RPM. Partially compensates for the wheel's natural high-frequency rolloff."/>
+                                      ToolTip="Extra engine-pulse strength that ramps in above 50% RPM, so high revs stay strong in the wheel instead of fading."/>
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -2077,7 +2077,7 @@
                             <TextBlock x:Name="AbsOverrideBadge" Style="{StaticResource OverrideBadge}"/>
                             <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="AbsTest_Click"/>
                             <TextBlock x:Name="AbsUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
-                                       Text="not exposed by Forza UDP"
+                                       Text="not sent by Forza telemetry"
                                        ToolTip="Forza Horizon's Data Out telemetry doesn't include ABS pump activity, so this effect will stay silent in FH4/FH5/FH6 regardless of the values you set here."/>
                             <Button x:Name="AbsRevertBtn" Content="↶" Tag="Abs" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="AbsSaveBtn"   Content="Save…" Tag="Abs" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
@@ -2559,7 +2559,7 @@
                         </Grid>
                         <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,0">
                             <Expander.Header>
-                                <TextBlock Text="Advanced (envelope)" FontSize="12"/>
+                                <TextBlock Text="Advanced (Envelope)" FontSize="12"/>
                             </Expander.Header>
                             <StackPanel Margin="0,8,0,0">
                                 <Grid Margin="0,0,0,4">
@@ -2621,7 +2621,20 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
-            <Border Style="{StaticResource SectionHeaderBorder}">
+            <!-- FFB scale leads the tab: the one force control every mirrored
+                 game shares, so it sits above the (game-specific) Telemetry
+                 Based FFB section rather than inside the pass-through expander.
+                 Hidden on the iRacing reshape path (RefreshFromPlugin). -->
+            <Grid Margin="0,0,0,10" x:Name="FfbScaleRow">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="FFB scale:" Style="{StaticResource LabelText}"/>
+                <Slider     Grid.Column="1" x:Name="FfbScaleSlider"
+                            Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
+                            TickFrequency="0.25" ValueChanged="FfbScaleSlider_ValueChanged" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="2" x:Name="FfbScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
+            </Grid>
+
+            <Border x:Name="TeleFfbSectionHeaderBorder" Style="{StaticResource SectionHeaderBorder}">
                 <TextBlock x:Name="TeleFfbSectionHeader" Text="Telemetry Based FFB" Style="{StaticResource SectionHeaderText}"/>
             </Border>
 
@@ -2640,7 +2653,7 @@
                     <TextBlock Grid.Column="0" x:Name="FsModBannerText" Foreground="#DCEBFA"
                                FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
                                MaxWidth="540"
-                               Text="Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator."/>
+                               Text="Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator."/>
                     <Button Grid.Column="1" x:Name="FsModInstallButton" Content="Install"
                             Padding="12,4" Margin="10,0,0,0" VerticalAlignment="Center"
                             Click="FsModInstall_Click"/>
@@ -2703,7 +2716,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Foreground="#FFFFA726" FontSize="11" TextWrapping="Wrap"
                            VerticalAlignment="Center"
-                           Text="Telemetry Based FFB is on, but the game's telemetry is not reaching this plugin. In the game's Data Out settings, send telemetry to the plugin's port, then enable forwarding to SimHub. Set up shows the steps."/>
+                           Text="Telemetry Based FFB is on, but the game's telemetry is not reaching this plugin. In the game's Data Out settings, send telemetry to the plugin's port, then enable forwarding to SimHub. The Set up button shows the steps."/>
                 <Button Grid.Column="1" x:Name="ModeBSlipStarvedSetupButton" Content="Set up…"
                         Style="{StaticResource UpdateCtaButton}"
                         Width="90" Height="28" Margin="10,0,0,0" VerticalAlignment="Center"
@@ -2756,7 +2769,7 @@
                      border, so at 50 this reads "Re-lear". -->
                 <Button Grid.Column="1" x:Name="ModeBRelearnBtn" Content="Re-learn car" Margin="8,0,0,0" Width="86"
                         Style="{StaticResource EffectTestButton}" Click="ModeBRelearnCar_Click"
-                        ToolTip="Forget what this car has learned and start again. Use it after a tune or a tire change makes the wheel feel wrong. This also clears the car's learned grip calibration, because the two share one saved slot."/>
+                        ToolTip="Forget what this car has learned and start again. Use it after a tune or a tire change makes the wheel feel wrong. This also clears the car's learned grip calibration."/>
             </Grid>
 
             <Grid Margin="0,0,0,2">
@@ -2914,7 +2927,7 @@
                      inside that one. The 360 Hz checkbox used to sit LAST,
                      below the two controls it governs. -->
                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="iRacing sends telemetry 60 times a second, and each update carries six force samples from the physics steps in between. Two things follow: whether to fill the time between updates instead of holding still, and whether to bring in the detail those six samples carry. These options go from neither to both."/>
+                           Text="iRacing sends telemetry 60 times a second, and each update carries six force samples from the physics steps in between. These options choose whether to fill the gaps between updates and how much of that extra detail to use."/>
                 <!-- One control, four rungs of a single ladder, replacing a
                      checkbox plus a conditional dropdown that between them hid
                      which combinations existed. It writes both underlying
@@ -3059,7 +3072,7 @@
 
             <Expander IsExpanded="False" Margin="0,8,0,4">
                 <Expander.Header>
-                    <TextBlock Text="Slides and drifting" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="Slides and Drifting" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
                     <Grid Margin="0,0,0,2">
@@ -3217,17 +3230,9 @@
                  mirror. -->
                 <Expander x:Name="FfbPassthroughExpanderSection" IsExpanded="False" Margin="0,12,0,4">
                     <Expander.Header>
-                        <TextBlock x:Name="FfbPassthroughHeader" Text="FFB pass-through" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="FfbPassthroughHeader" Text="FFB Pass-Through" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel x:Name="FfbPassthroughControls" Margin="0,8,0,0">
-                        <Grid Margin="0,0,0,4" x:Name="FfbScaleRow">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="FFB scale:" Style="{StaticResource LabelText}"/>
-                            <Slider     Grid.Column="1" x:Name="FfbScaleSlider"
-                                        Minimum="0" Maximum="1.5" SmallChange="0.05" LargeChange="0.1"
-                                        TickFrequency="0.25" ValueChanged="FfbScaleSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="2" x:Name="FfbScaleText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.00"/>
-                        </Grid>
                         <CheckBox x:Name="FfbInvertCheck" Content="Invert FFB sign (uncheck if forces feel reversed)"
                                   Margin="0,2,0,0" VerticalAlignment="Center"
                                   Checked="FfbInvert_Changed" Unchecked="FfbInvert_Changed"
@@ -3248,7 +3253,7 @@
                 <Expander x:Name="StationarySpringExpander" IsExpanded="False" Margin="0,12,0,4">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Stationary spring" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Stationary Spring" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             <Button x:Name="StationarySpringRevertBtn" Content="↶" Tag="StationarySpring" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="StationarySpringSaveBtn"   Content="Save…" Tag="StationarySpring" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -3262,7 +3267,7 @@
                                       ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It works in any game, and is ignored for iRacing (the sim already weights the wheel)."/>
                             <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="not used in Forza"
-                                       ToolTip="The spring conflicted with Forza's force feedback across pause and matchmaking transitions and could pull the wheel to its rotational stop. It is bypassed for Forza so the wheel stays free across those transitions; your tuning still applies to other games."/>
+                                       ToolTip="Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games."/>
                         </StackPanel>
                         <StackPanel x:Name="StationarySpringSliders">
                             <Grid Margin="0,0,0,4">
@@ -3292,7 +3297,7 @@
                 <Expander x:Name="SpikeReductionExpanderSection" IsExpanded="False" Margin="0,12,0,4">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="FFB spike reduction" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                            <TextBlock Text="FFB Spike Reduction" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             <Button x:Name="SpikeReductionRevertBtn" Content="↶" Tag="SpikeReduction" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="SpikeReductionSaveBtn"   Content="Save…" Tag="SpikeReduction" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -3365,21 +3370,37 @@
             <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12">
                 <TextBlock x:Name="WheelLightsHeaderText" Text="Wheel lights and screen" Style="{StaticResource SectionHeaderText}"/>
             </Border>
+            <!-- Wheel-wide brightness leads the page: it is the user's own
+                 setting that lives on the wheel, applies to every pattern, and
+                 is only written when they move it (never on load or shutdown).
+                 Hidden (Collapsed) on wheels that do not expose it. -->
+            <Grid x:Name="LedBrightnessRow" Margin="0,4,0,24" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="44"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Brightness:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                <Slider Grid.Column="1" x:Name="LedBrightnessSlider" Minimum="0" Maximum="100"
+                        SmallChange="1" LargeChange="10" TickFrequency="10" VerticalAlignment="Center"
+                        ValueChanged="LedBrightness_Changed"
+                        ToolTip="How bright the wheel's lights are, for every pattern. This is the wheel's own setting and it stays where you put it."/>
+                <TextBlock Grid.Column="2" x:Name="LedBrightnessText" Text="100%" FontSize="11"
+                           VerticalAlignment="Center" HorizontalAlignment="Right"/>
+            </Grid>
             <!-- One short line, the same one in every game. The paragraph that used
                  to explain the shared-channel rule here has moved into the guide
                  behind the link below: the switch says what the user wants
                  ("wherever it can"), the guide answers "why not everywhere", and
                  nobody has to read about HID++ endpoints to tick a box. -->
-            <TextBlock x:Name="WheelLightsNeedNote" Style="{StaticResource HelpText}" Margin="0,4,0,2" TextWrapping="Wrap"
-                       ToolTip="A custom driver that would enable them in every game is in testing, but it needs to be signed by Microsoft first."
-                       Text="Your wheel's lights follow your revs in the games that allow it."/>
-            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10">
+            <CheckBox x:Name="ModeBRevLightsCheck" Content="Add rev light support to games when possible"
+                      Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"
+                      ToolTip="The plugin works out per game and per session whether it can take the lights over without cutting the game's force feedback. Tick this to let it, whenever it can."/>
+            <!-- The "why not every game" link explains the "when possible" in the
+                 toggle above; the standalone "your lights follow your revs" line
+                 was redundant with the toggle and was removed. -->
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,18">
                 <Hyperlink Click="WheelLightsWhy_Click"
                            ToolTip="Why the lights work in some games and not others.">Why not every game?</Hyperlink>
             </TextBlock>
-            <CheckBox x:Name="ModeBRevLightsCheck" Content="Drive the rev lights in games that don't, wherever that is possible"
-                      Margin="0,0,0,2" Checked="ModeBRevLights_Changed" Unchecked="ModeBRevLights_Changed"
-                      ToolTip="The plugin works out per game and per session whether it can take the lights over without cutting the game's force feedback. This says whether to do it when it can."/>
             <!-- No help line under this one. The label says what it does, and the
                  line that used to sit here offered to stop us "overwriting" the
                  wheel's own lighting, which is not what happens: we add lights to
@@ -3620,7 +3641,7 @@
                                    Margin="22,0,0,6" TextWrapping="Wrap" Visibility="Collapsed"
                                    Text="Turn on community features in the Settings tab to use this. The car data is fetched from there."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                                   Text="Gives your wheel the car's own colors and fill direction as you get in it, and fills the lights at the points that car really lights at. Cars come up unevenly in real life, so the last few arrive fast as you approach the shift."/>
+                                   Text="Gives your wheel the car's own colors and fill direction as you get in it, lighting each LED at the RPM the real car does."/>
                         <!-- The credit stays here and stays visible: the licence
                              requires it, so it is a condition of using the data
                              rather than decoration. What moved into the guide is
@@ -3637,23 +3658,6 @@
                                     ToolTip="What the dataset covers, and what comes from our own car facts.">What this covers</Hyperlink>
                         </TextBlock>
 
-                        <!-- Wheel-wide brightness, lifted out of the pattern editor
-                             where it used to live. It is a setting of the user's
-                             that happens to live on the wheel, so it is only ever
-                             written when they move this, never on load or shutdown,
-                             and never as part of a pattern. -->
-                        <Grid x:Name="LedBrightnessRow" Margin="0,8,0,0" Visibility="Collapsed">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="44"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Brightness:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                            <Slider Grid.Column="1" x:Name="LedBrightnessSlider" Minimum="0" Maximum="100"
-                                    SmallChange="1" LargeChange="10" TickFrequency="10" VerticalAlignment="Center"
-                                    ValueChanged="LedBrightness_Changed"
-                                    ToolTip="How bright the wheel's lights are, for every pattern. This is the wheel's own setting and it stays where you put it."/>
-                            <TextBlock Grid.Column="2" x:Name="LedBrightnessText" Text="100%" FontSize="11"
-                                       VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                        </Grid>
 
                         <!-- Pattern maker. The wheel holds five slots; the library
                              holds as many patterns as the user likes and we swap
@@ -3664,7 +3668,7 @@
                              there with no mental flip. -->
                         <Expander x:Name="PatternMakerExpander" IsExpanded="False" Margin="0,16,0,4">
                             <Expander.Header>
-                                <TextBlock Text="Pattern editor" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Pattern Editor" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             </Expander.Header>
                             <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
@@ -3730,7 +3734,7 @@
                                 <CheckBox x:Name="PatternApplyTrimBox" Margin="0,0,0,6"
                                           Content="Apply LED color tuning"
                                           Checked="PatternApplyTrim_Changed" Unchecked="PatternApplyTrim_Changed"
-                                          ToolTip="On for colors you picked on screen, so they come out on the wheel looking like they do here. Off for a pattern you took off the wheel or tuned by eye on the rim, because those already allow for it and tuning them again would change them."/>
+                                          ToolTip="On for colors you picked on screen, so they come out on the wheel looking like they do here. Off for a pattern you took off the wheel or tuned by eye on the rim: the tuning is already baked into those colors, and applying it again would shift them."/>
 
                                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,5"
                                            Text="Click an LED to select it. Left here is left on the wheel, and the wheel shows the whole pattern while you work."/>
@@ -3817,7 +3821,7 @@
                                      other two come down to meet it. -->
                         <Expander x:Name="LedTrimExpander" IsExpanded="False" Margin="0,10,0,0">
                             <Expander.Header>
-                                <TextBlock Text="Color trim" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Color Trim" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             </Expander.Header>
                             <StackPanel x:Name="LedTrimPanel" Margin="0,8,0,0">
                                     <TextBlock FontSize="11" Opacity="0.75" TextWrapping="Wrap" Margin="0,2,0,6"
@@ -3915,7 +3919,7 @@
                     <StackPanel x:Name="ControlsTabHost" Margin="14,12,14,14">
                         <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Controller bindings" Style="{StaticResource SectionHeaderText}"/></Border>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,12" FontSize="12"
-                            Text="Bind a wheel or button-box control to change master gain on the fly, without opening this panel. Click a field below, then press the button you want to use. Master gain is clamped between 0 and 2."/>
+                            Text="Bind wheel or button-box controls to adjust things while you drive, without opening this panel. Click a field below, then press the button you want to use. Master gain stays between 0 and 2."/>
 
                         <!-- How much each press of a bound button moves master gain. -->
                         <Grid Margin="0,0,0,12">
@@ -4118,7 +4122,7 @@
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
                         <Expander.Header>
-                            <TextBlock Text="Drive tab" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="Drive Tab" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
                             <TextBlock Text="Drive tab boxes:" Style="{StaticResource LabelText}" Margin="0,16,0,4"/>
@@ -4162,7 +4166,7 @@
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
                         <Expander.Header>
-                            <TextBlock Text="Rev lights" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="Rev Lights" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
                             <TextBlock Text="Rev light direction:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
@@ -4174,7 +4178,7 @@
                             ToolTip="The rev strip fills from the left edge toward the right as revs climb."/>
                             <RadioButton x:Name="RemoteRevOutsideInRadio" GroupName="RemoteRevDir" Content="Outside in"
                             Margin="0,4,0,0" Checked="RemoteRevDirection_Changed"
-                            ToolTip="The rev strip lights from both ends toward the center as revs climb, like center-converge shift lights."/>
+                            ToolTip="The rev strip lights from both ends toward the center as revs climb."/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
                             Text="Applies to the rev LED strip on the TF4ALL Dash dashboard. On Auto the strip is your wheel's own strip, drawn on the phone. The other two draw a green to red ramp scaled to the current car's redline, which is also what Auto falls back to when there is no wheel to follow. Either way it flashes in step with the wheel at the redline, and changes apply instantly with no dashboard reload."/>
                         </StackPanel>
@@ -4203,7 +4207,7 @@
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
                         <Expander.Header>
-                            <TextBlock Text="Idle card" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="Idle Card" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
                             <TextBlock Text="Idle mode" FontWeight="SemiBold" Margin="0,18,0,0"/>
@@ -4249,7 +4253,7 @@
                  config directly. -->
             <Expander x:Name="UdpTelemetryExpander" IsExpanded="False" Margin="0,0,0,8">
                 <Expander.Header>
-                    <TextBlock Text="UDP telemetry" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="UDP Telemetry" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
 
@@ -4385,25 +4389,25 @@
                 </StackPanel>
             </Expander>
 
-            <!-- Farming Simulator game mod: the peer of the Forza UDP section
-                 above. Always here, whatever is running, because setting a game
-                 up happens before you play it and reinstalling happens long
-                 after. The Telemetry FFB tab's banner still does the contextual
-                 nudge, but its Install button exists only while FS is running
-                 WITHOUT the mod, which is the one state a user who is preparing,
-                 repairing or just checking is never in. Rows are built in
-                 SettingsControl.Guides.cs from the same folder the install
-                 writes to, so what this says is what the game will find. -->
+            <!-- Game mods: per-game setup that unlocks extra features, grouped
+                 in one always-present expander so it can be found before playing,
+                 not only while the game is running. Holds the Farming Simulator
+                 telemetry mod and the Assetto Corsa TF4ALL CSP Bridge. The
+                 contextual nudges elsewhere (the FS tab banner, the AC on-sight
+                 prompt) still fire, but this is the standing home for both. FS
+                 rows are built in SettingsControl.Guides.cs from the same folder
+                 the install writes to, so what this says is what the game finds. -->
             <Expander x:Name="FsModExpander" IsExpanded="False" Margin="0,0,0,8"
                       Expanded="FsModExpander_Expanded">
                 <Expander.Header>
-                    <TextBlock Text="Farming Simulator telemetry mod" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="Game Mods" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
-                    <!-- Rendered from Guides\farming-sim.md, the same text the
-                         "Farming Simulator: install the telemetry mod" guide shows.
-                         Filled by RenderEmbeddedGuideSteps. -->
-                    <StackPanel x:Name="FsModStepsHost" Margin="0,0,0,8"/>
+                    <!-- One card per mod, built in SettingsControl.Guides.cs
+                         (RefreshModsList). Uniform: title + version, description,
+                         status, Install/Remove. The home for future mods too. -->
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                               Text="Optional per-game mods that unlock extra features. Install copies the mod into the game's own folders; Remove deletes it again."/>
                     <StackPanel x:Name="FsModTargetsPanel"/>
                     <TextBlock x:Name="FsModTargetsStatus" Style="{StaticResource HelpText}" FontSize="11"
                                Margin="0,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
@@ -4423,21 +4427,9 @@
                      and the pause-release wheel handoff. -->
                 <Expander x:Name="FfbPassthroughExpander" IsExpanded="False" Margin="0,0,0,8">
                     <Expander.Header>
-                        <TextBlock Text="Force feedback (advanced)" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="Force Feedback (Advanced)" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
-                        <!-- Force from Assetto Corsa itself. AC publishes its final
-                             force value in its shared memory, so the plugin can read
-                             it straight from the game instead of capturing the USB
-                             bus. Opt-in; the USB capture stays the default and the
-                             fallback. Needs the in-game force feedback gain above 0,
-                             since the value is post-gain. -->
-                        <CheckBox x:Name="AcShmFfbCheck" Content="Read Assetto Corsa's force from the game itself (experimental)"
-                                  Margin="0,4,0,2" Checked="AcShmFfb_Changed" Unchecked="AcShmFfb_Changed"
-                                  ToolTip="Off by default. In Assetto Corsa the plugin can take the force feedback value the game publishes instead of capturing the USB bus. Try it if the USB capture gives you trouble in AC. Keep the in-game force feedback gain above 0."/>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12"
-                                   Text="Assetto Corsa only. With this on, keep the in-game force feedback gain above 0."/>
-
                         <!-- Hand the wheel back to the game while paused. When on,
                              the plugin fully leaves Trueforce mode while the game is
                              paused so the wheel reverts to the game's own FFB /
@@ -4519,7 +4511,7 @@
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Audio ring:" VerticalAlignment="Center" Opacity="0.7"
-                                       ToolTip="Sample buffer between WASAPI loopback and the audio mixer. WASAPI typically delivers ~12 decimated samples per ~3ms callback; 16 fits that with headroom. Setting 8 only works if your audio driver supports a ~2ms WASAPI period (uncommon). If you set 8 and hear continuous clicks, the auto-ratchet (Auto mode) will bump you back up."/>
+                                       ToolTip="Sample buffer between WASAPI loopback and the audio mixer. 16 is the safe default; 8 needs an unusually fast audio driver and can click. If you set 8 and hear continuous clicks, the auto-ratchet (Auto mode) will bump you back up."/>
                             <Slider     Grid.Column="1" x:Name="PerfAudioRingSlider"
                                         Minimum="16" Maximum="128" SmallChange="16" LargeChange="16"
                                         TickFrequency="16" IsSnapToTickEnabled="True"
@@ -4544,7 +4536,7 @@
                      Useful for troubleshooting; rarely needed otherwise. -->
                 <Expander x:Name="DiagnosticsExpander" IsExpanded="False" Margin="0,0,0,8">
                     <Expander.Header>
-                        <TextBlock Text="Diagnostics &amp; support" FontWeight="SemiBold"/>
+                        <TextBlock Text="Diagnostics &amp; Support" FontWeight="SemiBold"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <Grid>
@@ -4662,7 +4654,7 @@
                  users set once. -->
             <Expander x:Name="WidgetsExpander" IsExpanded="False" Margin="0,0,0,8">
                 <Expander.Header>
-                    <TextBlock Text="Widgets &amp; display" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="Widgets &amp; Display" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
                     <CheckBox x:Name="ShowFeedbackBoxCheck" Content="Show TF4ALL gain tile on SimHub's home screen"
@@ -4790,7 +4782,7 @@
                  (this margin formerly lived on the removed Presets header). -->
             <Expander x:Name="BackupExpander" IsExpanded="False" Margin="0,0,0,8" Expanded="BackupExpander_Expanded">
                 <Expander.Header>
-                    <TextBlock Text="Backup &amp; sync" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="Backup &amp; Sync" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
                     <!-- Cloud backup / sync (moved here from the old Network/Community section).
@@ -5062,7 +5054,7 @@
 
             <!-- Account details: the rarely-needed bits (your stats, active sessions, data
                  export, delete), collapsed by default so they don't clutter the account view. -->
-            <Expander x:Name="AccountDetailsExpander" Header="Account settings" IsExpanded="False" Margin="0,12,0,4"
+            <Expander x:Name="AccountDetailsExpander" Header="Account Settings" IsExpanded="False" Margin="0,12,0,4"
                       Expanded="AccountDetails_Expanded">
                 <StackPanel Margin="0,8,0,0">
                     <!-- Your stats. Refreshed from get_account_stats when the Account tab is shown. -->

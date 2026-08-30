@@ -72,6 +72,11 @@ namespace TrueforceForAll.Plugin
         private readonly Button _actionButton;
         private GuideEntry _selected;
 
+        /// <summary>Follows a [label](tab:key) link into the settings panel. Runs
+        /// AFTER the window has closed, exactly like the action button, so the
+        /// panel is never rearranged underneath an open modal.</summary>
+        private readonly Action<string> _panelNav;
+
         /// <summary>Guides render a notch larger than release notes: 13px body
         /// against the renderer's 12. These are documents in a 620px column, not
         /// bullets in a 460px dialog.</summary>
@@ -84,14 +89,15 @@ namespace TrueforceForAll.Plugin
         /// <summary>Open the browser. <paramref name="initialKey"/> deep-links to
         /// one guide (the "why?" links beside individual settings); omit it to
         /// land on the first entry.</summary>
-        internal static void Show(Window owner, IEnumerable<GuideEntry> entries, string initialKey = null)
+        internal static void Show(Window owner, IEnumerable<GuideEntry> entries, string initialKey = null,
+            Action<string> panelNav = null)
         {
             var list = new List<GuideEntry>();
             foreach (var e in entries)
                 if (e != null && (e.Visible == null || e.Visible())) list.Add(e);
             if (list.Count == 0) return;
 
-            var w = new GuideBrowserWindow(list, initialKey);
+            var w = new GuideBrowserWindow(list, initialKey, panelNav);
             if (owner != null) w.Owner = owner;
             else w.WindowStartupLocation = WindowStartupLocation.CenterScreen;
             w.ShowDialog();
@@ -99,9 +105,10 @@ namespace TrueforceForAll.Plugin
             try { w._chosen?.Invoke(); } catch { }
         }
 
-        private GuideBrowserWindow(List<GuideEntry> entries, string initialKey)
+        private GuideBrowserWindow(List<GuideEntry> entries, string initialKey, Action<string> panelNav)
         {
             _entries = entries;
+            _panelNav = panelNav;
             Title = "Trueforce For All: guides";
             Background = WindowBg;
             Foreground = TextFg;
@@ -364,11 +371,24 @@ namespace TrueforceForAll.Plugin
             return row;
         }
 
-        /// <summary>Follow a [label](guide:key) cross-reference. Guides refer to
-        /// each other constantly, and a reference the reader has to go and find in
-        /// the list by hand is one they will not follow.</summary>
+        /// <summary>Follow a [label](guide:key) cross-reference, or a
+        /// [label](tab:key) panel destination. Guides refer to each other
+        /// constantly, and a reference the reader has to go and find in the list
+        /// by hand is one they will not follow.</summary>
         private void GoToGuide(string key)
         {
+            if (key != null && key.StartsWith("tab:", StringComparison.OrdinalIgnoreCase))
+            {
+                // A place in the panel, not a guide. Same contract as the action
+                // button: choose, close, and only then navigate.
+                if (_panelNav != null)
+                {
+                    string tab = key.Substring(4);
+                    _chosen = () => _panelNav(tab);
+                    Close();
+                }
+                return;
+            }
             var target = _entries.Find(x => string.Equals(x.Key, key, StringComparison.Ordinal));
             if (target != null) Select(target);
         }
@@ -382,7 +402,9 @@ namespace TrueforceForAll.Plugin
         /// label survives either way, so the prose still reads.</summary>
         private string DisarmMissingGuideLinks(string md)
         {
-            if (string.IsNullOrEmpty(md) || md.IndexOf("](guide:", StringComparison.OrdinalIgnoreCase) < 0)
+            if (string.IsNullOrEmpty(md)
+                || (md.IndexOf("](guide:", StringComparison.OrdinalIgnoreCase) < 0
+                    && md.IndexOf("](tab:", StringComparison.OrdinalIgnoreCase) < 0))
                 return md;
             var sb = new System.Text.StringBuilder(md.Length);
             int i = 0;
@@ -403,6 +425,14 @@ namespace TrueforceForAll.Plugin
                     bool known = _entries.Exists(x => string.Equals(x.Key, key, StringComparison.Ordinal));
                     sb.Append(md, i, open - i);
                     if (known) sb.Append(md, open, paren - open + 1);
+                    else sb.Append(md, open + 1, close - open - 1);   // the label alone
+                    i = paren + 1;
+                    continue;
+                }
+                if (url.StartsWith("tab:", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append(md, i, open - i);
+                    if (_panelNav != null) sb.Append(md, open, paren - open + 1);
                     else sb.Append(md, open + 1, close - open - 1);   // the label alone
                     i = paren + 1;
                     continue;

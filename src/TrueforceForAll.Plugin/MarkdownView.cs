@@ -404,11 +404,16 @@ namespace TrueforceForAll.Plugin
                             // plain text: still a readable sentence, just not
                             // clickable, which is the right degradation for a
                             // context where there is nothing to navigate to.
+                            // [label](tab:key) rides the same rails: the handler
+                            // receives the url with its scheme intact and decides
+                            // what a panel destination means in its own context.
                             if (label.Length > 0
-                                && url.StartsWith("guide:", StringComparison.OrdinalIgnoreCase))
+                                && (url.StartsWith("guide:", StringComparison.OrdinalIgnoreCase)
+                                    || url.StartsWith("tab:", StringComparison.OrdinalIgnoreCase)))
                             {
                                 Flush();
-                                string key = url.Substring(6);
+                                string key = url.StartsWith("guide:", StringComparison.OrdinalIgnoreCase)
+                                    ? url.Substring(6) : url;
                                 if (onGuideLink == null)
                                 {
                                     tb.Inlines.Add(new Run(label)

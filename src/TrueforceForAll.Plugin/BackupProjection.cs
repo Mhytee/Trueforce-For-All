@@ -106,7 +106,7 @@ namespace TrueforceForAll.Plugin
             "LedTrimR", "LedTrimG", "LedTrimB",
             // Tap-free AC FFB toggle: a preference about how force is sourced,
             // not a machine fact (shared memory exists wherever AC does).
-            "AcShmFfbEnabled",
+            "AcShmFfbEnabled", "CspBridgeFfbEnabled", "CspBridgeFfbField", "CspBridgeMaxNm",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
@@ -168,6 +168,9 @@ namespace TrueforceForAll.Plugin
             // TF4ALL Enhanced Telemetry game-mod install state: the mod lives in THIS
             // PC's Farming Simulator folders, and consent was given here.
             "FsModInstallDeclined", "FsModInstalledVersions",
+            // CSP bridge script install state: the script lives in THIS PC's
+            // Assetto Corsa folder and consent was given here.
+            "CspBridgeInstallDeclined",
             // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
             // per-PC hardware state like LastUsedWheel.
             "WheelDefaultsApplied",

@@ -1022,7 +1022,40 @@ namespace TrueforceForAll.Plugin
         // opening the wheel-base screen on it stalled the game's own rev-light
         // writes, so the screen stayed gated and the default went back.
         // Global, not per-preset: it selects a force source, not a tuning.
+        // TOMBSTONE (retired 2026-08-29): the "Read Assetto Corsa's force from
+        // the game itself" (finalFF) checkbox was replaced by the automatic CSP
+        // bridge. Kept so old settings files deserialize cleanly.
         public bool   AcShmFfbEnabled            { get; set; } = false;
+
+        // CSP bridge force: read AC's PRE-gain force (ffbPure) from the
+        // TF4ALL CSP script's shared-memory block instead of finalFF or the
+        // wire, so the in-game gain can sit at 0 (the game then writes
+        // nothing to the wheel, so LED and screen writes never collide with
+        // force) and the wheel still gets the sim's force. Needs the script
+        // from gamemods/AssettoCorsaCsp installed and enabled in CSP. Behind
+        // the CSPFFB access code while it is being proven; global for the
+        // same reason as AcShmFfbEnabled.
+        // Master enable for the automatic Assetto Corsa CSP bridge. Default
+        // ON: the bridge only supplies when its script is installed and running,
+        // so "on" means "use it automatically when present". Exists mainly as a
+        // dev force-off (the CSPFFB access code); there is no user checkbox.
+        public bool   CspBridgeFfbEnabled        { get; set; } = true;
+
+        // Set when the player declines the CSP bridge script install offer (or
+        // when the slot is taken), so the one-time dialog stays quiet. Cleared
+        // when they ask to install from the guide. Per-PC install state, like
+        // FsModInstallDeclined.
+        public bool   CspBridgeInstallDeclined   { get; set; } = false;
+
+        // Which CSP bridge field the force comes from while CspBridgeFfbEnabled:
+        // "pure" (default; the sim's pre-gain normalized force), "torque" (the
+        // raw column torque in Nm, scaled by CspBridgeMaxNm), or "final"/"value"
+        // (post-gain, for A/B comparison with the in-game gain up). Pure and
+        // torque are the only ones that carry force at gain 0. Behind CSPFFB.
+        public string CspBridgeFfbField         { get; set; } = "value";
+        // Full-scale column torque (Nm) for the "torque" field: this many Nm
+        // maps to full device force. The G PRO tops out near 11 Nm.
+        public double CspBridgeMaxNm            { get; set; } = 10.0;
 
         // EXPERIMENTAL: claim sole wheel ownership through the TFFA kernel
         // filter driver and route the game's intercepted HID++ FFB writes

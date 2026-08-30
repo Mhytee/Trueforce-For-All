@@ -160,6 +160,7 @@ namespace TrueforceForAll.Plugin
         /// to the same bar we do rather than assuming ten and drawing a G923's
         /// full strip as a half-full one.</summary>
         public int MirrorSteps => _channel.StripLength;
+        public byte RevFeatureIndex => _channel.RevFeatureIndex;
 
         public void OnFrame(double rpmPercent, double rpms, double maxRpm, bool redline, bool gateOpen)
         {

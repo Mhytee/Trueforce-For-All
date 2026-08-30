@@ -758,7 +758,7 @@ namespace TrueforceForAll.Plugin
                 if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return "Reconnecting to the wheel...";
                 var d = _device;
                 if (d != null && d.StreamFaulted)
-                    return "Stream lost, auto-reconnecting (replug the wheel, or close G HUB, if this persists)";
+                    return "Stream lost, auto-reconnecting (if this persists, replug the wheel or close G HUB)";
                 return _streamStatus;
             }
         }
@@ -1092,6 +1092,26 @@ namespace TrueforceForAll.Plugin
         /// <summary>Step the Telemetry Based FFB strength from a bound control.
         /// Same slider the Mode B tab shows, same range, and it applies live so
         /// it can be trimmed a corner at a time without leaving the car.</summary>
+        /// <summary>The bound "auto force" action: it runs the active game's own
+        /// auto-calibration, not an on/off. In iRacing it SETS the max force from
+        /// the learned peak (the settings Auto button's job); in Forza / Mode B
+        /// synthesis it RESETS the grip/auto-strength learner so this car
+        /// re-levels. A no-op-with-message in games that have neither.</summary>
+        public void TriggerAutoForce()
+        {
+            if (IsIRacingReshapeGame(_activeGame))
+            {
+                double nm = ApplyIRacingAutoMaxForce();
+                if (nm > 0.5) DashReadoutGain("AUTO FORCE", (float)nm);
+                SimHub.Logging.Current.Info(nm > 0.5
+                    ? $"[TF4ALL] Auto force (bound): iRacing max force set to {nm:F1} Nm."
+                    : "[TF4ALL] Auto force (bound): iRacing has not learned a peak yet; drive a lap first.");
+                return;
+            }
+            string status = RequestGripCalReset();
+            SimHub.Logging.Current.Info("[TF4ALL] Auto force (bound): " + status);
+        }
+
         public void NudgeModeBStrength(float delta)
         {
             if (Settings == null) return;
@@ -1580,7 +1600,7 @@ namespace TrueforceForAll.Plugin
             "2. Start iRacing and turn its force feedback off in the options. Leave its strength number where it is, the plugin reads it.\n" +
             "3. Set the mode at the top of this panel to Normal.\n" +
             "4. On the FFB tab, tick \"Take over force feedback for iRacing\".\n\n" +
-            "Steps 3 and 4 are ours and step 1 and 2 are iRacing's. If the wheel stays quiet afterwards, one of iRacing's two switches is still on.";
+            "Steps 1 and 2 are iRacing's; steps 3 and 4 are in this plugin. If the wheel stays quiet afterwards, one of iRacing's two switches is still on.";
 
         private volatile bool _iracingNoticeShowing;
         private volatile bool _iracingNoticeShownThisSession;
@@ -2713,6 +2733,10 @@ namespace TrueforceForAll.Plugin
             Settings.WelcomeDeclineCount = 0;
             Settings.WelcomeNextShowAt = null;
             Settings.IRacingTrueforceNoticeDismissed = false;
+            // Re-arm the Assetto Corsa CSP setup offer (its dismiss latch doubles
+            // as the notice latch) and its once-a-session guard.
+            Settings.CspBridgeInstallDeclined = false;
+            _acCspNoticeShownThisSession = false;
             // Re-arm the Telemetry Based FFB (Mode B) intro so it shows again the
             // next time a supported game's tab is opened. The WELCOME dev code
             // clears this too; keep the two paths in sync.
@@ -3057,7 +3081,21 @@ namespace TrueforceForAll.Plugin
                 var core   = typeof(TrueforceDevice).Assembly.GetName().Version;
                 var engine = typeof(EngineLoop).Assembly.GetName().Version;
                 mismatch = !(plugin == core && core == engine);
-                return $"Plugin {plugin}, Core {core}, Engine {engine}";
+                // The build stamp: every dev build of a version shares the
+                // same number, so a log alone could not say WHICH build a
+                // tester ran (2026-08-29: three 0.2.7 builds in one night,
+                // and a report that turned out to be against the previous
+                // one). The DLL's own write time is set by the build and
+                // survives the installer, so it names the build exactly.
+                string stamp = "";
+                try
+                {
+                    string path = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                    if (!string.IsNullOrEmpty(path) && System.IO.File.Exists(path))
+                        stamp = $", built {System.IO.File.GetLastWriteTimeUtc(path):yyyy-MM-dd HH:mm} UTC";
+                }
+                catch { }
+                return $"Plugin {plugin}, Core {core}, Engine {engine}{stamp}";
             }
             catch { return "(unavailable)"; }
         }
@@ -3932,6 +3970,12 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => NudgeModeBStrength(+0.05f), (pm, a) => { });
                 pluginManager.AddInputMapping("ModeBStrengthDown", GetType(),
                     (pm, a) => NudgeModeBStrength(-0.05f), (pm, a) => { });
+                // Auto force from the rim: runs the active game's auto-calibrate,
+                // so a car that comes up weak or heavy can be levelled without
+                // opening the UI. iRacing sets the max force; Forza resets the
+                // auto-strength learner.
+                pluginManager.AddInputMapping("AutoForce", GetType(),
+                    (pm, a) => TriggerAutoForce(), (pm, a) => { });
                 pluginManager.AddInputMapping("OledScreenNext", GetType(),
                     (pm, a) => CycleOledScreen(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("OledScreenPrev", GetType(),
@@ -4020,6 +4064,16 @@ namespace TrueforceForAll.Plugin
             _hidWheelPid = match.Pid;
             _hidWheelProductString = match.ProductString;
 
+            // Programmable-light wheels (G PRO, RS50, and a G PRO wearing a G923
+            // PID) get the LIGHTSYNC tab as a standing feature, no access code
+            // needed: it is verified working on them. Auto-unlock once on first
+            // sight; the LIGHTSYNC code still reveals the tab on other wheels.
+            if (WheelHasSelectableLightPattern && Settings != null && !Settings.LightsyncTabUnlocked)
+            {
+                Settings.LightsyncTabUnlocked = true;
+                try { PersistSettingsCore(); } catch { }
+            }
+
             // Product-string identity outranks the PID table for the label: an
             // RS50 in G PRO compatibility mode enumerates under the G PRO PID
             // (c272) but keeps its RS50 product string (mescon, 2026-07).
@@ -4028,7 +4082,7 @@ namespace TrueforceForAll.Plugin
             if (!string.Equals(modelLabel, match.Model, StringComparison.Ordinal))
             {
                 SimHub.Logging.Current.Info(
-                    $"[TF4ALL] Product string '{match.ProductString}' identifies an RS50 behind PID 0x{match.Pid:X4}.");
+                    $"[TF4ALL] Product string '{match.ProductString}' identifies this as {modelLabel} behind PID 0x{match.Pid:X4}.");
             }
             WheelStatus = $"{modelLabel}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})"
                         + (match.Unverified ? "  [unconfirmed model]" : "");
@@ -4219,7 +4273,7 @@ namespace TrueforceForAll.Plugin
                     // telemetry to stop, and a title still idling its car in the
                     // background offers neither, so the tap's last force streamed
                     // for its full hold and the wheel walked to lock.
-                    if (_gameFocusLost) return (short?)0;
+                    if (_gameFocusLost) { NoteFfbSource("focus-release"); return (short?)0; }
 
                     var src = _telemetrySource;
                     // This zero-return applies to Mode B as well, on every
@@ -4255,6 +4309,7 @@ namespace TrueforceForAll.Plugin
                         // source-type exclusion in ApplyStationarySpring, and
                         // bypassing it here keeps the wheel truly free during
                         // pause-release for every other source as well.
+                        NoteFfbSource("pause-release");
                         return (short?)0;
                     }
 
@@ -4289,12 +4344,39 @@ namespace TrueforceForAll.Plugin
                     // here within a quarter second instead of replaying a
                     // held force for FfbTargetMaxAgeMs (the issue #13 class);
                     // a ~333 Hz source that missed ~80 ticks is not driving.
-                    if (!chosen.HasValue && (Settings?.AcShmFfbEnabled ?? false))
+                    // CSP bridge: AC's PRE-gain force from the TF4ALL CSP
+                    // script (gamemods/AssettoCorsaCsp). The in-game gain can
+                    // then sit at 0, so the game writes nothing to the wheel
+                    // and LED or screen writes have nothing to collide with,
+                    // and the wheel still gets the sim's force from here.
+                    // Behind the CSPFFB access code while it is being proven.
+                    // Consulted first because it is the only source that
+                    // survives gain 0; same short window as finalFF.
+                    // Assetto Corsa force is automatic: when the TF4ALL CSP
+                    // Bridge script is installed it is running and supplying, so
+                    // we use it; when it is not, the bridge is never fresh and we
+                    // fall through to the USB tap below. CspBridgeFfbEnabled
+                    // defaults on and exists only as a dev force-off (CSPFFB).
+                    if (!chosen.HasValue && (Settings?.CspBridgeFfbEnabled ?? true))
                     {
-                        const int acShmMaxAgeMs = 250;
-                        chosen = (_telemetrySource as AcSharedMemoryTelemetrySource)
-                            ?.TryGetFreshFfbTarget(acShmMaxAgeMs);
-                        if (chosen.HasValue) ffbSrc = "acshm";
+                        const int cspMaxAgeMs = 250;
+                        var acSrc = _telemetrySource as AcSharedMemoryTelemetrySource;
+                        if (acSrc != null)
+                        {
+                            // "finalff" reads AC's vanilla finalFF (the field
+                            // FFB Clip reads too); the CSP script only frees the
+                            // pipe. Everything else reads the bridge field.
+                            if (CspFieldIsFinalFf)
+                            {
+                                chosen = acSrc.TryGetFreshFfbTarget(cspMaxAgeMs);
+                                if (chosen.HasValue) ffbSrc = "csp:finalff";
+                            }
+                            else
+                            {
+                                chosen = acSrc.TryGetFreshCspFfbTarget(cspMaxAgeMs);
+                                if (chosen.HasValue) ffbSrc = "csp";
+                            }
+                        }
                     }
                     // True when the value below is a quiet-spell substitute, not
                     // a captured force. The trace must record the tap as stale
@@ -4329,24 +4411,40 @@ namespace TrueforceForAll.Plugin
                         // standstill, and touching a pedal brought them back
                         // for half a second at a time.
                         //
-                        // So: a current value streams as is; a game that sent
-                        // force within the last 10 s but nothing in the last
-                        // 500 ms gets ZERO force in the ACTIVE shape (the audio
-                        // window survives, the spring can still center a parked
-                        // car, and a held force still cannot outlive 500 ms);
-                        // only a game silent for 10 s drops to keepalive and
-                        // hands the wheel back to its native force feedback.
-                        // Tap-less rigs (USBPcap missing, Secure Boot, a deaf
-                        // capture) never stamp the tap, so both windows read
-                        // null there and they stay on native FFB as before.
-                        // The 10 s bound is deliberate: a capture that dies
-                        // mid-session zeroes the game's force for at most that
-                        // long before native FFB returns.
+                        // So: a current value streams as is; a game that has
+                        // gone quiet gets ZERO force in the ACTIVE shape (the
+                        // audio window survives, the spring can still center a
+                        // parked car, and a held force still cannot outlive
+                        // 500 ms). "Gone quiet" is decided by the session, not
+                        // by a clock: a 10 s window shipped first and a tester's
+                        // RS50 parked in AC sat 25 s between force writes, so the
+                        // effects died after ten seconds and needed a gear change
+                        // to come back. The hold now lasts as long as telemetry
+                        // says the car is live, the tap has decoded force this
+                        // session, the capture is still delivering packets, and
+                        // no force write is arriving that we are not decoding.
+                        // Each guard closes one way of holding a zero on a wheel
+                        // the game is actually driving: a tap-less rig never
+                        // decodes (no hold, native FFB as before), a capture that
+                        // dies stops delivering packets within milliseconds (our
+                        // own ep3 stream is in that count), and an undecoded
+                        // shape trips the traffic guard. A game that holds a
+                        // static non-zero force through a park without resending
+                        // it is the one case this zeroes, and none of the games
+                        // we capture does that.
                         const int pcapStreamMaxAgeMs = 500;
                         chosen = _ffbTap?.TryGetFreshFfbTarget(pcapStreamMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "pcap";
-                        else if (!_quietSpellHoldDisabled && _ffbTap != null
-                                 && _ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000).HasValue
+                        else if (_ffbTap != null
+                                 // The game has driven the wheel this session
+                                 // (the arbiter settled on a report) and the car
+                                 // is live by telemetry, or the last force is
+                                 // simply recent.
+                                 && (_ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000).HasValue
+                                     || (_ffbTap.LiveForceReport != 0 && (src?.IsSessionActive ?? false)))
+                                 // The capture itself is alive: packets for the
+                                 // wheel within the last two seconds.
+                                 && _ffbTap.MsSinceDevicePacket < 2000
                                  // A quiet spell is the GAME going quiet. If the
                                  // wheel is still receiving force writes we are not
                                  // decoding (an undecided report, the NOFFB
@@ -4390,6 +4488,9 @@ namespace TrueforceForAll.Plugin
                     var afterSpring = ApplyStationarySpringIfActive(chosen);
                     var finalOut    = MaybeReshapeFfb(afterSpring);
                     TraceFfb(tapQuiet ? (short?)null : chosen, afterSpring, finalOut);
+                    NoteFfbSource(finalOut.HasValue
+                        ? (chosen.HasValue ? ffbSrc : "authored")
+                        : "keepalive");
                     return finalOut;
                 };
                 _device.FfbScale                 = Settings.FfbScale;
@@ -5671,7 +5772,7 @@ namespace TrueforceForAll.Plugin
                 // installed, so an empty tap is the expected state, not a
                 // capture failure.
                 _ffbTap.GameFfbExpected = _forceMode == ForceModeOff
-                    && !AcShmFfbSupplying()
+                    && !CspBridgeSupplying()
                     && (_telemetrySource?.IsSessionActive ?? false);
                 if (_noFfbCaptureNotice != null && _ffbTap.MsSinceLastSample < 1000)
                     _noFfbCaptureNotice = null;
@@ -6061,6 +6162,8 @@ namespace TrueforceForAll.Plugin
                     }
                     // iRacing's setup notice, on sight rather than on panel-open.
                     MaybeFireIracingNotice(gameName);
+                    // Assetto Corsa CSP setup offer, same "on sight" timing.
+                    MaybeFireAcCspNotice(gameName);
 
                     // RESOLVE rather than push. This used to write the master switch
                     // itself from the per-game map, which under a third state would
@@ -6891,8 +6994,9 @@ namespace TrueforceForAll.Plugin
                 // F8-12 report (5-LED strip, the F8 path via DriveG923Leds).
                 bool levelWheel = _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268   // G PRO (+ RS50 compat)
                             || _hidWheelPid == 0xC276                                 // RS50 native
-                            || _hidWheelPid == 0xC26D || _hidWheelPid == 0xC26E;      // G923 Xbox (HID++ 0x807A)
-                bool g923Wheel  = _hidWheelPid == 0xC266;                            // G923 PS/PC (legacy F8-12)
+                            || _hidWheelPid == 0xC26D || _hidWheelPid == 0xC26E       // G923 Xbox (HID++ 0x807A)
+                            || GProInG923Mode;                                        // G PRO wearing any G923 PID
+                bool g923Wheel  = _hidWheelPid == 0xC266 && !GProInG923Mode;         // G923 PS/PC (legacy F8-12)
 
                 // Fail CLOSED: quiet must be PROVEN by a live capture, never
                 // assumed. A null tap, a tap whose USBPcap child never
@@ -6919,8 +7023,7 @@ namespace TrueforceForAll.Plugin
                 // an LED/OLED write cuts FFB; our ep3 stream overriding the
                 // ep0 force does NOT make those writes safe.
                 bool gameFfbQuiet = ledTap != null && ledTap.IsRunning
-                            && !ledTap.TryGetFreshFfbTarget(2000).HasValue
-                            && !AcShmFfbSupplying();
+                            && !ledTap.TryGetFreshFfbTarget(2000).HasValue;
                 // Only while actively driving. On pause / menu / replay the
                 // session goes inactive: the Mode B force is already zeroed
                 // there, and without this the rev bar would freeze on the
@@ -6954,25 +7057,45 @@ namespace TrueforceForAll.Plugin
                 // keepalive AbandonWheel had just stopped, and nothing would stop it
                 // a second time: a level pair every second, forever, on the endpoint
                 // the game's force feedback shares.
+                // CSP bridge at gain 0: the game writes NOTHING to the wheel's
+                // HID++ pipe (the pre-gain force rides our ep3 stream instead),
+                // so the pipe is free for the screen and rev lights even though
+                // the force mode is pass-through (ForceModeOff). ffbQuietProven
+                // still gates it: raise the in-game gain and the tap sees force
+                // again, the proof drops, and the surfaces fail closed. This is
+                // the path the finalFF revert pointed to (gain up kept the pipe
+                // busy; gain 0 genuinely frees it).
+                // The base rule: a force mode armed (not pass-through), the
+                // game's FFB proven quiet, session live. This is what gates us
+                // DRIVING the rev lights, and it stays exactly as it was: in
+                // Assetto Corsa the force mode is pass-through, so this is
+                // false and we never touch the rev bar there. AC drives its
+                // own rev lights, and we leave them to it.
                 bool hidppFree = MasterMode == TrueforceMasterMode.Normal
                               && _forceMode != ForceModeOff && ffbQuietProven && sessionActive;
                 bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
-                // EXPERIMENTAL wheel-base OLED. Same pipe, same rule, its own
-                // opt-in (default off).
-                // Tried and reverted 2026-08-29: opening the screen in AC while
-                // the force came from the game itself (finalFF over ep3) did
-                // not cut the force, but the screen's resend stream on the
-                // shared pipe stalled the game's own rev-light writes for
-                // seconds at a time, and throttling the screen to 100 ms did
-                // not help. The screen stays behind hidppFree until the pipe
-                // can be handed to us for real (pre-gain torque from CSP with
-                // the in-game force off is the path to explore).
+                // The CSP bridge frees the wheel's HID++ pipe (the game writes
+                // nothing to it), so the SCREEN and one-shot pattern changes
+                // become safe even in AC's pass-through mode, where the base
+                // rule above is false. We do NOT extend this to the rev lights:
+                // AC owns those, and two writers on the bar would fight. So the
+                // CSP win in AC is exactly the screen plus drop-free pattern
+                // cycling, nothing more.
+                bool cspSupplying = CspBridgeSupplying();
+                bool hidppFreeForScreen = hidppFree || (MasterMode == TrueforceMasterMode.Normal
+                              && cspSupplying && ffbQuietProven && sessionActive);
+                // EXPERIMENTAL wheel-base OLED, its own opt-in (default off).
+                // The 2026-08-29 finalFF revert (screen stalled the game's own
+                // rev-light writes) was with the game still driving the wheel;
+                // under the CSP bridge the game writes nothing, so the pipe is
+                // genuinely ours for the screen.
                 bool modeBOled = MasterMode == TrueforceMasterMode.Normal
                             && (Settings?.ModeBOledEnabled ?? false)
-                            && hidppFree;
+                            && hidppFreeForScreen;
                 // Latched for the settings panel, which needs to know whether a
-                // preview is safe to draw and runs on another thread.
-                _oledHidppFree = hidppFree;
+                // preview is safe to draw and runs on another thread. Uses the
+                // screen rule so pattern previews are allowed under CSP too.
+                _oledHidppFree = hidppFreeForScreen;
                 // The quiet term alone, for one-shot user actions (the rev
                 // pattern picker). hidppFree bundles "force mode armed" and
                 // "session live", which gate CONTINUOUS driving of the
@@ -7803,6 +7926,34 @@ namespace TrueforceForAll.Plugin
         /// is trivially true and this cannot stand in for the mode check. Callers
         /// test the mode first.</summary>
         private bool OneShotLevelWritesAllowed => NoTelemetryArriving() || _ffbQuietNow;
+
+        /// <summary>Whether a pattern change may SHOW itself with the preview
+        /// sweep or the lit hold, seconds of level writes that drive the
+        /// strip. Never while a game is on unless the strip is provably ours
+        /// (a force mode armed with the game's force off, i.e. hidppFree):
+        /// in a game that lights its own bar the sweep fights the game's
+        /// writer and the strip flickers. The quiet-pipe term alone is not
+        /// enough here, because the wire tap goes quiet at every standstill
+        /// in a tap-path game and opened the sweep mid-session (owner, AC,
+        /// 2026-08-29). With no telemetry there is no game and no bar to
+        /// fight, so the answer is yes.</summary>
+        private bool PreviewSweepAllowed => NoTelemetryArriving() || _oledHidppFree;
+
+        /// <summary>The level to leave the strip at after a slot rewrite that
+        /// must not show itself: what the game last wrote to it, as seen on
+        /// the wire, or -1 (the channel's own level) when nothing recent was
+        /// seen. The upload raises the level to at least one to land, and
+        /// settling to our own level, which is zero in a game that drives its
+        /// own bar, left the strip dark until the game next changed it.</summary>
+        private int StripLevelFromWire()
+        {
+            var tap = _ffbTap;
+            var leds = _rpmLeds;
+            if (tap == null || leds == null) return -1;
+            byte idx = leds.RevFeatureIndex;
+            if (idx == 0) return -1;
+            return tap.TryGetLastLevelWrite(idx, 3000, out int level) ? level : -1;
+        }
         private string _revCarKeyApplied;         // last car whose remembered pattern was applied
 
         // ---- per-car rev-light data (lovely-car-data) ----
@@ -11972,7 +12123,7 @@ namespace TrueforceForAll.Plugin
             // bar shows the new colours at once, which is the feedback the user
             // wanted. That is what "driving: the preview self-suppresses and the
             // live bar is the feedback" was always meant to mean.
-            if (!OneShotLevelWritesAllowed) return;
+            if (!PreviewSweepAllowed) return;
             // Only skip when the live bar is actually LIT, not merely when a
             // game is loaded. In the pits at idle the strip is dark, the live
             // feed is showing nothing to fight, and skipping here left a pattern
@@ -12009,14 +12160,16 @@ namespace TrueforceForAll.Plugin
             // One decision for the write and its follow-up. A blocked show must
             // not leave a level behind: the sweep and the hold were what ramped
             // ShowLevel back to zero, so when they stand down the write settles
-            // to the bar's own level (-1) instead of lighting all ten.
-            bool show = MasterMode == TrueforceMasterMode.Normal && OneShotLevelWritesAllowed;
+            // to the level the game last put on the strip (or the bar's own
+            // level when the wire shows nothing recent) instead of lighting
+            // all ten.
+            bool show = MasterMode == TrueforceMasterMode.Normal && PreviewSweepAllowed;
             bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
             {
                 Slot = (byte)slot,
                 DirectionWire = pattern.DirectionWire,
                 Rgb = rgb,
-            }, out message, displayLevel: show ? ShowLevel : -1, slotName: null, permanent: true,
+            }, out message, displayLevel: show ? ShowLevel : StripLevelFromWire(), slotName: null, permanent: true,
                rawColors: pattern.TrimExempt);
 
             // The user's own slot, not one of ours standing in for a pattern.
@@ -12848,14 +13001,14 @@ namespace TrueforceForAll.Plugin
 
             // One decision for the write and its follow-up; see WriteOwnSlot for
             // why the display level has to follow it.
-            bool show = MasterMode == TrueforceMasterMode.Normal && OneShotLevelWritesAllowed;
+            bool show = MasterMode == TrueforceMasterMode.Normal && PreviewSweepAllowed;
             bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
             {
                 Slot = (byte)slot,
                 DirectionWire = pattern.DirectionWire,
                 Rgb = rgb,
             }, out message,
-               displayLevel: show ? ShowLevel : -1,
+               displayLevel: show ? ShowLevel : StripLevelFromWire(),
                slotName: pattern.Name,
                rawColors: pattern.TrimExempt);
 
@@ -13488,6 +13641,15 @@ namespace TrueforceForAll.Plugin
         public bool WheelHasOledScreen =>
             _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268 || _hidWheelPid == 0xC276;
 
+        /// <summary>A G PRO switched to G923 compatibility mode in G HUB: G923
+        /// PID, G PRO product string and interface layout. Its firmware keeps
+        /// the rev bar (as a five-step strip, through the G PRO's HID++
+        /// interface) but drops the pattern slots and the screen, so only the
+        /// level-bar routing follows the hardware; the screen and LIGHTSYNC
+        /// gates stay on the PID, where a G923 PID correctly says no.</summary>
+        private bool GProInG923Mode =>
+            WheelDiscovery.IsGProInG923Mode(_hidWheelPid, _hidWheelProductString);
+
         /// <summary>True on the wheels whose rev-light pattern is selectable
         /// (built-in sweeps + custom LIGHTSYNC slots): the G PRO and RS50.
         /// A G923's strip lights a fixed look, so offering it a pattern
@@ -13498,7 +13660,7 @@ namespace TrueforceForAll.Plugin
         /// report on the gamepad collection rather than HID++ 0x807A. The G923
         /// PS/PC has no HID++ at all, so it is the only wheel on that path, and
         /// the only one the F8ANY experiment means anything on.</summary>
-        public bool WheelIsLegacyF8 => _hidWheelPid == 0xC266;
+        public bool WheelIsLegacyF8 => _hidWheelPid == 0xC266 && !GProInG923Mode;
 
         public bool WheelHasSelectableLightPattern =>
             _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268 || _hidWheelPid == 0xC276;
@@ -14157,9 +14319,16 @@ namespace TrueforceForAll.Plugin
                     Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                     // Force from AC itself: arm the finalFF latch at
                     // construction so a session that starts with the path on
-                    // never needs a toggle round-trip to begin supplying
-                    // force. SetAcShmFfb applies later changes live.
-                    FfbLatchEnabled = Settings?.AcShmFfbEnabled ?? false,
+                    // Both latches are armed unconditionally for AC. The CSP
+                    // bridge only supplies when its script is installed and
+                    // running (otherwise the map is never fresh and the provider
+                    // uses the tap), so arming it always is what makes the AC
+                    // force automatic. The finalFF latch backs the dev "finalff"
+                    // field.
+                    FfbLatchEnabled = true,
+                    CspBridgeLatchEnabled = true,
+                    CspField = ParseCspField(Settings?.CspBridgeFfbField),
+                    CspMaxNm = Settings?.CspBridgeMaxNm ?? 10.0,
                 };
                 try
                 {
@@ -30130,67 +30299,618 @@ namespace TrueforceForAll.Plugin
             return _simulateNoFfb;
         }
 
-        // Dev/test (QUIETOFF access code): drop the quiet-spell hold in the FFB
-        // provider, so the 2026-08-17 to 2026-08-28 dev behaviour can be
-        // reproduced on demand: every effect and the stationary spring die
-        // about half a second after a parked car's force stops changing, and
-        // come back for half a second when a pedal is touched. TEMPORARY: it
-        // exists so the fix can be confirmed against the bug on the same build,
-        // and it goes once that is done. Read on the 1 kHz FFB thread, written
-        // from the UI, hence volatile. Session only, never persisted.
-        private volatile bool _quietSpellHoldDisabled;
-        public bool DebugToggleQuietSpellHold()
+        // ---- FFB source transition log ----
+        // The provider runs at 1 kHz and used to leave no trace of its own
+        // state, so a log bundle could not say whether the quiet-spell hold
+        // was holding or what ended it (2026-08-29: a tester's parked-car
+        // report could not be told apart from a build that simply lacked the
+        // fix). One line per SETTLED state: a state must persist for two
+        // seconds before it is logged, so a parked wheel's dither (a burst of
+        // force every few seconds between quiet spells) never spams the log,
+        // and a keepalive line names which guard produced it. FFB thread
+        // only; the fields are touched nowhere else.
+        private string _ffbSrcLogged;
+        private string _ffbSrcPending;
+        private long   _ffbSrcPendingSinceTicks;
+        private static readonly long FfbSourceSettleTicks = Stopwatch.Frequency * 2;
+
+        private void NoteFfbSource(string src)
         {
-            _quietSpellHoldDisabled = !_quietSpellHoldDisabled;
-            SimHub.Logging.Current.Info(
-                $"[TF4ALL] Quiet-spell hold {(_quietSpellHoldDisabled ? "OFF (reproducing the parked-car silence)" : "ON (the fix)")}.");
-            return _quietSpellHoldDisabled;
+            long now = Stopwatch.GetTimestamp();
+            if (!string.Equals(src, _ffbSrcPending, StringComparison.Ordinal))
+            {
+                _ffbSrcPending = src;
+                _ffbSrcPendingSinceTicks = now;
+                return;
+            }
+            if (string.Equals(src, _ffbSrcLogged, StringComparison.Ordinal)) return;
+            if (now - _ffbSrcPendingSinceTicks < FfbSourceSettleTicks) return;
+            _ffbSrcLogged = src;
+            string detail = src == "keepalive" ? " (" + DescribeKeepaliveReason() + ")" : "";
+            SimHub.Logging.Current.Info($"[TF4ALL] FFB source: {src}{detail}.");
         }
 
-        // ---------- Force from Assetto Corsa itself (finalFF) ----------
-
-        // Persists Settings.AcShmFfbEnabled and applies it to the live AC
-        // source immediately (the latch is otherwise armed at source
-        // construction on the next game swap). Turning it off also drops any
-        // latched force so the provider can't consume a final stale value.
-        // Driven by the checkbox under Force feedback (advanced).
-        public void SetAcShmFfb(bool on)
+        /// <summary>Why the provider is sending keepalives, in the order the
+        /// quiet-spell hold tests its guards, so the log names the first one
+        /// that failed.</summary>
+        private string DescribeKeepaliveReason()
         {
-            if (Settings != null) Settings.AcShmFfbEnabled = on;
+            var tap = _ffbTap;
+            if (tap == null) return "no USB capture";
+            if (tap.LiveForceReport == 0) return "no game force decoded yet this session";
+            if (!(_telemetrySource?.IsSessionActive ?? false)) return "session not live (engine off, menu, or no telemetry)";
+            long ms = tap.MsSinceDevicePacket;
+            if (ms >= 2000) return ms == long.MaxValue ? "the capture has delivered no packets" : $"the capture went stale {ms} ms ago";
+            if (tap.ForceTrafficSinceLastSample) return "force writes are arriving that are not being decoded";
+            return "game silent and no hold applied";
+        }
+
+        // Persists Settings.CspBridgeFfbEnabled and applies it to the live AC
+        // source (the poll thread opens or closes the map on the next tick).
+        // Driven by the CSPFFB access code. Returns the new state.
+        public bool ToggleCspBridgeFfb()
+        {
+            bool on = !(Settings?.CspBridgeFfbEnabled ?? true);
+            if (Settings != null) Settings.CspBridgeFfbEnabled = on;
             PersistSettings();
             var src = _telemetrySource as AcSharedMemoryTelemetrySource;
             if (src != null)
             {
-                src.FfbLatchEnabled = on;
-                if (!on) src.ClearLastFfbTarget();
+                src.CspBridgeLatchEnabled = on;
+                // The finalFF latch stays armed (it backs the dev "finalff"
+                // field); only the CSP bridge read follows this toggle.
+                src.FfbLatchEnabled = true;
+                if (!on) src.ClearLastCspFfbTarget();
             }
-            SimHub.Logging.Current.Info($"[TF4ALL] AC shared-memory FFB {(on ? "ON" : "OFF")}.");
+            if (on) _acCspNoticeShownThisSession = false;   // let the setup offer fire again this session
+            SimHub.Logging.Current.Info($"[TF4ALL] CSP bridge FFB {(on ? "ON" : "OFF")}.");
+            return on;
+        }
+
+        // ---------- Assetto Corsa CSP bridge script install ----------
+        //
+        // The bridge is a CSP "ffb-postprocess" script, and CSP allows only one
+        // of those at a time. So the install is GRACEFUL: it copies our script
+        // into AC and selects it ONLY when that slot is free. If the player
+        // already runs their own post-processing script, the install refuses and
+        // says why (pointing at the setup guide) rather than displacing theirs.
+        // CSP's FFB *Tweaks* are unaffected either way; those are baked into the
+        // force we read, not a script.
+
+        private const string AcCspScriptName = "tf4all";
+        // Bumped when the bridge script changes so the mods list can show it.
+        private const string AcCspBridgeVersion = "1.0";
+        public string AcCspBridgeVersionString => AcCspBridgeVersion;
+        public string FsModVersionString => FsModVersion;
+
+        // ---- Assetto Corsa CSP setup notice (mirrors the iRacing notice) ----
+        //
+        // Fired on FIRST SIGHT of Assetto Corsa as the active game (not gated on
+        // the CSP feature being on, and not on being deep in a session), so the
+        // player can set it up before they are mid-race. It is a simple offer:
+        // "if you use Custom Shaders Patch we can unlock the full feature set",
+        // with an Install button. Install either succeeds or fails with a reason.
+        // Also reachable any time from the settings button and the guide.
+
+        private volatile bool _acCspNoticeShowing;
+        private volatile bool _acCspNoticeShownThisSession;
+        private string _lastGameSeenForAcCsp;
+
+        private const string AcCspNoticeBody =
+            "If you use Custom Shaders Patch, installing the TF4ALL CSP Bridge unlocks the wheel's Dynamic "
+            + "OLED display in Assetto Corsa and makes LIGHTSYNC pattern changes more stable, so switching "
+            + "patterns no longer cuts the force feedback.";
+
+        /// <summary>Called on the game-change edge. Clears the once-per-session
+        /// latch on the way OUT of AC so the next AC session offers again (until
+        /// dismissed for good).</summary>
+        private void MaybeFireAcCspNotice(string game)
+        {
+            if (string.Equals(_lastGameSeenForAcCsp, game, StringComparison.Ordinal)) return;
+            _lastGameSeenForAcCsp = game;
+            if (string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)) ShowAcCspNotice(null);
+            else _acCspNoticeShownThisSession = false;
+        }
+
+        /// <summary>Show the Assetto Corsa CSP setup offer. Safe from any thread;
+        /// a null owner centres on screen. The auto path only fires while AC is
+        /// active, Custom Shaders Patch is present, and the script is not already
+        /// installed; a forced call (the settings button / guide) ignores all of
+        /// that and the dismissed latch.</summary>
+        public void ShowAcCspNotice(System.Windows.Window owner, bool force = false)
+        {
+            if (Settings == null) return;
+            if (!force && Settings.CspBridgeInstallDeclined) return;
+            if (_acCspNoticeShowing) return;
+            if (!force && _acCspNoticeShownThisSession) return;
+            if (!force)
+            {
+                if (!string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)) return;
+                string acDir = null;
+                try { acDir = FindAcInstallDir(); } catch { }
+                if (acDir == null) return;          // no CSP present: nothing to pitch
+                try { if (AcCspBridgeInstalled()) return; } catch { }   // already set up
+            }
+
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            _acCspNoticeShownThisSession = true;
+            app.Dispatcher.BeginInvoke((Action)(() =>
+            {
+                if (_acCspNoticeShowing) return;
+                if (Settings == null) return;
+                if (!force && Settings.CspBridgeInstallDeclined) return;
+                _acCspNoticeShowing = true;
+                try
+                {
+                    bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
+                        "Recommended: install the TF4ALL CSP Bridge",
+                        AcCspNoticeBody,
+                        DialogKind.Info,
+                        okLabel: "Install", cancelLabel: "Not now", goldOk: true);
+                    var st = Settings;
+                    if (st == null) return;
+                    if (r == true)
+                    {
+                        string err = InstallAcCspBridge();
+                        if (err == null)
+                        {
+                            // Installed: turn the feature on so it actually works,
+                            // and stop nagging.
+                            st.CspBridgeFfbEnabled = true;
+                            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+                            if (src != null) { src.CspBridgeLatchEnabled = true; src.FfbLatchEnabled = true; }
+                            st.CspBridgeInstallDeclined = true;
+                            try { PersistSettings(); } catch { }
+                            TrueforceDialog.Show(owner ?? app.MainWindow, "Assetto Corsa is set up",
+                                "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
+                                + "and keep your in-game force feedback gain up; the plugin renders the game's own force.",
+                                DialogKind.Info);
+                        }
+                        else
+                        {
+                            TrueforceDialog.Show(owner ?? app.MainWindow, "Could not set up Assetto Corsa",
+                                err, DialogKind.Error);
+                        }
+                    }
+                    else
+                    {
+                        // Silences the auto offer; the settings button and the
+                        // guide still install on demand, and "show one-time
+                        // messages again" re-offers it.
+                        st.CspBridgeInstallDeclined = true;
+                        try { PersistSettings(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] AC CSP notice failed: " + ex.Message);
+                }
+                finally { _acCspNoticeShowing = false; }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        /// <summary>Guide/settings-button install: clears the dismissed latch
+        /// (the player asked for it) and reports the result in a dialog. Turns
+        /// the feature on when the install succeeds, and lets them retry after
+        /// freeing the post-process slot.</summary>
+        public void InstallAcCspBridgeInteractive()
+        {
+            string err = InstallAcCspBridge();
+            var app = System.Windows.Application.Current;
+            var s = Settings;
+            if (s != null)
+            {
+                if (err == null)
+                {
+                    s.CspBridgeFfbEnabled = true;
+                    var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+                    if (src != null) { src.CspBridgeLatchEnabled = true; src.FfbLatchEnabled = true; }
+                }
+                s.CspBridgeInstallDeclined = (err == null);   // installed = stop offering; failed = keep offering
+                try { PersistSettings(); } catch { }
+            }
+            try
+            {
+                app?.Dispatcher?.BeginInvoke((Action)(() =>
+                {
+                    if (err == null)
+                        TrueforceDialog.Show(app.MainWindow, "Assetto Corsa is set up",
+                            "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
+                            + "and keep your in-game force feedback gain up.",
+                            DialogKind.Info);
+                    else
+                        TrueforceDialog.Show(app.MainWindow, "Could not set up Assetto Corsa", err, DialogKind.Error);
+                }));
+            }
+            catch { }
+        }
+
+        public bool AcCspBridgeInstalled()
+        {
+            try
+            {
+                string ac = FindAcInstallDir();
+                if (ac == null) return false;
+                string lua = Path.Combine(ac, "extension", "lua", "ffb-postprocess", AcCspScriptName, "ffb.lua");
+                if (!File.Exists(lua)) return false;
+                return string.Equals(ReadActiveAcPostProcessScript(), AcCspScriptName, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Installs and selects the CSP bridge script for Assetto Corsa.
+        /// Returns null on success, or a human-readable reason on failure. Never
+        /// replaces a post-processing script the player already selected.</summary>
+        /// <summary>True when Assetto Corsa (with Custom Shaders Patch) is on
+        /// this PC, i.e. there is somewhere to install the bridge.</summary>
+        public bool AcCspAvailable()
+        {
+            try { return FindAcInstallDir() != null; } catch { return false; }
+        }
+
+        /// <summary>Install the bridge and, on success, turn the CSP force path
+        /// on. Returns null or a reason. Used by the mods list's Install button.</summary>
+        public string InstallAndEnableAcCspBridge()
+        {
+            string err = InstallAcCspBridge();
+            if (err == null)
+            {
+                var st = Settings;
+                if (st != null)
+                {
+                    st.CspBridgeFfbEnabled = true;
+                    st.CspBridgeInstallDeclined = true;   // installed: stop the on-sight offer
+                    var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+                    if (src != null) { src.CspBridgeLatchEnabled = true; src.FfbLatchEnabled = true; }
+                    try { PersistSettings(); } catch { }
+                }
+            }
+            return err;
+        }
+
+        /// <summary>Remove the bridge: delete the script folder from Assetto
+        /// Corsa and unselect it in CSP's FFB Tweaks. Force feedback falls back
+        /// to the USB capture. Returns null or a reason.</summary>
+        public string UninstallAcCspBridge()
+        {
+            string ac;
+            try { ac = FindAcInstallDir(); } catch { ac = null; }
+            if (ac == null)
+                return "could not find your Assetto Corsa install.";
+            try
+            {
+                string dir = Path.Combine(ac, "extension", "lua", "ffb-postprocess", AcCspScriptName);
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            }
+            catch (Exception ex) { return "could not delete the script: " + ex.Message; }
+            try { DeselectAcPostProcessScript(); } catch { }
+            SimHub.Logging.Current.Info("[TF4ALL] Assetto Corsa CSP bridge script removed.");
+            return null;
+        }
+
+        // Turns the post-processing script slot OFF, but only while it is ours,
+        // so we never disable a script the player later selected.
+        private static void DeselectAcPostProcessScript()
+        {
+            string cfg = AcFfbTweaksIniPath();
+            if (!File.Exists(cfg)) return;
+            var lines = new List<string>(File.ReadAllLines(cfg));
+            int sec = -1, secEnd = lines.Count;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string t = lines[i].Trim();
+                if (t.Equals("[POSTPROCESSING_SCRIPT]", StringComparison.OrdinalIgnoreCase)) { sec = i; continue; }
+                if (sec >= 0 && t.StartsWith("[") && t.EndsWith("]")) { secEnd = i; break; }
+            }
+            if (sec < 0) return;
+            bool ours = false;
+            for (int i = sec + 1; i < secEnd; i++)
+            {
+                string t = lines[i].TrimStart();
+                if (t.StartsWith("IMPLEMENTATION", StringComparison.OrdinalIgnoreCase) && t.Contains("="))
+                {
+                    string val = t.Substring(t.IndexOf('=') + 1).Trim();
+                    int semi = val.IndexOf(';');
+                    if (semi >= 0) val = val.Substring(0, semi).Trim();
+                    ours = string.Equals(val, AcCspScriptName, StringComparison.OrdinalIgnoreCase);
+                    break;
+                }
+            }
+            if (!ours) return;
+            for (int i = sec + 1; i < secEnd; i++)
+            {
+                if (lines[i].TrimStart().StartsWith("ENABLED", StringComparison.OrdinalIgnoreCase) && lines[i].Contains("="))
+                    lines[i] = "ENABLED=0";
+            }
+            File.WriteAllLines(cfg, lines);
+        }
+
+        public string InstallAcCspBridge()
+        {
+            string ac;
+            try { ac = FindAcInstallDir(); }
+            catch { ac = null; }
+            if (ac == null)
+                return "could not find your Assetto Corsa install. If it is a non-Steam copy, install the script by hand (see the Assetto Corsa setup guide in Help).";
+
+            string existing;
+            try { existing = ReadActiveAcPostProcessScript(); }
+            catch { existing = null; }
+            if (existing != null && !string.Equals(existing, AcCspScriptName, StringComparison.OrdinalIgnoreCase))
+                return $"Assetto Corsa already has an FFB post-processing script selected ('{existing}'). "
+                     + "Custom Shaders Patch allows only one, and the plugin will not replace yours. "
+                     + "See the Assetto Corsa setup guide in Help to switch scripts, or keep yours and use the plugin's normal USB path.";
+
+            try
+            {
+                string dir = Path.Combine(ac, "extension", "lua", "ffb-postprocess", AcCspScriptName);
+                Directory.CreateDirectory(dir);
+                WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.ffb.lua", Path.Combine(dir, "ffb.lua"));
+                WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.manifest.ini", Path.Combine(dir, "manifest.ini"));
+            }
+            catch (Exception ex) { return "could not write the script into Assetto Corsa: " + ex.Message; }
+
+            try { SelectAcPostProcessScript(AcCspScriptName); }
+            catch (Exception ex)
+            {
+                return "installed the script but could not select it automatically (" + ex.Message
+                     + "). Select 'tf4all' under CSP > FFB Tweaks, or see the setup guide.";
+            }
+
+            SimHub.Logging.Current.Info("[TF4ALL] Assetto Corsa CSP bridge script installed and selected.");
+            return null;
+        }
+
+        private static string AcFfbTweaksIniPath()
+            => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                            "Assetto Corsa", "cfg", "extension", "ffb_tweaks.ini");
+
+        // The IMPLEMENTATION of the active post-processing script from the user's
+        // FFB Tweaks override, or null when the slot is free (section absent, or
+        // ENABLED off, or no implementation). Only the override is read: the
+        // in-install default is ENABLED=0, so an absent section means free.
+        private static string ReadActiveAcPostProcessScript()
+        {
+            string cfg = AcFfbTweaksIniPath();
+            if (!File.Exists(cfg)) return null;
+            bool inSection = false, enabled = false;
+            string impl = null;
+            foreach (var raw in File.ReadAllLines(cfg))
+            {
+                string line = raw.Trim();
+                if (line.StartsWith("[") && line.EndsWith("]"))
+                {
+                    inSection = string.Equals(line, "[POSTPROCESSING_SCRIPT]", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+                if (!inSection || line.Length == 0 || line.StartsWith(";")) continue;
+                int eq = line.IndexOf('=');
+                if (eq <= 0) continue;
+                string key = line.Substring(0, eq).Trim();
+                string val = line.Substring(eq + 1).Trim();
+                int semi = val.IndexOf(';');
+                if (semi >= 0) val = val.Substring(0, semi).Trim();
+                if (key.Equals("ENABLED", StringComparison.OrdinalIgnoreCase))
+                    enabled = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
+                else if (key.Equals("IMPLEMENTATION", StringComparison.OrdinalIgnoreCase))
+                    impl = val;
+            }
+            return (enabled && !string.IsNullOrEmpty(impl)) ? impl : null;
+        }
+
+        // Sets ENABLED=1 and IMPLEMENTATION=<name> in the user's FFB Tweaks
+        // override, creating the file and section if needed and leaving every
+        // other line untouched.
+        private static void SelectAcPostProcessScript(string name)
+        {
+            string cfg = AcFfbTweaksIniPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(cfg));
+            var lines = File.Exists(cfg) ? new List<string>(File.ReadAllLines(cfg)) : new List<string>();
+
+            int sec = -1, secEnd = lines.Count;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string t = lines[i].Trim();
+                if (t.Equals("[POSTPROCESSING_SCRIPT]", StringComparison.OrdinalIgnoreCase)) { sec = i; continue; }
+                if (sec >= 0 && t.StartsWith("[") && t.EndsWith("]")) { secEnd = i; break; }
+            }
+
+            if (sec < 0)
+            {
+                if (lines.Count > 0 && lines[lines.Count - 1].Trim().Length != 0) lines.Add("");
+                lines.Add("[POSTPROCESSING_SCRIPT]");
+                lines.Add("ENABLED=1");
+                lines.Add("IMPLEMENTATION=" + name);
+            }
+            else
+            {
+                bool setEnabled = false, setImpl = false;
+                for (int i = sec + 1; i < secEnd; i++)
+                {
+                    string t = lines[i].TrimStart();
+                    if (t.StartsWith("ENABLED", StringComparison.OrdinalIgnoreCase) && t.Contains("="))
+                    { lines[i] = "ENABLED=1"; setEnabled = true; }
+                    else if (t.StartsWith("IMPLEMENTATION", StringComparison.OrdinalIgnoreCase) && t.Contains("="))
+                    { lines[i] = "IMPLEMENTATION=" + name; setImpl = true; }
+                }
+                if (!setImpl) lines.Insert(secEnd, "IMPLEMENTATION=" + name);
+                if (!setEnabled) lines.Insert(sec + 1, "ENABLED=1");
+            }
+            File.WriteAllLines(cfg, lines);
+        }
+
+        private static void WriteEmbeddedResource(string resource, string target)
+        {
+            using (var res = typeof(TrueforcePlugin).Assembly.GetManifestResourceStream(resource))
+            {
+                if (res == null) throw new IOException("resource " + resource + " missing from this build");
+                using (var f = new FileStream(target, FileMode.Create, FileAccess.Write))
+                    res.CopyTo(f);
+            }
+        }
+
+        // Locate the Assetto Corsa install directory. The running acs.exe is the
+        // most authoritative source when AC is up; otherwise scan Steam's
+        // libraries. Returns null if not found.
+        private static string FindAcInstallDir()
+        {
+            try
+            {
+                foreach (var pr in System.Diagnostics.Process.GetProcessesByName("acs"))
+                {
+                    try
+                    {
+                        string exe = pr.MainModule?.FileName;
+                        if (!string.IsNullOrEmpty(exe))
+                        {
+                            string dir = Path.GetDirectoryName(exe);
+                            if (dir != null && Directory.Exists(Path.Combine(dir, "extension"))) return dir;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            try
+            {
+                string steam = ReadSteamPath();
+                if (steam != null)
+                {
+                    foreach (var lib in SteamLibraryPaths(steam))
+                    {
+                        string acDir = Path.Combine(lib, "steamapps", "common", "assettocorsa");
+                        if (Directory.Exists(Path.Combine(acDir, "extension"))) return acDir;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static string ReadSteamPath()
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
+                {
+                    string p = k?.GetValue("SteamPath") as string;
+                    if (!string.IsNullOrEmpty(p)) return p.Replace('/', '\\');
+                }
+            }
+            catch { }
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Valve\Steam"))
+                {
+                    string p = k?.GetValue("InstallPath") as string;
+                    if (!string.IsNullOrEmpty(p)) return p;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static IEnumerable<string> SteamLibraryPaths(string steam)
+        {
+            yield return steam;
+            string vdf = Path.Combine(steam, "steamapps", "libraryfolders.vdf");
+            if (!File.Exists(vdf)) yield break;
+            foreach (var line in File.ReadAllLines(vdf))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(line, "\"path\"\\s*\"(.+?)\"");
+                if (m.Success) yield return m.Groups[1].Value.Replace(@"\\", @"\");
+            }
+        }
+
+        internal static AcCspField ParseCspField(string s)
+        {
+            switch ((s ?? "").Trim().ToLowerInvariant())
+            {
+                case "torque": return AcCspField.Torque;
+                case "final":  return AcCspField.Final;
+                case "value":  return AcCspField.Value;
+                default:       return AcCspField.Pure;
+            }
+        }
+
+        // Sets which CSP bridge field the force comes from ("pure", "torque",
+        // "final", "value"), persists it and applies it to the live AC source.
+        // Returns the normalized field name. Driven by "CSPFFB <field>".
+        public string SetCspBridgeField(string field)
+        {
+            string raw = (field ?? "").Trim().ToLowerInvariant();
+            string norm;
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (raw == "finalff")
+            {
+                // Not a bridge field: force comes from vanilla finalFF, the CSP
+                // script only frees the pipe. Arm the finalFF latch.
+                norm = "finalff";
+                if (src != null) src.FfbLatchEnabled = true;
+            }
+            else
+            {
+                var f = ParseCspField(field);
+                norm = f.ToString().ToLowerInvariant();
+                if (src != null) src.CspField = f;
+            }
+            if (Settings != null) Settings.CspBridgeFfbField = norm;
+            PersistSettings();
+            SimHub.Logging.Current.Info($"[TF4ALL] CSP bridge field -> {norm}.");
+            return norm;
+        }
+
+        // Sets the full-scale Nm for the CSP "torque" field. Driven by
+        // "CSPFFB NM <n>".
+        public double SetCspBridgeMaxNm(double nm)
+        {
+            if (nm < 1.0) nm = 1.0;
+            if (Settings != null) Settings.CspBridgeMaxNm = nm;
+            PersistSettings();
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src != null) src.CspMaxNm = nm;
+            SimHub.Logging.Current.Info($"[TF4ALL] CSP bridge full-scale torque -> {nm:F1} Nm.");
+            return nm;
+        }
+
+        // CSP bridge counterpart of AcShmFfbSupplying: with the in-game gain
+        // at 0 the wire carries nothing by design, so the tap's no-FFB
+        // escalation must stay quiet while the bridge delivers.
+        // Diagnostic: turn the script's wheel-zeroing on/off while still
+        // reading the bridge, to see whether our 0 output is what makes AC's
+        // ffb* fields read 0. Session only.
+        public bool SetCspSuppress(bool on)
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src != null) src.CspSuppressOutput = on;
+            SimHub.Logging.Current.Info($"[TF4ALL] CSP wheel-output suppression {(on ? "ON" : "OFF (game keeps the wheel; reading only)")}.");
+            return on;
+        }
+
+        private bool CspFieldIsFinalFf =>
+            string.Equals(Settings?.CspBridgeFfbField, "finalff", StringComparison.OrdinalIgnoreCase);
+
+        private bool CspBridgeSupplying()
+        {
+            if (!(Settings?.CspBridgeFfbEnabled ?? true)) return false;
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return false;
+            return (CspFieldIsFinalFf ? src.TryGetFreshFfbTarget(1000)
+                                      : src.TryGetFreshCspFfbTarget(1000)).HasValue;
         }
 
         // True while the tap-free AC path is armed AND recently delivering,
-        // used to keep the tap's no-FFB escalation quiet (it gates a warning,
-        // not the force itself, hence the more lenient window than the
-        // provider's 250 ms so momentary gaps don't flap the watchdog).
-        private bool AcShmFfbSupplying()
-        {
-            if (!(Settings?.AcShmFfbEnabled ?? false)) return false;
-            return (_telemetrySource as AcSharedMemoryTelemetrySource)
-                ?.TryGetFreshFfbTarget(1000).HasValue ?? false;
-        }
-
         /// <summary>What the AC force path is doing, for the status line in
         /// front of the tap's own text. Empty outside Assetto Corsa or with the
         /// path switched off.</summary>
         private string AcForceStatusPrefix()
         {
-            if (!(Settings?.AcShmFfbEnabled ?? false)) return "";
             var src = _telemetrySource as AcSharedMemoryTelemetrySource;
             if (src == null) return "";
-            if (src.FfbPinnedAtZero)
-                return "Assetto Corsa is reporting zero force while you drive: turn the in-game force "
-                     + "feedback gain up (the plugin reads the game's own force). Using the USB capture meanwhile.  -  ";
-            if (src.TryGetFreshFfbTarget(1000).HasValue)
-                return "Force read from Assetto Corsa itself (no USB capture needed).  -  ";
+            string csp = src.CspBridgeStatus;
+            if (!string.IsNullOrEmpty(csp)) return csp + "  -  ";
             return "";
         }
 

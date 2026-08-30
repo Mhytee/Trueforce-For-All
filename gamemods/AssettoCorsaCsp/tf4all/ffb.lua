@@ -2,10 +2,18 @@
 --
 -- A CSP "ffb-postprocess" script: CSP calls script.update() once per
 -- physics frame (333 Hz) with the game's post-processing-chain FFB value.
--- This script is a PURE PASS-THROUGH (it returns ffbValue and ffbDamper
--- unchanged, so the game's force feedback is never altered); its only job
--- is publishing pre-gain FFB and per-wheel tire data into a named shared
--- memory section that Trueforce For All can read from outside the game.
+-- Normally a PURE PASS-THROUGH (it returns ffbValue and ffbDamper
+-- unchanged): its job is publishing the game's FFB and per-wheel tire data
+-- into a named shared memory section Trueforce For All reads from outside
+-- the game. When TF4ALL is actively taking the wheel over (it says so
+-- through a second, control shared-memory section, with a liveness
+-- heartbeat), this script instead returns 0 to the wheel so the game stops
+-- driving it, and TF4ALL renders the exported post-gain ffbValue itself.
+-- That keeps the player's in-game gain AND every CSP FFB tweak intact
+-- (ffbValue is post-tweak, post-gain) while freeing the wheel's HID pipe so
+-- the rev lights and base screen do not fight the game's force. The moment
+-- the heartbeat goes stale (SimHub closed), it reverts to pass-through, so
+-- the wheel is never left silent.
 --
 -- Why: vanilla AC shared memory carries only finalFF (the post-gain output
 -- signal). CSP additionally exposes steerTorque, ffbPure, ffbMultiplier and
@@ -57,6 +65,53 @@ pcall(function()
   if pr ~= nil and pr.wheels ~= nil then physRate = pr end
 end)
 
+-- TF4ALL -> script control channel. TF4ALL creates and writes this; we only
+-- read it. seq advances by two per write and doubles as a liveness heartbeat.
+-- We open it lazily (TF4ALL may start after AC) and fall back to pass-through
+-- whenever it is missing, its header is wrong, or its writes go stale.
+local CONTROL_LAYOUT = [[
+  uint32_t magic;
+  uint32_t version;
+  uint32_t seq;
+  uint32_t flags;
+]]
+local CONTROL_MAGIC = 0x54464331   -- "TFC1"
+local ctrl = nil
+local ctrlRetry = 0
+local ctrlPrevSeq = -1
+local ctrlSinceChange = 1e9        -- seconds since seq last advanced
+local ctrlSuppress = false         -- last decoded suppress flag
+
+local function readControl(dt)
+  if ctrl == nil then
+    ctrlRetry = ctrlRetry - dt
+    if ctrlRetry > 0 then return false end
+    ctrlRetry = 1.0
+    pcall(function() ctrl = ac.readMemoryMappedFile('TF4All.ACBridge.Control.v1', CONTROL_LAYOUT) end)
+    if ctrl == nil then return false end
+  end
+  local ok = false
+  pcall(function()
+    if ctrl.magic ~= CONTROL_MAGIC or ctrl.version ~= 1 then return end
+    local seq = ctrl.seq
+    if seq % 2 ~= 0 then                -- writer mid-write: keep the last decision
+      ok = ctrlSuppress
+      return
+    end
+    if seq ~= ctrlPrevSeq then
+      ctrlPrevSeq = seq
+      ctrlSinceChange = 0
+    else
+      ctrlSinceChange = ctrlSinceChange + dt
+    end
+    -- Stale writes = SimHub gone: revert to pass-through.
+    if ctrlSinceChange > 0.5 then ok = false
+    else ok = (ctrl.flags ~= 0) end
+  end)
+  ctrlSuppress = ok
+  return ok
+end
+
 function script.update(ffbValue, ffbDamper, steerInput, steerInputSpeed, dt)
   local s = mmf.seq + 1
   mmf.seq = s                      -- odd: writer busy
@@ -98,5 +153,12 @@ function script.update(ffbValue, ffbDamper, steerInput, steerInputSpeed, dt)
   end
 
   mmf.seq = s + 1                  -- even: stable
-  return ffbValue, ffbDamper       -- never alter the game's FFB
+
+  -- If TF4ALL is taking the wheel over, hand it silence so the game stops
+  -- driving the wheel; TF4ALL renders the exported ffbValue. Otherwise pass
+  -- the game's own force through untouched.
+  if readControl(dt) then
+    return 0, 0
+  end
+  return ffbValue, ffbDamper
 end

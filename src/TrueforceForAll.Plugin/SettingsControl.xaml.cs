@@ -574,8 +574,6 @@ namespace TrueforceForAll.Plugin
                 SpikeTamingEnabledCheck.IsChecked  = _plugin.Settings?.FfbSpikeTamingEnabled  ?? false;
                 if (StopStreamOnPauseCheck != null)
                     StopStreamOnPauseCheck.IsChecked = _plugin.Settings?.StopStreamOnPause ?? false;
-                if (AcShmFfbCheck != null)
-                    AcShmFfbCheck.IsChecked = _plugin.Settings?.AcShmFfbEnabled ?? false;
                 if (ReleaseOnFocusLossCheck != null)
                     ReleaseOnFocusLossCheck.IsChecked = _plugin.Settings?.ReleaseForceOnFocusLoss ?? true;
                 if (SpringTerrainCheck != null)
@@ -761,28 +759,50 @@ namespace TrueforceForAll.Plugin
                     // reads as broken. Same rule the spring games already use,
                     // extended from a two-way split to a three-way one.
                     bool reshapeGame = _plugin.ActiveGameIsReshapeGame;
-                    // Neither synthesis-only panel applies to spring OR reshape.
-                    bool hideForzaRecipe = springGame || reshapeGame;
+                    // The FFB tab is slim by default. The Telemetry Based FFB
+                    // block (header, enable toggle, and every tuning panel) only
+                    // belongs to games that actually have it, and its TUNING only
+                    // shows once it is enabled. So:
+                    //   gameActive       - a game is running
+                    //   telemetryCapable - that game has a telemetry FFB section
+                    //                      (Forza synthesis, iRacing reshape, or
+                    //                      Farming Simulator spring)
+                    //   showSection      - show the block; hidden only for a
+                    //                      running game that has no telemetry FFB
+                    //                      (Assetto Corsa etc.). Menus keep it so
+                    //                      the toggle can still be found.
+                    //   showTuning       - show the tuning controls: the section
+                    //                      is shown AND it is on (spring is always
+                    //                      on while its game runs).
+                    bool gameActive = !string.IsNullOrEmpty(mbGame);
+                    bool telemetryCapable = mbSupported || springGame;
+                    bool showSection = telemetryCapable || !gameActive;
+                    bool showTuning = showSection && (_plugin.ModeBEnabledForActiveGame
+                                                      || (springGame && gameActive));
+                    if (TeleFfbSectionHeaderBorder != null)
+                        TeleFfbSectionHeaderBorder.Visibility = showSection ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Forza synthesis panels: Forza only, and only while enabled.
+                    bool showForza = showTuning && mbSupported && !reshapeGame;
                     if (ModeBForzaTuningPanel != null)
-                        ModeBForzaTuningPanel.Visibility = hideForzaRecipe
-                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                        ModeBForzaTuningPanel.Visibility = showForza
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     if (ModeBForzaTuningPanel2 != null)
-                        ModeBForzaTuningPanel2.Visibility = hideForzaRecipe
-                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                        ModeBForzaTuningPanel2.Visibility = showForza
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // The iRacing controls, which are the only force tunables
                     // that DO anything there. Damping is deliberately not in
                     // here: it sits between the two Forza panels precisely so it
                     // survives them being hidden, and the velocity damper runs
                     // on all three pipelines.
                     if (IRacingTuningPanel != null)
-                        IRacingTuningPanel.Visibility = reshapeGame
+                        IRacingTuningPanel.Visibility = (showTuning && reshapeGame)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // Advanced lives outside that panel now, so Damping and
                     // Smoothing can sit above it while staying visible in every
                     // game. Its contents are still iRacing-only, so it follows
                     // the same flag by hand.
                     if (IRacingAdvancedExpander != null)
-                        IRacingAdvancedExpander.Visibility = reshapeGame
+                        IRacingAdvancedExpander.Visibility = (showTuning && reshapeGame)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
 
                     // The tapped-path corrections are switched off under the
@@ -811,7 +831,7 @@ namespace TrueforceForAll.Plugin
                     if (StationarySpringExpander != null)
                         StationarySpringExpander.Visibility = deadInReshape;
                     if (FfbPassthroughHeader != null)
-                        FfbPassthroughHeader.Text = reshapeGame ? "Wheel output" : "FFB pass-through";
+                        FfbPassthroughHeader.Text = reshapeGame ? "Wheel Output" : "FFB Pass-Through";
 
                     // Tab name. "Telemetry FFB" is wrong for iRacing, where the
                     // force is not built FROM telemetry but is the sim's own
@@ -833,25 +853,30 @@ namespace TrueforceForAll.Plugin
                     // disagree.
                     if (TelemetryFfbTab != null)
                     {
+                        // The wheels with a screen (G PRO, RS50) are exactly the
+                        // ones with programmable lights, and they keep a separate
+                        // LIGHTSYNC tab, so their FFB tab is just "FFB". The only
+                        // wheel whose lights share this tab is the G923, which has
+                        // LED rev lights and no screen, so the shared name is
+                        // "FFB & LED". There is no FFB+LED+OLED case.
+                        // Matches the LIGHTSYNC tab's own show condition: unlocked
+                        // (auto for programmable wheels) AND not a wheel that
+                        // cannot be programmed (the G923 keeps its lights here).
                         bool lightsHaveTheirOwnTab =
-                            _plugin?.Settings?.LightsyncTabUnlocked == true;
-                        TelemetryFfbTab.Header = reshapeGame
-                            ? (lightsHaveTheirOwnTab
-                                ? "FFB"
-                                : (_plugin.WheelHasOledScreen
-                                    ? "Wheel (FFB, LED, OLED)" : "Wheel (FFB, LED)"))
-                            : "Telemetry FFB";
+                            _plugin?.Settings?.LightsyncTabUnlocked == true
+                            && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern);
+                        TelemetryFfbTab.Header = lightsHaveTheirOwnTab ? "FFB" : "FFB & LED";
                     }
                     // Spring-mode enhancements show ONLY in spring games; in
                     // Forza the composer has its own kick layer and these
                     // controls would be dead weight there.
                     if (SpringTerrainPanel != null)
-                        SpringTerrainPanel.Visibility = springGame
+                        SpringTerrainPanel.Visibility = (showTuning && springGame)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // The FS essentials block (Strength above Damping) shows
                     // and hides together with the enhancements panel.
                     if (SpringEssentialsPanel != null)
-                        SpringEssentialsPanel.Visibility = springGame
+                        SpringEssentialsPanel.Visibility = (showTuning && springGame)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // Implement thud on the Effects tab: FS-only for the same
                     // dead-knob reason as Surface texture being Forza-only.
@@ -966,7 +991,7 @@ namespace TrueforceForAll.Plugin
                             if (FsModInstallButton != null)
                                 FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
                             if (FsModBannerText != null)
-                                FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                                FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
                         }
                         else
                         {
@@ -978,7 +1003,7 @@ namespace TrueforceForAll.Plugin
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
                                 if (FsModBannerText != null)
-                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
                             }
                             else if (_fsModBannerHold)
                             {
@@ -991,7 +1016,7 @@ namespace TrueforceForAll.Plugin
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
                                 if (FsModBannerText != null)
-                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
                             }
                             else if (fsState == 2)
                             {
@@ -999,7 +1024,7 @@ namespace TrueforceForAll.Plugin
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
                                 if (FsModBannerText != null)
-                                    FsModBannerText.Text = "The TF4ALL Enhanced Telemetry mod is installed but not reaching the plugin. Enable it in the game's mod screen when loading your save, or restart Farming Simulator if SimHub restarted while the game was running.";
+                                    FsModBannerText.Text = "The TF4ALL Enhanced Telemetry mod is installed but its data isn't reaching the plugin. Enable it in the game's mod screen when loading your save, or restart Farming Simulator if SimHub restarted while the game was running.";
                             }
                             else if (fsState == 4)
                             {
@@ -1057,18 +1082,25 @@ namespace TrueforceForAll.Plugin
                     // link that does nothing: its every line is addressed to the game
                     // you are in, Farming Simulator included, where "set the game's
                     // force feedback to 0" is the wrong advice outright.
+                    if (ModeBIntroText != null)
+                        ModeBIntroText.Visibility = showSection
+                            ? System.Windows.Visibility.Visible
+                            : System.Windows.Visibility.Collapsed;
                     if (ModeBIntroLink != null)
                         ModeBIntroLink.Visibility = mbSupported
                             ? System.Windows.Visibility.Visible
                             : System.Windows.Visibility.Collapsed;
-                    ModeBEnabledCheck.Visibility = springGame
-                        ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    ModeBEnabledCheck.Visibility = (showSection && !springGame)
+                        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // The controls stay visible in every game so the section can be
                     // seen and pre-tuned without a supported title running. When the
                     // active game can't feed Mode B, a badge at the top of the tab
                     // explains why and the per-game Enable box greys out.
                     ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                     ModeBEnabledCheck.IsEnabled = mbSupported;
+                    if (ModeBResetButton != null)
+                        ModeBResetButton.Visibility = showTuning
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // "Telemetry Based FFB" is a promise we do not keep in
                     // iRacing. Everywhere else the force IS built from telemetry:
                     // a slip model invents it and the game contributes nothing.
@@ -1095,13 +1127,9 @@ namespace TrueforceForAll.Plugin
                     if (TeleFfbSectionHeader != null)
                         TeleFfbSectionHeader.Text = reshapeGame
                             ? "Force feedback" : "Telemetry Based FFB";
-                    // WheelLightsNeedNote is no longer set here. One sentence now
-                    // covers every game, iRacing included, so it lives in the XAML
-                    // with the rest of the section instead of being rebuilt on
-                    // every refresh tick to say the same thing.
                     if (ModeBUnsupportedBadge != null)
-                        ModeBUnsupportedBadge.Visibility = mbSupported || springGame
-                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                        ModeBUnsupportedBadge.Visibility = (!gameActive)
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     if (!mbSupported && ModeBUnsupportedBadgeText != null)
                     {
                         ModeBUnsupportedBadgeText.Text = string.IsNullOrEmpty(mbGame)
@@ -1344,6 +1372,8 @@ namespace TrueforceForAll.Plugin
                     _lastGameForIracingNotice = curGameForNotice;
                     if (string.Equals(curGameForNotice, "IRacing", StringComparison.Ordinal))
                         _plugin?.ShowIracingNotice(Window.GetWindow(this));
+                    else if (string.Equals(curGameForNotice, "AssettoCorsa", StringComparison.Ordinal))
+                        _plugin?.ShowAcCspNotice(Window.GetWindow(this));
                 }
                 // The Mode B intro is NOT fired here. Launching inside a
                 // capable game (e.g. the FH6 profile) would pop it on SimHub's
@@ -1623,7 +1653,15 @@ namespace TrueforceForAll.Plugin
                 if (AbsUnsupportedBadge != null)
                     AbsUnsupportedBadge.Visibility = _plugin.ShowAbsUnsupportedBadge ? Visibility.Visible : Visibility.Collapsed;
                 if (StationarySpringUnsupportedBadge != null)
-                    StationarySpringUnsupportedBadge.Visibility = _plugin.ActiveSourceSupportsStationarySpring ? Visibility.Collapsed : Visibility.Visible;
+                {
+                    bool springSupported = _plugin.ActiveSourceSupportsStationarySpring;
+                    StationarySpringUnsupportedBadge.Visibility = springSupported ? Visibility.Collapsed : Visibility.Visible;
+                    // Grayed, not hidden or locked: the section is preset-scoped,
+                    // so its tuning still applies in other games; the dimming
+                    // just says "inert here" while a Forza title is active.
+                    if (StationarySpringExpander != null)
+                        StationarySpringExpander.Opacity = springSupported ? 1.0 : 0.55;
+                }
                 if (PitLimiterOverrideBadge != null)
                     PitLimiterOverrideBadge.Visibility = (_plugin.IsPitLimiterOverridden && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (DrsOverrideBadge != null)
@@ -5289,14 +5327,6 @@ namespace TrueforceForAll.Plugin
             _plugin.SetStopStreamOnPause(StopStreamOnPauseCheck.IsChecked == true);
         }
 
-        // Force from Assetto Corsa itself (finalFF) instead of the USB capture.
-        // Global setting; SetAcShmFfb persists and applies it to the live AC
-        // source, so no extra PersistSettings() call here.
-        private void AcShmFfb_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null || AcShmFfbCheck == null) return;
-            _plugin.SetAcShmFfb(AcShmFfbCheck.IsChecked == true);
-        }
 
         private void ReleaseOnFocusLoss_Changed(object sender, RoutedEventArgs e)
         {
@@ -5694,7 +5724,7 @@ namespace TrueforceForAll.Plugin
                 {
                     var w = noEndpoint[0];
                     sb.AppendLine($"       Wheel recognized ({w.Model}) but its Trueforce/haptic USB "
-                        + "interface isn't available (the 'wheel present but no haptic endpoint' case).");
+                        + "interface isn't available.");
                     sb.AppendLine("       Fix: open G HUB once and let it finish detecting the wheel (this loads "
                         + "the wheel's full interface set), then close G HUB and restart SimHub. If it "
                         + "persists, reboot.");
@@ -5748,7 +5778,7 @@ namespace TrueforceForAll.Plugin
                 // driver hasn't attached since install. FFB pass-through stays
                 // dead until the bus is visible to the capture driver.
                 sb.AppendLine("[FAIL] FFB pass-through: Windows sees your wheel but USBPcap can't capture it on the USB bus.");
-                sb.AppendLine("       Likely the wheel is on a USB port/controller USBPcap doesn't cover, or USBPcap needs a reboot since it was installed.");
+                sb.AppendLine("       Likely the wheel is on a USB port/controller USBPcap doesn't cover, or the PC hasn't been rebooted since USBPcap was installed.");
                 // No "Pick device manually" here. That control ships Collapsed and
                 // only appears after the MANUALPIN access code, which is not
                 // documented anywhere a user in this state would find it, so the
@@ -5804,7 +5834,7 @@ namespace TrueforceForAll.Plugin
                         Dispatcher.Invoke(() =>
                         {
                             string verdict = seen
-                                ? "[OK]   FFB pass-through: LIVE - game forces captured when you moved. Pass-through is working."
+                                ? "[OK]   FFB pass-through: LIVE - game forces captured when you moved."
                                 : "[skip] FFB pass-through: no game forces seen in 6 s. Be in an ACTIVE session (not a menu/paused) and turn the wheel / drive while the watch runs.";
                             SelfTestResultText.Text = checklist.Replace(FfbLiveWatchSentinel, verdict);
                             SelfTestButton.IsEnabled = true;
@@ -8846,7 +8876,7 @@ namespace TrueforceForAll.Plugin
                     SetBackupStatus(outcome.Message);
                 }
             }
-            catch (Exception ex) { SetBackupStatus("Couldn't back up. Check the folder and your connection, then try again."); TrueforceDialog.LogError("Backup", ex); }
+            catch (Exception ex) { SetBackupStatus("Couldn't back up. Check your connection and try again."); TrueforceDialog.LogError("Backup", ex); }
             finally { if (BackupNowBtn != null) BackupNowBtn.IsEnabled = true; }
         }
 
@@ -8865,7 +8895,7 @@ namespace TrueforceForAll.Plugin
                 var outcome = await _plugin.RestoreFromCloudAsync();
                 SetBackupStatus(outcome.Message);
             }
-            catch (Exception ex) { SetBackupStatus("Couldn't restore. Check the folder and your connection, then try again."); TrueforceDialog.LogError("Restore", ex); }
+            catch (Exception ex) { SetBackupStatus("Couldn't restore. Check your connection and try again."); TrueforceDialog.LogError("Restore", ex); }
             finally { if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = true; }
         }
 
@@ -12758,7 +12788,7 @@ namespace TrueforceForAll.Plugin
             "UPDATEPOLL     Simulate a release shipping AFTER launch: arms a fake newer release that only a BACKGROUND re-check applies, on a fast cadence (every 5s; UPDATEPOLL<n> for n seconds), so the 'Update to vX.Y.Z' banner appears on its own within seconds, no restart. Tests the periodic re-check end-to-end. Run again to stop + clear. Toggle.\n" +
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
-            "QUIETOFF       TEMPORARY: switch the quiet-spell hold OFF to reproduce the parked-car bug (effects and the stationary spring die about half a second after the game's force stops changing, and blip back when you touch a pedal); type it again to restore the fix. Session only. Toggle.\n" +
+            "CSPFFB         Assetto Corsa: the TF4ALL CSP Bridge is used AUTOMATICALLY when its script is installed (install it from Settings > Game mods, the on-screen prompt, or the guide), otherwise the USB capture is used. This code is a DEV force-off: type it to make AC use the capture even with the bridge installed, type again for automatic. Sub-commands pick the read field: VALUE (default, post-gain, keeps your CSP tweaks), PURE or TORQUE (pre-gain, work at in-game gain 0), FINAL, FINALFF; 'CSPFFB NM 8' sets full-scale torque for TORQUE; 'CSPFFB SUP/NOSUP' is a suppression diagnostic. Persists.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
@@ -13382,16 +13412,67 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // TEMPORARY (remove once the parked-car fix is confirmed): switch the
-            // quiet-spell hold off to reproduce the bug, on again to see the fix.
-            if (code.Equals("QUIETOFF", StringComparison.OrdinalIgnoreCase))
+            // CSP bridge force: the sim's pre-gain force from the TF4ALL CSP
+            // script's shared-memory block, ahead of finalFF and the tap.
+            // "CSPFFB" toggles it; "CSPFFB PURE|TORQUE|FINAL|VALUE" picks the
+            // field; "CSPFFB NM <n>" sets the full-scale torque for TORQUE.
+            if (code.Equals("CSPFFB", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("CSPFFB ", StringComparison.OrdinalIgnoreCase))
             {
-                bool off = _plugin.DebugToggleQuietSpellHold();
+                var cspParts = code.Split(new[] { ' ', '=', '	' }, StringSplitOptions.RemoveEmptyEntries);
                 AccessCodeBox.Text = string.Empty;
+                if (cspParts.Length == 1)
+                {
+                    // The AC CSP bridge is automatic (used whenever its script
+                    // is installed, else the tap). This bare toggle is only a dev
+                    // force-off. Field/diagnostic sub-commands are below.
+                    bool on = _plugin.ToggleCspBridgeFfb();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = on
+                            ? "CSP bridge ON (automatic): the plugin uses the TF4ALL CSP Bridge when its script is installed, otherwise the USB capture. Install the script from the Assetto Corsa prompt, the guide, or the settings button. Type CSPFFB again to force it off."
+                            : "CSP bridge FORCED OFF: the plugin uses the USB capture in Assetto Corsa even if the bridge script is installed. Type CSPFFB again to return to automatic.";
+                    return;
+                }
+                string arg = cspParts[1].ToUpperInvariant();
+                if (arg == "NM")
+                {
+                    if (cspParts.Length >= 3 && double.TryParse(cspParts[2],
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double nm))
+                    {
+                        double set = _plugin.SetCspBridgeMaxNm(nm);
+                        if (AccessCodeStatus != null)
+                            AccessCodeStatus.Text = $"CSP bridge full-scale torque set to {set:F1} Nm (that many Nm of column torque = full wheel force, for the TORQUE field).";
+                    }
+                    else if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "Usage: CSPFFB NM <number>, e.g. CSPFFB NM 8.";
+                    return;
+                }
+                if (arg == "SUP" || arg == "NOSUP")
+                {
+                    bool sup = _plugin.SetCspSuppress(arg == "SUP");
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = sup
+                            ? "CSP wheel-output suppression ON: the script returns 0 to the wheel (normal takeover)."
+                            : "CSP wheel-output suppression OFF: the game keeps driving the wheel while the plugin only reads the bridge. Diagnostic for whether our 0 output is what zeroes AC's ffb fields; expect the game and plugin to fight the wheel meanwhile.";
+                    return;
+                }
+                if (arg == "PURE" || arg == "TORQUE" || arg == "FINAL" || arg == "VALUE" || arg == "FINALFF")
+                {
+                    string f = _plugin.SetCspBridgeField(arg);
+                    string note = f == "finalff"
+                        ? "  (AC's vanilla finalFF, the field FFB Clip reads; post-gain and keeps your AC tuning; the CSP script only frees the pipe)"
+                        : (f == "final" || f == "value")
+                        ? "  (CSP post-gain field: reads 0 at in-game gain 0, for comparison with the gain up)"
+                        : (f == "torque"
+                            ? "  (raw column torque in Nm, scaled by CSPFFB NM; feels proportional to the car)"
+                            : "  (pre-gain, normalized to the car; carries force at gain 0)");
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = $"CSP force now reading the {f} field{note}.";
+                    return;
+                }
                 if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = off
-                        ? "Quiet-spell hold OFF: reproducing the bug. Park the car with the engine running and keep still; the effects should die within a second and blip back when you touch a pedal. Type QUIETOFF again to restore the fix. Session only."
-                        : "Quiet-spell hold ON: the fix is back. Park the car and keep still; the effects should keep playing.";
+                    AccessCodeStatus.Text = "CSPFFB fields: FINALFF, VALUE, PURE, TORQUE, FINAL; CSPFFB NM <n>; CSPFFB SUP/NOSUP.";
                 return;
             }
 
@@ -15861,7 +15942,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't back up. Check the folder and your connection, then try again.",
+                    "Couldn't back up. Check your connection and try again.",
                     ex);
             }
         }
@@ -15983,7 +16064,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(owner,
-                    "Couldn't restore. Check the folder and your connection, then try again.",
+                    "Couldn't restore. Check your connection and try again.",
                     ex);
             }
         }
