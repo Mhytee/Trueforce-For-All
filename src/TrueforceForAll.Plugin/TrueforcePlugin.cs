@@ -30448,7 +30448,7 @@ namespace TrueforceForAll.Plugin
         private const string AcCspNoticeBody =
             "If you use Custom Shaders Patch, installing the TF4ALL CSP Bridge unlocks the wheel's Dynamic "
             + "OLED display in Assetto Corsa and makes LIGHTSYNC pattern changes more stable, so switching "
-            + "patterns no longer cuts the force feedback.";
+            + "patterns no longer cuts the force feedback.\n\nIf Content Manager is open, close it first, then click Install.";
 
         /// <summary>Called on the game-change edge. Clears the once-per-session
         /// latch on the way OUT of AC so the next AC session offers again (until
@@ -30493,7 +30493,7 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Recommended: install the TF4ALL CSP Bridge",
+                        "Assetto Corsa: install the TF4ALL CSP Bridge",
                         AcCspNoticeBody,
                         DialogKind.Info,
                         okLabel: "Install", cancelLabel: "Not now", goldOk: true);
@@ -30502,6 +30502,17 @@ namespace TrueforceForAll.Plugin
                     if (r == true)
                     {
                         string err = InstallAcCspBridge();
+                        // "Close Content Manager and try again" should be one
+                        // click: a failed install offers Retry until it lands
+                        // or the user gives up.
+                        while (err != null)
+                        {
+                            bool? again = TrueforceDialog.Show(owner ?? app.MainWindow,
+                                "Could not set up Assetto Corsa", err,
+                                DialogKind.Error, okLabel: "Retry", cancelLabel: "Not now", goldOk: true);
+                            if (again != true) break;
+                            err = InstallAcCspBridge();
+                        }
                         if (err == null)
                         {
                             // Installed: turn the feature on so it actually works,
@@ -30515,11 +30526,6 @@ namespace TrueforceForAll.Plugin
                                 "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
                                 + "and keep your in-game force feedback gain up; the plugin renders the game's own force.",
                                 DialogKind.Info);
-                        }
-                        else
-                        {
-                            TrueforceDialog.Show(owner ?? app.MainWindow, "Could not set up Assetto Corsa",
-                                err, DialogKind.Error);
                         }
                     }
                     else
@@ -30545,31 +30551,36 @@ namespace TrueforceForAll.Plugin
         /// freeing the post-process slot.</summary>
         public void InstallAcCspBridgeInteractive()
         {
-            string err = InstallAcCspBridge();
             var app = System.Windows.Application.Current;
-            var s = Settings;
-            if (s != null)
-            {
-                if (err == null)
-                {
-                    s.CspBridgeFfbEnabled = true;
-                    var src = _telemetrySource as AcSharedMemoryTelemetrySource;
-                    if (src != null) { src.CspBridgeLatchEnabled = true; src.FfbLatchEnabled = true; }
-                }
-                s.CspBridgeInstallDeclined = (err == null);   // installed = stop offering; failed = keep offering
-                try { PersistSettings(); } catch { }
-            }
             try
             {
                 app?.Dispatcher?.BeginInvoke((Action)(() =>
                 {
-                    if (err == null)
-                        TrueforceDialog.Show(app.MainWindow, "Assetto Corsa is set up",
-                            "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
-                            + "and keep your in-game force feedback gain up.",
-                            DialogKind.Info);
-                    else
-                        TrueforceDialog.Show(app.MainWindow, "Could not set up Assetto Corsa", err, DialogKind.Error);
+                    // Install + enable + persist in one call; a failure offers
+                    // Retry so "close Content Manager and try again" is one
+                    // click. Giving up keeps the on-sight offer armed.
+                    string err = InstallAndEnableAcCspBridge();
+                    while (err != null)
+                    {
+                        bool? again = TrueforceDialog.Show(app.MainWindow,
+                            "Could not set up Assetto Corsa", err,
+                            DialogKind.Error, okLabel: "Retry", cancelLabel: "Not now", goldOk: true);
+                        if (again != true)
+                        {
+                            var s = Settings;
+                            if (s != null)
+                            {
+                                s.CspBridgeInstallDeclined = false;
+                                try { PersistSettings(); } catch { }
+                            }
+                            return;
+                        }
+                        err = InstallAndEnableAcCspBridge();
+                    }
+                    TrueforceDialog.Show(app.MainWindow, "Assetto Corsa is set up",
+                        "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
+                        + "and keep your in-game force feedback gain up.",
+                        DialogKind.Info);
                 }));
             }
             catch { }
@@ -30623,6 +30634,11 @@ namespace TrueforceForAll.Plugin
         /// to the USB capture. Returns null or a reason.</summary>
         public string UninstallAcCspBridge()
         {
+            // Same exposure as the install: the deselect edits the FFB Tweaks
+            // ini, and an open Content Manager can save its cached copy back.
+            if (ContentManagerRunning())
+                return "Content Manager is open. Close it and try again.";
+
             string ac;
             try { ac = FindAcInstallDir(); } catch { ac = null; }
             if (ac == null)
@@ -30677,6 +30693,13 @@ namespace TrueforceForAll.Plugin
 
         public string InstallAcCspBridge()
         {
+            // Content Manager rewrites the FFB Tweaks ini from its own cached
+            // copy, so a selection made while it is open can be silently
+            // undone, and its UI would not show the change either way.
+            // Refusing is cheaper than a warning nobody reads.
+            if (ContentManagerRunning())
+                return "Content Manager is open. Close it and try again.";
+
             string ac;
             try { ac = FindAcInstallDir(); }
             catch { ac = null; }
@@ -30687,9 +30710,8 @@ namespace TrueforceForAll.Plugin
             try { existing = ReadActiveAcPostProcessScript(); }
             catch { existing = null; }
             if (existing != null && !string.Equals(existing, AcCspScriptName, StringComparison.OrdinalIgnoreCase))
-                return $"Assetto Corsa already has an FFB post-processing script selected ('{existing}'). "
-                     + "Custom Shaders Patch allows only one, and the plugin will not replace yours. "
-                     + "See the Assetto Corsa setup guide in Help to switch scripts, or keep yours and use the plugin's normal USB path.";
+                return $"Another FFB post-processing script is active ('{existing}'). "
+                     + "Disable it in Content Manager to proceed.";
 
             try
             {
@@ -30711,20 +30733,72 @@ namespace TrueforceForAll.Plugin
             return null;
         }
 
+        // Content Manager keeps an in-memory copy of the FFB Tweaks page and
+        // never watches the ini for outside edits, so an install that lands
+        // while CM is open looks like it did nothing until CM is reopened,
+        // and a save from the stale page can even put the old selection back.
+        // The install refuses outright while CM is running.
+        public static bool ContentManagerRunning()
+        {
+            try
+            {
+                foreach (var p in System.Diagnostics.Process.GetProcesses())
+                {
+                    string n = null;
+                    try { n = p.ProcessName; } catch { }
+                    if (n != null && n.Replace(" ", "").IndexOf("ContentManager", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         private static string AcFfbTweaksIniPath()
             => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                             "Assetto Corsa", "cfg", "extension", "ffb_tweaks.ini");
 
-        // The IMPLEMENTATION of the active post-processing script from the user's
-        // FFB Tweaks override, or null when the slot is free (section absent, or
-        // ENABLED off, or no implementation). Only the override is read: the
-        // in-install default is ENABLED=0, so an absent section means free.
+        // The IMPLEMENTATION of the active post-processing script, resolved the
+        // way CSP resolves it: the shipped defaults in <game>\extension\config\
+        // ffb_tweaks.ini first, then the user's override in Documents on top,
+        // KEY BY KEY. Content Manager writes only the delta, so an override can
+        // carry ENABLED=1 and no IMPLEMENTATION at all when the chosen script
+        // equals the shipped default ('alternative'); reading the override
+        // alone made exactly that active script invisible and let the install
+        // overwrite it (owner's rig, 2026-08-30). Null when the slot is free:
+        // effective ENABLED off, no implementation, or an empty-choice
+        // spelling. A DISABLED selection counts as free by owner decision
+        // (2026-08-30): it is not in use, so the install may take the slot.
         private static string ReadActiveAcPostProcessScript()
         {
-            string cfg = AcFfbTweaksIniPath();
-            if (!File.Exists(cfg)) return null;
-            bool inSection = false, enabled = false;
+            bool? enabled = null;
             string impl = null;
+            try
+            {
+                string ac = FindAcInstallDir();
+                if (ac != null)
+                    ParsePostProcessSection(
+                        Path.Combine(ac, "extension", "config", "ffb_tweaks.ini"),
+                        ref enabled, ref impl);
+            }
+            catch { }
+            ParsePostProcessSection(AcFfbTweaksIniPath(), ref enabled, ref impl);
+
+            if (enabled != true) return null;
+            if (string.IsNullOrEmpty(impl)) return null;
+            if (impl.Equals("default", StringComparison.OrdinalIgnoreCase)
+                || impl.Equals("none", StringComparison.OrdinalIgnoreCase)
+                || impl == "0")
+                return null;
+            return impl;
+        }
+
+        // Reads the [POSTPROCESSING_SCRIPT] keys from one ini layer into the
+        // running result, leaving keys the file does not carry untouched.
+        private static void ParsePostProcessSection(string cfg, ref bool? enabled, ref string impl)
+        {
+            if (!File.Exists(cfg)) return;
+            bool inSection = false;
             foreach (var raw in File.ReadAllLines(cfg))
             {
                 string line = raw.Trim();
@@ -30745,7 +30819,6 @@ namespace TrueforceForAll.Plugin
                 else if (key.Equals("IMPLEMENTATION", StringComparison.OrdinalIgnoreCase))
                     impl = val;
             }
-            return (enabled && !string.IsNullOrEmpty(impl)) ? impl : null;
         }
 
         // Sets ENABLED=1 and IMPLEMENTATION=<name> in the user's FFB Tweaks

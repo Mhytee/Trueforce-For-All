@@ -542,9 +542,29 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             string err = _plugin.InstallAndEnableAcCspBridge();
-            string outcome = err == null
-                ? "TF4ALL CSP Bridge: installed. Restart Assetto Corsa if it is running, and keep your in-game gain up."
-                : "TF4ALL CSP Bridge: install failed. " + err;
+            // A failure in the status line at the foot of the section goes
+            // unseen; a refusal needs a dialog the user cannot miss, and
+            // "close Content Manager and try again" should be one click.
+            while (err != null)
+            {
+                // The dialog carries a real link to the setup guide instead of
+                // describing where to find it.
+                var guideLink = new TextBlock { Margin = new Thickness(0, 8, 0, 0) };
+                var link = new System.Windows.Documents.Hyperlink(
+                    new System.Windows.Documents.Run("Open the Assetto Corsa setup guide"))
+                {
+                    Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                };
+                link.Click += (s2, e2) => OpenGuides("assetto-corsa-setup");
+                guideLink.Inlines.Add(link);
+                bool? again = TrueforceDialog.Show(Window.GetWindow(this),
+                    "Could not install the TF4ALL CSP Bridge", err,
+                    DialogKind.Error, okLabel: "Retry", cancelLabel: "Cancel", goldOk: true,
+                    extraContent: guideLink);
+                if (again != true) { RefreshModsList(); return; }
+                err = _plugin.InstallAndEnableAcCspBridge();
+            }
+            string outcome = "TF4ALL CSP Bridge: installed. Restart Assetto Corsa if it is running, and keep your in-game gain up.";
             RefreshModsList();
             if (FsModTargetsStatus == null) return;
             FsModTargetsStatus.Text = outcome;
@@ -559,13 +579,19 @@ namespace TrueforceForAll.Plugin
                 "This deletes the bridge script from Assetto Corsa and unselects it in CSP's FFB Tweaks.\n\n"
                 + "Your force feedback keeps working through the USB capture. What you lose is the wheel's "
                 + "Dynamic OLED display and drop-free LIGHTSYNC pattern changes in Assetto Corsa.\n\n"
-                + "It stops loading the next time Assetto Corsa starts.",
+                + "It stops loading the next time Assetto Corsa starts.\n\nIf Content Manager is open, close it first, then click Remove.",
                 DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Keep it");
             if (go != true) return;
             string err = _plugin.UninstallAcCspBridge();
-            string outcome = err == null
-                ? "TF4ALL CSP Bridge: removed. It stops loading the next time Assetto Corsa starts."
-                : "TF4ALL CSP Bridge: could not remove it. " + err;
+            while (err != null)
+            {
+                bool? again = TrueforceDialog.Show(Window.GetWindow(this),
+                    "Could not remove the TF4ALL CSP Bridge", err,
+                    DialogKind.Error, okLabel: "Retry", cancelLabel: "Cancel", goldOk: true);
+                if (again != true) { RefreshModsList(); return; }
+                err = _plugin.UninstallAcCspBridge();
+            }
+            string outcome = "TF4ALL CSP Bridge: removed. It stops loading the next time Assetto Corsa starts.";
             RefreshModsList();
             if (FsModTargetsStatus == null) return;
             FsModTargetsStatus.Text = outcome;
