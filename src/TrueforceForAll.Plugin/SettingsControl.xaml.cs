@@ -2489,6 +2489,12 @@ namespace TrueforceForAll.Plugin
 
             UpdateStatusPill();
 
+            // The combo shows the effective mode; when that resolves to a new
+            // value (game change, native-stream demotion) it must follow, not
+            // wait for the panel to be reopened.
+            if (_plugin != null && _lastShownEffectiveMode != _plugin.MasterMode)
+                try { RefreshMasterModeUi(); } catch { }
+
             // Keep the account-chip connection dot live: flips green<->amber as
             // token-refresh health changes in the background (guarded so it only
             // repaints on a transition; no network read).
@@ -4938,10 +4944,17 @@ namespace TrueforceForAll.Plugin
             RefreshFromPlugin();
         }
 
+        // The mode the combo last showed. The EFFECTIVE mode can change with
+        // no user gesture (a game change resolves it, a native Trueforce
+        // stream demotes it); the pill follows on the meter tick, and this is
+        // what lets the combo follow too instead of showing the old mode.
+        private TrueforceMasterMode? _lastShownEffectiveMode;
+
         private void RefreshMasterModeUi()
         {
             if (_plugin == null) return;
             var effective = _plugin.MasterMode;
+            _lastShownEffectiveMode = effective;
 
             RebuildMasterModeItems();
             if (MasterModeCombo != null)
