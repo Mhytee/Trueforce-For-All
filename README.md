@@ -273,9 +273,9 @@ restart of the game, and Content Manager closed while it installs.
 - **The wheel feels exactly as you have tuned it.** The bridge hands over
   the game's finished force, after your in-game gain and every CSP FFB
   tweak, and the plugin carries it to the wheel with the effects on top.
-- **The screen and pattern changes stop costing force.** With the bridge
-  carrying the force, the wheel's screen runs in Assetto Corsa, and
-  switching LIGHTSYNC patterns no longer cuts the force feedback.
+- **The screen stops costing force.** With the bridge carrying the force,
+  the wheel's screen runs in Assetto Corsa, and LIGHTSYNC patterns can be
+  switched mid-session.
 - **No USB capture needed.** With the bridge installed, Assetto Corsa no
   longer depends on USBPcap. Without it, everything keeps working through
   the capture as before; there is no setting to manage.
