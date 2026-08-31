@@ -22,7 +22,7 @@ When telemetry stops reaching the plugin, the FFB tab says so and offers a **Set
 
 Then the plugin is not driving the wheel.
 
-1. Check the mode at the top of the panel is **Normal**, not Off or Lightsync only.
+1. Check the mode at the top of the panel is **Normal**, not Off or Lightsync only. The plugin drops to Lightsync only by itself when a game streams its own Trueforce beside it; a popup and the amber line under the status say so, and [Games with native Trueforce](guide:native-trueforce) has the cure.
 2. Quit G HUB completely from the system tray. It claims the wheel while it is open.
 3. Unplug the wheel and plug it back in.
 4. On a PlayStation G923, open G HUB once to put the wheel back into PC mode, then close it again. That wheel can drop out of PC mode after a restart or a replug.

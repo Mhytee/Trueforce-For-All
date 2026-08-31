@@ -4,3 +4,5 @@ The exception is **Telemetry Based FFB**, which deliberately builds the steering
 
 - In the **Forza** titles it stays off until you turn it on.
 - In **Farming Simulator** it runs by itself, because the centering spring it replaces is all the game offers.
+
+In **iRacing**, and in **Assetto Corsa** with the TF4ALL CSP Bridge, the force is the sim's own, handed to the plugin directly and carried to the wheel, so it feels exactly as you tuned it. ([iRacing setup](guide:iracing-setup), [the bridge](guide:assetto-corsa-setup).)

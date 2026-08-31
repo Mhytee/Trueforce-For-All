@@ -10,13 +10,15 @@ Open Settings, find the **Game mods** section, and click **Install** on the TF4A
 2. Copies the bridge script into `Assetto Corsa\extension\lua\ffb-postprocess\tf4all`.
 3. Selects it under CSP's FFB Tweaks.
 
+Close Content Manager first. It keeps its own copy of the FFB Tweaks page and writes it back over outside changes, so the plugin refuses to install or remove the script while Content Manager is open; close it and click **Retry**.
+
 Then restart Assetto Corsa once, since CSP only reads its scripts at startup. From then on it is automatic: whenever the script is installed the plugin uses the game's own force, and when it is not, the plugin falls back to the USB capture.
 
 Keep your in-game force feedback gain where you like it. The plugin reads the game's finished force (after your gain and every CSP FFB tweak), so your tuning carries through. Use FFBClip or your own judgement to set a gain that fills the range without clipping.
 
 ## If the install says a script is already selected
 
-CSP allows only one FFB post-processing script at a time. If you already have one selected under FFB Tweaks, the install stops and leaves your setup untouched. You have two choices:
+CSP allows only one FFB post-processing script at a time. If you already have one selected and switched on under FFB Tweaks, the install stops and leaves your setup untouched (a script that is selected but switched off does not count). You have two choices:
 
 - **Keep your script.** The plugin still works through its normal USB path, so your force feedback is fine. You just will not get the OLED and pattern-change benefits in Assetto Corsa.
 - **Switch to the bridge.** In Content Manager, open Settings, Custom Shaders Patch, FFB Tweaks, and pick `tf4all` as the additional post-processing script (or turn the existing one off), then click **Install** again.
