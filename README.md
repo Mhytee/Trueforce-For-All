@@ -435,8 +435,8 @@ Forwarding to SimHub.
 Some titles already ship Trueforce on PC, so the plugin starts on
 **Lightsync only** for them: their force feedback and Trueforce are left
 alone, and only the wheel's light pattern is set. Switch off the game's
-native Trueforce and pick Normal to run the plugin instead, tuning the feel
-yourself rather than taking whatever the game hardcodes (and on
+native Trueforce and set the plugin to Normal mode to take over, tuning the
+feel yourself rather than taking whatever the game hardcodes (and on
 Automobilista 2, adding Trueforce that was never really there).
 
 The catch: **a slider at 0 is not off.** Many games keep the Trueforce API
@@ -447,9 +447,9 @@ releases the wheel.
 The plugin catches this itself. The USB capture sees every Trueforce
 packet on the wheel, so when a game streams beside the plugin, the plugin
 drops to Lightsync only for that game session within a couple of seconds
-(the log and the status panel say why) instead of whining beside it. Pick
-Normal to try again once the game's Trueforce is off. Without USBPcap there
-is nothing to watch, and nothing changes.
+(the log and the status panel say why) instead of whining beside it. Set the
+plugin to Normal mode to try again once the game's Trueforce is off. Without
+USBPcap there is nothing to watch, and nothing changes.
 
 Running MAIRA and the plugin at the same time is not supported: with MAIRA's
 RPM lights on, the plugin steps aside for it. Close MAIRA, then set the mode
