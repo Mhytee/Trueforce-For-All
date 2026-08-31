@@ -902,7 +902,7 @@ namespace TrueforceForAll.Plugin
                     // Unless we put ourselves here. That one the user did not
                     // choose, so it gets the line: what happened, and the one
                     // thing that changes it.
-                    if (_nativeStreamDemoted) return NativeStreamStandDownText(0, withGuideHint: false);
+                    if (_nativeStreamDemoted) return NativeStreamStandDownText(0);
                     return null;
                 }
 
@@ -1766,8 +1766,12 @@ namespace TrueforceForAll.Plugin
             // An explicit choice outranks the session demotion for the game's own
             // Trueforce stream: Normal means "try again" (the watch re-runs and
             // demotes again if the game still streams), and either other mode is
-            // now the user's own.
+            // now the user's own. A fresh try is a fresh episode for the notice
+            // too: picking Normal and being dropped again deserves the popup
+            // again (owner, 2026-08-30; it stayed silent because the latch only
+            // reset on game change). The per-game "don't show" still wins.
             _nativeStreamDemoted = false;
+            _standDownNoticeShownThisDemotion = false;
 
             bool inGame = persistForActiveGame && !string.IsNullOrEmpty(_activeGame);
 
@@ -31293,8 +31297,8 @@ namespace TrueforceForAll.Plugin
             if (app == null) return;
             _standDownNoticeShownThisDemotion = true;
             string title = StandDownNoticeTitle;
-            string body = NativeStreamStandDownText(0, withGuideHint: false);
-            string guideKey = StandDownGuideKey;
+            var copy = GetStandDownCopy(0);
+            string body = copy.Lead;
             app.Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (_standDownNoticeShowing) return;
@@ -31302,21 +31306,35 @@ namespace TrueforceForAll.Plugin
                 _standDownNoticeShowing = true;
                 try
                 {
-                    // A real link to the guide, the way the Game Mods card's
-                    // dialogs carry theirs, rather than directions to the ? menu.
-                    var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
+                    // The cure as its own line under the body, styled like the
+                    // body (12 px, muted), with the key phrase a real link into the
+                    // guides. A bare link in that slot read as misplaced (owner,
+                    // first rig run); inside the sentence it reads as part of it.
+                    var cure = new TextBlock
+                    {
+                        Margin = new System.Windows.Thickness(0, 8, 0, 0),
+                        TextWrapping = System.Windows.TextWrapping.Wrap,
+                        FontSize = 12,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A)),
+                    };
+                    cure.Inlines.Add(new System.Windows.Documents.Run(copy.Before));
                     var link = new System.Windows.Documents.Hyperlink(
-                        new System.Windows.Documents.Run("Open the guide"))
+                        new System.Windows.Documents.Run(copy.Link))
                     {
                         Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xB4, 0xEE)),
                     };
+                    string guideKey = copy.GuideKey;
                     link.Click += (s2, e2) => OpenGuideFromAnywhere(guideKey);
-                    guideLink.Inlines.Add(link);
+                    cure.Inlines.Add(link);
+                    cure.Inlines.Add(new System.Windows.Documents.Run(copy.After));
+                    // "Got it" is the primary and just closes; the per-game silence
+                    // is the secondary, so the default action never persists
+                    // anything (owner, 2026-08-30).
                     bool? r = TrueforceDialog.Show(app.MainWindow, title, body,
                         DialogKind.Info,
-                        okLabel: "Don't show again for this game", cancelLabel: "Remind me later",
-                        goldOk: true, extraContent: guideLink);
-                    if (r == true && !string.IsNullOrEmpty(game))
+                        okLabel: "Got it", cancelLabel: "Don't show this again for this game",
+                        goldOk: true, extraContent: cure);
+                    if (r == false && !string.IsNullOrEmpty(game))
                     {
                         if (Settings.StandDownNoticeDismissedGames == null)
                             Settings.StandDownNoticeDismissedGames = new List<string>();
@@ -31403,32 +31421,61 @@ namespace TrueforceForAll.Plugin
             ShowStandDownNotice();
         }
 
-        /// <summary>The stand-down explanation, one source for the log, the
-        /// panel and the popup: who is streaming, why we left, and the one thing
-        /// that changes it. Rate shown when known (the log); the panel passes 0.
-        /// The "see the guides" hint is for the log; the panel and the popup
-        /// carry a real link and pass withGuideHint false.</summary>
-        private string NativeStreamStandDownText(int perSec, bool withGuideHint = true)
+        /// <summary>The stand-down copy in parts, so the popup and the panel can
+        /// make one phrase of the cure a link that sits inside the sentence:
+        /// Lead (who is streaming, why we left), then the cure as Before + Link
+        /// + After, and the guide the link opens. The log joins them into one
+        /// line. Rate shown when known (the log); the surfaces pass 0.</summary>
+        internal sealed class StandDownCopy
+        {
+            public string Lead, Before, Link, After, GuideKey;
+            public string Joined => Lead + " " + Before + Link + After;
+        }
+
+        internal StandDownCopy GetStandDownCopy(int perSec)
         {
             string rate = perSec > 0 ? $" ({perSec}/s beside ours)" : "";
-            const string why = "Two Trueforce streams on one wheel alternate and the wheel whines, so the "
-                             + "plugin dropped to Lightsync only for this session. ";
+            const string why = " Two Trueforce streams on one wheel alternate and the wheel whines, so the "
+                             + "plugin dropped to Lightsync only for this session.";
             if (_nativeStreamFromMaira)
-                return "MAIRA is streaming to the wheel" + rate + ", so the plugin dropped to Lightsync only for "
-                     + "this session. Running MAIRA and TF4ALL at the same time is not supported: close MAIRA, "
-                     + "then set the mode to Normal.";
+                return new StandDownCopy
+                {
+                    Lead = "MAIRA is streaming to the wheel" + rate + ", so the plugin dropped to Lightsync only for this session.",
+                    Before = "Running MAIRA and TF4ALL at the same time is not supported: close MAIRA, then set the mode to Normal (see ",
+                    Link = "Running MAIRA",
+                    After = " in the iRacing guide).",
+                    GuideKey = "iracing-setup",
+                };
             if (IsIRacingReshapeGame(_activeGame))
                 return _nativeStreamIRacingApiOff
-                    ? "Another program is streaming Trueforce to the wheel" + rate
-                      + " (not iRacing: its loadTrueForceAPI is already 0). " + why
-                      + "Close whatever else drives the wheel, then pick Normal again."
-                    : "iRacing is streaming its own Trueforce" + rate + ". " + why
-                      + "With iRacing closed, set loadTrueForceAPI=0 in Documents\\iRacing\\app.ini "
-                      + "(step 1 of the iRacing setup), then pick Normal again.";
-            return "The game is streaming its own Trueforce" + rate + ". " + why
-                 + "To run the plugin's Trueforce here instead, switch the game's own Trueforce off, then "
-                 + "pick Normal again" + (withGuideHint ? " (see Games with native Trueforce in the guides)." : ".");
+                    ? new StandDownCopy
+                    {
+                        Lead = "Another program is streaming Trueforce to the wheel" + rate
+                             + " (not iRacing: its loadTrueForceAPI is already 0)." + why,
+                        Before = "Close whatever else drives the wheel, then pick Normal again (see the ",
+                        Link = "iRacing setup",
+                        After = ").",
+                        GuideKey = "iracing-setup",
+                    }
+                    : new StandDownCopy
+                    {
+                        Lead = "iRacing is streaming its own Trueforce" + rate + "." + why,
+                        Before = "With iRacing closed, set loadTrueForceAPI=0 in Documents\\iRacing\\app.ini (step 1 of the ",
+                        Link = "iRacing setup",
+                        After = "), then pick Normal again.",
+                        GuideKey = "iracing-setup",
+                    };
+            return new StandDownCopy
+            {
+                Lead = "The game is streaming its own Trueforce" + rate + "." + why,
+                Before = "To run the plugin's Trueforce here instead, switch the game's own Trueforce off, then pick Normal again (see ",
+                Link = "Games with native Trueforce",
+                After = " in the guides).",
+                GuideKey = "native-trueforce",
+            };
         }
+
+        private string NativeStreamStandDownText(int perSec) => GetStandDownCopy(perSec).Joined;
 
         // MAIRA's process. The build is MarvinsAIRARefactored.exe, but its
         // installer renames on the way in (the AdminBoxx flavour ships as

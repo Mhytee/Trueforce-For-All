@@ -2742,13 +2742,15 @@ namespace TrueforceForAll.Plugin
                 _lastQuietDiag = diag;
                 if (_plugin != null && _plugin.NativeTrueforceStreamDemoted)
                 {
-                    string guideKey = _plugin.StandDownGuideKey;
+                    // The cure's key phrase is the link, inside the sentence.
+                    var copy = _plugin.GetStandDownCopy(0);
                     WheelQuietDiagnosticText.Inlines.Clear();
-                    WheelQuietDiagnosticText.Inlines.Add(new Run(diag + " "));
-                    var why = new Hyperlink(new Run("Open the guide"));
-                    why.Click += (s2, e2) => OpenGuides(guideKey);
-                    WheelQuietDiagnosticText.Inlines.Add(why);
-                    WheelQuietDiagnosticText.Inlines.Add(new Run("."));
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(copy.Lead + " " + copy.Before));
+                    var link = new Hyperlink(new Run(copy.Link));
+                    string guideKey = copy.GuideKey;
+                    link.Click += (s2, e2) => OpenGuides(guideKey);
+                    WheelQuietDiagnosticText.Inlines.Add(link);
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(copy.After));
                 }
                 else if (_plugin != null && _plugin.MairaTapDegraded)
                 {

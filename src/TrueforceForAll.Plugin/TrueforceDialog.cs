@@ -294,6 +294,13 @@ namespace TrueforceForAll.Plugin
             // checkbox variant uses.
             if (extraContent != null)
             {
+                // The body keeps 16 px above the buttons; a control dropped in
+                // here landed flush against them unless its caller thought to
+                // pad it (owner, 2026-08-30: "too close"). Give it the same gap
+                // when it brings none of its own.
+                var fe = extraContent as FrameworkElement;
+                if (fe != null && fe.Margin.Bottom < 16)
+                    fe.Margin = new Thickness(fe.Margin.Left, fe.Margin.Top, fe.Margin.Right, 16);
                 var root = btnRow.Parent as StackPanel;
                 if (root != null) root.Children.Insert(root.Children.Count - 1, extraContent);
             }
