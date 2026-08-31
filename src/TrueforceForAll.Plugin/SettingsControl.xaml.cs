@@ -17431,9 +17431,11 @@ namespace TrueforceForAll.Plugin
             var win = new Window
             {
                 Title = "Trueforce For All: what's new",
-                Width = 600,
-                Height = 480,
-                ResizeMode = ResizeMode.NoResize,
+                Width = Math.Min(780, SystemParameters.WorkArea.Width * 0.9),
+                Height = Math.Min(620, SystemParameters.WorkArea.Height * 0.85),
+                MinWidth = 480,
+                MinHeight = 320,
+                ResizeMode = ResizeMode.CanResizeWithGrip,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ShowInTaskbar = false,
                 Owner = Window.GetWindow(this),
@@ -17448,6 +17450,7 @@ namespace TrueforceForAll.Plugin
                 Text = "What's new",
                 FontSize = 18,
                 FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A)), // the popups' header gold
                 Margin = new Thickness(0, 0, 0, 12),
             };
             DockPanel.SetDock(header, Dock.Top);
@@ -17468,6 +17471,17 @@ namespace TrueforceForAll.Plugin
                 IsDefault = true,
                 IsCancel = true,
             };
+            // Gold, like the header's update CTA: the templated style keeps the
+            // gold on hover where the stock chrome would paint the theme grey.
+            var goldStyle = TryFindResource("UpdateCtaButton") as Style;
+            if (goldStyle != null) gotItBtn.Style = goldStyle;
+            else
+            {
+                gotItBtn.Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xB3, 0x00));
+                gotItBtn.Foreground = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22));
+                gotItBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xA0, 0x00));
+                gotItBtn.FontWeight = FontWeights.SemiBold;
+            }
             footer.Children.Add(gotItBtn);
             root.Children.Add(footer);
 
@@ -17485,6 +17499,7 @@ namespace TrueforceForAll.Plugin
                     bodyStack.Children.Add(new TextBlock
                     {
                         Text = title,
+                        TextWrapping = TextWrapping.Wrap,
                         FontWeight = FontWeights.SemiBold,
                         FontSize = 14,
                         Margin = new Thickness(0, i == 0 ? 0 : 14, 0, 6),
@@ -17505,6 +17520,7 @@ namespace TrueforceForAll.Plugin
                     bodyStack.Children.Add(new TextBlock
                     {
                         Text = "v" + ver.Version.ToString(3) + (string.IsNullOrEmpty(ver.Title) ? "" : "  ·  " + ver.Title),
+                        TextWrapping = TextWrapping.Wrap,
                         FontWeight = FontWeights.SemiBold,
                         FontSize = 14,
                         Margin = new Thickness(0, i == 0 ? 0 : 14, 0, 6),
@@ -17600,9 +17616,11 @@ namespace TrueforceForAll.Plugin
             var win = new Window
             {
                 Title = "What's new (notes preview)",
-                Width = 600,
-                Height = 480,
-                ResizeMode = ResizeMode.NoResize,
+                Width = Math.Min(780, SystemParameters.WorkArea.Width * 0.9),
+                Height = Math.Min(620, SystemParameters.WorkArea.Height * 0.85),
+                MinWidth = 480,
+                MinHeight = 320,
+                ResizeMode = ResizeMode.CanResizeWithGrip,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ShowInTaskbar = false,
                 Owner = Window.GetWindow(this),
@@ -17616,6 +17634,7 @@ namespace TrueforceForAll.Plugin
                 Text = "What's new (preview of the GitHub notes render)",
                 FontSize = 16,
                 FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A)),
                 Margin = new Thickness(0, 0, 0, 12),
             };
             DockPanel.SetDock(header, Dock.Top);
