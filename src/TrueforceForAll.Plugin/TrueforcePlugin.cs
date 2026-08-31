@@ -4244,6 +4244,107 @@ namespace TrueforceForAll.Plugin
         /// <summary>Discover the wheel and OPEN it: the HID handle, the init
         /// sequence, the FFB tap and the 1 kHz stream. Full mode only. The two
         /// other modes call DiscoverWheel and stop there.</summary>
+        // Blind-capture self-heal state. A "blind" USBPcap tap delivers the
+        // wheel's ep0 control chatter but none of its interrupt traffic, so our
+        // own ep3 stream is invisible to the capture and the game's FFB is
+        // mirrored as nothing (limp wheel in Trueforce mode). The only fix is a
+        // real re-enumeration (hub port cycle); a PnP restart is refused while
+        // we hold the wheel. Capped so a wheel that stays blind after cycling
+        // can't loop forever.
+        private const int BlindCaptureMaxCycles = 2;
+        private const int BlindProbeInitialDelayMs = 4000; // let the G923 re-attach settle first
+        private const int BlindProbeStreamMs = 2000;       // force ep3 active across the measurement
+        private const int BlindProbeWindowMs = 1500;       // measure interrupt-out over this window
+        private int _blindCycleAttempts;
+        private int _blindProbeInFlight;   // 0/1 guard, Interlocked
+
+        // Measure whether the freshly started tap can see our ep3 stream, and
+        // if not, re-enumerate the wheel once by cycling its hub port. Runs off
+        // the bring-up thread. Self-guards: honors the setting, requires
+        // elevation and a real Logitech identity, never fires while a game is
+        // driving (a port cycle drops the wheel), and caps attempts per session.
+        private void ScheduleBlindCaptureProbe(ushort vid, ushort pid)
+        {
+            if (!(Settings?.AutoReEnumerateOnBlindCapture ?? true)) return;
+            if (!IsRunningElevated) return;
+            if (vid == 0) return;                              // manual/unknown identity: no safe VID/PID to cycle
+            if (_blindCycleAttempts >= BlindCaptureMaxCycles) return;
+            if (System.Threading.Interlocked.CompareExchange(ref _blindProbeInFlight, 1, 0) != 0) return;
+
+            var device = _device;
+            var tap = _ffbTap;
+            if (device == null || tap == null) { _blindProbeInFlight = 0; return; }
+
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(BlindProbeInitialDelayMs);
+                    if (_shuttingDown || !ReferenceEquals(_device, device) || !ReferenceEquals(_ffbTap, tap)) return;
+
+                    // Never cycle the wheel out from under an active drive.
+                    if (tap.GameFfbExpected) return;
+
+                    // Force the ep3 stream active for the measurement even with
+                    // no game running, then compare our successful writes to
+                    // what the capture actually saw on the wheel's interrupt
+                    // endpoint.
+                    long sentBefore = device.PacketsSent;
+                    long seenBefore = tap.InterruptOutSeen;
+                    device.ForceActiveFor(BlindProbeStreamMs);
+                    await System.Threading.Tasks.Task.Delay(BlindProbeWindowMs);
+                    if (_shuttingDown || !ReferenceEquals(_device, device) || !ReferenceEquals(_ffbTap, tap)) return;
+
+                    long sentDelta = device.PacketsSent - sentBefore;
+                    long seenDelta = tap.InterruptOutSeen - seenBefore;
+
+                    if (!TrueforceForAll.Core.BlindCaptureClassifier.IsInterruptBlind(sentDelta, seenDelta))
+                    {
+                        // Healthy (or we couldn't stream enough to judge). A
+                        // capture that recovered resets the attempt budget.
+                        if (seenDelta > 0) _blindCycleAttempts = 0;
+                        return;
+                    }
+
+                    _blindCycleAttempts++;
+                    SimHub.Logging.Current.Warn(
+                        $"[TF4ALL] FFB capture is blind: streamed {sentDelta} packets to the wheel but the capture " +
+                        $"saw none of them (USBPcap has no filter on this device). Re-enumerating the wheel by " +
+                        $"cycling its USB port (attempt {_blindCycleAttempts}/{BlindCaptureMaxCycles}).");
+
+                    bool ok = TrueforceForAll.Core.UsbHubPortCycler.TryCycleDevicePort(
+                        vid, pid, msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"), out string detail);
+
+                    if (ok)
+                    {
+                        // The wheel disconnects and comes back on a fresh PDO;
+                        // the reader thread's re-attach + the device-loss
+                        // recovery re-run bring-up, which schedules another
+                        // probe to confirm capture is now healthy.
+                        SimHub.Logging.Current.Info($"[TF4ALL] Wheel re-enumeration requested ({detail}); reconnecting.");
+                    }
+                    else if (_blindCycleAttempts >= BlindCaptureMaxCycles)
+                    {
+                        SimHub.Logging.Current.Warn(
+                            "[TF4ALL] Could not re-enumerate the wheel automatically (" + detail + "). "
+                            + "Please unplug the wheel's USB cable and plug it back in, then it will work for this session.");
+                    }
+                    else
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Wheel re-enumeration attempt failed ({detail}); will retry on the next bring-up.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info($"[TF4ALL] Blind-capture probe error: {ex.Message}");
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Exchange(ref _blindProbeInFlight, 0);
+                }
+            });
+        }
+
         private bool TryBringUpDevice()
         {
             WheelMatch match;
@@ -4567,6 +4668,14 @@ namespace TrueforceForAll.Plugin
                 _ffbTap?.Start();
 
                 _device.StartStream();
+
+                // If USBPcap came up blind (no capture filter on the wheel,
+                // typically because the wheel's device stack was built before
+                // USBPcap's hub filter at boot), re-enumerate the wheel by
+                // cycling its hub port so the tap can actually see the game's
+                // FFB. Fire-and-forget; self-guards on setting/elevation/driving
+                // and caps its own attempts. See ScheduleBlindCaptureProbe.
+                ScheduleBlindCaptureProbe(match.Vid, match.Pid);
 
                 // The producer is plugin-lifetime and reads the _device field
                 // each iteration, so a re-attach reuses the existing thread

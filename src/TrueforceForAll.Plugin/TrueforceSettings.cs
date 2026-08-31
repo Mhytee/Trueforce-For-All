@@ -1025,6 +1025,18 @@ namespace TrueforceForAll.Plugin
         // cleanly.
         public bool   ExperimentalFfbCapture     { get; set; } = false;
 
+        // When the USBPcap FFB tap comes up blind (it delivers the wheel's ep0
+        // control chatter but none of the interrupt traffic our ep3 stream and
+        // the game's FFB ride on), re-enumerate the wheel by cycling its hub
+        // port so USBPcap attaches a capture filter to the fresh device. This
+        // is the software equivalent of unplugging and replugging the wheel,
+        // the only thing that fixes the boot-time case where USBPcap missed the
+        // wheel's device stack. Costs one ~5 s wheel reconnect at bring-up, only
+        // when blindness is actually detected, and only before a game is
+        // driving. Default on; off restores the pre-0.1.29 behavior (a blind
+        // tap stays blind until the user replugs the wheel themselves).
+        public bool   AutoReEnumerateOnBlindCapture { get; set; } = true;
+
         // Read Assetto Corsa's force from the game itself: while driving AC,
         // re-inject the game's own final FFB value (finalFF, a float in the
         // vanilla physics shared-memory page, read at 1 kHz) into the

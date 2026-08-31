@@ -176,6 +176,14 @@ namespace TrueforceForAll.Core
         public long InterruptOutOnOurDevice => _outTransferTypeCounts[1];
         public long ControlOutOnOurDevice   => _outTransferTypeCounts[2];
         public long BulkOutOnOurDevice      => _outTransferTypeCounts[3];
+
+        // Interlocked mirror of the interrupt-OUT count so the blind-capture
+        // probe (a different thread than the parser) reads an untorn 64-bit
+        // value on the 32-bit host. This is our own ep3 stream as the capture
+        // sees it: it climbs on a healthy capture and stays flat when USBPcap
+        // has no filter on the wheel. See BlindCaptureClassifier.
+        private long _interruptOutSeen;
+        public long InterruptOutSeen => Interlocked.Read(ref _interruptOutSeen);
         // Trueforce stream packets seen on the wheel from ANY writer: ours, a
         // game's native SDK, G HUB. Counted in the parse loop by shape (one
         // 64-byte report 0x01 on an interrupt OUT request). The plugin
@@ -1301,6 +1309,7 @@ namespace TrueforceForAll.Core
                 if (isOut)
                 {
                     if (xfer < _outTransferTypeCounts.Length) _outTransferTypeCounts[xfer]++;
+                    if (xfer == 1) Interlocked.Increment(ref _interruptOutSeen);
                     _outEndpointCounts[epNum]++;
 
                     // Trueforce stream packets, whoever wrote them: an interrupt
