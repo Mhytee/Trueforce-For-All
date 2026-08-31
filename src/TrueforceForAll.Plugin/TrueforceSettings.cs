@@ -948,14 +948,14 @@ namespace TrueforceForAll.Plugin
         // auto-center, instead of us streaming a substitute force. This is
         // what stops the G923/FH6 pause full-lock (issue #13). Stable shipped
         // it DEFAULT-ON in v0.1.24; the 0.2.x line left it opt-in by
-        // oversight, silently regressing upgraders, so 0.2.7 restores the
+        // oversight, silently regressing upgraders, so 0.3.0 restores the
         // shipped default (owner call 2026-08-15). The checkbox stays as the
         // escape hatch for anyone who prefers the plugin to keep the wheel.
         public bool  StopStreamOnPause        { get; set; } = true;
 
         // One-time default repair marker for the above: beta-era settings
         // files carry a stored false nobody chose (the regressed default), so
-        // the first 0.2.7 launch flips StopStreamOnPause on once. A user who
+        // the first 0.3.0 launch flips StopStreamOnPause on once. A user who
         // turns it off afterward stays off.
         public bool  StopStreamOnPauseMigrated { get; set; } = false;
 
@@ -1165,7 +1165,7 @@ namespace TrueforceForAll.Plugin
         // Note this depends only on whether the divisor varies, NOT on where it
         // came from. A per-car number flattens whether it was learned or read
         // out of iRacing, which is easy to get backwards when naming these.
-        // (A planned mode-enum for this taxonomy was removed unread in 0.2.7;
+        // (A planned mode-enum for this taxonomy was removed unread in 0.3.0;
         // the per-car flag below plus the override above ARE the mechanism, and
         // a stable-reference "relative" mode is a later-cycle design.)
 

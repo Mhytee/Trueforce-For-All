@@ -5389,7 +5389,7 @@ namespace TrueforceForAll.Plugin
             MarkEffectDirty(EffectKind.StationarySpring);
         }
 
-        // Pause hand-back toggle (shipped default-on since 0.2.7). Global
+        // Pause hand-back toggle (shipped default-on since 0.3.0). Global
         // setting; SetStopStreamOnPause persists internally, so no extra
         // PersistSettings() call here. This checkbox is the only way to change
         // it; the access code that used to mirror it has been removed.
