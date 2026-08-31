@@ -1,7 +1,7 @@
 # Trueforce For All
 
 **Unlock everything your Logitech wheel can do, and more.**
-Trueforce, rev lights, the screen.
+Trueforce, rev lights, the OLED screen.
 
 > **You are on the beta branch.** This branch carries the next release
 > while it gets tested in the open. Builds from here ship as pre-releases on the
