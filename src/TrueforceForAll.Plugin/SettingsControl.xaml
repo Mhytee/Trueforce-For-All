@@ -1214,7 +1214,7 @@
                                            Margin="10,0,0,0" FontSize="11" Opacity="0.7" Visibility="Collapsed"><Run x:Name="CarRevLightRememberRun"/> · <Hyperlink Click="RevLightForget_Click">Forget</Hyperlink></TextBlock>
                             </Grid>
                             <TextBlock x:Name="CarRevLightRowHelp" Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
-                                       Text="Remember re-applies the pattern whenever this car loads, e.g. to mirror the real car's light layout."/>
+                                       Text="Remember re-applies the pattern whenever this car loads."/>
                             </StackPanel>
                         </StackPanel>
                     </Expander>
@@ -4005,6 +4005,17 @@
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.IRacingMaxForceDown"
                                                  FriendlyName="TF4ALL: max force down (iRacing)"/>
                         </Grid>
+                        <!-- One press runs the active game's auto force calibration
+                             (iRacing adopts the learned max force, Forza re-levels the
+                             auto strength). The mapping shipped in 0.3.0 without this
+                             row, so it was only reachable from SimHub's own list. -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Auto force" Style="{StaticResource LabelText}"
+                                       ToolTip="Runs the current game's auto force calibration: iRacing sets the max force from the learned peak, Forza re-levels the auto strength."/>
+                            <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.AutoForce"
+                                                 FriendlyName="TF4ALL: auto force (calibrate this car)"/>
+                        </Grid>
 
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,8,0,0" FontSize="11"
                             Text="These actions also appear in SimHub's Controls and events list. Bindings are stored by SimHub, not in your TF4ALL preset."/>
@@ -4434,7 +4445,7 @@
                              the plugin fully leaves Trueforce mode while the game is
                              paused so the wheel reverts to the game's own FFB /
                              auto-center instead of holding a force.
-                             Global, not preset-saved. Default ON since 0.2.7: stable
+                             Global, not preset-saved. Default ON since 0.3.0: stable
                              shipped it on in v0.1.24, the 0.2.x opt-in was a
                              regression (owner call 2026-08-15). -->
                         <CheckBox x:Name="StopStreamOnPauseCheck" Content="Hand the wheel back to the game while paused"
