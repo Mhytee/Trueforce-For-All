@@ -38,6 +38,43 @@ namespace TrueforceForAll.Plugin.Effects
         /// limiters when you hold throttle against them.</summary>
         public float PulseFreq { get; set; } = 6.0f;
 
+        /// <summary>Pulse rate taken from the active car's own published blink
+        /// rate, or null to use <see cref="PulseFreq"/>.
+        ///
+        /// This is how a per-car flash rate reaches the driver in games where we
+        /// cannot flash anything. Blinking the LEDs means a continuous stream of
+        /// level writes, and on the shared HID++ pipe that cuts the game's force
+        /// feedback, so it is off the table wherever the game drives its own
+        /// lights. The RATE, though, is just a number, and a pulse train through
+        /// the wheel carries it with no extra traffic at all.
+        ///
+        /// An approximation, stated plainly: the published figure is the car's
+        /// REDLINE blink rate, used here as its characteristic blink cadence
+        /// rather than as a measured pit-limiter rate, which no dataset carries.
+        /// The user's own setting wins whenever this is null.</summary>
+        public float? PublishedPulseHz { get; set; }
+
+        /// <summary>The rate actually used, clamped to something a wheel can
+        /// render: below about 2 Hz reads as separate thuds rather than a pulse
+        /// train, and above about 12 Hz smears into a buzz.</summary>
+        private float EffectivePulseFreq
+        {
+            get
+            {
+                // The user's own value is returned UNTOUCHED. The clamp exists to
+                // keep a published figure inside what a wheel renders as a pulse
+                // train, and applying it to their slider as well silently capped
+                // the top of its travel (it runs to 15 Hz) for someone who never
+                // asked for any of this.
+                if (!PublishedPulseHz.HasValue) return PulseFreq;
+
+                float hz = PublishedPulseHz.Value;
+                if (hz < 2.0f) hz = 2.0f;
+                else if (hz > 12.0f) hz = 12.0f;
+                return hz;
+            }
+        }
+
         /// <summary>Fraction of each pulse period during which the carrier
         /// is audible. Higher = more sustained / less stutter; lower = more
         /// punctuated. 0.6 = comfortable middle.</summary>
@@ -73,7 +110,7 @@ namespace TrueforceForAll.Plugin.Effects
             if (_amp <= 0) return;
 
             double cStep = Math.Max(0.0, Freq) / SampleRate;
-            double pStep = Math.Max(0.0, PulseFreq) / SampleRate;
+            double pStep = Math.Max(0.0, EffectivePulseFreq) / SampleRate;
             double duty  = Math.Min(1.0, Math.Max(0.0, (double)DutyCycle));
             float amp = _amp * Gain * DuckMultiplier;
             Waveform w = Waveform;

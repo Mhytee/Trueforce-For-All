@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Trueforce For All** (the SimHub plugin). Effective 2026-07-18.
+**Trueforce For All** (the SimHub plugin). Effective 2026-08-27.
 
 ## The short version
 
@@ -27,6 +27,11 @@ use and points at the off switch. By default the plugin:
 
 - fetches community car data for the car you are driving (the request
   carries the game and car id, never account information);
+- fetches per-car rev-light data for that car from the Lovely Sim Racing
+  dataset, which is a public repository on GitHub rather than a service of
+  ours (the request carries the game and car id, goes to
+  raw.githubusercontent.com, and the answer is cached on this PC for a
+  week);
 - submits car data you tune (see Community car data below);
 - fetches the in-app message of the day and checks GitHub for updates.
 

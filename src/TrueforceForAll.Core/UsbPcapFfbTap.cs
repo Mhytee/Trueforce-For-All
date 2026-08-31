@@ -176,6 +176,14 @@ namespace TrueforceForAll.Core
         public long InterruptOutOnOurDevice => _outTransferTypeCounts[1];
         public long ControlOutOnOurDevice   => _outTransferTypeCounts[2];
         public long BulkOutOnOurDevice      => _outTransferTypeCounts[3];
+        // Trueforce stream packets seen on the wheel from ANY writer: ours, a
+        // game's native SDK, G HUB. Counted in the parse loop by shape (one
+        // 64-byte report 0x01 on an interrupt OUT request). The plugin
+        // subtracts its own write count (TrueforceDevice.Ep3Writes) to find a
+        // second writer; see TrueforceStreamContentionDetector.
+        private long _trueforceStreamPackets;
+        public long TrueforceStreamPacketsOnOurDevice => Interlocked.Read(ref _trueforceStreamPackets);
+
         public long[] SnapshotOutEndpointCounts()
         {
             var snap = new long[16];
@@ -218,37 +226,24 @@ namespace TrueforceForAll.Core
         // old 0x11-only extractor dropped every 0x12 packet, so cur was never
         // populated and the device never entered active mode.
         //
-        // The 0x12 extraction and the 0x11+0x12 resolver summing are gated
-        // behind ExperimentalCapture (off by default) OR Rs50Identified
-        // (positive RS50 identification at discovery), so RS50 owners get the
-        // issue-#8 path out of the box. The lowered sample floor stays
-        // experimental-only: with the 0x10 seed it no longer matters on an
-        // identified RS50. With both off, behaviour is byte-identical to the
-        // shipped 0.1.18 path (0x11-only, floor 200), so existing users are
-        // untouched; testers opt in via the FFBX access code.
+        // Both report IDs are extracted and both count toward the resolver:
+        // which one carries the stream is decided per session by
+        // FfbReportArbiter (the RS50 puts most of it on 0x12, and the owner's
+        // G PRO ran two whole sessions on 0x12 only on 2026-08-28). The
+        // experimental opt-in that used to gate 0x12 is retired.
         private const byte FfbFeatureIndexSeed = 0x0e;
         // Min cumulative func-0x20 samples at a candidate index before the
-        // resolver switches off the seed. Default 200 (the shipped value).
-        // Experimental lowers it to 32 so short / menu-heavy sessions still
-        // latch the real index (Infinitum9's whole capture had only 26 func-2
-        // packets); the 4x-dominance rule + re-entrant re-evaluation +
-        // confirm-lock are the real guard against a stray settings-write burst.
-        private const long FfbIndexMinSamplesDefault      = 200;
-        private const long FfbIndexMinSamplesExperimental = 32;
-        private long FfbIndexMinSamples =>
-            ExperimentalCapture ? FfbIndexMinSamplesExperimental : FfbIndexMinSamplesDefault;
+        // resolver switches off the seed. 32 so short / menu-heavy sessions
+        // still latch the real index (Infinitum9's whole capture had only 26
+        // func-2 packets); the 4x-dominance rule + re-entrant re-evaluation +
+        // confirm-lock are the real guard against a stray settings-write
+        // burst, and known wheels start on a per-model seed anyway.
+        private const long FfbIndexMinSamples = 32;
 
-        // Experimental FFB-capture path (opt-in via the FFBX access code,
-        // persisted as Settings.ExperimentalFfbCapture, applied by the plugin
-        // on every tap (re)start). Gates the issue-#8 work and any future
-        // self-learning capture heuristics. Off = shipped 0.1.18 behaviour.
-        // volatile: UI thread writes, parser thread reads each packet.
-        public volatile bool ExperimentalCapture;
         // Positive RS50 identification from discovery (native RS50 PID, or an
-        // RS50 product string on a spoofed G PRO PID; mescon, 2026-07). Widens
-        // the report-0x12 gates without the FFBX opt-in. Never set for other
-        // wheels, so G PRO / G923 paths are untouched. volatile: plugin thread
-        // writes at wiring time, parser thread reads each packet.
+        // RS50 product string on a spoofed G PRO PID; mescon, 2026-07). Kept
+        // for the capture fingerprint. volatile: plugin thread writes at
+        // wiring time, parser thread reads.
         public volatile bool Rs50Identified;
         // Per-model seed for the feature index (default: G PRO's 0x0e). Set by
         // the plugin before Start() from PID + product string, see
@@ -314,53 +309,58 @@ namespace TrueforceForAll.Core
         // Capture fingerprint: recorded once, the first time real FFB is
         // extracted on any path. A compact, human-readable description of the
         // wire shape that worked (transport, report ID, feature index,
-        // encoding) plus which experimental sub-mechanism, if any, was
-        // load-bearing (needed=[...]). Surfaced in the Export-logs manifest and
-        // the "experimental fixed your wheel" report so a single line tells us
-        // what to graduate out of experimental. Null until first extraction.
-        // volatile: parser writes, UI/plugin threads read.
+        // encoding, which report the arbiter settled on). Surfaced in the
+        // Export-logs manifest and the compatibility report. Null until first
+        // extraction. volatile: parser writes, UI/plugin threads read.
         private volatile string _captureFingerprint;
         public string CaptureFingerprint => _captureFingerprint;
-        // bestCount at which the resolver last switched off the seed index
-        // (0 = never switched, i.e. ran on the seed). Read at confirmation to
-        // decide whether the lowered experimental floor was load-bearing.
-        private long _resolveSwitchedAtCount;
-        // Per-report-ID "real force flowed here" flags, used to attribute the
-        // capture accurately. report0x12 is only credited as load-bearing if
-        // force flowed on 0x12 but NEVER on 0x11 (if 0x11 also carried force,
-        // the default path would have worked, so experimental wasn't needed).
-        private volatile bool _forceSeenOn0x11;
-        private volatile bool _forceSeenOn0x12;
-        // 0x11-vs-0x12 arbitration. 0x12 is a FALLBACK, used only while 0x11
-        // isn't the live force channel. Last-write-wins merging let near-zero /
-        // management 0x12 traffic clobber a wheel whose real FFB is on 0x11
-        // (G PRO: notchy feel + a hard pull from a 0x12 management message when
-        // a game opened / paused). We remember when 0x11 last carried
-        // NON-TRIVIAL force; while that's recent, 0x12 is ignored. On a wheel
-        // whose 0x11 is only idle noise (RS50: +/-3), this never latches, so
-        // 0x12 is used and the RS50 still works.
-        private int _lastReal0x11Tms;             // Environment.TickCount of last real 0x11 force
-        private const int Real0x11FloorLsb = 64;  // |force| over this counts as "real" (RS50's 0x11 is +/-3)
-        private const int Real0x11HoldMs   = 1000;
-        // Latch: once 0x11 has EVER carried real force this capture, the wheel
-        // is confirmed to put its FFB on the expected path (e.g. G PRO), so we
-        // stop falling back to 0x12 entirely, even when 0x11 goes quiet (held
-        // wheel at a standstill). Without this, the 1s _lastReal0x11Tms window
-        // lapses at standstill and the 0x12 fallback re-engages and reads
-        // garbage on a 0x11 wheel -> jerky FFB (G PRO + AC, 2026-05-25). The
-        // RS50's 0x11 is only +/-3 noise so it never trips the latch and still
-        // uses 0x12.
-        private bool _sawReal0x11;
-        // Sustained-0x12 gate. Real driving force on 0x12 streams continuously
-        // (hundreds/sec), but at game open / pause the wheel sends occasional
-        // lone HID++ management messages on 0x12 (effect setup, autocenter)
-        // whose offset 10-11 we'd misread as a large force, yanking the wheel.
-        // Require a short consecutive run of 0x12 before it drives cur: a real
-        // burst clears it in ~10 ms, a lone message never does.
-        private int _consec0x12;
-        private int _last0x12Tms;
-        private const int Min0x12RunToTrust = 4;
-        private const int Max0x12GapMs      = 200;   // a longer gap restarts the run
+        // 0x11-vs-0x12 arbitration lives in FfbReportArbiter: exactly one
+        // report is the live force channel per session and the other one's
+        // same-shaped management writes are ignored, whichever way round the
+        // driver has it. Parser thread only.
+        private readonly FfbReportArbiter _reportArbiter = new FfbReportArbiter();
+
+        /// <summary>Which HID++ report the game's force is arriving on this
+        /// session: 0 until decided, else 0x11 or 0x12. Diagnostics only.</summary>
+        public byte LiveForceReport => _reportArbiter.LiveReport;
+
+        // Stopwatch stamp of the newest fn2 write on the FFB feature that the
+        // live report (or any report, while undecided) carried, taken BEFORE
+        // the arbiter and the NOFFB simulation get a say. Compared against the
+        // last decoded sample by ForceTrafficSinceLastSample so the plugin can
+        // tell "the game has gone quiet" from "the game is writing force we
+        // are not decoding": the quiet-spell hold is only right for the first.
+        private long _lastForceTrafficTicks;
+
+        // The rev-light LEVEL the wheel was last told to show, per HID++
+        // feature index, from any host writer (the game's own lighting, G HUB,
+        // or us): a long-report fn6 on the rev-light feature carries the lit
+        // step count in byte 9. When we rewrite a colour slot mid-game the
+        // upload has to raise the level to at least one to land, and this is
+        // what lets the write settle the strip back to what the game had on it
+        // instead of to dark. Parser thread writes, UI thread reads; both are
+        // whole-int stores so a torn read is impossible.
+        private readonly int[]  _lastLevelByFeature      = new int[256];
+        private readonly long[] _lastLevelTicksByFeature = new long[256];
+
+        private void NoteLevelWrite(byte featIdx, int level)
+        {
+            _lastLevelByFeature[featIdx] = level;
+            Interlocked.Exchange(ref _lastLevelTicksByFeature[featIdx], _sw.ElapsedTicks & TimestampMask);
+        }
+
+        /// <summary>The strip level most recently written to
+        /// <paramref name="featIdx"/> by anyone, if that write is no older than
+        /// <paramref name="maxAgeMs"/>.</summary>
+        public bool TryGetLastLevelWrite(byte featIdx, int maxAgeMs, out int level)
+        {
+            level = _lastLevelByFeature[featIdx];
+            long t = Interlocked.Read(ref _lastLevelTicksByFeature[featIdx]);
+            if (t == 0) return false;
+            long now = _sw.ElapsedTicks & TimestampMask;
+            long ageTicks = (now - t) & TimestampMask;
+            return ageTicks <= (Stopwatch.Frequency / 1000L) * maxAgeMs;
+        }
         // Shape of the first extraction, stashed for the fingerprint string.
         private bool   _firstShapeSet;
         private string _firstTransport;
@@ -386,8 +386,8 @@ namespace TrueforceForAll.Core
         /// compat-mode RS50 keeps feature 0x10 live, so the RS50 seed is
         /// expected correct. Adopts the seed immediately unless extracted
         /// force has already confirmed an index; ResetFeatureIndexResolution
-        /// also re-arms to this value, so an FFBX toggle keeps the per-model
-        /// seed.</summary>
+        /// also re-arms to this value, so an experimental-capture toggle keeps
+        /// the per-model seed.</summary>
         public void SetFfbFeatureIndexSeed(byte seed)
         {
             _ffbSeed = seed;
@@ -396,17 +396,15 @@ namespace TrueforceForAll.Core
 
         /// <summary>Re-arm the feature-index resolver: drop back to the seed
         /// index and clear the resolved/confirmed latches so the next pass
-        /// re-evaluates under the current <see cref="ExperimentalCapture"/> /
-        /// <see cref="Rs50Identified"/> rules. Called when the FFBX toggle
-        /// flips, so a live change takes effect without a SimHub restart.
+        /// re-evaluates from scratch, and forget which report carried force.
         /// Keeps the accumulated tuple history, so if 0x12 traffic was
         /// already seen the re-resolve to the real index is immediate.</summary>
         public void ResetFeatureIndexResolution()
         {
             // A hardware-pinned index survives re-arms: the pin exists because
-            // the statistical path proved unsafe for this wheel, and toggling
-            // FFBX must not reopen that hole. Confirmation/fingerprint state
-            // still resets below so the new rules re-record what worked.
+            // the statistical path proved unsafe for this wheel. Confirmation
+            // and fingerprint state still reset below so the next capture
+            // re-records what worked.
             if (!_ffbIndexPinned)
             {
                 _ffbFeatureIndex   = _ffbSeed;
@@ -414,17 +412,11 @@ namespace TrueforceForAll.Core
             }
             _ffbIndexConfirmed     = false;
             _nextFfbResolveTicks   = 0;
-            _captureFingerprint     = null;   // let the new rules re-record what worked
-            _resolveSwitchedAtCount = 0;
-            _forceSeenOn0x11        = false;
-            _forceSeenOn0x12        = false;
+            _captureFingerprint     = null;   // let the next capture re-record what worked
             _firstShapeSet          = false;
             _firstReportId          = -1;
             _firstFeatIdx           = -1;
-            _lastReal0x11Tms        = 0;
-            _sawReal0x11            = false;
-            _consec0x12             = 0;
-            _last0x12Tms            = 0;
+            _reportArbiter.Reset();
         }
 
         // Note one extracted FFB sample's wire shape. Records which report ID
@@ -435,8 +427,6 @@ namespace TrueforceForAll.Core
         // MaybeConfirmCaptureFingerprint.
         private void NoteExtraction(string transport, int reportId, int featIdx, string encoding)
         {
-            if (reportId == 0x11) _forceSeenOn0x11 = true;
-            else if (reportId == 0x12) _forceSeenOn0x12 = true;
             if (!_firstShapeSet)
             {
                 _firstTransport = transport;
@@ -448,39 +438,52 @@ namespace TrueforceForAll.Core
         }
 
         // Once a sustained run of samples has been extracted, record the
-        // capture fingerprint a single time, with an accurate needed=[...]
-        // verdict (computed now that we know whether force ever flowed on 0x11
-        // vs only 0x12). Cheap to call every parse iteration: a null check and
-        // a counter compare until it fires.
+        // capture fingerprint a single time. Cheap to call every parse
+        // iteration: a null check and a counter compare until it fires.
         private void MaybeConfirmCaptureFingerprint()
         {
             if (_captureFingerprint != null || !_firstShapeSet) return;
             if (FfbSamplesCaptured < CaptureConfirmSamples) return;
 
-            var needed = new List<string>();
-            // needed=[...] means "the FFBX toggle was load-bearing" (it gates
-            // the experimental-success banner and the graduation evidence).
-            // 0x12 counts only if force flowed on 0x12 and never on 0x11 AND
-            // RS50 identity had not already opened the gate; when identity
-            // covered it, FFBX wasn't needed even if it is also on, and the
-            // rs50Id=ON marker below carries the attribution instead.
-            if (ExperimentalCapture && !Rs50Identified && _forceSeenOn0x12 && !_forceSeenOn0x11)
-                needed.Add("report0x12");
-            if (ExperimentalCapture && _resolveSwitchedAtCount > 0
-                && _resolveSwitchedAtCount < FfbIndexMinSamplesDefault)
-                needed.Add("loweredFloor");
-            // "signatureDetector" will be added by the fallback detector path.
-
             string ridStr  = _firstReportId >= 0 ? $"reportId=0x{_firstReportId:X2} " : "";
             string featStr = _firstFeatIdx  >= 0 ? $"featIdx=0x{_firstFeatIdx:X2} " : "";
-            string neededStr = needed.Count > 0 ? string.Join(", ", needed) : "none";
+            byte live = _reportArbiter.LiveReport;
+            string liveStr = live != 0 ? $" live=0x{live:X2}" : "";
 
             _captureFingerprint =
-                $"transport={_firstTransport} {ridStr}{featStr}encoding={_firstEncoding} " +
-                $"experimental={(ExperimentalCapture ? "ON" : "OFF")}" +
-                $"{(Rs50Identified ? " rs50Id=ON" : "")} needed=[{neededStr}]";
+                $"transport={_firstTransport} {ridStr}{featStr}encoding={_firstEncoding}" +
+                $"{liveStr}{(Rs50Identified ? " rs50Id=ON" : "")}";
 
             Log($"FFB capture confirmed (sustained, {FfbSamplesCaptured} samples): {_captureFingerprint}");
+        }
+
+        /// <summary>True when the wheel has received a force write on the live
+        /// report (or any report while none is live yet) more recently than
+        /// the last sample this tap decoded: the game is driving the wheel in
+        /// a shape we are not turning into a target. The plugin's quiet-spell
+        /// hold must not treat that as the game having gone quiet.</summary>
+        public bool ForceTrafficSinceLastSample
+        {
+            get
+            {
+                long traffic = Interlocked.Read(ref _lastForceTrafficTicks);
+                if (traffic == 0) return false;
+                long sample = Interlocked.Read(ref _lastSampleTicks);
+                if (sample == 0) return true;
+                long d = (traffic - sample) & TimestampMask;
+                return d > 0 && d < (TimestampMask >> 1);
+            }
+        }
+
+        // Stamp a force write on the FFB feature before anything can reject
+        // it. Only the live report counts once one is chosen: the other
+        // report's management writes share the fn2 shape and would otherwise
+        // read as "undecoded force" through every parked quiet spell.
+        private void NoteForceTraffic(byte reportId)
+        {
+            byte live = _reportArbiter.LiveReport;
+            if (live != 0 && reportId != live) return;
+            Interlocked.Exchange(ref _lastForceTrafficTicks, _sw.ElapsedTicks & TimestampMask);
         }
 
         // Returns a snapshot of the tuple histogram. Safe to call from any
@@ -551,6 +554,28 @@ namespace TrueforceForAll.Core
         // Milliseconds since the last FFB sample was latched, or long.MaxValue
         // if we've never latched one. Used by the UI to detect the "process
         // running but no data flowing" state.
+        // Newest packet of any kind parsed for our device. While the plugin
+        // streams ep3 at 1 kHz this advances every millisecond, so a stall
+        // here means the CAPTURE has died (USBPcap stalled, the wheel moved
+        // address), not that the game has gone quiet. The plugin's quiet-spell
+        // hold reads it so a dead capture can never keep an active zero on the
+        // wheel: with no capture there is nothing to know the game by.
+        private long _lastDevicePacketTicks;
+
+        /// <summary>Milliseconds since the capture last delivered a packet for
+        /// the wheel, or long.MaxValue if it never has.</summary>
+        public long MsSinceDevicePacket
+        {
+            get
+            {
+                long last = Interlocked.Read(ref _lastDevicePacketTicks);
+                if (last == 0) return long.MaxValue;
+                long now = _sw.ElapsedTicks & TimestampMask;
+                long ageTicks = (now - last) & TimestampMask;
+                return ageTicks * 1000L / Stopwatch.Frequency;
+            }
+        }
+
         public long MsSinceLastSample
         {
             get
@@ -1266,6 +1291,7 @@ namespace TrueforceForAll.Core
 
                 if (dev != _deviceAddress) continue;
                 Interlocked.Increment(ref _packetsForOurDevice);
+                Interlocked.Exchange(ref _lastDevicePacketTicks, _sw.ElapsedTicks & TimestampMask);
 
                 // Per-direction / per-transfer-type / per-endpoint breakdown.
                 // OUT direction is the host writing to the wheel (FFB and our
@@ -1276,6 +1302,20 @@ namespace TrueforceForAll.Core
                 {
                     if (xfer < _outTransferTypeCounts.Length) _outTransferTypeCounts[xfer]++;
                     _outEndpointCounts[epNum]++;
+
+                    // Trueforce stream packets, whoever wrote them: an interrupt
+                    // OUT request (info bit 0 clear: USBPcap logs OUT data on the
+                    // request record, and the completion carries none, which is
+                    // why the per-endpoint count above runs at twice the stream
+                    // rate) whose data is exactly one 64-byte report 0x01, the
+                    // shape of every packet on the stream endpoint. HID++ very
+                    // long reports are 64 bytes too but carry id 0x12; classic
+                    // slot commands are 7 bytes. Not keyed on the endpoint
+                    // number, which differs by wheel.
+                    if (xfer == 0x01 && (payload[16] & 0x01) == 0
+                        && caplen - headerLen == TrueforceDevice.PacketLen
+                        && payload[headerLen] == 0x01)
+                        Interlocked.Increment(ref _trueforceStreamPackets);
                 }
 
                 // Classic Logitech FFB path: a non-Trueforce game writes force
@@ -1309,21 +1349,24 @@ namespace TrueforceForAll.Core
                     byte iFeat = payload[headerLen + 2];
                     byte iFunc = payload[headerLen + 3];
                     RecordTupleSeen(0x11, iFeat, iFunc);
-                    if (iFeat == _ffbFeatureIndex && (iFunc & 0xf0) == 0x20 && !SimulateNoFfbCapture)
+                    if ((iFunc & 0xf0) == 0x60) NoteLevelWrite(iFeat, payload[headerLen + 9]);
+                    if (iFeat == _ffbFeatureIndex && (iFunc & 0xf0) == 0x20)
                     {
+                        NoteForceTraffic(0x11);
                         short ffbTarget = (short)((payload[headerLen + 10] << 8) | payload[headerLen + 11]);
-                        long ts = _sw.ElapsedTicks & TimestampMask;
-                        long pk = (ts << 16) | (uint)(ushort)ffbTarget;
-                        System.Threading.Interlocked.Exchange(ref _packed, pk);
-                        System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
-                        FfbSamplesCaptured++;
-                        _ffbIndexConfirmed = true;   // real FFB flowed on this index; lock the resolver
-                        if (Math.Abs((int)ffbTarget) > Real0x11FloorLsb)
+                        bool accept = _reportArbiter.Accept(0x11, ffbTarget, Environment.TickCount);
+                        string decision = _reportArbiter.TakeDecision();
+                        if (decision != null) Log("FFB tap: " + decision);
+                        if (accept && !SimulateNoFfbCapture)
                         {
-                            _lastReal0x11Tms = Environment.TickCount;   // interrupt 0x11 carrying real force
-                            _sawReal0x11 = true;                        // confirm: 0x11 wheel, stop the 0x12 fallback
+                            long ts = _sw.ElapsedTicks & TimestampMask;
+                            long pk = (ts << 16) | (uint)(ushort)ffbTarget;
+                            System.Threading.Interlocked.Exchange(ref _packed, pk);
+                            System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
+                            FfbSamplesCaptured++;
+                            _ffbIndexConfirmed = true;   // real FFB flowed on this index; lock the resolver
+                            NoteExtraction("interrupt-out", 0x11, iFeat, "hidpp-int16be@10");
                         }
-                        NoteExtraction("interrupt-out", 0x11, iFeat, "hidpp-int16be@10");
                     }
                 }
 
@@ -1363,54 +1406,31 @@ namespace TrueforceForAll.Core
                 byte featIdx  = payload[dataOffset + 2];
                 byte funcByte = payload[dataOffset + 3];
                 RecordTupleSeen(reportId, featIdx, funcByte);
+                // A rev-light level write (long report, fn6): remember what the
+                // strip was told to show so a slot rewrite can put it back.
+                if (reportId == 0x11 && (funcByte & 0xf0) == 0x60)
+                    NoteLevelWrite(featIdx, payload[dataOffset + 9]);
 
                 // G-series FFB: HID++ page 0x8123 long (0x11) or very-long
                 // (0x12) form, function 2 (high nibble of funcByte), at the
                 // per-wheel-resolved feature index. Both report IDs share the
                 // same header+payload layout (force = signed int16, big-endian,
-                // at offset 10-11). Some wheels (RS50 on FH6, issue #8) send the
-                // bulk of FFB as 0x12; accepting it is gated behind the FFBX
-                // opt-in or positive RS50 identification, so the default path
-                // on other wheels stays 0x11-only.
-                bool is0x11 = reportId == 0x11;
-                bool is0x12 = (ExperimentalCapture || Rs50Identified) && reportId == 0x12;
-                if ((is0x11 || is0x12) && featIdx == _ffbFeatureIndex && (funcByte & 0xf0) == 0x20 && !SimulateNoFfbCapture)
+                // at offset 10-11). Which one carries the game's stream is a
+                // per-session driver fact (RS50: mostly 0x12; the owner's G PRO:
+                // 0x11 for months, then two sessions of 0x12 only on
+                // 2026-08-28), so FfbReportArbiter picks the live report from
+                // the traffic and the other one's same-shaped management
+                // writes are ignored.
+                if ((reportId == 0x11 || reportId == 0x12)
+                    && featIdx == _ffbFeatureIndex && (funcByte & 0xf0) == 0x20)
                 {
+                    NoteForceTraffic(reportId);
                     short ffbTarget = (short)((payload[dataOffset + 10] << 8) | payload[dataOffset + 11]);
+                    bool accept = _reportArbiter.Accept(reportId, ffbTarget, Environment.TickCount);
+                    string decision = _reportArbiter.TakeDecision();
+                    if (decision != null) Log("FFB tap: " + decision);
 
-                    bool accept = true;
-                    if (is0x12)
-                    {
-                        // 0x12 is a fallback: drop it once the wheel has proven
-                        // it uses 0x11 (latched, never un-latches this capture),
-                        // or while 0x11 is currently the live force channel, so
-                        // 0x11-real wheels (G PRO) are never clobbered by 0x12.
-                        bool real0x11Recent = _lastReal0x11Tms != 0
-                            && unchecked(Environment.TickCount - _lastReal0x11Tms) < Real0x11HoldMs;
-                        if (_sawReal0x11 || real0x11Recent)
-                        {
-                            accept = false;
-                        }
-                        else
-                        {
-                            // Require a sustained run before trusting 0x12, so a
-                            // lone open/pause management message can't be misread
-                            // as a hard-left force.
-                            int now = Environment.TickCount;
-                            if (_last0x12Tms == 0 || unchecked(now - _last0x12Tms) > Max0x12GapMs)
-                                _consec0x12 = 0;
-                            _consec0x12++;
-                            _last0x12Tms = now;
-                            if (_consec0x12 < Min0x12RunToTrust) accept = false;
-                        }
-                    }
-                    else if (Math.Abs((int)ffbTarget) > Real0x11FloorLsb)
-                    {
-                        _lastReal0x11Tms = Environment.TickCount;   // 0x11 is carrying real force
-                        _sawReal0x11 = true;                        // confirm: this wheel uses 0x11, stop the 0x12 fallback
-                    }
-
-                    if (accept)
+                    if (accept && !SimulateNoFfbCapture)
                     {
                         long timestamp = _sw.ElapsedTicks & TimestampMask;
                         long packed = (timestamp << 16) | (uint)(ushort)ffbTarget;
@@ -1430,8 +1450,8 @@ namespace TrueforceForAll.Core
         // The G923 PS/PC (C266) is the only supported wheel that never speaks
         // HID++: its own captures (FH5 and ACC, 2026-05-17) contain ZERO ep0
         // SET_REPORT and zero "11 ff" interrupt HID++ writes, so every guard on
-        // the HID++ paths (feature-index pinning, the _sawReal0x11 latch, the
-        // Min0x12RunToTrust run gate) is dead code on it. Its force arrives as
+        // the HID++ paths (feature-index pinning, the 0x11/0x12 report
+        // arbiter) is dead code on it. Its force arrives as
         // the classic slot protocol on ep01, which is STATEFUL: a force is
         // downloaded into one of four slots and plays until it is stopped.
         //
@@ -1803,11 +1823,7 @@ namespace TrueforceForAll.Core
                 {
                     // Key = (reportId<<16)|(featIdx<<8)|(funcByte&0xf0).
                     byte rid = (byte)(kv.Key >> 16);
-                    // Default: 0x11 only (shipped behaviour). The FFBX opt-in
-                    // or an identified RS50 also counts very-long 0x12 toward
-                    // the same feature index.
-                    bool ridOk = rid == 0x11 || ((ExperimentalCapture || Rs50Identified) && rid == 0x12);
-                    if (!ridOk) continue;                          // long / very-long form
+                    if (rid != 0x11 && rid != 0x12) continue;      // long / very-long form
                     if ((byte)kv.Key != 0x20) continue;            // function 2
                     byte f = (byte)(kv.Key >> 8);
                     perIndex.TryGetValue(f, out long acc);
@@ -1859,7 +1875,6 @@ namespace TrueforceForAll.Core
                 byte old = _ffbFeatureIndex;
                 _ffbFeatureIndex = bestIdx;
                 _ffbIndexResolved = true;
-                _resolveSwitchedAtCount = bestCount;   // for the capture-fingerprint "loweredFloor" verdict
                 Log($"FFB tap: selected HID++ 0x8123 feature index 0x{bestIdx:X2} " +
                     $"(was 0x{old:X2}); {bestCount} samples, runner-up {secondCount}. " +
                     "Will confirm once force is extracted.");
@@ -1904,6 +1919,7 @@ namespace TrueforceForAll.Core
                 $"out_by_ep=[{string.Join(" ", epOut)}] " +
                 $"ep0ctrl={Ep0ControlTransfersOnOurDevice} setrep={SetReportsOnOurDevice} " +
                 $"ffbIdx=0x{_ffbFeatureIndex:X2}{(_ffbIndexConfirmed ? "**" : _ffbIndexResolved ? "*" : "")} " +
+                $"live={(_reportArbiter.LiveReport != 0 ? $"0x{_reportArbiter.LiveReport:X2}" : "none")} " +
                 $"matched={FfbSamplesCaptured} tuples=[{tuples}]" +
                 (SpringUpdatesCaptured > 0
                     ? $" springs={SpringUpdatesCaptured}{(_playingSprings != null ? " (playing)" : "")}"

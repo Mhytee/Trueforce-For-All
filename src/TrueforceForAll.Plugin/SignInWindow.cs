@@ -90,7 +90,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "New here? There's no separate sign-up. Enter your email and we'll send a 6-digit code that signs you in or creates your account. No password. You can then browse and share presets, vote, and help fill in car data.",
+                Text = "New here? Enter your email and we'll send a 6-digit code that signs you in, or creates your account if you're new. No password. You can then browse and share presets, vote, and help fill in car data.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 6),
                 TextWrapping = TextWrapping.Wrap,

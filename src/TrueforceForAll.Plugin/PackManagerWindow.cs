@@ -159,7 +159,7 @@ namespace TrueforceForAll.Plugin
                 Foreground = TextFg,
                 BorderBrush = BorderFg,
                 IsEnabled = false,
-                ToolTip = "Walk every preset in the selected pack and set it as the default for its game / car. If any already have a default, you'll be asked whether to overwrite or keep them.",
+                ToolTip = "Sets every preset in the selected pack as the default for its game or car. If any already have a default, you'll be asked whether to overwrite or keep them.",
             };
             _setDefaultsButton.Click += (s, e) => OnSetDefaultsClicked();
 
@@ -173,7 +173,7 @@ namespace TrueforceForAll.Plugin
                 Foreground = DangerFg,
                 BorderBrush = BorderFg,
                 IsEnabled = false,
-                ToolTip = "Destructive: deletes the pack record AND every preset / car preset it installed. Entries you have edited since import (hash mismatch) are kept.",
+                ToolTip = "Deletes the pack and every preset it installed. Presets you have edited since import are kept.",
             };
             _removeButton.Click += (s, e) => OnRemoveClicked();
 

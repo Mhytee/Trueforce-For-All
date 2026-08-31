@@ -12,6 +12,7 @@
 // Returns: true=affirmative (OK/Yes), false=negative (No/Cancel button),
 //          null=closed via [X] or Esc (treat as Cancel).
 
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -59,9 +60,14 @@ namespace TrueforceForAll.Plugin
             // button) so the affirmative reads as the obvious path. For
             // offers where declining costs the user something and accepting
             // costs nothing. Off by default.
-            bool quietCancel = false)
+            bool quietCancel = false,
+            // Opt-in: a live control dropped between the body and the buttons,
+            // so a dialog can carry the thing it is talking about (a key binder,
+            // for instance) instead of describing where to find it.
+            UIElement extraContent = null)
         {
-            var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk, quietCancel);
+            var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk, quietCancel,
+                                          extraContent);
             if (owner != null)
             {
                 dlg.Owner = owner;
@@ -168,13 +174,25 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 8),
             });
 
-            root.Children.Add(new TextBlock
+            // Scrolled, and capped against the screen rather than a fixed number.
+            // The window sizes to its content with no resize grip, so a long body
+            // (the troubleshooting guides run to several screens of steps) would
+            // otherwise push the buttons off the bottom of the display, with no
+            // way to reach them. A short body never reaches the cap and renders
+            // exactly as it did before.
+            root.Children.Add(new ScrollViewer
             {
-                Text = body ?? "",
-                Foreground = MutedFg,
-                FontSize = 12,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                MaxHeight = Math.Max(240, SystemParameters.WorkArea.Height * 0.6),
                 Margin = new Thickness(0, 0, 0, 16),
-                TextWrapping = TextWrapping.Wrap,
+                Content = new TextBlock
+                {
+                    Text = body ?? "",
+                    Foreground = MutedFg,
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap,
+                },
             });
 
             var btnRow = new StackPanel
@@ -265,9 +283,27 @@ namespace TrueforceForAll.Plugin
         }
 
         private TrueforceDialog(string title, string body, DialogKind kind,
-            string okLabel, string cancelLabel, bool goldOk = false, bool quietCancel = false)
+            string okLabel, string cancelLabel, bool goldOk = false, bool quietCancel = false,
+            UIElement extraContent = null)
         {
             var btnRow = BuildChrome(title, body, kind);
+
+            // Optional live control between the body and the buttons, for a
+            // dialog that should let the user DO the thing it is describing
+            // rather than sending them off to find it. Same insertion point the
+            // checkbox variant uses.
+            if (extraContent != null)
+            {
+                // The body keeps 16 px above the buttons; a control dropped in
+                // here landed flush against them unless its caller thought to
+                // pad it (owner, 2026-08-30: "too close"). Give it the same gap
+                // when it brings none of its own.
+                var fe = extraContent as FrameworkElement;
+                if (fe != null && fe.Margin.Bottom < 16)
+                    fe.Margin = new Thickness(fe.Margin.Left, fe.Margin.Top, fe.Margin.Right, 16);
+                var root = btnRow.Parent as StackPanel;
+                if (root != null) root.Children.Insert(root.Children.Count - 1, extraContent);
+            }
 
             bool isDestructive = kind == DialogKind.Destructive;
             // A cancel button is shown for the two-choice kinds (Confirm /
@@ -313,15 +349,18 @@ namespace TrueforceForAll.Plugin
                     ? (hasCancel ? "Yes" : "OK")
                     : okLabel,
                 Padding = new Thickness(14, 5, 14, 5),
-                Foreground = isDestructive ? DestructiveFg : TextFg,
-                Background = isDestructive ? DestructiveBg : PanelBg,
+                Foreground = TextFg,
+                Background = PanelBg,
                 IsDefault  = !isDestructive,   // destructive: Cancel is the default instead
                 IsCancel   = !hasCancel,       // single-OK dialogs: OK doubles as Esc/close
             };
             // Gold accent when the caller opts in (non-destructive only). Uses
             // the shared modal theme so hover/press feedback matches the rest.
-            if (goldOk && !isDestructive)
-                ModalButtonTheme.Primary(ok);
+            // One palette for both. The destructive red used to be a private
+            // copy in this file, which is how a Remove button in a panel and the
+            // Remove button in its own confirm ended up able to disagree.
+            if (isDestructive) ModalButtonTheme.Destructive(ok);
+            else if (goldOk)   ModalButtonTheme.Primary(ok);
             ok.Click += (s, e) => { DialogResult = true; Close(); };
             btnRow.Children.Add(ok);
         }

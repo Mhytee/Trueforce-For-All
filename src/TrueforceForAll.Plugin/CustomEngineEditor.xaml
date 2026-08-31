@@ -34,7 +34,7 @@
 
         <!-- How-to intro -->
         <TextBlock Grid.Row="0" Style="{StaticResource HelpText}" Margin="0,0,0,12"
-                   Text="Build the pulse rhythm your wheel plays for an engine nothing built-in matches. Pick the firing pattern closest to the real engine and set the cylinder or rotor count; the pattern below fills in from those until you hand-edit it (Regenerate refills it on demand). Save it, then choose it in a variant's Engine dropdown to hear it on that car."/>
+                   Text="Pick the firing pattern closest to the real engine and set the cylinder or rotor count. Save, then choose your new engine in a variant's Engine dropdown to hear it on that car."/>
 
         <!-- Shown only when editing a legacy ELECTRIC custom: saving converts
              it to a firing-pattern engine, which flips every variant pinned
@@ -85,14 +85,14 @@
         <Grid Grid.Row="5" Margin="0,0,0,4">
             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Pattern:" Style="{StaticResource LabelText}"
-                       ToolTip="Comma-separated phase positions in [0, 1) representing where each pulse fires within one 720° cycle. Optional ':amplitude' suffix per pulse. Auto-fills when you pick a shape / count above; edit freely for expert tuning."/>
+                       ToolTip="Comma-separated positions from 0 up to (but not including) 1, marking where each pulse fires within one engine cycle. Optional ':amplitude' suffix per pulse (0.25:0.85) makes that pulse softer. Auto-fills when you pick a shape / count above; hand-edit for odd-fire engines."/>
             <TextBox Grid.Column="1" x:Name="PatternTextBox" FontFamily="Consolas" Padding="4,2"/>
         </Grid>
 
         <Grid Grid.Row="6" Margin="140,0,0,8">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" x:Name="PatternHelp" Style="{StaticResource HelpText}"
-                       Text="Each number is when a cylinder fires within one engine cycle, from 0 to 1. Hand-edit for odd-fire engines; an optional :weight per pulse (0.25:0.85) makes that pulse softer."/>
+                       Text="Each number is when a cylinder fires within one engine cycle, from 0 to 1."/>
             <Button Grid.Column="1" x:Name="RegeneratePatternButton" Content="Regenerate"
                     Padding="8,2" Margin="8,0,0,0" VerticalAlignment="Top"
                     Click="RegeneratePattern_Click"

@@ -45,7 +45,22 @@ namespace TrueforceForAll.Plugin
         public static readonly HashSet<string> Portable = new HashSet<string>(StringComparer.Ordinal)
         {
             // Feature toggles the user opted into.
-            "PluginEnabled", "MairaFfbPassthrough", "ModeBRevLightsEnabled", "ShowFeedbackBox",
+            // MasterMode sits beside the bool it replaced: the two are written
+            // together and must never land on PC2 disagreeing about whether the
+            // plugin is on.
+            "PluginEnabled", "MasterMode", "ModeBRevLightsEnabled", "CarRevLightEffect", "CarLightPattern", "ShowFeedbackBox",
+            // iRacing reshape strength. Travels: it is normalized against the
+            // sim's own max force, so it carries no wheel-specific meaning.
+            "IRacingForceGain", "IRacingUse360Hz",
+            "IRacingForceMode", "IRacingPredictGain",
+            // Wheel full-scale in Nm. Travels with the other feel settings: it
+            // describes the WHEEL, and the wheel goes to the second PC with the
+            // driver, same reasoning as the rev-light and OLED preferences.
+            "IRacingMaxForceNmOverride",
+            // Per-car force scale. Travels for the same reason CarGripCalibration
+            // does: it costs seat time per car to rebuild, and it describes the
+            // cars rather than this PC.
+            "IRacingMaxForcePerCar", "IRacingMaxForceByCar",
             "ShowAchievementCelebrations",
             // Has ever backed the project: a fact about the person, not the machine,
             // so it travels and a supporter is never re-asked on a second PC.
@@ -59,9 +74,10 @@ namespace TrueforceForAll.Plugin
             "OledGreetingEnabled", "OledGreetingText", "OledWriteIntervalMs",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
-            "MotdLevel", "ShowEffectsTabShareButtons",
+            "MotdLevel", "ShowEffectsTabShareButtons", "ShowPerGearRedlineEditor",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
-            "DashRevStripOutsideIn", "DashRememberLastTab", "DashDefaultTab",
+            "DashRevStripOutsideIn", "DashRevStripAuto",
+            "DashRememberLastTab", "DashDefaultTab",
             "DashDriveSlots", "DashDriveTwoRows", "DashFlagsEnabled",
             // Per-game Drive layouts travel with the shared one: same kind of
             // choice, and the games they are keyed to are the same games on
@@ -72,14 +88,25 @@ namespace TrueforceForAll.Plugin
             // time to rebuild, and it is about the games, not this PC.
             "DashDriveSeen", "DashDriveDrivenSec",
             "DashRevStripCentered", "DashDrivePedals",
-            "DashSpotterEnabled",
+            "DashSpotterEnabled", "DashIncidentsEnabled",
             "DashIdleEnabled", "DashIdleDelaySeconds", "DashIdleStyle",
             "DashIdleDriverName", "DashIdleNumber", "DashIdleColor", "DashIdleNameAbove", "DashIdleFont", "DashTheme",
             "DashTabOrder", "DashTabsDisabled",
             // Earned access-code unlocks (not machine-bound; the user unlocked them).
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
-            "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate",
+            "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate", "F8IgnoreQuietGate",
+            "LightsyncTabUnlocked", "LovelyCarDataEnabled", "LightsyncDynamicSlot",
+            "AlwaysRememberCarPattern",
+            // LED color trim. Portable because it describes the WHEEL, which
+            // travels to the second PC with its own LED binning intact, same
+            // reasoning as the rev-light and OLED preferences. Also listed in
+            // FfbWheelSpecific, so restoring a G PRO's trim onto a G923 with a
+            // different LED package is withheld rather than applied.
+            "LedTrimR", "LedTrimG", "LedTrimB",
+            // Tap-free AC FFB toggle: a preference about how force is sourced,
+            // not a machine fact (shared memory exists wherever AC does).
+            "AcShmFfbEnabled", "CspBridgeFfbEnabled", "CspBridgeFfbField", "CspBridgeMaxNm",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
@@ -114,7 +141,7 @@ namespace TrueforceForAll.Plugin
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
             "AxleSlip", "KerbThump", "LockupJudder", "ImplementThud",
             // Per-game/car data + the custom-engine library (lives in settings, not files).
-            "GameEnabled", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
+            "GameEnabled", "GameModes", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
             "CustomEngines", "SharingAuthor",
             // Active-slot download tracking. Travels with the preset files it tracks.
             // POST-RESTORE the caller must re-mount slots so this re-references the
@@ -141,6 +168,9 @@ namespace TrueforceForAll.Plugin
             // TF4ALL Enhanced Telemetry game-mod install state: the mod lives in THIS
             // PC's Farming Simulator folders, and consent was given here.
             "FsModInstallDeclined", "FsModInstalledVersions",
+            // CSP bridge script install state: the script lives in THIS PC's
+            // Assetto Corsa folder and consent was given here.
+            "CspBridgeInstallDeclined",
             // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
             // per-PC hardware state like LastUsedWheel.
             "WheelDefaultsApplied",
@@ -171,14 +201,17 @@ namespace TrueforceForAll.Plugin
             "FoldersRestructuredV3", "UserSlotsMigratedV1", "SlotsKeyedByUserIdV1", "GamesWithRedlineRevalidated",
             "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
             "CommunityDefaultOnRepitchedV1", "EngineChoiceMovedToCarFactsV1", "EngineOnlyOverridesPrunedV1",
+            "MasterModeMigratedV1",
             // Backend config (release bakes constants; a dev override must not travel).
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
-            "IRacingTrueforceNoticeDismissed", "HasSeenModeBIntro",
+            "IRacingTrueforceNoticeDismissed", "StandDownNoticeDismissedGames", "MairaTapNoticeDismissed", "HasSeenModeBIntro", "GameModeMapMigratedV1",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
-            "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed",
+            "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed", "LightsyncCycleHintDismissed", "HasSeenLightsyncIntro",
+            // Migration latch: PC2 needs to run its own, so this must not travel.
+            "LightsyncReleasedMigrated",
             // MOTD client state: re-fetchable cache + transient per-message dismiss bookkeeping.
             "MotdCache", "MotdDismissedIds", "MotdPoolDismissedOn", "MotdRecurringDismissedOcc",
             // MOTD audience / nag pacing: contribution-recency timestamps + nag cooldown.
@@ -189,6 +222,7 @@ namespace TrueforceForAll.Plugin
             // travels, so a supporter restoring onto a second PC is not asked again.
             "SupportPromptCount", "SupportPromptDeclineCount", "SupportPromptLastUtc",
             "ExperimentalSuccessReportDismissed", "LogUsbBytesEnabled", "StopStreamOnPause",
+            "StopStreamOnPauseMigrated", "ReleaseForceOnFocusLoss",
             // Per-account achievement-celebration baseline + notify-dot (re-seed on PC2).
             "AchievementBaseline", "AchievementUnseen",
             // Preset-manager UI layout.
@@ -223,13 +257,20 @@ namespace TrueforceForAll.Plugin
         // forwarded copy), not a machine address like BindAddress/Forward*.
         public static readonly string[] ForzaPortableFields = { "Enabled", "Port", "ForwardGapBridge" };
 
-        /// <summary>The wheel-specific FFB tuning keys (Mode B feel + learned
-        /// grip calibration): a subset of Portable that ApplySettings WITHHOLDS
-        /// when the cross-wheel policy is not Always and the backup came from a
-        /// different wheel model. They still travel in the envelope; the gate
-        /// only decides whether they are written onto THIS PC. Kept in sync with
-        /// the ModeB* / CarGripCalibration entries in Portable (a self-test
-        /// asserts the subset relationship).</summary>
+        /// <summary>The wheel-specific tuning keys (Mode B feel, learned grip
+        /// calibration, and the LED color trim): a subset of Portable that
+        /// ApplySettings WITHHOLDS when the cross-wheel policy is not Always and
+        /// the backup came from a different wheel model. They still travel in
+        /// the envelope; the gate only decides whether they are written onto
+        /// THIS PC. Kept in sync with the ModeB* / CarGripCalibration / LedTrim*
+        /// entries in Portable (a self-test asserts the subset relationship).
+        /// LedTrim* being null (never chosen) travels harmlessly either way,
+        /// since it resolves from the shipped table on whatever wheel it lands.
+        ///
+        /// The LED trim is here for the same reason as the FFB tuning but a
+        /// blunter one: it compensates the relative brightness of one wheel's
+        /// LED dies, so writing a G PRO's numbers onto a G923 would miscolor a
+        /// package it was never measured against.</summary>
         public static readonly HashSet<string> FfbWheelSpecific = new HashSet<string>(StringComparer.Ordinal)
         {
             "ModeBGameEnabled", "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil",
@@ -254,6 +295,7 @@ namespace TrueforceForAll.Plugin
             "SpringModeDragEnabled", "SpringModeDragGain", "SpringModeDragStrainFraction",
             "SpringModeChassisWeightEnabled", "SpringModeChassisWeightGain",
             "CarGripCalibration",
+            "LedTrimR", "LedTrimG", "LedTrimB",
         };
 
         /// <summary>True only when both wheel labels are known AND name a

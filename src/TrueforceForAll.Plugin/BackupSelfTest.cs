@@ -49,6 +49,8 @@ namespace TrueforceForAll.Plugin
             src.ExperimentalFfbCapture = true;
             src.GameEnabled["AssettoCorsa"] = false;
             src.GameEnabled["FH6"] = true;
+            src.MasterMode = TrueforceMasterMode.LightsyncOnly;   // portable: a real choice
+            src.MasterModeMigratedV1 = true;                      // excluded: a migration latch
             src.AudioCaptureExeOverrides["FH6"] = "forza";
             src.CarFacts["AssettoCorsa/ks_x"] = new CarFactsBundle { CarName = "Test Car" };
             src.UsbPcapCmdPathOverride = "SOURCE_USB";   // machine-local -> must NOT travel
@@ -82,6 +84,8 @@ namespace TrueforceForAll.Plugin
                 target.AudioCaptureExeOverrides.TryGetValue("FH6", out var exe) && exe == "forza");
             Check("portable: CarFacts copied",
                 target.CarFacts.TryGetValue("AssettoCorsa/ks_x", out var cf) && cf?.CarName == "Test Car");
+            Check("portable: MasterMode copied", target.MasterMode == TrueforceMasterMode.LightsyncOnly);
+            Check("excluded: MasterModeMigratedV1 not carried", !target.MasterModeMigratedV1);
             Check("portable: Forza.Enabled copied", target.Forza.Enabled == false);
             Check("portable: Forza.Port copied", target.Forza.Port == 9999);
 

@@ -38,7 +38,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using SimHub.Plugins;
+using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
@@ -321,6 +324,10 @@ namespace TrueforceForAll.Plugin
                 _capSeenRun.Clear();
                 _capSec = 0; _capUnflushedSec = 0; _capLastTick = 0;
                 _dashSlipSeen = false;   // the new game earns its own latch
+                _axleFeedSeen = false; _axleFeedFrames = 0;
+                // The focus feature re-arms per game: one title's identification
+                // must not license releasing the wheel in an unrecognised next one.
+                ResetGameFocusIdentification();
             }
 
             // Driving time only. A car sitting in the pits reports no lap
@@ -561,6 +568,29 @@ namespace TrueforceForAll.Plugin
         // than freshness so a pause or a pit stop cannot flap the box into
         // its "not reported" notice mid-session.
         private volatile bool _dashSlipSeen;
+
+        // Can the LIVE source feed AxleSlipEffect? It needs FrontGrip01 and
+        // RearGrip01, which only exist where a source publishes per-tire quads
+        // (Forza, AC, the CSV reader) or the axle rollups directly (Farming Sim).
+        // Anything running through SimHub's generic reader has neither, so the
+        // effect is inert there: iRacing and Wreckfest both, and the panel used
+        // to name those one at a time and still miss the next one.
+        //
+        // Verdict is DELAYED rather than instant, and defaults to "yes". Hiding
+        // a section the moment a game starts, before any frame has arrived, then
+        // showing it again a second later would be worse than a short wait, so
+        // absence has to be demonstrated over a few seconds of frames.
+        private volatile bool _axleFeedSeen;
+        private int _axleFeedFrames;
+        private const int AxleFeedVerdictFrames = 300;   // ~5 s at 60 Hz
+
+        /// <summary>True while axle slip could still work here: either the pair
+        /// of rollups has been seen this game run, or not enough frames have
+        /// arrived yet to say it never will.</summary>
+        public bool AxleSlipFeedable
+        {
+            get { return _axleFeedSeen || _axleFeedFrames < AxleFeedVerdictFrames; }
+        }
         // Display lag state: -1 = re-seed on next sample.
         private const int   DashSlipFreshMs = 700;
         private const float DashSlipUiTauS  = 0.12f;
@@ -898,6 +928,251 @@ namespace TrueforceForAll.Plugin
         // dash itself sits next to a tile showing its value, so announcing
         // those as well is noise, and every press of a stepper putting a card
         // over the middle of the screen is worse than saying nothing.
+        // ---------- rev-light mirror for the dash ----------
+        //
+        // Deliberately independent of whether we drive the wheel. The level comes
+        // from the same maths the strip would use, so the dash shows what the
+        // wheel WOULD show even in a game where writing an LED is off the table.
+        // Nothing here touches the hardware.
+
+        private volatile int _dashLightLevel;
+        private volatile bool _dashLightRedline;
+        private volatile int _dashLightSteps;
+        private LovelyLightMath.LightProfileSnapshot _dashLightProfile;
+        /// <summary>The published profile is the ramp we synthesized, not colors
+        /// anyone chose, so a strip-length change rebuilds it at the new size.
+        /// Set ONLY by PublishFallbackLightProfile: a profile read off the wheel
+        /// carries the wheel's own ten entries whatever the strip length, so
+        /// treating it as rebuildable threw it away on a five-step wheel one
+        /// frame after adopting it.</summary>
+        private volatile bool _dashLightProfileIsFallback;
+
+        /// <summary>LEDs to mirror, or 0 when there is nothing to mirror: no
+        /// level-capable wheel on this rig, or one that has gone away. The dash
+        /// reads this as the "is there a wheel to follow" test and falls back to
+        /// its own computed strip at 0, so it must NOT report a hopeful ten.
+        ///
+        /// The live strip length rather than the family constant: a G923 runs a
+        /// five-step bar, and mirroring it against ten drew a full strip as a
+        /// half-full one.</summary>
+        public int DashLightCount => _dashLightSteps;
+        public int DashLightLevel => _dashLightLevel;
+        public bool DashLightRedline => _dashLightRedline;
+
+        public string DashLightPatternName
+        {
+            get
+            {
+                var snap = _dashLightProfile;
+                if (!string.IsNullOrEmpty(snap?.Name)) return snap.Name;
+                var lib = _lightPatterns;   // avoid building the library just to answer a poll
+                var cur = lib?.Patterns?.FirstOrDefault(p => p.Id == lib.CurrentId);
+                return cur?.Name ?? "";
+            }
+        }
+
+        /// <summary>Color of one LED as "#RRGGBB", for a dash to bind straight to
+        /// a rectangle's fill.</summary>
+        public string DashLightColor(int led)
+        {
+            var snap = _dashLightProfile;
+            if (snap?.Rgb == null || snap.Rgb.Length < (led + 1) * 3) return "#000000";
+            return string.Format("#{0:X2}{1:X2}{2:X2}",
+                snap.Rgb[led * 3], snap.Rgb[led * 3 + 1], snap.Rgb[led * 3 + 2]);
+        }
+
+        /// <summary>Whether this LED is lit right now, accounting for the fill
+        /// direction: a mirrored pattern lights in pairs from the ends or the
+        /// middle, so position alone does not answer it.
+        ///
+        /// The redline is NOT special-cased here. The level already carries it:
+        /// a blinking car alternates full bar and dark, and a car whose real dash
+        /// holds steady (470 of the 717 published cars) stays at full. Lighting
+        /// the whole bar on the redline flag instead meant the flash had to come
+        /// from somewhere else, and that somewhere else did not know which cars
+        /// hold steady, so the dash blinked while the rim beside it did not.
+        /// </summary>
+        public bool DashLightOn(int led)
+        {
+            var snap = _dashLightProfile;
+            int level = _dashLightLevel;
+            if (level <= 0) return false;
+
+            int leds = _dashLightSteps;
+            if (leds <= 0 || led >= leds) return false;
+
+            var dir = snap?.Direction ?? LightDirection.LeftToRight;
+            int step = LovelyLightMath.StepIndexForLed(led, dir, leds);
+            int steps = LovelyLightMath.StepCount(dir, leds);
+            if (steps <= 0) return false;
+
+            // level is 0..leds; scale it onto this layout's step count so a
+            // mirrored pattern lights the right number of PAIRS.
+            int litSteps = (int)Math.Round((double)level * steps / leds);
+            return step < litSteps;
+        }
+
+        /// <summary>Called from the telemetry path with what the strip is doing,
+        /// so the dash mirrors it whether or not the wheel is being written.
+        /// <paramref name="steps"/> is the wheel's own strip length, which is
+        /// also what tells the dash there is a wheel to follow at all.</summary>
+        internal void PublishDashLights(int level, bool redline, int steps)
+        {
+            if (steps < 0) steps = 0;
+            _dashLightLevel = level;
+            _dashLightRedline = redline;
+            _dashLightSteps = steps;
+
+            // Colors, if nobody has supplied any. A profile only arrives when
+            // the user picks a pattern or the car data paints one, so without
+            // this the common case (a wheel showing whatever it was already set
+            // to, which we never read back) mirrored as ten black LEDs. The
+            // conventional ramp is the honest answer there: it is what the level
+            // means, in the colors everyone expects, and a real pattern
+            // replaces it the moment one is chosen.
+            if (steps > 0 && (_dashLightProfile == null
+                              || (_dashLightProfileIsFallback && _dashLightProfile.Rgb?.Length != steps * 3)))
+                PublishFallbackLightProfile(steps, LightDirection.LeftToRight);
+        }
+
+        /// <summary>Our own green-amber-red ramp as the published profile, sized
+        /// to this wheel's strip and laid out for <paramref name="direction"/>.
+        /// </summary>
+        private void PublishFallbackLightProfile(int steps, LightDirection direction,
+                                                 string name = "")
+        {
+            var colors = LovelyLightMath.DefaultRampColors(direction, steps);
+            var rgb = new byte[steps * 3];
+            for (int i = 0; i < steps && i < colors.Length; i++)
+            {
+                rgb[i * 3 + 0] = colors[i].R;
+                rgb[i * 3 + 1] = colors[i].G;
+                rgb[i * 3 + 2] = colors[i].B;
+            }
+            PublishDashLightProfile(rgb, direction, name, isFallback: true);
+        }
+
+        // The selection whose colors are published, so a change is noticed.
+        // -1 = nothing published yet.
+        private volatile int _dashLightSelPublished = -1;
+
+        /// <summary>Keep the dash's colors pointed at whatever the wheel is
+        /// showing NOW.
+        ///
+        /// Polled rather than pushed from the places that change the selection,
+        /// because they are not the only ones that change it: the base's own menu
+        /// does too, and the channel learns about that from an unsolicited
+        /// notification. One read of a cached int per frame catches every route.
+        ///
+        /// Three cases:
+        ///   * a slot we lent is showing something WE put there, so whoever lent
+        ///     it published the colors and the name already. Nothing to read.
+        ///   * one of the wheel's own five slots: read it back in full, colors
+        ///     and direction, under our name for the pattern in it.
+        ///   * one of the four built-in sweeps: the colors are firmware and
+        ///     cannot be read, so keep the ramp and take the direction, which is
+        ///     the part of a sweep the dash can honestly reproduce.
+        ///
+        /// Gated on <paramref name="ffbQuiet"/> because reading a slot is HID++
+        /// traffic on the same endpoint the game's force feedback uses, and this
+        /// project's settled rule is that we only touch it while the game's FFB is
+        /// PROVEN quiet. A selection changed during a loud stretch is picked up at
+        /// the next quiet frame, since nothing records it as published until it
+        /// has been.</summary>
+        private void SyncDashLightProfile(bool ffbQuiet)
+        {
+            var leds = _rpmLeds;
+            if (leds == null || !leds.IsReady) return;
+
+            int sel = leds.KnownSelection;
+            if (sel == _dashLightSelPublished) return;
+            if (sel < 1 || sel > 9) return;          // never read the wheel yet
+
+            int slot = sel - 5;
+            // Ours, standing in a lent slot: ApplyLightPattern or the car-color
+            // apply published it, under a better name than the slot carries.
+            if (slot >= 0 && slot == BorrowedSlot)
+            {
+                _dashLightSelPublished = sel;
+                return;
+            }
+
+            if (!ffbQuiet) return;
+            // Claimed before the read so a slow read is not started twice. A
+            // selection that changes again re-arms this on its own.
+            _dashLightSelPublished = sel;
+            int steps = leds.MirrorSteps;
+            Task.Run(() => PublishDashProfileForSelection(sel, steps));
+        }
+
+        /// <summary>Read what selection <paramref name="sel"/> looks like and
+        /// publish it as the dash's colors. BLOCKING (it talks to the wheel), so
+        /// every caller is already off SimHub's update thread.
+        ///
+        /// Called both from the poll and straight from the pick, because the poll
+        /// lives in the telemetry path and a user cycling patterns in the menus
+        /// with no game running is not in it. The pick is the responsive route;
+        /// the poll is the backstop that also catches the base's own menu.</summary>
+        private void PublishDashProfileForSelection(int sel, int steps)
+        {
+            try
+            {
+                _dashLightSelPublished = sel;
+                int slot = sel - 5;
+                if (slot >= 0 && slot < WheelLedChannel.CustomSlotCount)
+                {
+                    var s = ReadSlot(slot);
+                    bool programmed = s?.Rgb != null && s.Rgb.Length >= steps * 3
+                                      && Array.Exists(s.Rgb, b => b != 0);
+                    if (programmed)
+                    {
+                        // Straight out of the wheel, so already in the wheel's own
+                        // color space: published as read, never trimmed. Our name
+                        // for it first: the slot's own label is whatever it was
+                        // called before the plugin ever ran.
+                        PublishDashLightProfile(s.Rgb, DirectionFromWire(s.DirectionWire),
+                                                LibraryNameForSlot(slot) ?? ReadSlotName(slot) ?? "");
+                        return;
+                    }
+                }
+
+                if (sel >= 1 && sel <= 4)
+                    PublishFallbackLightProfile(steps,
+                        DirectionFromWire(BuiltinEffectDirectionWire(sel)),
+                        RevPatternLabel(sel));
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] dash light sync failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>Called when the shown pattern changes, so the dash's colors
+        /// follow. Cheap: a snapshot rather than a live read.</summary>
+        internal void PublishDashLightProfile(byte[] rgb, LightDirection direction, string name,
+                                              bool isFallback = false)
+        {
+            _dashLightProfile = new LovelyLightMath.LightProfileSnapshot
+            {
+                Rgb = rgb == null ? null : (byte[])rgb.Clone(),
+                Direction = direction,
+                Name = name,
+            };
+            _dashLightProfileIsFallback = isFallback;
+        }
+
+        /// <summary>The level-capable wheel has gone away, so there is nothing to
+        /// mirror and the dash should go back to drawing its own strip.</summary>
+        internal void ClearDashLights()
+        {
+            _dashLightLevel = 0;
+            _dashLightRedline = false;
+            _dashLightSteps = 0;
+            // A different wheel may be next, so its selection is worth asking
+            // about again.
+            _dashLightSelPublished = -1;
+        }
+
         private void DashReadout(string label, string value)
         {
             _dashReadoutAtTick = Environment.TickCount;
@@ -1235,13 +1510,35 @@ namespace TrueforceForAll.Plugin
             float ffb = (dev?.LastFfbOutput ?? (short)0) / 32768f;
             if (dev != null)
             {
-                if (dev.FfbInvertSign) ffb = -ffb;
-                // Undo display attenuation: with FfbScale < 1 the output tops
-                // out at the scale value, which parked the clip point mid-lane
-                // on the dash. Normalizing puts the rail (= clipping) at the
-                // lane edge; scale >= 1 already rails at 1.0 via the clamp.
-                float sc = dev.FfbScale;
-                if (sc > 0.05f && sc < 1f) ffb /= sc;
+                // BOTH corrections below undo something the DEVICE did, so both
+                // must be skipped when the device skipped it. An authored mode
+                // (the iRacing reshape) sets FfbBypassTapCorrections and applies
+                // neither invert nor scale, so undoing them anyway reports a
+                // force that was never sent.
+                //
+                // The scale one is the bug that matters: with FfbScale at 0.80,
+                // dividing an already-full-scale value by 0.80 inflates it 1.25x
+                // and the CLIP badge lights at 80% of true full scale. Nothing
+                // crashes and nothing looks wrong, you just conclude your
+                // Strength is too high and quietly back it off for no reason.
+                if (dev.FfbBypassTapCorrections)
+                {
+                    // Authored modes negate at SOURCE (see ComputeIRacingForce),
+                    // so the display still flips to read in the game's direction.
+                    // Unconditional here, unlike below, because that negation is
+                    // ours and does not depend on the user's invert setting.
+                    ffb = -ffb;
+                }
+                else
+                {
+                    if (dev.FfbInvertSign) ffb = -ffb;
+                    // Undo display attenuation: with FfbScale < 1 the output tops
+                    // out at the scale value, which parked the clip point mid-lane
+                    // on the dash. Normalizing puts the rail (= clipping) at the
+                    // lane edge; scale >= 1 already rails at 1.0 via the clamp.
+                    float sc = dev.FfbScale;
+                    if (sc > 0.05f && sc < 1f) ffb /= sc;
+                }
             }
             if (ffb > 1f) ffb = 1f; else if (ffb < -1f) ffb = -1f;
             // Light one-pole smoothing so the line trace bends instead of
@@ -1447,21 +1744,42 @@ namespace TrueforceForAll.Plugin
             bool spring = ActiveGameIsSpringGame;
             bool forza = g == "FM8"
                 || (g != null && g.StartsWith("FH", StringComparison.Ordinal));
+            // iRacing publishes no per-tire slip angle, slip ratio or wheel
+            // rotation speed, so the voices built on those have no honest input
+            // and are hidden rather than shown doing nothing.
+            bool ir = IsIRacingReshapeGame(g);
             switch (key)
             {
                 // FS: Axle slip is its one slip voice, its brake model never
                 // outruns the road, and Kerb thump's voice folds into Road
                 // bumps ("Terrain texture") there.
                 case "Traction":
-                case "Lockup":
+                    return !spring;
+                // iRacing: Lockup judder needs a signed slip ratio and wheel
+                // rotation speed, neither of which iRacing publishes, so there is
+                // no honest source for it. Kerb thump DOES work there now: the
+                // rumble-strip event is raised from PlayerTrackSurfaceMaterial.
                 case "Kerb":
                     return !spring;
+                case "Lockup":
+                    return !spring && !ir;
                 // FS has no ABS, pits or DRS; Forza telemetry carries no
                 // ABS flag and Horizon has no pits and no DRS.
+                //
+                // iRacing KEEPS DRS. A dump of its channels from one car showed
+                // none, but iRacing rebuilds its telemetry variable table PER
+                // CAR, so that only proved the MX-5 has no DRS. The handful of
+                // cars that do have it publish it, SimHub maps it, and the row
+                // is correct for them.
                 case "Abs":
                 case "Pit":
                 case "Drs":
                     return !spring && !forza;
+                // Axle slip needs front/rear grip rollups. Those are reachable
+                // for iRacing only through a bicycle-model estimate, which is not
+                // built yet; showing the row now would promise a dead voice.
+                case "AxleSlip":
+                    return !ir;
                 case "ImplThud":
                     return spring;
                 default:
@@ -1629,6 +1947,40 @@ namespace TrueforceForAll.Plugin
                     && System.Threading.Volatile.Read(ref _recoveryInProgress) == 0;
             });
             this.AttachDelegate("Dash.WheelStatus",  () => StreamStatus);
+
+            // ---------- properties: rev lights, for a dash to mirror ----------
+            //
+            // The wheel's rev strip, published so a dashboard can draw the same
+            // thing on screen. This is the ONE lighting path with no hardware
+            // caveat attached: it sends nothing to the wheel, so it cannot cut a
+            // game's force feedback, and it works in every title including the
+            // ones where we never drive an LED and the ones the plugin disables
+            // itself for. A user whose game lights its own wheel still gets the
+            // car's real pattern on their dash.
+            //
+            // Per-LED rather than one blob so a dash can bind ten rectangles
+            // directly, with no string parsing in a formula.
+            //
+            // Registered only when the feature is unlocked. They are harmless to
+            // evaluate, but SimHub polls every attached delegate on its update
+            // tick and this project already knows dashboards are sensitive to
+            // binding count, so a user who never entered the code should not
+            // carry twenty-four more entries in the property tree.
+            if (Settings?.LightsyncTabUnlocked == true)
+            {
+                this.AttachDelegate("Dash.Lights.Count",   () => DashLightCount);
+                this.AttachDelegate("Dash.Lights.Level",   () => DashLightLevel);
+                this.AttachDelegate("Dash.Lights.Redline", () => DashLightRedline);
+                this.AttachDelegate("Dash.Lights.Pattern", () => DashLightPatternName);
+                for (int i = 0; i < WheelLedChannel.LedCount; i++)
+                {
+                    int led = i;   // captured per delegate
+                    this.AttachDelegate("Dash.Lights.Led" + (led + 1).ToString("00") + "Color",
+                                        () => DashLightColor(led));
+                    this.AttachDelegate("Dash.Lights.Led" + (led + 1).ToString("00") + "On",
+                                        () => DashLightOn(led));
+                }
+            }
             this.AttachDelegate("Dash.Game",         () => DashSnap().Game);
             this.AttachDelegate("Dash.CarName",      () => DashSnap().CarName);
             // Built-ins are stored " (default)" but display " (built-in)"
@@ -1636,7 +1988,14 @@ namespace TrueforceForAll.Plugin
             // the display delegates only; _dashPresetList and the snapshot
             // stay raw because select/apply needs the stored names.
             this.AttachDelegate("Dash.PresetName",   () => BuiltinPresets.ToDisplayName(DashSnap().PresetName));
+            // Kept as-is for djson files already deployed on people's phones:
+            // "on" has always meant the full plugin, and that is still true.
             this.AttachDelegate("Dash.PluginOn",     () => PluginEnabled);
+            // The full answer, for a dash that wants to name the mode. EFFECTIVE, so
+            // it agrees with Dash.PluginOn and with the toggle beside it: publishing
+            // the stored choice would print "full" next to a switch reading off in
+            // any game the plugin had yielded.
+            this.AttachDelegate("Dash.MasterMode",   () => ModeLabel(MasterMode));
             this.AttachDelegate("Dash.MasterGain",   () => MasterGain);
             this.AttachDelegate("Dash.AudioGain",    () => ActiveAudioGain);
             this.AttachDelegate("Dash.AudioOn",      () => ActiveAudioEnabled);
@@ -1679,6 +2038,43 @@ namespace TrueforceForAll.Plugin
                 this.AttachDelegate("Dash.Scope.Tex" + idx, () => _scopeTex[(_scopeHead + idx) % ScopeCols]);
                 this.AttachDelegate("Dash.Scope.Ffb" + idx, () => _scopeFfb[(_scopeHead + idx) % ScopeCols]);
             }
+            // Auto max force readiness, for the dash button. Confidence rather
+            // than a bare boolean so the button can come UP to readiness in view
+            // instead of flipping with no warning: a driver watching it fill can
+            // tell that pressing is about to be worthwhile.
+            // Whether the auto-force row belongs on screen at all: iRacing, with
+            // us actually driving the wheel. With the takeover off, the number it
+            // sets changes nothing, and a control that does nothing is worse than
+            // an absent one. Also gated on having something to act on: in the
+            // car now, or the learner has seen driving this session. Before the
+            // first drive the row promised SET MAX FORCE with nothing measured
+            // (owner rig, 2026-08-15); after a stint it stays up, because the
+            // garage is exactly where the tap gets used.
+            this.AttachDelegate("Dash.IRacingAutoShow",
+                () => IsIRacingReshapeGame(_activeGame) && ModeBEnabledForActiveGame
+                      && (_irFrame != null || IRacingPeakSettled || IRacingPeakConfidence > 0.001)
+                      ? 1 : 0);
+            // The synthesis side's equivalent row. Its learner is continuous, so
+            // unlike the iRacing one there is nothing to time and nothing to grey:
+            // what a driver needs here is what it has learned so far, and a way to
+            // throw it away when a tune or a tire change made it wrong.
+            this.AttachDelegate("Dash.ModeBRelearnShow",
+                () => !IsIRacingReshapeGame(_activeGame) && ModeBEnabledForActiveGame
+                      && _forceMode == ForceModeModeB ? 1 : 0);
+            this.AttachDelegate("Dash.ModeBStrengthConf",   () => ModeBStrengthConfidence);
+            this.AttachDelegate("Dash.ModeBStrengthScale",  () => ModeBAutoStrengthScale);
+            this.AttachDelegate("Dash.ModeBAutoStrengthOn", () => Settings?.ModeBAutoStrength == true ? 1 : 0);
+            this.AttachDelegate("Dash.IRacingAutoReady",
+                () => IsIRacingReshapeGame(_activeGame) && IRacingPeakSettled ? 1 : 0);
+            this.AttachDelegate("Dash.IRacingAutoConfidence",
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingPeakConfidence : 0.0);
+            // What pressing it would set, so the button can show the number
+            // rather than asking the driver to trust it blind.
+            this.AttachDelegate("Dash.IRacingAutoNm",
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingLearnedMaxNm : 0.0);
+            this.AttachDelegate("Dash.IRacingMaxForceNm",
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingEffectiveMaxForceNm : 0.0);
+
             // Live clip state (+1/-1/0, 150 ms hold): drives the rail
             // marker strips on the visualizer.
             this.AttachDelegate("Dash.Scope.FfbClip", () =>
@@ -1754,6 +2150,7 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.FlagsOn",     () => Settings?.DashFlagsEnabled == true);
             this.AttachDelegate("Dash.RevCentered", () => Settings?.DashRevStripCentered == true);
             this.AttachDelegate("Dash.SpotterOn", () => Settings?.DashSpotterEnabled != false);
+            AttachIncidentProperties();
 
             // Structural colors the dashboard paints itself with.
             this.AttachDelegate("Dash.Theme.Bg",       () => ActiveDashTheme().Bg);
@@ -1915,6 +2312,12 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.Drive.GLat",  () => _lastSwayAccel  / 9.81f);
             this.AttachDelegate("Dash.Drive.GLong", () => _lastSurgeAccel / 9.81f);
 
+            // Auto hands the strip to the wheel: colors, direction and fill all
+            // come from Dash.Lights.*, so the dash draws the rim. The dash falls
+            // back to its own strip (and to RevOutsideIn for its direction)
+            // whenever Dash.Lights.Count reads 0, which is every rig without a
+            // level-capable Logitech wheel, so this is safe to default on.
+            this.AttachDelegate("Dash.RevAuto", () => Settings?.DashRevStripAuto != false);
             this.AttachDelegate("Dash.RevOutsideIn", () => Settings?.DashRevStripOutsideIn == true);
             this.AttachDelegate("Dash.Rpm", () => _telemetryStalled ? 0 : (int)_dashLiveRpm);
             this.AttachDelegate("Dash.RpmPct", () =>
@@ -2063,6 +2466,59 @@ namespace TrueforceForAll.Plugin
                 PersistSettings();
                 RaiseDashRemoteChanged();
             });
+            // Auto max force, bindable to a wheel button. This is the one control
+            // whose natural moment is ON TRACK, at the end of a clean lap, when
+            // the peak is freshest. Making the driver alt-tab to press it is
+            // asking them to lose the very data it depends on.
+            // ONE bind for "recalibrate this car's force to what you have seen",
+            // dispatched on the live mode. Both sides mean the same thing to the
+            // driver and neither is worth a second button on a wheel that has few.
+            //
+            // They are not symmetric underneath, and the toast has to carry that,
+            // because on a wheel button it is the entire feedback. iRacing ADOPTS
+            // a learned number: the apply half needs a human because nothing is
+            // applied continuously. Mode B DISCARDS one: its apply half is already
+            // automatic, so the only half left for a human is the reset. So the
+            // same press is constructive in one game and destructive in the other,
+            // and the message must say which happened rather than "done".
+            this.AddAction("CalibrateCarForce", (a, b) =>
+            {
+                DashNoteActivity();
+                if (IsIRacingReshapeGame(_activeGame))
+                {
+                    // Refusing early is the point: pressing on an out-lap would
+                    // set Max force from a peak the car has not reached yet,
+                    // making everything too strong, and nothing would say why.
+                    if (!IRacingPeakSettled)
+                    {
+                        DashToast(IRacingObservedPeakNm <= 0.5
+                            ? "DRIVE A LAP FIRST"
+                            : "STILL LEARNING THIS CAR - KEEP DRIVING");
+                        return;
+                    }
+                    double applied = ApplyIRacingAutoMaxForce();
+                    DashToast(applied > 0.5
+                        ? "PEAK FORCE SET TO " + applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " NM"
+                        : "NOTHING LEARNED YET");
+                    RaiseDashRemoteChanged();
+                    return;
+                }
+                if (ModeBEnabledForActiveGame && _forceMode == ForceModeModeB)
+                {
+                    string status = RequestGripCalReset();
+                    // The queue path answers "no car variant loaded yet" with a
+                    // sentence rather than a wipe, so it has to say which one.
+                    DashToast(status != null && status.StartsWith("No car", StringComparison.OrdinalIgnoreCase)
+                        ? "NO CAR LOADED YET - DRIVE FIRST"
+                        : "RE-LEARNING THIS CAR FROM SCRATCH");
+                    RaiseDashRemoteChanged();
+                    return;
+                }
+                DashToast(string.IsNullOrEmpty(_activeGame)
+                    ? "NO GAME RUNNING - START DRIVING FIRST"
+                    : "NOTHING TO CALIBRATE IN THIS GAME");
+            });
+
             this.AddAction("DashModeBToggle", (a, b) =>
             {
                 if (Settings == null) return;
@@ -2187,7 +2643,14 @@ namespace TrueforceForAll.Plugin
             this.AddAction("DashPluginToggle",   (a, b) =>
             {
                 DashNoteActivity();
-                SetPluginEnabled(!PluginEnabled);
+                // Acts on the EFFECTIVE state, as it always did, so one tap still
+                // turns the plugin on for the game you are in. A three-way cycle
+                // here read as a dead toggle: in a game the plugin had auto-yielded,
+                // the first tap moved to lights only and Dash.PluginOn stayed false,
+                // so it took three taps to do what one used to, via a mode the user
+                // never asked for. Lights only stays reachable from the settings
+                // panel, and off returns you to it if that is where you were.
+                SetMasterEnabledFromToggle(!PluginEnabled);
                 RaiseDashRemoteChanged();
             });
 

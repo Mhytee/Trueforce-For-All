@@ -375,7 +375,20 @@ namespace TrueforceForAll.Plugin.Effects
             // floor and let detector B handle low-speed transients.
             double slipAngleDeg = 0;
             double centripetalRequired = speedMs * yawRate;            // m/s²
-            if (centripetalRequired > 1.0)
+            // MEASURED beats inferred, outright. A source that publishes its
+            // velocity vector (iRacing) hands us the real angle between where the
+            // car points and where it is going, instantaneously and with a sign.
+            // The inference below is what made this effect feel like it was
+            // reporting body rotation rather than grip: it can only be solved
+            // when the car is ALREADY in settled circular motion, so the moment
+            // of breakaway, which is the whole cue, violates its one assumption,
+            // and acos amplifies noise precisely where the two inputs nearly
+            // cancel, which is everywhere below a real slide.
+            if (f.SideslipDeg is double measuredBeta)
+            {
+                slipAngleDeg = Math.Abs(measuredBeta);
+            }
+            else if (centripetalRequired > 1.0)
             {
                 double cosBeta = lateralG / centripetalRequired;
                 if (cosBeta > 1.0) cosBeta = 1.0;
@@ -386,18 +399,56 @@ namespace TrueforceForAll.Plugin.Effects
             // than the previous 25° so heavy drifts have headroom to feel
             // "louder than" moderate ones, gives ~5× dynamic range from
             // light slip to heavy across β=10°→50°, addressing "feels static."
-            double slipDeadband = 5.0  / Math.Max(0.3, Sensitivity);
-            double slipFullDeg  = 50.0 / Math.Max(0.3, Sensitivity);
+            // Two different quantities need two different scales, and using one
+            // for both is why the measured path only spoke at extreme slide.
+            //
+            // The 5 / 50 degree pair was calibrated against the INFERRED angle,
+            // which acos inflates: noise between lateral g and yaw rate reads as
+            // tens of degrees. Real sideslip is small. Measured on an MX-5 Cup at
+            // 1.3 g of cornering, beta ran 0.2 to 2.3 degrees (owner log,
+            // 2026-08-16), so a 50 degree full scale put a genuine slide at three
+            // percent of the effect and asked a physically impossible angle for
+            // all of it. That is the "only surfaces at extreme slide" report.
+            //
+            // Measured scale: 1 degree of deadband, to allow the slip every
+            // cornering tire carries, and 10 degrees for full, a car well
+            // sideways.
+            double slipDeadband, slipFullDeg, fullFloor;
+            if (f.SideslipDeg.HasValue)
+            {
+                slipDeadband =  1.0 / Math.Max(0.1, Sensitivity);
+                slipFullDeg  = 10.0 / Math.Max(0.1, Sensitivity);
+                // The inferred path floors full scale at 5 degrees, which is
+                // wider than this ENTIRE range and would undo the rescale at any
+                // sensitivity above 2. Guard against divide-by-zero, nothing more.
+                fullFloor = 0.5;
+            }
+            else
+            {
+                slipDeadband = 5.0  / Math.Max(0.3, Sensitivity);
+                slipFullDeg  = 50.0 / Math.Max(0.3, Sensitivity);
+                fullFloor = 5.0;
+            }
             double slipExcess   = Math.Max(0, slipAngleDeg - slipDeadband);
-            double driftFromSlipAngle = Math.Min(1.0, slipExcess / Math.Max(5.0, slipFullDeg));
+            double driftFromSlipAngle = Math.Min(1.0, slipExcess / Math.Max(fullFloor, slipFullDeg));
 
             // Detector B, centripetal imbalance (transient breakaway).
             // Catches the moment of rear breakout at speeds too low for the
             // slip-angle formula to be reliable, and during rapid yaw acceleration.
+            // Silent when detector A is measured rather than inferred. This one
+            // exists to cover A's blind spots, and it pays for that by firing on
+            // yaw rate exceeding what lateral g implies, which is to say ON THE
+            // CAR ROTATING. That is the "it goes off just from turning, and late"
+            // complaint in one line: body rotation lags the tire letting go, so
+            // as a grip cue it is both wrong and behind. With a true velocity
+            // vector, A already sees the slide the instant lateral velocity
+            // appears and needs no help.
             double expectedYaw = (speedMs > 0.1) ? lateralG / speedMs : 0;
             double yawExcess   = Math.Max(0, yawRate - expectedYaw - 0.08);
             double driftScale  = 0.33 / Math.Max(0.1, Sensitivity);
-            double driftFromExcess = Math.Min(1.0, yawExcess / Math.Max(0.05, driftScale));
+            double driftFromExcess = f.SideslipDeg.HasValue
+                ? 0.0
+                : Math.Min(1.0, yawExcess / Math.Max(0.05, driftScale));
 
             double driftNorm = Math.Max(driftFromSlipAngle, driftFromExcess);
             double rawTraction = Math.Max(wheelspinNorm, driftNorm);
@@ -429,7 +480,7 @@ namespace TrueforceForAll.Plugin.Effects
                     // DiagLog, not SimHub.Logging: the Engine assembly has no
                     // SimHub reference; the plugin injects the logger sink.
                     DiagLog?.Invoke(
-                        $"[TF4ALL] traction diag | spd={speedKmh:F1} thr={throttlePct:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} β={slipAngleDeg:F1}° | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
+                        $"[TF4ALL] traction diag | spd={speedKmh:F1} thr={throttlePct:F0} | yawDeg={yawRateDeg:F1} sway={swayRaw:F2} cent={centripetalRequired:F2} β={slipAngleDeg:F1}°{(f.SideslipDeg.HasValue ? " MEASURED" : " inferred")} | dSlip={driftFromSlipAngle:F2} dExc={driftFromExcess:F2} ws={wheelspinNorm:F2} | peak={_peakSlipSinceLastLog:F2} ema={_slipEma:F2}");
                 }
                 _lastDiagLogTicks = now;
                 _peakSlipSinceLastLog = 0;

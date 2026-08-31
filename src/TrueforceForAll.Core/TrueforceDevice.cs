@@ -88,6 +88,17 @@ namespace TrueforceForAll.Core
         private long _packetsSent;
         public long PacketsSent => System.Threading.Interlocked.Read(ref _packetsSent);
 
+        // Every packet this object has put on the stream endpoint: the init
+        // sequence, the mode commands, samples, keepalives, the teardown
+        // silence. Counted BEFORE each write, so a capture of the same wire
+        // can never run ahead of it. The plugin subtracts this from what the
+        // FFB tap saw on that endpoint to find packets that are not ours (a
+        // game's native Trueforce streaming beside us; see
+        // TrueforceStreamContentionDetector). PacketsSent stays what it was:
+        // sample packets only, the liveness heartbeat.
+        private long _ep3Writes;
+        public long Ep3Writes => System.Threading.Interlocked.Read(ref _ep3Writes);
+
         // 13-slot rolling window of u16 offset-binary samples (newest at index Window-1).
         private readonly ushort[] _window = new ushort[Window];
         private ushort _lastCurrent = 0x8000;
@@ -127,19 +138,27 @@ namespace TrueforceForAll.Core
         // Single-threaded use (only StreamTick touches it) so no sync needed.
         private readonly ushort[] _newSamplesScratch = new ushort[NewPerPacket];
 
-        // Optional FFB target source. Returns AC's most-recent FFB target as a
-        // signed int16 if it was captured within FfbTargetMaxAgeMs, or null
-        // otherwise. We use this as cur (bytes 6-9) for active packets so AC's
-        // FFB drives the motor while our audio overlays in the rolling window
-        // (cur = torque target, window = additive overlay: confirmed by
-        // mescon's Linux driver on RS50, 2026-07).
+        // Optional FFB target source. Returns the game's FFB target as a signed
+        // int16, or null when the game is not driving the wheel. We use this as
+        // cur (bytes 6-9) for active packets so the game's FFB drives the motor
+        // while our audio overlays in the rolling window (cur = torque target,
+        // window = additive overlay: confirmed by mescon's Linux driver on RS50,
+        // 2026-07).
         //
-        // Threshold is large (10 seconds) because AC drops its HID++ FFB update
-        // rate dramatically when the FFB target hasn't changed (stationary wheel,
-        // straight road), a tight threshold makes us flap between active and
-        // keepalive on every quiet moment, which drops Trueforce audio. The
-        // wheel firmware itself maintains the last-commanded force indefinitely
-        // when AC stops sending updates, so mirroring that semantic is correct.
+        // The ONLY arbitration this class does is HasValue: a value means the
+        // active shape (cur + audio window), null means keepalive (no audio,
+        // the wheel reverts to its native FFB). Everything about freshness
+        // lives in the provider. The plugin's provider separates two questions:
+        // a value older than 500 ms is never replayed (a held force must not
+        // walk the wheel to lock), but while the game session is live and the
+        // capture healthy the pump still gets an active packet with zero
+        // force, so the effects keep playing through the quiet spells of a
+        // parked or held wheel. The Logitech force path never resends an
+        // unchanged value (owner's captures, 2026-08-28: 0.5 to 7.5 s holes
+        // are routine at a standstill; a tester's RS50 sat 25 s), which is
+        // why no clock window is right for that. The wheel firmware itself
+        // maintains the last-commanded ep0 force indefinitely when the game
+        // stops sending updates.
         public Func<short?> FfbTargetProvider { get; set; }
         public int FfbTargetMaxAgeMs { get; set; } = 10000;
 
@@ -175,6 +194,25 @@ namespace TrueforceForAll.Core
         // applies different gain to ep3 cur vs ep0 PID FFB (1.0 = identity).
         public bool  FfbInvertSign { get; set; } = true;
         public float FfbScale      { get; set; } = 1.0f;
+
+        /// <summary>Skip FfbInvertSign and FfbScale for this packet's target.
+        /// Set while a mode AUTHORS the force outright rather than mirroring the
+        /// game's tapped FFB.
+        ///
+        /// Both of those exist to reconcile a TAPPED value with this endpoint:
+        /// the sign because ep0 HID++ FFB and ep3 cur disagree by convention,
+        /// the scale because the firmware may weight the two differently.
+        /// Neither correction means anything when we produced the number
+        /// ourselves, and applying them anyway leaves a user adjusting a
+        /// tapped-path control to fix a path that has no tap in it.
+        ///
+        /// Deliberately NOT set for Mode B or spring mode. Their output is
+        /// authored to come out right AFTER the inversion, so switching it off
+        /// under them would flip the force direction and have the wheel fight
+        /// the driver, and dropping the scale would jump their strength. Those
+        /// recipes are tuned WITH these applied; only a mode that was authored
+        /// knowing this flag exists may set it.</summary>
+        public volatile bool FfbBypassTapCorrections;
 
         // IIR low-pass time constant (ms) applied to the captured FFB target
         // before it goes into ep3 cur. AC's HID++ FFB updates at ~140 Hz (every
@@ -343,6 +381,7 @@ namespace TrueforceForAll.Core
                 {
                     Buffer.BlockCopy(InitData.Packets[i], 0, pkt, 0, InitData.PacketLen);
                     pkt[InitData.SeqOffset] = (byte)((i + 1) & 0xFF);
+                    System.Threading.Interlocked.Increment(ref _ep3Writes);
                     _stream.Write(pkt);
                     PrecisionSleepUs(InitInterPacketUs);
                 }
@@ -462,6 +501,26 @@ namespace TrueforceForAll.Core
 
         public void Pause()  => _paused = true;
         public void Resume() => _paused = false;
+
+        // Resume ramp. After the stop-stream pause gate hands the wheel back
+        // to Trueforce mode, the first force target would otherwise arrive as
+        // a step from zero and snap the wheel hard (owner, FH6 pause resume,
+        // 2026-08-15). Armed at the resume; the clock starts at the FIRST
+        // real force target after it (the tap is kept cleared across the
+        // transition, so that target can lag the resume by a few hundred ms
+        // and a resume-stamped clock would eat the ramp).
+        private const int ResumeRampMs = 300;
+        private volatile bool _resumeRampArmed;
+        private long _resumeRampStartTicks;   // stream thread only once armed
+
+        /// <summary>Arm the resume ramp: the next force target fades in over
+        /// ResumeRampMs instead of stepping, so re-entering Trueforce mode
+        /// after a pause does not snap the wheel.</summary>
+        public void BeginResumeRamp()
+        {
+            _resumeRampStartTicks = 0;
+            _resumeRampArmed = true;
+        }
 
         /// <summary>True while sample emission is paused (Pause(), or a
         /// dispatched protocol Stop), or when a Stop is queued but not yet
@@ -673,6 +732,7 @@ namespace TrueforceForAll.Core
                 try
                 {
                     BuildSilentPacket(_packetBuf, _seq++);
+                    System.Threading.Interlocked.Increment(ref _ep3Writes);
                     _stream?.Write(_packetBuf);
                     _lastCurrent = 0x8000;
                     _lastFfbOutput = 0;
@@ -695,6 +755,7 @@ namespace TrueforceForAll.Core
                 int templateIdx = (cmd == 0x04) ? 66 : 67;       // packet #67 / #68 (0-indexed)
                 Buffer.BlockCopy(InitData.Packets[templateIdx], 0, _packetBuf, 0, PacketLen);
                 _packetBuf[InitData.SeqOffset] = _seq++;
+                System.Threading.Interlocked.Increment(ref _ep3Writes);
                 try { _stream.Write(_packetBuf); }
                 catch { _streamFaulted = true; _shuttingDown = true; return; }
                 _paused = (cmd == 0x04);
@@ -764,9 +825,11 @@ namespace TrueforceForAll.Core
             // ep3 cur (active mode), and switching between them at audio start/end
             // is felt as "jerky" FFB. Window carries audio if we have any, else
             // silence-center samples (additive zero, wheel feels only cur).
-            // Keepalive only fires when the FFB tap is stale (AC closed / idle
-            // > FfbTargetMaxAgeMs), so any other game's native FFB still works
-            // when our plugin is running but AC isn't.
+            // Keepalive only fires when the provider returns null: no game has
+            // driven the wheel within FfbTargetMaxAgeMs (the provider's own
+            // rule; a quiet spell shorter than that arrives here as an active
+            // zero). So any other game's native FFB still works when our
+            // plugin is running but the tapped game isn't.
             bool hasAudio = (n > 0);
             if (hasAudio)
             {
@@ -786,6 +849,23 @@ namespace TrueforceForAll.Core
             if (_paused && !forceActive) return;
 
             short? ffbTargetMaybe = FfbTargetProvider?.Invoke();
+            // Resume ramp: fade the first post-resume force in instead of
+            // stepping to it (see BeginResumeRamp).
+            if (ffbTargetMaybe.HasValue)
+            {
+                if (_resumeRampArmed)
+                {
+                    _resumeRampArmed = false;
+                    _resumeRampStartTicks = Stopwatch.GetTimestamp();
+                }
+                if (_resumeRampStartTicks != 0)
+                {
+                    double rampMs = (Stopwatch.GetTimestamp() - _resumeRampStartTicks)
+                                    * 1000.0 / Stopwatch.Frequency;
+                    if (rampMs >= ResumeRampMs) _resumeRampStartTicks = 0;
+                    else ffbTargetMaybe = (short)(ffbTargetMaybe.Value * (rampMs / ResumeRampMs));
+                }
+            }
             _lastFfbTarget = ffbTargetMaybe ?? (short)0;
             bool sendActive = ffbTargetMaybe.HasValue || forceActive;
 
@@ -933,8 +1013,11 @@ namespace TrueforceForAll.Core
                     }
 
                     int t = (int)Math.Round(_smoothedFfb);
-                    if (FfbInvertSign) t = -t;
-                    if (FfbScale != 1.0f) t = (int)(t * FfbScale);
+                    if (!FfbBypassTapCorrections)
+                    {
+                        if (FfbInvertSign) t = -t;
+                        if (FfbScale != 1.0f) t = (int)(t * FfbScale);
+                    }
 
                     // Transient-detector soft ceiling. Tracks a slow-follower
                     // envelope of |t| (200ms TC) and treats only the excess
@@ -994,6 +1077,7 @@ namespace TrueforceForAll.Core
 
             try
             {
+                System.Threading.Interlocked.Increment(ref _ep3Writes);
                 _stream.Write(_packetBuf);
                 System.Threading.Interlocked.Increment(ref _packetsSent);
             }

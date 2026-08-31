@@ -42,6 +42,12 @@ __*
 # distilled open-bug backlog. Local maintainer reference only, not public docs.
 /docs/archive/
 /docs/open-backlog.md
+# per-release test plans: working checklists, not repo material.
+/docs/testplan-*.md
+# in-progress design note for a later cycle; local until it lands as work.
+/docs/lovely-car-data-integration.md
+/docs/lightsync-slot-protocol.md
+/docs/lightsync-tab-design.md
 
 # Local agent orientation file (build/deploy gotchas, architecture map).
 # Per-developer, not a public doc.
@@ -59,3 +65,6 @@ __*
 /SimHub.Plugins.*.resources
 /*.leonardo.hex
 /UsersmhyteAppDataLocalTemp*
+
+# Scratch from a source-recovery session: decompiled dumps, not source.
+.tmpfix/

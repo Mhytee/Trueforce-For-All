@@ -168,8 +168,8 @@ namespace TrueforceForAll.Plugin
             }
 
             root.Children.Add(new TextBlock {
-                Text = "Supporting us on Patreon helps us keep the plugin free for everybody "
-                     + "and continue our work on the project. It costs real money to run: a "
+                Text = "Supporting us on Patreon helps us keep the plugin free for everybody. "
+                     + "It costs real money to run: a "
                      + "server for the community features, games bought purely to test against, "
                      + "and a lot of hours.",
                 Foreground = TextFg, FontSize = 12,

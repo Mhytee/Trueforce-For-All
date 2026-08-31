@@ -14,6 +14,19 @@ using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
 {
+    /// <summary>What the plugin is allowed to do at all: the master switch every
+    /// subsystem asks before it starts. Off means off, including the wheel's
+    /// lights, which used to keep being written while "disabled".</summary>
+    public enum TrueforceMasterMode
+    {
+        Off = 0,            // touch nothing: no stream, no capture, no wheel writes
+        LightsyncOnly = 1,  // set the wheel's Lightsync patterns only: no ep3 stream, no FFB tap, no effects
+        // "Normal", not "Full": this is the default and the one nearly everyone
+        // runs everywhere, so it should read as the baseline rather than the top of
+        // a ladder. "Full" invited "what am I missing?" in the other two.
+        Normal = 2,         // everything, with the per-game switch underneath it
+    }
+
     /// <summary>How a PC treats FFB tuning synced from a DIFFERENT wheel model.
     /// FFB always backs up regardless; this only governs whether it is APPLIED on
     /// restore/sync onto a mismatched wheel. Per-PC (tied to this device's wheel).</summary>
@@ -26,36 +39,79 @@ namespace TrueforceForAll.Plugin
 
     public sealed class TrueforceSettings
     {
-        // Master enable. When false, ProducerLoop skips rendering and the
-        // wheel is told to return to its native FFB/Trueforce path, useful
-        // for games that ship native Trueforce support (iRacing) where our
-        // ep3 stream would conflict with the game's own.
+        // Master enable, RETIRED as an input on 2026-08-24 and kept as a
+        // DERIVED mirror of MasterMode == Full (the RpmLedUnlocked precedent
+        // below). Still written on every mode change, still backed up, still
+        // read by the ep3 pause gate and the producer loop, so an older build
+        // reading a newer settings file sees exactly the answer it expects:
+        // Lightsync-only and Off both look like "disabled" to anything that
+        // only knows the bool, which is the safe reading in both cases.
+        //
+        // When false, ProducerLoop skips rendering and the wheel is told to
+        // return to its native FFB/Trueforce path, useful for games that ship
+        // native Trueforce support (iRacing) where our ep3 stream would
+        // conflict with the game's own.
         public bool PluginEnabled { get; set; } = true;
 
-        // Auto-link with MAIRA. When on (default), TF4ALL watches for MAIRA's
-        // "Pass FFB signal through TF4ALL" shared memory; the moment MAIRA's
-        // toggle goes on (it then stops sending PID to the wheel and publishes
-        // its force + RPM), TF4ALL renders that force through the Trueforce ep3
-        // stream and drives the rim LEDs. No PID on the HID++ pipe => LEDs and
-        // FFB stop fighting (the device-level 0x807A vs 0x8123 mutual
-        // exclusion only bites when PID is present). When MAIRA isn't passing
-        // through, the map is absent and TF4ALL uses the USBPcap FFB tap
-        // exactly as before. Set false only to force the legacy USBPcap path
-        // and ignore MAIRA entirely.
-        public bool MairaFfbPassthrough { get; set; } = true;
+        // The real master switch. Off touches nothing at all; LightsyncOnly
+        // runs the wheel's lights and nothing else (no ep3 stream, no USBPcap
+        // capture, no helper exe, no telemetry sources, no effects); Full is
+        // everything, with the per-game switch underneath it.
+        //
+        // Defaults to Full so a fresh install behaves exactly as it always
+        // has. Existing installs are translated once by MasterModeMigratedV1.
+        [JsonConverter(typeof(StringEnumConverter))]
+        public TrueforceMasterMode MasterMode { get; set; } = TrueforceMasterMode.Normal;
+
+        // One-shot latch for the PluginEnabled -> MasterMode translation.
+        // EXCLUDED from backup: carrying "already migrated" onto a machine
+        // whose settings predate the mode would make it skip its own
+        // translation and inherit a default instead of the user's choice.
+        public bool MasterModeMigratedV1 { get; set; } = false;
 
         // Drive the wheel's rev lights while Telemetry Based FFB (Mode B) is
         // on. On by default: Mode B means the game's own FFB is quiet on the
         // HID++ pipe (tap-proven, fail-closed in the gate), so the 0x807A
         // LED writes are safe. A toggle exists because Mode B will reach
         // games that drive the wheel's rev lights natively; there the user
-        // turns ours off. The iRacing (MAIRA passthrough) LED path is NOT
-        // gated by this: it is on whenever the passthrough is live, which
-        // is the equivalent safe condition.
+        // turns ours off. This is now the ONLY rim-LED gate: the second one
+        // rode an external iRacing FFB handoff that has been removed, and
+        // native iRacing telemetry FFB will bring its own gate when it lands.
         // (Replaces RpmLedsEnabled, retired 2026-08-01: one master switch
         // labeled "iRacing" silently gated the Mode B lights too, and a
         // stored false darkened the wheel with no visible cause.)
         public bool ModeBRevLightsEnabled { get; set; } = true;
+
+        // Per-car rev-light pattern picks: "{game}/{carId}" -> effect 1-9
+        // (1-4 built-in patterns, 2 = outside-in; 5-9 the wheel's custom
+        // slots), same key shape as CarFactsSelection. ABSENCE of a key =
+        // the wheelbase's own selection, which is the only "default" there
+        // is: a global tier existed for a few hours on dev (RevLightEffect,
+        // removed 2026-08-12) and was cut because the wheelbase's own
+        // selector already IS the every-car choice, and a second one only
+        // added a concept and a resolver for the pickers to disagree over.
+        // We only ever SELECT a pattern the wheel already stores (fn3 =
+        // SET_EFFECT); the wheel's own selection is snapshotted at arm and
+        // put back when the lights release, so nothing here is permanent on
+        // the wheel. A preference, not a CarFact: custom slots 5-9 name
+        // THIS user's wheelbase slots, which mean nothing on another user's
+        // wheel, so this never travels in presets or community data.
+        // Collection must default EMPTY (the settings loader appends).
+        // Legacy 0 values (from the removed tier's testing day) read as
+        // "wheelbase's selection" and are dropped on the next write.
+        public Dictionary<string, int> CarRevLightEffect { get; set; }
+            = new Dictionary<string, int>();
+
+        // Per-car choice of one of OUR light patterns, keyed "game/carId" to the
+        // pattern's id. Separate from CarRevLightEffect above rather than
+        // overloading its int: the two name different things (a wheel effect
+        // number versus a pattern in our library), and keeping them apart means
+        // every existing remembered effect keeps working untouched. A car with an
+        // entry here wins, since choosing one of our patterns is the more
+        // specific act. Same rule as above: default EMPTY, never null, because
+        // the settings loader appends onto whatever is here.
+        public Dictionary<string, string> CarLightPattern { get; set; }
+            = new Dictionary<string, string>();
 
         // Drive the Dynamic OLED on the wheel's base (G PRO / RS50 only) while
         // Telemetry Based FFB (Mode B) is on. Same pipe and therefore the same
@@ -121,24 +177,39 @@ namespace TrueforceForAll.Plugin
         public bool OledGreetingEnabled { get; set; } = true;
         public string OledGreetingText { get; set; } = "HELLO WORLD";
 
-        // TEST OVERRIDE (access code OLEDANY). Runs the OLED regardless of the
-        // Mode B + quiet-FFB gate, so someone can find out whether a screen
-        // write actually disturbs a game's own HID++ force the way an LED write
-        // does. That has never been tested for this feature: the restriction is
-        // inherited from the rev lights. If it turns out to be harmless the
-        // screen could work in every game, which is why the question is worth a
-        // deliberately unsafe switch. Off by default and undocumented.
+        // Retired 2026-08-28. Was the OLEDANY test override that ran the OLED
+        // regardless of the Mode B + quiet-FFB gate; the question it existed
+        // to answer was settled (a screen write cuts a game's own force). The
+        // property stays only so old settings files and backups deserialize
+        // cleanly.
         public bool OledIgnoreModeBGate { get; set; } = false;
+
+        // Run the LEGACY F8 rev lights (G923 PS/PC, 0xC266 only) regardless of
+        // the quiet-FFB gate, so a G923 PS owner can answer the one question
+        // nobody has been able to: in a game that drives its OWN force, do the
+        // five rev LEDs light, and does writing them cut that force?
+        //
+        // Production cannot answer it. The gate fails closed, so in that case it
+        // clears the strip rather than writing, and the tester learns only that
+        // the gate works. F8SWEEP can write through the gate but sweeps a
+        // synthetic ramp, which means watching a test pattern instead of driving
+        // and revving: it answers "does a write cut force" and not "do my rev
+        // lights work". This runs the REAL rev-light path off real revs.
+        //
+        // Scoped to the F8 path on purpose. For the HID++ wheels the contention
+        // model is settled (any force on that endpoint plus an LED write cuts
+        // the force); the open question is only whether the same holds on the
+        // gamepad collection this report rides. Off by default and undocumented.
+        public bool F8IgnoreQuietGate { get; set; } = false;
 
         // Take the OLED over for a few seconds when a lap finishes: the time
         // alone for a personal best, the time over the delta otherwise.
         public bool OledLapResult { get; set; } = true;
 
-        // Retired unlock for the old rim-LED / MAIRA-passthrough settings
-        // section (access codes MAIRA / TEST). The section is permanently
-        // hidden since 2026-08-01: Marvin declined the passthrough, so the
-        // UI stays parked until a MAIRA fork revives it. The property stays
-        // so old settings files and backups deserialize cleanly.
+        // Retired unlock for the old rim-LED settings section. The section is
+        // permanently hidden since 2026-08-01 and the external FFB handoff it
+        // configured has been removed. The property stays only so old settings
+        // files and backups deserialize cleanly.
         public bool RpmLedUnlocked { get; set; } = false;
 
         // One-time latch for the iRacing "disable native Trueforce in app.ini"
@@ -147,10 +218,50 @@ namespace TrueforceForAll.Plugin
         // so a restored backup on a new machine should show the notice again.
         public bool IRacingTrueforceNoticeDismissed { get; set; } = false;
 
+        // The games (SimHub names) whose "the plugin stepped aside" notice the
+        // user dismissed for good: a stand-down for a second Trueforce stream
+        // (a native game's, MAIRA's) pops it once per demotion until the game
+        // is in here. Per game, because the answer differs per title: someone
+        // who leaves iRacing's Trueforce on by choice still wants to hear about
+        // it in ACC. Machine-local in backup like the iRacing notice; which
+        // programs share this PC's wheel is a per-PC fact. Defaults EMPTY: the
+        // settings loader appends onto collections it finds.
+        public List<string> StandDownNoticeDismissedGames { get; set; } = new List<string>();
+
+        // The "MAIRA detected: rev lights are off" popup, dismissed for good.
+        // Only the popup: the amber line in the panel keeps showing for as long
+        // as MAIRA's force is arriving through the capture, so the state never
+        // goes unseen. Machine-local in backup like the other notice latches.
+        public bool MairaTapNoticeDismissed { get; set; } = false;
+
         // Per-game auto-remembered enable state. When the active game changes,
         // the plugin looks up this dict and applies the saved value (default
         // true for games never seen before). Independent of preset assignment.
         public Dictionary<string, bool> GameEnabled { get; set; } = new Dictionary<string, bool>();
+
+        // The per-game choice, as a MODE rather than a bool.
+        //
+        // GameEnabled could only ever say Normal or Off, so "Lightsync only for
+        // this game" was not expressible: it had to be taken globally, which meant
+        // a user who wanted the lights but not the force in ONE title gave up the
+        // force everywhere. That made the per-game switch a narrower thing than the
+        // master switch while wearing the same name.
+        //
+        // GameEnabled is still written alongside this, as mode == Normal, so
+        // everything that reads it keeps working: the share dialogs and the preset
+        // manager enumerate its keys for "games this install has seen", and an
+        // older build reads it and behaves exactly as it did before.
+        //
+        // Dictionary, not a list, for the loader reason on DashTabOrder: SimHub's
+        // serializer reuses a pre-populated instance, which APPENDS to a list but
+        // merely sets keys on a dictionary.
+        public Dictionary<string, TrueforceMasterMode> GameModes { get; set; }
+            = new Dictionary<string, TrueforceMasterMode>();
+
+        // One-time: GameEnabled -> GameModes, false becoming Lightsync only rather
+        // than Off. Excluded from backup like the other migration latches, so a
+        // second PC still runs its own.
+        public bool GameModeMapMigratedV1 { get; set; } = false;
 
         // Per-game audio-capture exe override. Keyed by SimHub GameName
         // (including Custom_xxx codes for user-added games), value is the
@@ -183,8 +294,8 @@ namespace TrueforceForAll.Plugin
         // redline), so a tune that changes the engine stores separately, but
         // a tire-only (or aero / suspension) tune keeps the same slot: the
         // learner re-converges in place (rises within a lap of pushing, falls
-        // over a few minutes of cornering time), and the RESETGRIP access
-        // code wipes the active slot on demand. Written as the player drives
+        // over a few minutes of cornering time), and the grip auto-cal reset
+        // wipes the active slot on demand. Written as the player drives
         // (where each variant's combined-slip metric actually tops out plus
         // how much near-limit seat time backs that estimate) so the next
         // session starts calibrated. Zero user action; the grip auto-cal
@@ -254,8 +365,8 @@ namespace TrueforceForAll.Plugin
         // any incoming Forza_<n> to Car_<n> before every lookup, so an
         // un-normalized Forza_<n> car file / default binding can never be
         // found again and the user's per-car tuning silently stops applying.
-        // On the first launch after this build ships we run the same
-        // normalization the NORMALIZEFORZA dev tool performs (rename folders,
+        // On the first launch after this build ships we run a one-time
+        // normalization (rename folders,
         // rewrite CarId + PresetName + both car-defaults.json files + the live
         // Settings.CarDefaults/CarOverrides dicts) so those tunings keep
         // applying. Idempotent and content-preserving (a Forza_<n> that
@@ -503,13 +614,34 @@ namespace TrueforceForAll.Plugin
         // without overriding a later user opt-out.
         public bool FeedbackBoxDefaultedOn { get; set; } = false;
 
+        // Show the per-gear redline editor in the Car facts panel. Default off:
+        // community data showed nobody shares per-gear values, so the editor is
+        // opt-in clutter control. UI-only; saved per-gear values keep applying
+        // to the wheel, and a variant that has them shows the editor regardless
+        // (see RebuildPerGearEditors) so stored data is never invisibly active.
+        public bool ShowPerGearRedlineEditor { get; set; } = false;
+
         // TF4ALL Remote dash: rev-strip fill direction. false = left to right;
         // true = outside-in (default), both ends lighting first and converging
         // on the center, which is what the wheel's own rev lights do and what
         // most cars with center-converge shift lights do.
         // Surfaced in the Settings tab's "Remote dashboard" section; the dash
         // reads it live (Dash.RevOutsideIn) so a change applies instantly.
+        //
+        // Read only when DashRevStripAuto is off, or when it is on and there is
+        // no wheel to follow. Kept as its own field rather than folded into a
+        // three-way mode so turning Auto off returns the user to the direction
+        // they had picked instead of a default.
         public bool DashRevStripOutsideIn { get; set; } = true;
+
+        // TF4ALL Remote dash: let the rev strip follow the wheel instead of
+        // drawing its own. On (default) the strip takes its colors, its fill
+        // direction and its switch-on points from the wheel's live rev lights
+        // (Dash.Lights.*), so the phone shows the rim, per-car published light
+        // data included. Falls back to the strip's own green-amber-red ramp on
+        // any rig with no level-capable Logitech wheel, so this costs nothing to
+        // leave on.
+        public bool DashRevStripAuto { get; set; } = true;
 
         // TF4ALL Remote dash: which tab the dash opens on when SimHub starts.
         // Remember-last wins while on (the dash reopens where it was left,
@@ -616,6 +748,16 @@ namespace TrueforceForAll.Plugin
         // positions and simply never appears in the ones that do not, the
         // Forza titles included.
         public bool DashSpotterEnabled { get; set; } = true;
+
+        // TF4ALL Dash incident points: the running count under the speed on the
+        // Drive tab, a band across the top each time it moves, and the same
+        // announcement on the wheel base's OLED. iRacing only, because it is
+        // the only title that publishes a count; everywhere else the readout
+        // and the band simply never appear.
+        // On by default for the same reason the flag band is: it costs players
+        // of every other game nothing, and an incident you did not notice is
+        // the one that ends your race.
+        public bool DashIncidentsEnabled { get; set; } = true;
 
         // TF4ALL Dash idle mode: a full-screen card over whatever tab is open
         // once the car has been sitting still, showing an ambient animation,
@@ -799,16 +941,33 @@ namespace TrueforceForAll.Plugin
         public bool  FfbSpikeUseSlewLimiter   { get; set; } = true;
         public float FfbSpikeMaxLsbPerMs      { get; set; } = 2508.36f;
 
-        // Issue #13 test path (NOLOCK access code). When on, the plugin fully
-        // leaves Trueforce mode while the game is paused (SendStopCommand +
-        // Pause) so the wheel reverts to its native FFB, e.g. Forza's own
-        // auto-center, instead of us streaming a substitute force. This is the
-        // "behave like the plugin is disabled while paused" approach, which is
-        // the only thing confirmed to stop the G923/FH6 full-lock. Default off;
-        // the existing return-zero pause-release stays the default until this
-        // is validated on hardware, after which it can become the standard
-        // behaviour and this toggle removed.
-        public bool  StopStreamOnPause        { get; set; } = false;
+        // Hand the wheel back to the game while paused (the checkbox under
+        // Force feedback (advanced)). When on, the plugin
+        // fully leaves Trueforce mode while the game is paused (SendStopCommand
+        // + Pause) so the wheel reverts to its native FFB, e.g. Forza's own
+        // auto-center, instead of us streaming a substitute force. This is
+        // what stops the G923/FH6 pause full-lock (issue #13). Stable shipped
+        // it DEFAULT-ON in v0.1.24; the 0.2.x line left it opt-in by
+        // oversight, silently regressing upgraders, so 0.3.0 restores the
+        // shipped default (owner call 2026-08-15). The checkbox stays as the
+        // escape hatch for anyone who prefers the plugin to keep the wheel.
+        public bool  StopStreamOnPause        { get; set; } = true;
+
+        // One-time default repair marker for the above: beta-era settings
+        // files carry a stored false nobody chose (the regressed default), so
+        // the first 0.3.0 launch flips StopStreamOnPause on once. A user who
+        // turns it off afterward stays off.
+        public bool  StopStreamOnPauseMigrated { get; set; } = false;
+
+        // Release the wheel when the game is no longer the foreground window.
+        // Sibling of StopStreamOnPause, for the games its test cannot reach.
+        // That one needs an authoritative session flag or telemetry to stop; a
+        // title that keeps its car idling in the background satisfies neither,
+        // so alt-tabbing out of Wreckfest left the tap's last captured force
+        // streaming for its full 10 s hold with no self-aligning torque to
+        // oppose it, and the wheel walked to its rotational stop (owner,
+        // 2026-08-16). Same full-lock class as issue #13, different trigger.
+        public bool  ReleaseForceOnFocusLoss  { get; set; } = true;
 
         // Optional absolute path to USBPcapCMD.exe, set when the user picks a
         // custom USBPcap location via the "Browse..." action in the diagnostics
@@ -858,15 +1017,61 @@ namespace TrueforceForAll.Plugin
         // including USB bus traffic in exported logs.
         public bool   LogUsbBytesEnabled         { get; set; } = false;
 
-        // Opt-in experimental FFB-capture path (toggled by the FFBX access
-        // code). Enables in-progress capture work that isn't yet proven on
-        // hardware across the wheel range: HID++ very-long report 0x12
-        // extraction + 0x11/0x12 resolver summing + a lower index-resolve
-        // floor (issue #8, RS50 on FH6), and any future self-learning capture
-        // heuristics. Off = shipped behaviour, so existing users are untouched
-        // until a tester confirms a given wheel/game. Global, not per-preset:
-        // it's a capture-system behaviour, not a tuning.
+        // Retired 2026-08-28. Was the "Enable experimental FFB detection"
+        // opt-in that let the tap read HID++ very-long report 0x12 and use the
+        // lower index-resolve floor. Both are the default now: which report
+        // carries the force is decided per session by FfbReportArbiter. The
+        // property stays only so old settings files and backups deserialize
+        // cleanly.
         public bool   ExperimentalFfbCapture     { get; set; } = false;
+
+        // Read Assetto Corsa's force from the game itself: while driving AC,
+        // re-inject the game's own final FFB value (finalFF, a float in the
+        // vanilla physics shared-memory page, read at 1 kHz) into the
+        // Trueforce stream instead of decoding the wire with the USBPcap tap,
+        // which stays as the fallback. finalFF is AC's post-gain output, so
+        // the in-game force feedback gain must be above 0 for it to carry
+        // force; the source detects a value pinned at zero while driving and
+        // hands back to the tap. Opt-in (checkbox under Force feedback
+        // (advanced)); the tap stays the default. It was default-on for one
+        // evening on 2026-08-28: force came through on the owner's G PRO, but
+        // opening the wheel-base screen on it stalled the game's own rev-light
+        // writes, so the screen stayed gated and the default went back.
+        // Global, not per-preset: it selects a force source, not a tuning.
+        // TOMBSTONE (retired 2026-08-29): the "Read Assetto Corsa's force from
+        // the game itself" (finalFF) checkbox was replaced by the automatic CSP
+        // bridge. Kept so old settings files deserialize cleanly.
+        public bool   AcShmFfbEnabled            { get; set; } = false;
+
+        // CSP bridge force: read AC's PRE-gain force (ffbPure) from the
+        // TF4ALL CSP script's shared-memory block instead of finalFF or the
+        // wire, so the in-game gain can sit at 0 (the game then writes
+        // nothing to the wheel, so LED and screen writes never collide with
+        // force) and the wheel still gets the sim's force. Needs the script
+        // from gamemods/AssettoCorsaCsp installed and enabled in CSP. Behind
+        // the CSPFFB access code while it is being proven; global for the
+        // same reason as AcShmFfbEnabled.
+        // Master enable for the automatic Assetto Corsa CSP bridge. Default
+        // ON: the bridge only supplies when its script is installed and running,
+        // so "on" means "use it automatically when present". Exists mainly as a
+        // dev force-off (the CSPFFB access code); there is no user checkbox.
+        public bool   CspBridgeFfbEnabled        { get; set; } = true;
+
+        // Set when the player declines the CSP bridge script install offer (or
+        // when the slot is taken), so the one-time dialog stays quiet. Cleared
+        // when they ask to install from the guide. Per-PC install state, like
+        // FsModInstallDeclined.
+        public bool   CspBridgeInstallDeclined   { get; set; } = false;
+
+        // Which CSP bridge field the force comes from while CspBridgeFfbEnabled:
+        // "pure" (default; the sim's pre-gain normalized force), "torque" (the
+        // raw column torque in Nm, scaled by CspBridgeMaxNm), or "final"/"value"
+        // (post-gain, for A/B comparison with the in-game gain up). Pure and
+        // torque are the only ones that carry force at gain 0. Behind CSPFFB.
+        public string CspBridgeFfbField         { get; set; } = "value";
+        // Full-scale column torque (Nm) for the "torque" field: this many Nm
+        // maps to full device force. The G PRO tops out near 11 Nm.
+        public double CspBridgeMaxNm            { get; set; } = 10.0;
 
         // EXPERIMENTAL: claim sole wheel ownership through the TFFA kernel
         // filter driver and route the game's intercepted HID++ FFB writes
@@ -885,10 +1090,10 @@ namespace TrueforceForAll.Plugin
         // ShowManualOverrideUi unlock pattern.
         public bool   DriverTestingUnlocked       { get; set; } = false;
 
-        // Latches once the user acts on (or dismisses) the one-time banner that
-        // appears when experimental FFB detection was load-bearing in getting
-        // their wheel working, asking them to file a compatibility report. Keeps
-        // the prompt from re-nagging every session.
+        // Retired 2026-08-28. Latched the one-time "is your force feedback
+        // working now?" banner that followed the experimental FFB detection
+        // opt-in; both are gone. The property stays only so old settings files
+        // and backups deserialize cleanly.
         public bool   ExperimentalSuccessReportDismissed { get; set; } = false;
 
         public float FfbPeakSoftLimitLsb      { get; set; } = 2061.90f;
@@ -923,6 +1128,141 @@ namespace TrueforceForAll.Plugin
         public Dictionary<string, bool> ModeBGameEnabled { get; set; }
             = new Dictionary<string, bool>();
         public float ModeBSatGain   { get; set; } = 0.50f; // peak torque fraction; the G PRO default (owner 2026-08-01). RS50/G923 get their own via ApplyWheelDefaults.
+        // Strength for the iRacing RESHAPE path, deliberately its own field
+        // rather than sharing ModeBSatGain. That one is a peak-torque fraction
+        // for the synthesis model, defaults to 0.50 and is tuned per wheel; the
+        // reshape path is already normalized by the sim's own
+        // SteeringWheelMaxForceNm, so its honest default is 1.0, meaning
+        // "deliver exactly the torque iRacing asked for". Wheel-independent for
+        // the same reason: the driver's in-sim max force setting already
+        // encodes their wheel.
+        public float IRacingForceGain { get; set; } = 1.0f;
+
+        // Full scale in Nm: the torque at which the wheel is asked for
+        // everything it has. 0 means "ask iRacing", which is the default and is
+        // usually right, because iRacing's own max-force setting is exactly this
+        // number and the driver already tuned it.
+        //
+        // An override exists because relying on it silently is confusing: that
+        // setting lives inside a sim whose force feedback the user has just been
+        // told to switch off, so it looks like a dead knob controlling a live
+        // one. Anybody who would rather state their wheel's rating here and
+        // forget iRacing's menu can, and anybody whose iRacing value is nonsense
+        // is no longer stuck with it.
+        public float IRacingMaxForceNmOverride { get; set; } = 0.0f;
+
+        // Where full scale comes from, which decides whether cars keep their
+        // relative weight. The mechanism is one line of arithmetic:
+        //
+        //     force = torque / divisor
+        //
+        // A divisor that VARIES PER CAR and equals that car's own peak makes
+        // every car arrive at full force at its own limit: 10/10 and 20/20 both
+        // reach 1, so the cars are flattened BY DEFINITION. A divisor that is
+        // the SAME for every car preserves the ratio: 10/D against 20/D is still
+        // 2:1, so a heavy car really does push harder.
+        //
+        // Note this depends only on whether the divisor varies, NOT on where it
+        // came from. A per-car number flattens whether it was learned or read
+        // out of iRacing, which is easy to get backwards when naming these.
+        // (A planned mode-enum for this taxonomy was removed unread in 0.3.0;
+        // the per-car flag below plus the override above ARE the mechanism, and
+        // a stable-reference "relative" mode is a later-cycle design.)
+
+        // Keep a separate Max force per car, the way iRacing itself does.
+        //
+        // This single switch is what decides whether cars keep their relative
+        // weight, and it decides it for the reason the arithmetic above gives:
+        //   OFF, one shared number is the divisor for everything, so a car that
+        //        makes twice the torque pushes twice as hard. Set it from your
+        //        HEAVIEST car and nothing clips anywhere, while lighter cars sit
+        //        honestly below it.
+        //   ON,  each car gets its own, so every car reaches full force at its
+        //        own limit. Nothing clips, nothing feels weak, and nothing is
+        //        distinguishable either.
+        // Off by default: keeping cars distinct is the behaviour people expect
+        // when they have not asked for anything, and flattening is the opinion.
+        // RETIRED as a choice (owner, 2026-08-15): forced true at load, and the
+        // checkbox is gone. With nothing set both positions behaved identically
+        // (they fall through to iRacing's own per-car number), so it only ever
+        // decided where a typed number or an Auto press LANDED, while its copy
+        // sold it as deciding whether cars feel different. Off it was also a
+        // trap: Auto in a light car wrote the shared number and every heavier
+        // car then clipped. Per car matches how iRacing itself stores max
+        // force. The field stays so the resolution order below still reads
+        // per-car slot, then the legacy shared override for cars never tuned,
+        // then the sim's own figure.
+        public bool IRacingMaxForcePerCar { get; set; } = false;
+
+        // Per-car Max force in Nm, keyed by iRacing CarPath. Written by the Auto
+        // button, one car at a time, exactly like iRacing's own. Empty default
+        // matters: the settings loader APPENDS onto collections rather than
+        // replacing them, so a non-empty initializer would accumulate.
+        public Dictionary<string, float> IRacingMaxForceByCar { get; set; }
+            = new Dictionary<string, float>();
+        // Use iRacing's 360 Hz sub-tick torque as SLOPE, projecting the newest
+        // value forward between frames instead of holding it.
+        //
+        // This is not the earlier interpolation, which replayed the six samples
+        // from oldest to newest and so ran a full frame behind. That is pure
+        // phase lag inside a loop that closes through the sim (wheel position
+        // in, steering torque out), and it made the wheel oscillate at a
+        // standstill with the swings growing. Projecting forward instead is
+        // phase LEAD, which settles such a loop rather than upsetting it, and
+        // it still uses all six samples: they supply the trend.
+        //
+        // Bounded on purpose (never more than one frame ahead, never more than
+        // 15 percent of full scale away from the measured value), because an
+        // unbounded lead term is its own instability.
+        public bool IRacingUse360Hz { get; set; } = true;
+
+        // Which of the two ways of turning iRacing's 360 Hz torque into a 1 kHz
+        // stream is in use. Both render all six sub-samples; they differ in what
+        // they do about the fact that those samples describe the frame that just
+        // ENDED, so replaying them faithfully is inherently a frame behind.
+        //
+        //   0 = Lead.   Fit a line to the six, send that line projected forward
+        //               (so the part that pushes against your hands is current),
+        //               and replay only the leftover detail late. Nothing
+        //               loop-critical is delayed. Risk: a sharp hit has energy
+        //               in both parts, so splitting it can smear the strike.
+        //   1 = Replay. Play the six out in order through a Hermite curve,
+        //               keeping each event whole, then pull the whole thing
+        //               forward using the WHEEL's own velocity.
+        //               That predictor input is measured locally with no
+        //               telemetry delay, which makes it a better basis for
+        //               cancelling lag than extrapolating the laggy signal from
+        //               itself. Risk: prediction gain needs tuning per wheel.
+        //
+        // Kept as a user choice rather than a decision baked in blind: they are
+        // different trades, not better and worse, and the wheel is the judge.
+        //
+        // THE WHEEL JUDGED (owner rig, G PRO, 2026-08-15): Lead RINGS. Engine
+        // texture built into a growing oscillation that no damper setting
+        // cured, while Replay in the same session stayed clean, and turning
+        // prediction off brought the ring back in either mode. Read together
+        // that says the loop is delay-limited and Replay's predictor is what
+        // holds it together: its input is the WHEEL's own velocity, measured
+        // locally, so it supplies phase lead where the loop lost it. Lead
+        // projects the laggy telemetry from itself instead, which amplifies
+        // exactly the fast content the loop then feeds back. So Replay is the
+        // default now; Lead stays selectable for anyone whose wheel disagrees.
+        public int IRacingForceMode { get; set; } = 1;
+
+        // How far to TRUST the learned prediction. Not a tuning step: the whole
+        // point of learning the correction is that the user should not have to
+        // find a number. 1.0 means "use what it worked out", which is the
+        // correct default for a value derived from this car at this speed.
+        //
+        // It stays adjustable as an escape hatch, not as a dial to hunt with.
+        // Prediction can feel nervous to some drivers even when it is accurate,
+        // and 0 turns it off entirely, leaving a faithful but slightly late
+        // replay. Anyone who finds themselves changing this per car should tell
+        // us, because that would mean the learning is not doing its job.
+        //
+        // (Shipped briefly at 0.5, which was incoherent: halving a value the
+        // predictor derived is just a hand-tuned gain wearing a disguise.)
+        public float IRacingPredictGain { get; set; } = 1.0f;
         public float ModeBRiseGamma { get; set; } = 0.80f;   // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
         public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit
@@ -1089,11 +1429,119 @@ namespace TrueforceForAll.Plugin
         // Persisted so it stays on across restarts on a dev machine.
         public bool DevModeUnlocked { get; set; } = false;
 
-        // Escape hatch for the import preview modal. Toggled by the PREVIEWOFF
-        // access code. When true, RunImportFlow falls back to today's silent
-        // commit-on-pick path (per-file dispatch + summary MessageBox) so a
-        // user can recover if the modal breaks on a specific file. Default
-        // false: preview is on for everyone.
+        // LIGHTSYNC tab unlock. Set by the LIGHTSYNC access code while the
+        // lighting rework is in development. Locked (the default, and what any
+        // release shipped mid-rework carries) leaves the wheel-lights controls
+        // exactly where they have always been, on the Telemetry FFB tab; the
+        // new tab does not exist for the user. Unlocked reveals the tab and
+        // MOVES that one block into it, so there is only ever one copy of the
+        // controls and one set of handlers.
+        // Ships ON. The lighting work is released, so the tab is simply part
+        // of the plugin now, and this survives only as the toggle that puts the
+        // controls back on the Telemetry FFB tab for anyone who preferred them
+        // there. The LIGHTSYNC access code still flips it.
+        public bool LightsyncTabUnlocked { get; set; } = true;
+
+        // One-time: an install that predates the release has this stored FALSE,
+        // and a changed default never reaches a value already on disk, so those
+        // users would silently keep the tab hidden. Flipped once, then latched,
+        // so anyone who deliberately turns it off afterwards stays off.
+        public bool LightsyncReleasedMigrated { get; set; } = false;
+
+        // Whether per-car data from the community lovely-car-data project
+        // (CC BY-NC-SA 4.0) may drive the WHEEL'S LIGHTS: a car we have data for
+        // lights on its own switch-on points instead of our one-size ramp.
+        //
+        // This is the LIGHTING half only. Fetching the dataset, and using the
+        // per-gear redlines and blink rate that come with it, ride
+        // CommunityEnabled instead (see TrueforcePlugin.LovelyDataEnabled),
+        // because those work on every wheel while a pattern needs a wheel that
+        // can show one. Tying the whole feature to this checkbox put it out of
+        // reach of any wheel whose strip has a fixed look, since the LIGHTSYNC
+        // tab that holds the checkbox is collapsed for them.
+        //
+        // Stays default-off and opt-in on its own: lighting a car's pattern
+        // borrows one of the user's five wheel slots, and community features
+        // ship on, so folding the two together would start writing to the wheel
+        // of everyone who upgrades.
+        public bool LovelyCarDataEnabled { get; set; } = false;
+
+        // Which LIGHTSYNC custom slot the plugin borrows: 0..4 to pin CUSTOM 1..5,
+        // or -1 (the default) to work it out itself.
+        //
+        // Automatic is the default because WHICH slot gets borrowed is plumbing,
+        // not a decision anyone wants to make. Asked to show a pattern, the
+        // plugin takes the first slot that has never been programmed, and only
+        // when all five are in use, the last one. (See StageSlot for the full
+        // order. It does NOT use the slot the wheel is displaying; this comment
+        // said it did, and the guide copied that.)
+        //
+        // The borrowed slot's contents are read and saved before the first write
+        // and handed back on exit, so borrowing stays reversible. That is the
+        // BORROW path only: the top five library entries are written into the
+        // five slots permanently, with no backup, by SyncSlotsToWheel.
+        //
+        // Reachable only via the SLOTPICK<n> access code (listed by HELP): there
+        // is no control for it. Portable: the five slots exist on any of these
+        // wheelbases, so the preference travels.
+        public int LightsyncDynamicSlot { get; set; } = -1;
+
+        // Pin every deliberate pattern pick to the car you are in, without having
+        // to press Remember. Off by default: pinning is a per-car commitment, and
+        // someone flicking through patterns to look at them should not end up with
+        // whichever one they stopped on bound to that car forever.
+        //
+        // Only DELIBERATE picks count (a dropdown, a pattern-editor row, a bound
+        // cycle button). Applying a pattern the car already remembers, or restoring
+        // one, does not re-pin anything.
+        public bool AlwaysRememberCarPattern { get; set; } = false;
+
+        // Per-channel trim for what the LEDs actually emit. See LedColorGain.
+        // The colors we store are sRGB intent; these three say how far each
+        // channel has to be cut for this particular wheel to render that intent
+        // correctly, because the red die is typically the weak one and a
+        // nominal yellow arrives looking like lime.
+        //
+        // NULL MEANS NEVER CHOSEN: this install has no opinion, so the trim
+        // resolves from the shipped values in LedColorGain via
+        // TrueforcePlugin.EffectiveLedTrim. A concrete value is a DELIBERATE
+        // choice made on the sliders, 1.0 included, and no default overwrites
+        // it again.
+        //
+        // That is the whole reason these are nullable. A plain float cannot
+        // tell "never touched" from "turned the correction off on purpose",
+        // and those two must behave differently on the next launch and on any
+        // future retune of the shipped numbers. It also means Reset can put a
+        // user back on the shipped tuning rather than stranding them on
+        // identity, which is a much easier button to press by accident.
+        //
+        // Three scalars rather than a float?[3] on purpose: SimHub's loader
+        // deserialises with ObjectCreationHandling.Auto and APPENDS onto a
+        // pre-populated collection instead of replacing it, so an array with a
+        // default would load back with six entries. See the same warning on
+        // DashTabOrder and IRacingMaxForceByCar. Auto does not affect a
+        // Nullable<T>: there is no instance to reuse and no Add to call.
+        // One-time hint on the LIGHTSYNC tab explaining that a bound button
+        // walks the whole pattern library, with SimHub's binder embedded in it.
+        // Set only when the user dismisses it for good; it also self-suppresses
+        // once the action is actually bound, so this latch only covers the
+        // "I read it and I am not binding anything" case. Nag state, so it is
+        // Excluded from backup: it re-shows harmlessly on a second PC.
+        // One-time modal on first LIGHTSYNC open, explaining what the tab lifts
+        // off the wheel's own five-pattern menu. Latched on ANY outcome so it
+        // never re-nags, same as HasSeenModeBIntro. Nag state, so Excluded from
+        // backup: it re-shows harmlessly on a second PC.
+        public bool HasSeenLightsyncIntro { get; set; } = false;
+
+        public bool LightsyncCycleHintDismissed { get; set; } = false;
+
+        public float? LedTrimR { get; set; }
+        public float? LedTrimG { get; set; }
+        public float? LedTrimB { get; set; }
+
+        // Retired 2026-08-28. Was the PREVIEWOFF escape hatch that bypassed the
+        // import preview modal. The property stays only so old settings files
+        // and backups deserialize cleanly.
         public bool ImportPreviewBypass { get; set; } = false;
 
         // Author name auto-stamped onto exported presets / car presets / packs.
@@ -1157,16 +1605,14 @@ namespace TrueforceForAll.Plugin
         // pushing unprompted.
         public bool AutoSyncBackupEnabled { get; set; } = false;
 
-        // DEV/TEST ONLY: forces the supporter BADGE to display a given tier
-        // ("Supporter" / "Gold Supporter" / "Platinum Supporter"); empty = show the real
-        // entitlement. Set via the SUPPORTER access code. MACHINE-LOCAL + display-only: it
-        // feeds ONLY the badge label, never the backup gate (which is enforced server-side
-        // by RLS), so it can never grant real supporter access.
+        // Retired 2026-08-28. Was the dev-only override that forced the supporter
+        // badge to display a given tier. The property stays only so old settings
+        // files and backups deserialize cleanly.
         public string DevSupporterBadgeOverride { get; set; } = "";
 
-        // Dev/test: when true, the achievements tracker requests secret achievements too (OG,
-        // Founding Supporter) even when unearned, so they can be previewed. Toggled by the SHOWALL
-        // access code. MACHINE-LOCAL (not backed up).
+        // Retired 2026-08-28. Was the dev-only flag that made the achievements
+        // tracker request unearned secret achievements for preview. The property
+        // stays only so old settings files and backups deserialize cleanly.
         public bool DevShowAllAchievements { get; set; }
 
         // Show in-plugin achievement celebration toasts (default on). A global opt-out;

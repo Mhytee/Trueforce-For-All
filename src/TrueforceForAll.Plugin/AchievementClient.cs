@@ -50,10 +50,9 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>The caller's full achievement list (earned + unearned + progress).
         /// Returns null when not configured / not signed in / unreachable.</summary>
-        public async Task<List<AchievementRow>> GetMyAchievementsAsync(CancellationToken ct, bool includeSecret = false)
+        public async Task<List<AchievementRow>> GetMyAchievementsAsync(CancellationToken ct)
         {
-            string payload = includeSecret ? "{\"p_include_secret\":true}" : "{}";
-            var (ok, body) = await PostAsync("/rest/v1/rpc/get_my_achievements", payload, ct).ConfigureAwait(false);
+            var (ok, body) = await PostAsync("/rest/v1/rpc/get_my_achievements", "{}", ct).ConfigureAwait(false);
             if (!ok || string.IsNullOrEmpty(body)) return null;
             try
             {

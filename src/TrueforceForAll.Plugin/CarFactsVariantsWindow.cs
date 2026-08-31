@@ -115,9 +115,7 @@ namespace TrueforceForAll.Plugin
             header.Children.Add(new TextBlock
             {
                 Text = "Variants are created automatically the first time this car shows a new engine. "
-                     + "Rename a row by clicking its label (cosmetic, stays local). The Engine dropdown "
-                     + "pins that variant's engine type; Auto lets detection decide. Delete drops the row; "
-                     + "if that engine turns up again, a fresh row is created. "
+                     + "The Engine dropdown pins that variant's engine type; Auto lets detection decide. "
                      + "Built-in rows come from the car list and can't be edited.",
                 Foreground = MutedFg, FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
@@ -221,6 +219,14 @@ namespace TrueforceForAll.Plugin
                 Width = new DataGridLength(1, DataGridLengthUnitType.Star),
                 MinWidth = 160,
             };
+            // The rename hint hangs off the column header instead of the
+            // intro paragraph. BasedOn keeps whatever implicit header style
+            // is in scope, so this column still matches its siblings.
+            var labelHeaderStyle = new Style(typeof(DataGridColumnHeader),
+                TryFindResource(typeof(DataGridColumnHeader)) as Style);
+            labelHeaderStyle.Setters.Add(new Setter(FrameworkElement.ToolTipProperty,
+                "Rename a row for your own reference. The label is cosmetic and stays on this PC; it is never shared."));
+            labelCol.HeaderStyle = labelHeaderStyle;
             g.Columns.Add(labelCol);
 
             g.Columns.Add(new DataGridTextColumn
@@ -264,7 +270,7 @@ namespace TrueforceForAll.Plugin
             btnFactory.SetValue(Button.ContentProperty, "Delete");
             btnFactory.SetBinding(Button.IsEnabledProperty, new Binding("CanDelete"));
             btnFactory.SetValue(Button.ToolTipProperty,
-                "Delete a stale or misidentified variant. The one you're currently driving can't be deleted (it auto-detects from telemetry).");
+                "Delete a stale or misidentified variant. The one you're currently driving can't be deleted (it auto-detects from telemetry). If that engine turns up again, a fresh row is created.");
             btnFactory.SetValue(ToolTipService.ShowOnDisabledProperty, true);
             btnFactory.SetValue(Button.PaddingProperty, new Thickness(8, 2, 8, 2));
             btnFactory.SetValue(Button.MarginProperty, new Thickness(4, 2, 4, 2));

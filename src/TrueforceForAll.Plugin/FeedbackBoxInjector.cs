@@ -17,8 +17,8 @@
 //     (FeedbackWidget recreates itself on reload), and keeps the slider values
 //     in sync with the settings panel and preset loads
 //
-// Enabled by default (TrueforceSettings.ShowFeedbackBox = true); the HOMEBOX
-// access code is now just a live dev toggle, NOT the gate. Failure is cosmetic:
+// Enabled by default (TrueforceSettings.ShowFeedbackBox = true); the checkbox
+// under Settings > Extras toggles it live. Failure is cosmetic:
 // the tile simply doesn't appear and never throws into SimHub. Note FindFeedbackGrid
 // uses a "most SHSubTitledBox children" heuristic that could mis-target if a future
 // SimHub home layout nests more such tiles elsewhere (cosmetic risk only).
@@ -75,7 +75,7 @@ namespace TrueforceForAll.Plugin
             SetEnabled(_plugin?.Settings?.ShowFeedbackBox == true);
         }
 
-        // Toggle the feature on/off live (HOMEBOX access code / diagnostics).
+        // Toggle the feature on/off live (the Settings > Extras checkbox).
         public void SetEnabled(bool on)
         {
             _enabled = on;
@@ -138,6 +138,32 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     if (!_enabled) { _timer.Stop(); return; }
+
+                    // The tile is a master-gain control for the plugin's own
+                    // effects, and in Lightsync only and Off there are none. A
+                    // slider that moves a number nothing reads is worse than no
+                    // slider, so take the tile away and put it back when the mode
+                    // returns. The timer keeps running, so coming back costs one
+                    // tick and needs nothing from the user.
+                    //
+                    // MasterMode is the EFFECTIVE mode, so this follows the
+                    // per-game switch too: the tile goes when you start a game
+                    // you have set to Lightsync only, and returns when you leave.
+                    if (!ShouldShow)
+                    {
+                        // Flush first. RemoveBox drops _pendingPersist, which
+                        // would strand a gain edit made in the second before the
+                        // mode changed.
+                        FlushPersistIfIdle();
+                        if (_box != null)
+                        {
+                            RemoveBox();
+                            SimHub.Logging.Current.Info(
+                                "[TF4ALL] Home Feedback gain tile hidden: mode is not Normal.");
+                        }
+                        return;
+                    }
+
                     TryInject();
                     RefreshValues();
                     FlushPersistIfIdle();
@@ -147,12 +173,19 @@ namespace TrueforceForAll.Plugin
             _timer.Start();
         }
 
+        /// <summary>Whether the tile belongs on screen right now.
+        ///
+        /// Asked on every path that could put it there, so Start cannot inject a
+        /// tile that the very next tick would take away again.</summary>
+        private bool ShouldShow =>
+            _enabled && _plugin?.MasterMode == TrueforceMasterMode.Normal;
+
         // Attach (or re-attach) our tile to the live Feedback grid. Cheap in the
         // steady state: when our box is already alive in a UniformGrid we skip the
         // full visual-tree scan entirely and only rescan after a rebuild.
         private void TryInject()
         {
-            if (!_enabled) return;
+            if (!ShouldShow) return;
 
             if (_box != null
                 && _box.Parent is UniformGrid
@@ -312,9 +345,20 @@ namespace TrueforceForAll.Plugin
                 _plugin.MasterGain = (float)e.NewValue;   // live: mixer + settings
                 _pendingPersist = true;
             };
-            _masterToggle = MakeToggle("Master", "Turn all TF4ALL haptics on/off");
-            _masterToggle.Checked   += (s, e) => { if (!_syncing) _plugin.SetPluginEnabled(true); };
-            _masterToggle.Unchecked += (s, e) => { if (!_syncing) _plugin.SetPluginEnabled(false); };
+            // Two states for a three-state switch. Off returns the user to whatever
+            // they were on before Normal (see SetMasterEnabledFromToggle), so the
+            // mode they were in is not lost by using this toggle.
+            //
+            // The tile only exists in Normal, so unchecking this takes the tile
+            // with it. Not called out in the copy: a control disappearing when you
+            // switch the thing it controls off is what a user expects, and saying
+            // so out loud makes it sound like a quirk.
+            // Says what the switch IS, not what the tile does with it. This is the
+            // plugin's master switch, so anything about modes or about the tile
+            // itself is describing our UI to someone who is looking at SimHub's.
+            _masterToggle = MakeToggle("Master", "Enable the TF4ALL plugin");
+            _masterToggle.Checked   += (s, e) => { if (!_syncing) _plugin.SetMasterEnabledFromToggle(true); };
+            _masterToggle.Unchecked += (s, e) => { if (!_syncing) _plugin.SetMasterEnabledFromToggle(false); };
             content.Children.Add(MakeRow(_masterToggle, _masterSlider));
 
             // Audio row: the toggle enables/disables the audio-haptics layer.

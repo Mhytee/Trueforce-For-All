@@ -41,6 +41,10 @@ namespace TrueforceForAll.Plugin
         private RedlineConsensus _engineRedlineCache;
         private string _lastShownCarId;
         private string _lastShownGame;
+        // Which wheel CAPABILITIES the panel was last built for. Not the product
+        // id: what the panel branches on is whether a wheel is known, whether its
+        // lights can take a pattern, and whether it has a screen.
+        private int _lastShownWheelCaps;
         // Last text we pushed into the CarFacts name / redline boxes. The 16ms
         // panel refresh rewrites a box only when this changes, so clicking
         // Set/Save (which pulls focus off the box mid-click, then holds the
@@ -74,10 +78,6 @@ namespace TrueforceForAll.Plugin
         private bool _updateLocalInstallerTest;
         private static readonly long ForzaStallExpandTicks =
             System.Diagnostics.Stopwatch.Frequency * 12;   // 12 s sustained zero packets
-        // UDP test code: 0 = off, 1 = force Forza banner.
-        // Lets us exercise the setup-banner -> "Set up..." -> jump flow without a
-        // live (broken) Forza session.
-        private int _forceUdpSetupBanner;
         // FZBANNERS test code: 0 = off, 1 = force the two info-tier Forza banners
         // (SimHub-fallback notice + discovered-port banner) visible so their
         // InfoBannerButton styling can be eyeballed without a live Forza session
@@ -210,6 +210,10 @@ namespace TrueforceForAll.Plugin
         {
             InitializeComponent();
             WireEditableReadouts();
+            // The Forza and Farming Simulator step lists in the Settings tab are
+            // rendered from the same Markdown the guides show, so there is one
+            // text rather than two that drift.
+            RenderEmbeddedGuideSteps();
             // The banner's Install is the same action as the install modal's
             // gold button; style them identically so it reads as one action.
             if (FsModInstallButton != null)
@@ -219,6 +223,8 @@ namespace TrueforceForAll.Plugin
         public SettingsControl(TrueforcePlugin plugin) : this()
         {
             _plugin = plugin;
+            // So a plugin-side dialog (the MAIRA notice) can open the guides.
+            try { plugin?.NotePanel(this); } catch { }
 
             // Support prompt fires on entering the plugin page, so it is scoped to
             // our own surface and never intrudes elsewhere in SimHub.
@@ -263,6 +269,10 @@ namespace TrueforceForAll.Plugin
             MotdStripHost.Content = _motdStrip;
 
             ApplyDevModeVisibility();
+            // Restores the unlocked layout on a dev machine before the first
+            // RefreshFromPlugin, so the block is already in its tab by the time
+            // any visibility pass runs over the controls inside it.
+            ApplyLightsyncTabVisibility();
 
             // Header version readout. Read once at construction; doesn't change
             // at runtime within a session. ToString(3) drops the build/revision
@@ -421,6 +431,10 @@ namespace TrueforceForAll.Plugin
         // change events so this can't fire a spurious edit / re-sync.
         private void OnLibraryReloadedRefreshUi()
         {
+            // A restore rewrites light-patterns.json along with the presets, and
+            // the editor caches the library instance it was handed. Drop it here
+            // so the next open reads the restored one.
+            InvalidatePatternUi();
             if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnLibraryReloadedRefreshUi)); return; }
             try { RefreshFromPlugin(); } catch { }
         }
@@ -458,13 +472,7 @@ namespace TrueforceForAll.Plugin
             _suppressEvents = true;
             try
             {
-                PluginEnabledCheck.IsChecked = _plugin.PluginEnabled;
-                string game = _plugin.ActiveGame;
-                // Hint moved off the card into the checkbox tooltip to reclaim a row.
-                if (PluginEnabledCheck != null)
-                    PluginEnabledCheck.ToolTip = string.IsNullOrEmpty(game)
-                        ? "Choice is auto-remembered per game. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel."
-                        : $"Auto-remembered for '{game}'. Disable for games with native Trueforce (e.g. iRacing) so this plugin yields the wheel.";
+                RefreshMasterModeUi();
 
                 if (AuthorNameBox != null)
                     AuthorNameBox.Text = _plugin.Settings?.SharingAuthor ?? "";
@@ -477,6 +485,8 @@ namespace TrueforceForAll.Plugin
                 MasterGainStepText.Text    = _plugin.MasterGainStep.ToString("F2");
                 if (ShowFeedbackBoxCheck != null)
                     ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
+                if (ShowPerGearRedlineEditorCheck != null)
+                    ShowPerGearRedlineEditorCheck.IsChecked = _plugin.Settings?.ShowPerGearRedlineEditor == true;
                 if (CommunityEnabledCheck != null)
                     CommunityEnabledCheck.IsChecked = _plugin.Settings?.CommunityEnabled == true;
                 if (EffectsTabShareButtonsCheck != null)
@@ -499,11 +509,18 @@ namespace TrueforceForAll.Plugin
                     BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
                     RefreshBetaUpdateNote();
                 }
-                if (RemoteRevLtrRadio != null && RemoteRevOutsideInRadio != null)
+                if (RemoteRevLtrRadio != null && RemoteRevOutsideInRadio != null
+                    && RemoteRevAutoRadio != null)
                 {
+                    // Auto and a direction are two settings, not three states:
+                    // the direction is remembered underneath Auto so switching
+                    // Auto off puts the user's own pick back rather than a
+                    // default. Only one of the three is ever checked.
+                    bool auto = _plugin.Settings?.DashRevStripAuto != false;
                     bool outsideIn = _plugin.Settings?.DashRevStripOutsideIn == true;
-                    RemoteRevOutsideInRadio.IsChecked = outsideIn;
-                    RemoteRevLtrRadio.IsChecked = !outsideIn;
+                    RemoteRevAutoRadio.IsChecked = auto;
+                    RemoteRevOutsideInRadio.IsChecked = !auto && outsideIn;
+                    RemoteRevLtrRadio.IsChecked = !auto && !outsideIn;
                 }
                 if (RemoteDashRememberTabCheck != null)
                     RemoteDashRememberTabCheck.IsChecked = _plugin.Settings?.DashRememberLastTab != false;
@@ -536,8 +553,6 @@ namespace TrueforceForAll.Plugin
                         (StationarySpringCheck.IsChecked == true) ? Visibility.Visible : Visibility.Collapsed;
                 if (LogUsbBytesCheck != null)
                     LogUsbBytesCheck.IsChecked = _plugin.Settings?.LogUsbBytesEnabled ?? false;
-                bool expFfb = _plugin.Settings?.ExperimentalFfbCapture ?? false;
-                if (ExperimentalFfbCheck != null)     ExperimentalFfbCheck.IsChecked     = expFfb;
 
                 // Driver testing mode checkbox: hidden until the DRIVER access
                 // code has been entered (DriverTestingUnlocked persists the
@@ -561,6 +576,8 @@ namespace TrueforceForAll.Plugin
                 SpikeTamingEnabledCheck.IsChecked  = _plugin.Settings?.FfbSpikeTamingEnabled  ?? false;
                 if (StopStreamOnPauseCheck != null)
                     StopStreamOnPauseCheck.IsChecked = _plugin.Settings?.StopStreamOnPause ?? false;
+                if (ReleaseOnFocusLossCheck != null)
+                    ReleaseOnFocusLossCheck.IsChecked = _plugin.Settings?.ReleaseForceOnFocusLoss ?? true;
                 if (SpringTerrainCheck != null)
                     SpringTerrainCheck.IsChecked = _plugin.Settings?.SpringModeTerrainEnabled ?? false;
                 if (SpringTerrainStrengthSlider != null)
@@ -607,6 +624,20 @@ namespace TrueforceForAll.Plugin
                     if (SpringStrengthText != null)
                         SpringStrengthText.Text = SpringStrengthSlider.Value.ToString("F2");
                 }
+                UpdateIRacingClipWarning();
+                // Same targeting rule as the writes: show the number the force
+                // path is actually using for the active car. UpdateIRacingMaxNmText
+                // fills the box itself, so there is nothing to seed here.
+                UpdateIRacingMaxNmText();
+                if (IRacingGainSlider != null)
+                {
+                    IRacingGainSlider.Value = _plugin.Settings?.IRacingForceGain ?? 1.0;
+                    if (IRacingGainText != null)
+                        IRacingGainText.Text = IRacingGainSlider.Value.ToString("F2");
+                }
+                if (IRacingForceModeCombo != null)
+                    IRacingForceModeCombo.SelectedIndex = IRacingFeelIndexFromSettings();
+                UpdateIRacingFeelHelp();
                 if (SpringMinForceSlider != null)
                 {
                     SpringMinForceSlider.Value = _plugin.Settings?.SpringModeMinForce ?? 0.05;
@@ -721,22 +752,133 @@ namespace TrueforceForAll.Plugin
                     // Forza while the tab IS relevant to this game.
                     bool springGame = !string.IsNullOrEmpty(mbGame)
                         && mbGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
+                    // iRacing RESHAPES the sim's own steering torque instead of
+                    // synthesizing force from slip, so the entire Forza recipe
+                    // below (SAT gain, peak utilisation, drop floor, grip
+                    // learner, lockup gate, reversal softening, phase lead,
+                    // centering) feeds a model that never runs there. Roughly
+                    // thirty controls that cannot do anything, and a dead knob
+                    // reads as broken. Same rule the spring games already use,
+                    // extended from a two-way split to a three-way one.
+                    bool reshapeGame = _plugin.ActiveGameIsReshapeGame;
+                    // The FFB tab is slim by default. The Telemetry Based FFB
+                    // block (header, enable toggle, and every tuning panel) only
+                    // belongs to games that actually have it, and its TUNING only
+                    // shows once it is enabled. So:
+                    //   gameActive       - a game is running
+                    //   telemetryCapable - that game has a telemetry FFB section
+                    //                      (Forza synthesis, iRacing reshape, or
+                    //                      Farming Simulator spring)
+                    //   showSection      - show the block; hidden only for a
+                    //                      running game that has no telemetry FFB
+                    //                      (Assetto Corsa etc.). Menus keep it so
+                    //                      the toggle can still be found.
+                    //   showTuning       - show the tuning controls: the section
+                    //                      is shown AND it is on (spring is always
+                    //                      on while its game runs).
+                    bool gameActive = !string.IsNullOrEmpty(mbGame);
+                    bool telemetryCapable = mbSupported || springGame;
+                    bool showSection = telemetryCapable || !gameActive;
+                    bool showTuning = showSection && (_plugin.ModeBEnabledForActiveGame
+                                                      || (springGame && gameActive));
+                    if (TeleFfbSectionHeaderBorder != null)
+                        TeleFfbSectionHeaderBorder.Visibility = showSection ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Forza synthesis panels: Forza only, and only while enabled.
+                    bool showForza = showTuning && mbSupported && !reshapeGame;
                     if (ModeBForzaTuningPanel != null)
-                        ModeBForzaTuningPanel.Visibility = springGame
-                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                        ModeBForzaTuningPanel.Visibility = showForza
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     if (ModeBForzaTuningPanel2 != null)
-                        ModeBForzaTuningPanel2.Visibility = springGame
-                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                        ModeBForzaTuningPanel2.Visibility = showForza
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // The iRacing controls, which are the only force tunables
+                    // that DO anything there. Damping is deliberately not in
+                    // here: it sits between the two Forza panels precisely so it
+                    // survives them being hidden, and the velocity damper runs
+                    // on all three pipelines.
+                    if (IRacingTuningPanel != null)
+                        IRacingTuningPanel.Visibility = (showTuning && reshapeGame)
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Advanced lives outside that panel now, so Damping and
+                    // Smoothing can sit above it while staying visible in every
+                    // game. Its contents are still iRacing-only, so it follows
+                    // the same flag by hand.
+                    if (IRacingAdvancedExpander != null)
+                        IRacingAdvancedExpander.Visibility = (showTuning && reshapeGame)
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+                    // The tapped-path corrections are switched off under the
+                    // iRacing reshape (the device skips them), so the two
+                    // controls that drive them are genuinely dead there and
+                    // hide. Smoothing stays: it is applied further down the
+                    // device chain and still shapes the force.
+                    //
+                    // The whole group is also renamed, because "pass-through" is
+                    // the wrong word for a mode that passes nothing through: it
+                    // reshapes the sim's force and authors what reaches the wheel.
+                    var deadInReshape = reshapeGame
+                        ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                    if (FfbScaleRow    != null) FfbScaleRow.Visibility    = deadInReshape;
+                    if (FfbInvertCheck != null) FfbInvertCheck.Visibility = deadInReshape;
+                    // Smoothing moved out to sit with Damping, so scale and
+                    // invert are all this section has left; under the reshape
+                    // both are dead, which makes the section itself dead.
+                    if (FfbPassthroughExpanderSection != null)
+                        FfbPassthroughExpanderSection.Visibility = deadInReshape;
+                    // The stationary spring is hard-skipped for iRacing in
+                    // ApplyStationarySpring, and now that this group shares the
+                    // tab it would be a dead section sitting next to live ones.
+                    // iRacing's own torque already weights a parked car, which is
+                    // the whole job the spring exists to do elsewhere.
+                    if (StationarySpringExpander != null)
+                        StationarySpringExpander.Visibility = deadInReshape;
+                    if (FfbPassthroughHeader != null)
+                        FfbPassthroughHeader.Text = reshapeGame ? "Wheel Output" : "FFB Pass-Through";
+
+                    // Tab name. "Telemetry FFB" is wrong for iRacing, where the
+                    // force is not built FROM telemetry but is the sim's own
+                    // force reshaped. So on those games it is plain "FFB", which
+                    // is now accurate again: the lights and the wheel screen have
+                    // their own tab, and this one is back to owning exactly one
+                    // thing. It was only ever "Wheel (FFB, LED, OLED)" because
+                    // naming a tab after one of three things it owned undersold
+                    // the other two.
+                    //
+                    // That name is kept for the case where the LIGHTSYNC tab is
+                    // turned off and the two blocks reparent back onto this tab
+                    // (ApplyLightsyncTabVisibility), because then it really does
+                    // own all three again. The parenthesised list follows the
+                    // HARDWARE: only the G PRO, RS50 and the G923 Xbox have a
+                    // base screen, and advertising OLED to someone whose wheel
+                    // has none is a promise the tab cannot keep. Same source of
+                    // truth the OLED section itself uses, so the two can never
+                    // disagree.
+                    if (TelemetryFfbTab != null)
+                    {
+                        // The wheels with a screen (G PRO, RS50) are exactly the
+                        // ones with programmable lights, and they keep a separate
+                        // LIGHTSYNC tab, so their FFB tab is just "FFB". The only
+                        // wheel whose lights share this tab is the G923, which has
+                        // LED rev lights and no screen, so the shared name is
+                        // "FFB & LED". There is no FFB+LED+OLED case.
+                        // Matches the LIGHTSYNC tab's own show condition: unlocked
+                        // (auto for programmable wheels) AND not a wheel that
+                        // cannot be programmed (the G923 keeps its lights here).
+                        bool lightsHaveTheirOwnTab =
+                            _plugin?.Settings?.LightsyncTabUnlocked == true
+                            && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern);
+                        TelemetryFfbTab.Header = lightsHaveTheirOwnTab ? "FFB" : "FFB & LED";
+                    }
                     // Spring-mode enhancements show ONLY in spring games; in
                     // Forza the composer has its own kick layer and these
                     // controls would be dead weight there.
                     if (SpringTerrainPanel != null)
-                        SpringTerrainPanel.Visibility = springGame
+                        SpringTerrainPanel.Visibility = (showTuning && springGame)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // The FS essentials block (Strength above Damping) shows
                     // and hides together with the enhancements panel.
                     if (SpringEssentialsPanel != null)
-                        SpringEssentialsPanel.Visibility = springGame
+                        SpringEssentialsPanel.Visibility = (showTuning && springGame)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // Implement thud on the Effects tab: FS-only for the same
                     // dead-knob reason as Surface texture being Forza-only.
@@ -789,7 +931,29 @@ namespace TrueforceForAll.Plugin
                         // unreachable; the quads stay for Axle slip's
                         // braking gate and the rev-locked pulse.
                         ShowEffect(TractionExpander,     !springGame);
-                        ShowEffect(LockupJudderExpander, !springGame);
+                        // iRacing: Lockup judder is not merely unfed, it is not
+                        // FEEDABLE. It needs a signed slip ratio and per-wheel
+                        // rotation speed, and iRacing publishes neither, so there
+                        // is no honest source and no prospect of one. Hidden
+                        // rather than shown doing nothing.
+                        //
+                        // Traction loss STAYS: it falls back to a heuristic on
+                        // RPM, throttle, speed, yaw rate and lateral g, all of
+                        // which iRacing provides, so the voice really does work
+                        // there. Only its TC-intervention confidence boost is
+                        // dead, since iRacing publishes the driver's TC SETTING
+                        // (TractionControlSetting/Switch) but never a flag saying
+                        // it is currently cutting in.
+                        ShowEffect(LockupJudderExpander, !springGame && !reshapeGame);
+                        // Axle slip needs front/rear grip rollups, which need
+                        // per-tire slip. Gated on whether the LIVE source can
+                        // actually supply them rather than on a list of game
+                        // names: iRacing has none, and neither does anything else
+                        // running through SimHub's generic reader, which is how
+                        // Wreckfest arrived showing a section that could never
+                        // speak (owner, 2026-08-16). One rule covers both and
+                        // whatever comes next.
+                        ShowEffect(AxleSlipExpander,     !reshapeGame && _plugin.AxleSlipFeedable);
                         // Airborne IS driven in FS (all-wheels-off from the
                         // mod's per-wheel contact flags), so it stays
                         // visible everywhere.
@@ -829,7 +993,7 @@ namespace TrueforceForAll.Plugin
                             if (FsModInstallButton != null)
                                 FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
                             if (FsModBannerText != null)
-                                FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                                FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
                         }
                         else
                         {
@@ -841,7 +1005,7 @@ namespace TrueforceForAll.Plugin
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
                                 if (FsModBannerText != null)
-                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
                             }
                             else if (_fsModBannerHold)
                             {
@@ -854,7 +1018,7 @@ namespace TrueforceForAll.Plugin
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
                                 if (FsModBannerText != null)
-                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for enhanced force feedback in Farming Simulator.";
+                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
                             }
                             else if (fsState == 2)
                             {
@@ -862,7 +1026,7 @@ namespace TrueforceForAll.Plugin
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
                                 if (FsModBannerText != null)
-                                    FsModBannerText.Text = "The TF4ALL Enhanced Telemetry mod is installed but not reaching the plugin. Enable it in the game's mod screen when loading your save, or restart Farming Simulator if SimHub restarted while the game was running.";
+                                    FsModBannerText.Text = "The TF4ALL Enhanced Telemetry mod is installed but its data isn't reaching the plugin. Enable it in the game's mod screen when loading your save, or restart Farming Simulator if SimHub restarted while the game was running.";
                             }
                             else if (fsState == 4)
                             {
@@ -891,33 +1055,96 @@ namespace TrueforceForAll.Plugin
                     // running (owner confirmed the no-difference observation
                     // 2026-08-09).
                     if (ModeBIntroText != null)
+                    {
                         ModeBIntroText.Text = springGame
                             ? "In Farming Simulator the plugin replaces the game's basic force " +
                               "feedback with its own steering model built from the game's physics, " +
                               "and engages by itself. The game's force feedback setting doesn't " +
                               "change the feel while SimHub runs; leaving it on just keeps native " +
-                              "FFB as a fallback when SimHub is closed. Also works in Forza " +
-                              "Motorsport (2023) and Forza Horizon 4, 5, and 6."
+                              "FFB as a fallback when SimHub is closed."
+                            : reshapeGame
+                            ? "The plugin takes force feedback over from iRacing rather than inventing " +
+                              "its own: it reads the forces iRacing computes and delivers them over " +
+                              "Trueforce, so the car still feels like the car and your rev lights and " +
+                              "wheel screen work again. The two setup switches are in the note below."
                             : "The wheel's steering force is built from telemetry instead of the game's " +
                               "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
                               "Set the game's force feedback and vibration to 0 so this is the only " +
                               "force on the wheel. Farming Simulator 22 and 25 are supported too, " +
                               "through the spring option below.";
-                    ModeBEnabledCheck.Visibility = springGame
-                        ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                        // The other-games coverage line moved off the visible intro
+                        // and into a tooltip, and only the Farming Simulator variant
+                        // carries it, so it is set beside the text it belongs to.
+                        ModeBIntroText.ToolTip = springGame
+                            ? "Also works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6."
+                            : null;
+                    }
+                    // Route back to the one-time introduction, on exactly the games
+                    // the dialog itself will open for. Everywhere else it would be a
+                    // link that does nothing: its every line is addressed to the game
+                    // you are in, Farming Simulator included, where "set the game's
+                    // force feedback to 0" is the wrong advice outright.
+                    if (ModeBIntroText != null)
+                        ModeBIntroText.Visibility = showSection
+                            ? System.Windows.Visibility.Visible
+                            : System.Windows.Visibility.Collapsed;
+                    if (ModeBIntroLink != null)
+                        ModeBIntroLink.Visibility = mbSupported
+                            ? System.Windows.Visibility.Visible
+                            : System.Windows.Visibility.Collapsed;
+                    ModeBEnabledCheck.Visibility = (showSection && !springGame)
+                        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // The controls stay visible in every game so the section can be
                     // seen and pre-tuned without a supported title running. When the
                     // active game can't feed Mode B, a badge at the top of the tab
                     // explains why and the per-game Enable box greys out.
                     ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                     ModeBEnabledCheck.IsEnabled = mbSupported;
+                    if (ModeBResetButton != null)
+                        ModeBResetButton.Visibility = showTuning
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // "Telemetry Based FFB" is a promise we do not keep in
+                    // iRacing. Everywhere else the force IS built from telemetry:
+                    // a slip model invents it and the game contributes nothing.
+                    // In iRacing we take the sim's OWN steering force and deliver
+                    // it through Trueforce, which is a different thing entirely,
+                    // and this is the master switch someone reads first.
+                    // "Send iRacing's own force feedback to the wheel" was
+                    // accurate and still confusing, because the setup tells the
+                    // user to TURN OFF iRacing's force feedback, so the two read
+                    // as contradicting each other.
+                    //
+                    // They do not: what gets switched off is iRacing's own OUTPUT
+                    // path to the wheel, and what we send is the steering force
+                    // the car is generating, read from telemetry and delivered
+                    // over Trueforce. Same physics, different route. Framing it
+                    // as a HANDOVER makes the disable step read as part of the
+                    // feature instead of an argument with it.
+                    ModeBEnabledCheck.Content = reshapeGame
+                        ? "Take over force feedback for iRacing"
+                        : "Enable Telemetry Based FFB for this game";
+                    // Same correction wherever the phrase is user-facing. A
+                    // heading and a checkbox that disagree about what the feature
+                    // IS are worse than either being wrong alone.
+                    if (TeleFfbSectionHeader != null)
+                        TeleFfbSectionHeader.Text = reshapeGame
+                            ? "Force feedback" : "Telemetry Based FFB";
                     if (ModeBUnsupportedBadge != null)
-                        ModeBUnsupportedBadge.Visibility = mbSupported || springGame
-                            ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+                        ModeBUnsupportedBadge.Visibility = (!gameActive)
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     if (!mbSupported && ModeBUnsupportedBadgeText != null)
+                    {
                         ModeBUnsupportedBadgeText.Text = string.IsNullOrEmpty(mbGame)
-                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25. Start one of those to turn it on. You can still see and pre-tune the controls below."
-                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25. It also enables your wheel's rev lights. Start one of those to turn it on.";
+                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25."
+                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25.";
+                        // The badge's two states dropped a sentence each when the
+                        // copy was trimmed; the hover carries them. Set here rather
+                        // than in XAML because one host serves both states.
+                        if (ModeBUnsupportedBadge != null)
+                            ModeBUnsupportedBadge.ToolTip = string.IsNullOrEmpty(mbGame)
+                                ? "You can pre-tune the controls below without a game; the per-game Enable box unlocks when a supported game starts."
+                                : "Telemetry Based FFB also enables your wheel's rev lights and screen in these games.";
+                    }
                     if (ModeBGameNote != null)
                     {
                         if (springGame)
@@ -926,7 +1153,17 @@ namespace TrueforceForAll.Plugin
                         }
                         else if (mbSupported)
                         {
-                            string note = $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
+                            // iRacing takes the OPPOSITE instruction, and getting
+                            // this wrong breaks it silently. The reshape divides
+                            // the sim's torque by its own SteeringWheelMaxForceNm,
+                            // so a user who sets in-sim force to 0 zeroes our
+                            // divisor, trips the maxNm guard and gets no force at
+                            // all with nothing on screen to explain why. What it
+                            // needs is force feedback DISABLED, with max force
+                            // left wherever they like it.
+                            string note = reshapeGame
+                                ? "Applies to iRacing. Turn iRacing's own force feedback OFF (do not set its strength to 0, the plugin reads that number), and set loadTrueForceAPI=0 in app.ini."
+                                : $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
                             if (mbGame == "FM8")
                                 note += " Forza Motorsport has native Trueforce, so also enable the plugin for it at the top of this panel.";
                             ModeBGameNote.Text = note;
@@ -989,6 +1226,10 @@ namespace TrueforceForAll.Plugin
                     ModeBContentionWarning.Visibility = _plugin.ModeBContentionDetected
                         ? Visibility.Visible
                         : Visibility.Collapsed;
+                if (ModeBSlipStarvedWarning != null)
+                    ModeBSlipStarvedWarning.Visibility = _plugin.ModeBSlipStarvedDetected
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
 
                 // Performance section
                 var perf = _plugin.Settings?.Performance;
@@ -1030,8 +1271,6 @@ namespace TrueforceForAll.Plugin
                 CaptureExeOverrideBox.Text = _plugin.ActiveCaptureExeOverride ?? "";
 
                 // Rim rev/shift LEDs (hidden iRacing section + Mode B toggle)
-                if (MairaPassthroughCheck != null)
-                    MairaPassthroughCheck.IsChecked = _plugin.Settings?.MairaFfbPassthrough == true;
                 if (RpmLedStatusText != null)
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
                 if (ModeBRevLightsCheck != null)
@@ -1044,9 +1283,46 @@ namespace TrueforceForAll.Plugin
                 if (OledSection != null)
                     OledSection.Visibility = _plugin.WheelHasOledScreen
                         ? Visibility.Visible : Visibility.Collapsed;
+                // The gate above sits on the inner section, so on a wheel with no
+                // The LIGHTSYNC tab hides itself on a wheel that cannot be programmed,
+                // and that answer changes the moment a wheel is discovered. Re-run
+                // the gate only when the verdict actually moves, since it reparents
+                // controls and this method runs on a timer.
+                {
+                    bool wantTab = _plugin.Settings?.LightsyncTabUnlocked == true
+                                && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern);
+                    if (_lightsyncTabShown != wantTab) ApplyLightsyncTabVisibility();
+                }
+                // screen the LIGHTSYNC wrapper would render a "Dynamic OLED"
+                // header above nothing. Hide the whole expander with it.
+                if (LightsyncScreenExpander != null)
+                    LightsyncScreenExpander.Visibility = _plugin.WheelHasOledScreen
+                        ? Visibility.Visible : Visibility.Collapsed;
+                // "and screen" is right on the Telemetry FFB tab, where the lights
+                // and the screen sit back to back under one header. On LIGHTSYNC
+                // the screen has its own named section, so the header should stop
+                // claiming it.
                 if (WheelLightsHeaderText != null)
-                    WheelLightsHeaderText.Text = _plugin.WheelHasOledScreen
+                    WheelLightsHeaderText.Text = (_plugin.WheelHasOledScreen
+                                                  && _plugin.Settings?.LightsyncTabUnlocked != true)
                         ? "Wheel lights and screen" : "Wheel lights";
+                if (LovelyCarDataCheck != null)
+                {
+                    LovelyCarDataCheck.IsChecked = _plugin.Settings?.LovelyCarDataEnabled == true;
+                    // The dataset is fetched through community features, so with
+                    // those off this box cannot do anything. Disabling it rather
+                    // than letting it tick and do nothing, because a ticked box
+                    // that changes nothing is the state this feature already had
+                    // a bug about.
+                    LovelyCarDataCheck.IsEnabled = _plugin.LovelyDataEnabled;
+                }
+                if (LovelyNeedsCommunityNote != null)
+                    LovelyNeedsCommunityNote.Visibility = _plugin.LovelyDataEnabled
+                        ? System.Windows.Visibility.Collapsed
+                        : System.Windows.Visibility.Visible;
+                if (AlwaysRememberPatternCheck != null)
+                    AlwaysRememberPatternCheck.IsChecked = _plugin.Settings?.AlwaysRememberCarPattern == true;
+                RefreshLightsyncCycleHint();
                 if (ModeBOledCheck != null)
                     ModeBOledCheck.IsChecked = _plugin.Settings?.ModeBOledEnabled == true;
                 // The screen picker is filled and selected by Tag in
@@ -1067,6 +1343,7 @@ namespace TrueforceForAll.Plugin
                     OledGreetingBox.Text = _plugin.Settings?.OledGreetingText ?? "HELLO WORLD";
                 if (OledStatusText != null)
                     OledStatusText.Text = _plugin.OledStatus;
+                RefreshRevLightPicker();
                 RefreshOledEditor();
 
                 // Forza section
@@ -1085,16 +1362,20 @@ namespace TrueforceForAll.Plugin
                 // actual car name ("1997 Mazda RX-7"). Falls back to carId for
                 // games whose carIds are already descriptive (AC) or for cars
                 // not in the catalog.
+                string game = _plugin.ActiveGame;
                 HeaderGameText.Text = string.IsNullOrEmpty(game) ? "(none)" : game;
-                // Fire the iRacing app.ini notice once per transition into iRacing
-                // (deferred off the dispatcher so a modal never blocks this refresh).
+                // The iRacing notice now fires from the plugin on first sight of the
+                // game, so it reaches people who never open this panel. All this does
+                // is offer it a window to sit on when the panel IS open; the plugin's
+                // own latch is what stops it appearing twice.
                 string curGameForNotice = _plugin?.ActiveGame;
                 if (!string.Equals(_lastGameForIracingNotice, curGameForNotice, StringComparison.Ordinal))
                 {
                     _lastGameForIracingNotice = curGameForNotice;
                     if (string.Equals(curGameForNotice, "IRacing", StringComparison.Ordinal))
-                        Dispatcher.BeginInvoke(new Action(MaybeShowIracingTrueforceNotice),
-                            System.Windows.Threading.DispatcherPriority.Background);
+                        _plugin?.ShowIracingNotice(Window.GetWindow(this));
+                    else if (string.Equals(curGameForNotice, "AssettoCorsa", StringComparison.Ordinal))
+                        _plugin?.ShowAcCspNotice(Window.GetWindow(this));
                 }
                 // The Mode B intro is NOT fired here. Launching inside a
                 // capable game (e.g. the FH6 profile) would pop it on SimHub's
@@ -1374,7 +1655,15 @@ namespace TrueforceForAll.Plugin
                 if (AbsUnsupportedBadge != null)
                     AbsUnsupportedBadge.Visibility = _plugin.ShowAbsUnsupportedBadge ? Visibility.Visible : Visibility.Collapsed;
                 if (StationarySpringUnsupportedBadge != null)
-                    StationarySpringUnsupportedBadge.Visibility = _plugin.ActiveSourceSupportsStationarySpring ? Visibility.Collapsed : Visibility.Visible;
+                {
+                    bool springSupported = _plugin.ActiveSourceSupportsStationarySpring;
+                    StationarySpringUnsupportedBadge.Visibility = springSupported ? Visibility.Collapsed : Visibility.Visible;
+                    // Grayed, not hidden or locked: the section is preset-scoped,
+                    // so its tuning still applies in other games; the dimming
+                    // just says "inert here" while a Forza title is active.
+                    if (StationarySpringExpander != null)
+                        StationarySpringExpander.Opacity = springSupported ? 1.0 : 0.55;
+                }
                 if (PitLimiterOverrideBadge != null)
                     PitLimiterOverrideBadge.Visibility = (_plugin.IsPitLimiterOverridden && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (DrsOverrideBadge != null)
@@ -1428,7 +1717,7 @@ namespace TrueforceForAll.Plugin
                 OfflineEditBanner.Visibility = Visibility.Visible;
                 OfflineEditTitle.Text = $"Editing per-car settings for '{_plugin.OfflineEditingCarId}' (preset '{_plugin.OfflineEditingCarPresetName}')";
                 if (OfflineEditHint != null)
-                    OfflineEditHint.Text = "The game defaults are shown (and locked) for context; only the per-car effects are editable. Save the usual way, or Revert a section to undo it. Done finishes and returns to your live setup.";
+                    OfflineEditHint.Text = "Game defaults are locked for context; only the per-car effects are editable.";
                 return;
             }
 
@@ -1441,7 +1730,7 @@ namespace TrueforceForAll.Plugin
             OfflineEditBanner.Visibility = Visibility.Visible;
             OfflineEditTitle.Text = $"Editing preset '{editing}'";
             if (OfflineEditHint != null)
-                OfflineEditHint.Text = "Save the usual way, or Revert a section to undo it. Done finishes editing.";
+                OfflineEditHint.Text = "Save the usual way, or Revert a section to undo it.";
         }
 
         // While editing a car preset, only per-car effects are editable. Lock the
@@ -1456,7 +1745,11 @@ namespace TrueforceForAll.Plugin
             if (MasterGainText  != null)  MasterGainText.IsEnabled   = en;
             if (MasterSaveBtn   != null)  MasterSaveBtn.IsEnabled     = en;
             if (MasterRevertBtn != null)  MasterRevertBtn.IsEnabled   = en;
-            if (FfbTweaksExpander != null) FfbTweaksExpander.IsEnabled = en;
+            // The old FFB tweaks wrapper became three sections; each takes the
+            // car-edit lock the wrapper used to take for all of them.
+            if (FfbPassthroughExpanderSection  != null) FfbPassthroughExpanderSection.IsEnabled  = en;
+            if (StationarySpringExpander       != null) StationarySpringExpander.IsEnabled       = en;
+            if (SpikeReductionExpanderSection  != null) SpikeReductionExpanderSection.IsEnabled  = en;
             // Airborne is per-car, so it stays editable during car-edit.
             if (RpmLedSection     != null) RpmLedSection.IsEnabled     = en;
         }
@@ -1639,8 +1932,73 @@ namespace TrueforceForAll.Plugin
 
         // ---------- meter tick + active-car sync ----------
 
+        // Tick-rate probe state (dev mode only): the timer asks for 16 ms;
+        // these measure what it really gets, for the perf-review backlog
+        // entry on heavy per-tick refreshes.
+        private long _tickProbeStartTs;
+        private long _tickProbeLastTs;
+        private int _tickProbeCount;
+        private double _tickProbeWorstGapMs;
+
+        /// <summary>The selection generation this UI has already caught up with.
+        /// Anything else means the pattern changed somewhere we were not looking,
+        /// which in practice means a rim button.</summary>
+        private int _seenLightSelectionGen;
+
+        /// <summary>Follow a pattern change made from outside this window. Both
+        /// pickers and the LIGHTSYNC list all show which pattern is current, and
+        /// none of them were being told when a bound button moved it.</summary>
+        private void FollowExternalLightSelection()
+        {
+            if (_plugin?.Settings?.LightsyncTabUnlocked != true) return;
+            int gen = _plugin.LightSelectionGeneration;
+            if (gen == _seenLightSelectionGen) return;
+            _seenLightSelectionGen = gen;
+
+            // The combos read the wheel's selection themselves, so they only need
+            // to be told to look again.
+            try { RefreshRevLightPicker(); } catch { }
+            try { RefreshCarRevLightRow(); } catch { }
+            // The list carries the current-pattern marker and its own selection,
+            // so it has to be rebuilt rather than merely re-read.
+            try { SyncPatternListToCurrent(); } catch { }
+        }
+
         private void MeterTimer_Tick(object sender, EventArgs e)
         {
+            FollowExternalLightSelection();
+
+            // Dev-gated: measure the timer's REAL cadence and log it every
+            // ~10 s. One line per 10 s, only with dev mode unlocked.
+            if (_plugin?.Settings?.DevModeUnlocked == true)
+            {
+                long nowTs = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (_tickProbeLastTs != 0)
+                {
+                    double gapMs = (nowTs - _tickProbeLastTs) * 1000.0
+                                   / System.Diagnostics.Stopwatch.Frequency;
+                    if (gapMs > _tickProbeWorstGapMs) _tickProbeWorstGapMs = gapMs;
+                }
+                _tickProbeLastTs = nowTs;
+                _tickProbeCount++;
+                if (_tickProbeStartTs == 0) _tickProbeStartTs = nowTs;
+                else
+                {
+                    double spanS = (nowTs - _tickProbeStartTs)
+                                   / (double)System.Diagnostics.Stopwatch.Frequency;
+                    if (spanS >= 10.0)
+                    {
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] UI meter tick: {_tickProbeCount / spanS:0.0} Hz "
+                            + $"over {spanS:0.0} s, worst gap {_tickProbeWorstGapMs:0} ms "
+                            + "(asked: 16 ms / 60 Hz)");
+                        _tickProbeCount = 0;
+                        _tickProbeStartTs = nowTs;
+                        _tickProbeWorstGapMs = 0;
+                    }
+                }
+            }
+
             // (Was: per-tick variant-prompt recompute. Now silent
             // auto-create happens at the end of every CarFacts resolve
             // pass inside the plugin, so the UI tick has nothing to do
@@ -1652,6 +2010,8 @@ namespace TrueforceForAll.Plugin
             RefreshRedlineGuessBadge();
 
             RefreshCarFactsPanel();
+            RefreshIRacingAutoReadiness();
+            RefreshModeBAutoStrengthReadiness();
 
             var src = _plugin?.AudioCapture;
             if (src != null)
@@ -1685,11 +2045,10 @@ namespace TrueforceForAll.Plugin
                 UpdateUdpSectionVisibility();
                 if (RpmLedSection != null && RpmLedSection.Visibility != System.Windows.Visibility.Collapsed)
                 {
-                    // Permanently hidden (2026-08-01): Marvin declined the MAIRA
-                    // passthrough PR, so the section describes a link that will
-                    // never go live. The IPC listener stays armed (a MAIRA fork
-                    // could still publish), and iRacing lights are on by default
-                    // whenever that happens; there is nothing left to configure.
+                    // Permanently hidden (2026-08-01): the external FFB handoff
+                    // this section configured has been removed, so there is
+                    // nothing left to configure. The shell survives only for
+                    // the LED Test button.
                     RpmLedSection.Visibility = System.Windows.Visibility.Collapsed;
                 }
 
@@ -1710,6 +2069,32 @@ namespace TrueforceForAll.Plugin
                         FfbTapPickerBannerButton.Visibility = want;
                 }
 
+                // Max force number box: dash / rim nudges change the value
+                // underneath this editable box, so re-fill it here at a gentle
+                // cadence. Time-based, not tick-based: the meter timer asks
+                // for 16 ms but its real cadence sags under load (a 30-tick
+                // divider here took several seconds on the rig), so gate on
+                // the clock.
+                if ((DateTime.UtcNow - _maxNmLastFillUtc).TotalMilliseconds >= 400)
+                {
+                    _maxNmLastFillUtc = DateTime.UtcNow;
+                    UpdateIRacingMaxNmText();
+                    UpdateIRacingClipWarning();
+                    // A nudge (dash / rim) that changed the value under the
+                    // "Set to X ..." press confirmation must move that number
+                    // too, or the line claims the wheel is somewhere it is not.
+                    double curNm = _plugin.GetEditableMaxForceNm();
+                    bool moved = _maxNmLastSeen >= 0 && Math.Abs(curNm - _maxNmLastSeen) > 0.05;
+                    _maxNmLastSeen = curNm;
+                    if (moved && curNm > 0.5 && IRacingAutoMaxForceStatus != null
+                        && IRacingAutoMaxForceStatus.Visibility == Visibility.Visible
+                        && IRacingAutoMaxForceStatus.Text.StartsWith("Set to "))
+                    {
+                        IRacingAutoMaxForceStatus.Text = "Set to " + curNm.ToString("F1")
+                            + " Nm. Watching again from now.";
+                    }
+                }
+
                 // Mode B contention warning (Telemetry Based FFB tab). The
                 // plugin latches ModeBContentionDetected when the game keeps
                 // streaming its own FFB while Mode B drives the wheel;
@@ -1722,6 +2107,17 @@ namespace TrueforceForAll.Plugin
                         : System.Windows.Visibility.Collapsed;
                     if (ModeBContentionWarning.Visibility != want)
                         ModeBContentionWarning.Visibility = want;
+                }
+
+                // Slip-starved fallback banner (same tab, same cadence): Mode B
+                // armed with no slip telemetry, game FFB passed through.
+                if (ModeBSlipStarvedWarning != null)
+                {
+                    var want = _plugin.ModeBSlipStarvedDetected
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
+                    if (ModeBSlipStarvedWarning.Visibility != want)
+                        ModeBSlipStarvedWarning.Visibility = want;
                 }
 
                 // Header update controls. When an update is available, the
@@ -1766,7 +2162,6 @@ namespace TrueforceForAll.Plugin
                 // the plugin's SeenEffects / LastSeenVersion state.
                 RefreshChangelogBanner();
                 RefreshShareCtaBanner();
-                RefreshExperimentalSuccessBanner();
                 RefreshNewBadges();
 
                 // Forza listener status: the source object exposes packet
@@ -1795,6 +2190,21 @@ namespace TrueforceForAll.Plugin
                     var facts = _plugin.GetActiveCarFactsSummary();
                     string maxPart = facts.HasCar && facts.MaxRpm.HasValue
                         ? facts.MaxRpm.Value + " max RPM" : "";
+
+                    // Per-gear editor auto-show latch. The car/game latch below
+                    // misses VARIANT changes (telemetry disambiguating a
+                    // multi-variant car after load, a mid-session tune swap), so
+                    // without this a variant with saved per-gear redlines could
+                    // drive the buzz while the editor stays hidden. Skip while
+                    // the user is typing in a per-gear box so an in-progress
+                    // edit isn't destroyed; the next pass catches up.
+                    string perGearKey = (facts.ActiveVariantId ?? "") + "|" + facts.PerGearOverrideCount;
+                    if (perGearKey != _perGearShownKey
+                        && (CarFactsPerGearRows == null || !CarFactsPerGearRows.IsKeyboardFocusWithin))
+                    {
+                        _perGearShownKey = perGearKey;
+                        RebuildPerGearEditors();
+                    }
 
                     if (ep != null && userIsAuto && ep.AutoLayout is Effects.EngineLayout autoL)
                     {
@@ -1835,7 +2245,7 @@ namespace TrueforceForAll.Plugin
                     {
                         EngineLayoutAutoText.Text =
                             $"Could not auto-detect engine type for '{activeCar}'. "
-                            + "Pick the closest match in the Engine dropdown above; the Engine pulse Test button can help you A/B.";
+                            + "Pick the closest match in the Engine dropdown above.";
                     }
                     else if (ep != null && pinnedLayout is Effects.EngineLayout pinnedL
                              && ep.AutoLayout is Effects.EngineLayout autoOverridden
@@ -1845,8 +2255,7 @@ namespace TrueforceForAll.Plugin
                         EngineLayoutAutoText.Text =
                             $"Your pick: {DescribePinnedEngine(pinnedL, pinnedCustomId)}. "
                             + $"Auto would be {Effects.FiringPatternDb.LayoutDisplayName(autoOverridden)}"
-                            + $"{FriendlyDetectSourceSuffix(ep.AutoLayoutSource)}. "
-                            + "Pick Auto to use detection.";
+                            + $"{FriendlyDetectSourceSuffix(ep.AutoLayoutSource)}.";
                     }
                     else if (pinnedLayout is Effects.EngineLayout pinnedPick)
                     {
@@ -2043,9 +2452,6 @@ namespace TrueforceForAll.Plugin
                     }
                 }
 
-                // UDP test code override (forces the banner without a session).
-                if (_forceUdpSetupBanner == 1) forzaNeedsSetup = true;
-
                 // The SimHub-fallback notice and the no-telemetry setup banner
                 // are mutually exclusive states: fallback means telemetry IS
                 // reaching SimHub (working but suboptimal), so it takes
@@ -2085,6 +2491,12 @@ namespace TrueforceForAll.Plugin
 
             UpdateStatusPill();
 
+            // The combo shows the effective mode; when that resolves to a new
+            // value (game change, native-stream demotion) it must follow, not
+            // wait for the panel to be reopened.
+            if (_plugin != null && _lastShownEffectiveMode != _plugin.MasterMode)
+                try { RefreshMasterModeUi(); } catch { }
+
             // Keep the account-chip connection dot live: flips green<->amber as
             // token-refresh health changes in the background (guarded so it only
             // repaints on a transition; no network read).
@@ -2100,6 +2512,9 @@ namespace TrueforceForAll.Plugin
 
             string carId = _plugin?.ActiveCarId;
             string game  = _plugin?.ActiveGame;
+            // Before the car/game check, so a wheel that has just been found
+            // rebuilds the panel on the same tick rather than the next change.
+            RefreshIfWheelChanged();
             if (carId != _lastShownCarId || game != _lastShownGame)
             {
                 bool gameChanged = game != _lastShownGame;
@@ -2117,6 +2532,7 @@ namespace TrueforceForAll.Plugin
                 // PresetManagerControl decides internally whether to skip
                 // the fetch for car-agnostic kinds.
                 _presetManager?.OnActiveCarChanged(gameChanged);
+                _lastShownWheelCaps = WheelCapsSignature();
 
                 // First active-car/game change of the session: nudge the
                 // networked-welcome modal so an upgrader who never opens
@@ -2246,7 +2662,15 @@ namespace TrueforceForAll.Plugin
             string text;
             System.Windows.Media.SolidColorBrush bg, dot;
 
-            if (!enabled)                       { text = "Disabled";              bg = PillGreyBg;  dot = PillGreyDot;  }
+            // Lights-only gets its own state ahead of everything else. In that mode
+            // "Stream stopped" and "Waiting for telemetry" are both TRUE and both
+            // correct, and rendering either in amber would show a fault for exactly
+            // the behaviour the user asked for.
+            if (_plugin.MasterMode == TrueforceMasterMode.LightsyncOnly)
+                                                { text = wheelOk ? "Lightsync only" : "Wheel not detected";
+                                                  bg = wheelOk ? PillMutedBg : PillAmberBg;
+                                                  dot = wheelOk ? PillMutedDot : PillAmberDot; }
+            else if (!enabled)                  { text = "Disabled";              bg = PillGreyBg;  dot = PillGreyDot;  }
             else if (!wheelOk)                  { text = "Wheel not detected";    bg = PillAmberBg; dot = PillAmberDot; }
             else if (!streamOk)                 { text = "Stream stopped";        bg = PillAmberBg; dot = PillAmberDot; }
             else if (!gameOn)
@@ -2310,8 +2734,40 @@ namespace TrueforceForAll.Plugin
             if (wantQuiet && string.Equals(diag, TrueforcePlugin.GHubQuietDiagnosticMessage, StringComparison.Ordinal))
                 wantQuiet = false;
 
-            if (wantQuiet && WheelQuietDiagnosticText != null && WheelQuietDiagnosticText.Text != diag)
-                WheelQuietDiagnosticText.Text = diag;
+            // Compared against what we last rendered, not the TextBlock's Text:
+            // the MAIRA case renders inlines with a link, whose Text would never
+            // equal the diagnostic string and would re-render every tick.
+            if (wantQuiet && WheelQuietDiagnosticText != null && !string.Equals(_lastQuietDiag, diag, StringComparison.Ordinal))
+            {
+                _lastQuietDiag = diag;
+                if (_plugin != null && _plugin.NativeTrueforceStreamDemoted)
+                {
+                    // The cure's key phrase is the link, inside the sentence.
+                    var copy = _plugin.GetStandDownCopy(0);
+                    WheelQuietDiagnosticText.Inlines.Clear();
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(copy.Lead + " " + copy.Before));
+                    var link = new Hyperlink(new Run(copy.Link));
+                    string guideKey = copy.GuideKey;
+                    link.Click += (s2, e2) => OpenGuides(guideKey);
+                    WheelQuietDiagnosticText.Inlines.Add(link);
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(copy.After));
+                }
+                else if (_plugin != null && _plugin.MairaTapDegraded)
+                {
+                    // "iRacing setup" is the link, inside the sentence.
+                    WheelQuietDiagnosticText.Inlines.Clear();
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(
+                        _plugin.MairaTapDegradedLead + " " + TrueforcePlugin.MairaTapDegradedTailBeforeLink));
+                    var setup = new Hyperlink(new Run(TrueforcePlugin.MairaTapDegradedLinkText));
+                    setup.Click += (s2, e2) => OpenGuides("iracing-setup");
+                    WheelQuietDiagnosticText.Inlines.Add(setup);
+                    WheelQuietDiagnosticText.Inlines.Add(new Run(_plugin.MairaTapDegradedTailAfterLink));
+                }
+                else
+                {
+                    WheelQuietDiagnosticText.Text = diag;
+                }
+            }
 
             bool wantGHub  = _plugin?.IsLogitechGHubRunning ?? false;
             bool wantAdmin = _plugin != null && !_plugin.IsRunningElevated;
@@ -2337,6 +2793,9 @@ namespace TrueforceForAll.Plugin
                 new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner, DefaultDroppedBanner },
                 new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified,        wantDropped });
         }
+
+        // The diagnostic string last rendered into the amber box (see above).
+        private string _lastQuietDiag;
 
         private void DefaultDroppedDismiss_Click(object sender, RoutedEventArgs e)
         {
@@ -2615,44 +3074,6 @@ namespace TrueforceForAll.Plugin
         // discussions/new chooser, which still works, just unfiltered.
         private const string FfbReportDiscussionsBase =
             "https://github.com/Mhytee/Trueforce-For-All/discussions/new?category=ffb-compatibility-reports";
-
-        private void RefreshExperimentalSuccessBanner()
-        {
-            if (_plugin == null || ExperimentalSuccessBanner == null) return;
-            var want = _plugin.ShouldShowExperimentalSuccessReport
-                ? System.Windows.Visibility.Visible
-                : System.Windows.Visibility.Collapsed;
-            if (ExperimentalSuccessBanner.Visibility != want) ExperimentalSuccessBanner.Visibility = want;
-        }
-
-        // "Yes, it's working": the human confirms FFB actually works, so this
-        // is a real, attributable success. Open the prefilled report and latch.
-        private void ExperimentalSuccessYes_Click(object sender, RoutedEventArgs e)
-        {
-            OpenFfbCompatibilityReport();
-            _plugin?.DismissExperimentalSuccessReport();   // one-and-done, like the share CTA
-            RefreshExperimentalSuccessBanner();
-        }
-
-        // "No, still no FFB": our capture signal was a false positive (or FFB is
-        // there but wrong). Don't generate a success report; send them to the
-        // diagnostics/troubleshooter instead, and latch so we stop asking.
-        private void ExperimentalSuccessNo_Click(object sender, RoutedEventArgs e)
-        {
-            _plugin?.DismissExperimentalSuccessReport();
-            RefreshExperimentalSuccessBanner();
-            // Jump to the Settings tab with Diagnostics expanded: self-test,
-            // the experimental toggle, manual device picker and USBPcap
-            // reinstall all live there.
-            if (DiagnosticsExpander != null) DiagnosticsExpander.IsExpanded = true;
-            OpenAdvancedSettings_Click(this, null);
-        }
-
-        private void ExperimentalSuccessDismiss_Click(object sender, RoutedEventArgs e)
-        {
-            _plugin?.DismissExperimentalSuccessReport();
-            RefreshExperimentalSuccessBanner();
-        }
 
         // Open a prefilled compatibility-report discussion. VID/PID, game,
         // version and the capture fingerprint are filled in automatically so
@@ -4523,12 +4944,278 @@ namespace TrueforceForAll.Plugin
 
         // ---------- Master / Audio ----------
 
-        private void PluginEnabled_Changed(object sender, RoutedEventArgs e)
+        /// <summary>Load the master-mode selector and the line under it.
+        ///
+        /// Both read the EFFECTIVE mode, which is what the plugin is actually doing,
+        /// exactly as the checkbox this replaced read the effective bool. Showing the
+        /// stored choice instead looked tidier and broke the per-game switch: a Full
+        /// user starting iRacing has the plugin auto-yield for that game, and a
+        /// selector still reading "Full" cannot be used to take it back, because
+        /// picking the already-selected item raises no event in WPF.</summary>
+        /// <summary>A signature of everything about the wheel that changes how
+        /// this panel is BUILT: whether a wheel is known at all, whether its lights
+        /// can be given a pattern, and whether it has a screen. Discovery retries
+        /// in the background while no wheel is found, so all three can arrive well
+        /// after the panel opened.</summary>
+        private int WheelCapsSignature()
         {
-            if (_suppressEvents || _plugin == null) return;
-            // Plugin-enabled is a per-game preference (GameEnabled dict), not
-            // part of preset content, so it doesn't dirty the active preset.
-            _plugin.SetPluginEnabled(PluginEnabledCheck.IsChecked == true);
+            if (_plugin == null) return 0;
+            return (_plugin.WheelDetected ? 1 : 0)
+                 | (_plugin.WheelHasSelectableLightPattern ? 2 : 0)
+                 | (_plugin.WheelHasOledScreen ? 4 : 0);
+        }
+
+        /// <summary>Rebuild the panel when the wheel underneath it changes.
+        ///
+        /// Its own branch rather than folding into the car/game one, which also
+        /// calls ClearDirty to rebaseline the unsaved-changes marker: a wheel
+        /// being powered on is not a reason to forget the user has edited
+        /// something. Without this the master-mode rows, the LIGHTSYNC tab and
+        /// the capability copy stayed built for "no wheel known" until a car or
+        /// game happened to change.</summary>
+        private void RefreshIfWheelChanged()
+        {
+            int caps = WheelCapsSignature();
+            if (caps == _lastShownWheelCaps) return;
+            _lastShownWheelCaps = caps;
+            RefreshFromPlugin();
+        }
+
+        // The mode the combo last showed. The EFFECTIVE mode can change with
+        // no user gesture (a game change resolves it, a native Trueforce
+        // stream demotes it); the pill follows on the meter tick, and this is
+        // what lets the combo follow too instead of showing the old mode.
+        private TrueforceMasterMode? _lastShownEffectiveMode;
+
+        private void RefreshMasterModeUi()
+        {
+            if (_plugin == null) return;
+            var effective = _plugin.MasterMode;
+            _lastShownEffectiveMode = effective;
+
+            RebuildMasterModeItems();
+            if (MasterModeCombo != null)
+            {
+                // Suppressed. Removing the selected row drops the index to -1 and
+                // this puts it back, which raises SelectionChanged for real: unsuppressed
+                // it re-entered the handler and stored the mode of whatever row it
+                // landed on, over the one the user had just chosen. Suppression stops
+                // the handler, not the visual selection, so the selector still shows
+                // the effective mode and a later user pick still raises an event.
+                bool prev = _suppressEvents;
+                _suppressEvents = true;
+                try { MasterModeCombo.SelectedIndex = IndexForMode(effective); }
+                finally { _suppressEvents = prev; }
+
+                // The tooltip lists the modes, so it lists only the ones on offer,
+                // and does not promise a screen to a wheel that has none.
+                bool lightsyncListed = MasterModeLightsyncItem != null
+                                    && MasterModeCombo.Items.Contains(MasterModeLightsyncItem);
+                MasterModeCombo.ToolTip =
+                    "Normal: force feedback, effects, rev lights"
+                    + (_plugin.WheelHasOledScreen ? " and the wheel's screen" : "")
+                    + ". Use this in most games. "
+                    + (lightsyncListed
+                        ? "Lightsync only: disables the plugin's Trueforce effects and FFB tap, for games with native Trueforce support or when you only want our Lightsync patterns and features. "
+                        : "")
+                    + "Off: fully disables all plugin features for the game you are in.";
+            }
+
+            string game = _plugin.ActiveGame;
+            if (MasterModeNote == null) return;
+
+            // The effective mode can differ from the stored one, because the per-game
+            // switch demotes. Only ONE case earns its own sentence: iRacing, where
+            // there is something specific to do about it and a link to the steps.
+            // Everywhere else the mode name plus its plain description is enough, and
+            // a per-game explanation under every game was more words than the fact
+            // was worth.
+            // Put here by the plugin, not by the user: the game was found
+            // streaming its own Trueforce. Says so, briefly; the amber diagnostic
+            // carries the steps.
+            if (effective == TrueforceMasterMode.LightsyncOnly && _plugin.NativeTrueforceStreamDemoted)
+            {
+                // Inlines, so "Open the guide" is a link to the guide that explains
+                // this stand-down rather than a description of where it is.
+                string guideKey = _plugin.StandDownGuideKey;
+                MasterModeNote.Inlines.Clear();
+                MasterModeNote.Inlines.Add(new Run(_plugin.NativeTrueforceStreamFromMaira
+                    ? "Lightsync only for this session: MAIRA is streaming to the wheel. Running both at the "
+                      + "same time is not supported; close MAIRA, then pick Normal. "
+                    : "Lightsync only for this session: " + (_plugin.ActiveGameIsReshapeGame ? "iRacing" : "the game")
+                      + " is streaming its own Trueforce, and two streams on one wheel make it whine. "
+                      + "Pick Normal to try again. "));
+                var why = new Hyperlink(new Run("Open the guide"));
+                why.Click += (s2, e2) => OpenGuides(guideKey);
+                MasterModeNote.Inlines.Add(why);
+                MasterModeNote.Inlines.Add(new Run("."));
+                return;
+            }
+
+            if (effective == TrueforceMasterMode.LightsyncOnly
+                && _plugin.StoredMasterMode == TrueforceMasterMode.Normal
+                && _plugin.ActiveGameIsReshapeGame)
+            {
+                // Built as inlines rather than plain text so "iRacing setup
+                // instructions" is a link straight to the modal, instead of telling
+                // someone the steps exist and leaving them to find them.
+                MasterModeNote.Inlines.Clear();
+                MasterModeNote.Inlines.Add(new Run(
+                    "iRacing supports Trueforce natively. If you want to use our effects instead, "
+                    + "switch to Normal and follow the "));
+                var steps = new Hyperlink(new Run("iRacing setup instructions"));
+                steps.Click += (s2, e2) => _plugin?.ShowIracingNotice(Window.GetWindow(this), force: true);
+                MasterModeNote.Inlines.Add(steps);
+                MasterModeNote.Inlines.Add(new Run("."));
+                if (_plugin.WheelHasOledScreen)
+                    MasterModeNote.Inlines.Add(new Run(" Normal mode also unlocks dynamic OLED support."));
+                return;
+            }
+
+            switch (effective)
+            {
+                case TrueforceMasterMode.Off:
+                    // Off is per-game while a game is running and global when it
+                    // was chosen at the desk. Which one the reader is looking at is
+                    // decided by the SAME test the setter uses, so the line cannot
+                    // promise "this game" for a stance that is actually global:
+                    // a global Off short-circuits the resolver before any per-game
+                    // entry is read.
+                    MasterModeNote.Text =
+                        _plugin.StoredMasterMode == TrueforceMasterMode.Off
+                        ? "Off: fully disables all plugin features, in every game."
+                        : "Off: fully disables all plugin features for this game.";
+                    break;
+                case TrueforceMasterMode.LightsyncOnly:
+                    // Says what it switches OFF first, deliberately: describing the
+                    // mode by what it does with the lights reads as a promise to
+                    // light wheels in games that never light them.
+                    //
+                    // What it DOES keep is named exactly, though, because "Lightsync
+                    // patterns and features" was vague enough to be read as driving
+                    // the rev-light levels. It does not: levels share a channel with
+                    // the game's force feedback and only run when the plugin owns
+                    // that channel, which this mode is precisely the opposite of.
+                    // Setting the pattern is a single write and works anywhere.
+                    //
+                    // Per-game or global on the same test as Off: chosen in a game it
+                    // is remembered for that game, chosen at the desk it is the
+                    // stance everywhere. Saying neither left users assuming the one
+                    // that was not true of their situation.
+                    //
+                    // No wheel qualifier needed: RebuildMasterModeItems only offers
+                    // this row on a wheel that can act on it, so anyone reading this
+                    // line has a wheel with a pattern to set.
+                    MasterModeNote.Text =
+                        "Lightsync only: disables the plugin's Trueforce effects and FFB tap, "
+                        + "and still sets your wheel's pattern and colors for the car you are in. "
+                        + (string.IsNullOrEmpty(game)
+                            ? "Chosen here, with no game running, it applies everywhere."
+                            : "Chosen while a game is running, it is remembered for that game alone.");
+                    break;
+                default:
+                    // Deliberately does not list the features. It is the default and
+                    // the mode nearly everyone runs everywhere, so it has nothing to
+                    // justify; the tabs below are the feature list. Mirrors the Off
+                    // line, which is the same sentence inverted. Naming the wheel's
+                    // screen also meant conditioning on whether the wheel has one,
+                    // which is a lot of machinery for a caption.
+                    // A "Forza needs its telemetry pointed here" sentence was tried
+                    // here and taken out again: three surfaces already say it at the
+                    // moment it is true (the UDP setup banner, the SimHub-fallback
+                    // banner, the slip-starved warning), all of them landing on the
+                    // same steps, and this line is read in every game by everyone
+                    // whose setup is already fine. The header's guide list covers
+                    // the one case they miss, someone setting Forza up before
+                    // starting it, without a condition and without the noise.
+                    MasterModeNote.Text = "Normal: all plugin features enabled. The one to use in most games.";
+                    break;
+            }
+        }
+
+        /// <summary>Offer Lightsync only on a wheel that can act on it.
+        ///
+        /// It sets the wheel's pattern for the car and leaves the game's force
+        /// feedback alone. A wheel whose strip is one fixed look has no pattern
+        /// to set, and its rev lights need Normal like every other wheel's, so
+        /// there the mode does nothing that Off does not: three choices where two
+        /// are identical is a worse switch than two choices.
+        ///
+        /// Fails OPEN on an undetected wheel, the same rule the LIGHTSYNC tab
+        /// uses, so a wheel powered on after SimHub does not lose the option.</summary>
+        private void RebuildMasterModeItems()
+        {
+            if (MasterModeCombo == null || MasterModeLightsyncItem == null) return;
+
+            // Hidden only when the wheel cannot act on it AND the plugin is not
+            // currently in it. A mode in force always gets a row: the upgrade
+            // migration turns every per-game "off" into Lightsync only, and the
+            // native-Trueforce auto-yield lands there on its own, so these users
+            // exist and are not choosing it. Without the row the selector reads
+            // Off while the plugin is not off, and clicking Off changes nothing
+            // because the row is already selected.
+            bool hide = _plugin != null && _plugin.WheelDetected
+                     && !_plugin.WheelHasSelectableLightPattern
+                     && _plugin.MasterMode != TrueforceMasterMode.LightsyncOnly;
+            bool listed = MasterModeCombo.Items.Contains(MasterModeLightsyncItem);
+            if (hide != listed) return;
+
+            // Removing the SELECTED item drops SelectedIndex to -1 and raises
+            // SelectionChanged. Suppressed, or the handler would read -1 and
+            // write a mode nobody chose; the caller re-selects straight after.
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (hide) MasterModeCombo.Items.Remove(MasterModeLightsyncItem);
+                else      MasterModeCombo.Items.Insert(1, MasterModeLightsyncItem);
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        /// <summary>Which row shows this mode.
+        ///
+        /// RebuildMasterModeItems guarantees a row for whatever mode is in force,
+        /// so this never has to stand one mode in for another. It used to, and
+        /// that was the bug: an aliased row made the selector disagree with the
+        /// status pill beside it and the caption under it, and made clicking the
+        /// aliased row a no-op, because WPF raises nothing for the row that is
+        /// already selected. Falling back to Normal here is the unreachable
+        /// case, not a substitution rule.</summary>
+        private int IndexForMode(TrueforceMasterMode m)
+        {
+            var items = MasterModeCombo?.Items;
+            if (items == null) return 0;
+            for (int i = 0; i < items.Count; i++)
+                if (ModeForIndex(i) == m) return i;
+            return 0;
+        }
+
+        /// <summary>The mode a row stands for, read from its Tag rather than its
+        /// position, because the list is not always the same length.</summary>
+        private TrueforceMasterMode ModeForIndex(int i)
+        {
+            var items = MasterModeCombo?.Items;
+            var item = (items != null && i >= 0 && i < items.Count)
+                ? items[i] as ComboBoxItem : null;
+            switch (item?.Tag as string)
+            {
+                case "LightsyncOnly": return TrueforceMasterMode.LightsyncOnly;
+                case "Off":           return TrueforceMasterMode.Off;
+                default:              return TrueforceMasterMode.Normal;
+            }
+        }
+
+        private void MasterMode_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || MasterModeCombo == null) return;
+            if (MasterModeCombo.SelectedIndex < 0) return;
+            // The master mode is a per-game preference (GameEnabled dict) where it is
+            // off or full, and a global stance where it is lights only. Neither is
+            // preset content, so this does not dirty the active preset.
+            _plugin.SetMasterMode(ModeForIndex(MasterModeCombo.SelectedIndex));
+            RefreshMasterModeUi();
+            try { UpdateStatusPill(); } catch { }
         }
 
         private void MasterGainSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -4702,14 +5389,21 @@ namespace TrueforceForAll.Plugin
             MarkEffectDirty(EffectKind.StationarySpring);
         }
 
-        // Issue #13 test toggle. Global setting; SetStopStreamOnPause persists
-        // internally, so no extra PersistSettings() call here. Mirrors the
-        // NOLOCK access code (which keeps this checkbox in sync via the handler
-        // in CommitAccessCode).
+        // Pause hand-back toggle (shipped default-on since 0.3.0). Global
+        // setting; SetStopStreamOnPause persists internally, so no extra
+        // PersistSettings() call here. This checkbox is the only way to change
+        // it; the access code that used to mirror it has been removed.
         private void StopStreamOnPause_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetStopStreamOnPause(StopStreamOnPauseCheck.IsChecked == true);
+        }
+
+
+        private void ReleaseOnFocusLoss_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetReleaseForceOnFocusLoss(ReleaseOnFocusLossCheck.IsChecked == true);
         }
 
         // ---- Telemetry based FFB (Mode B) handlers. Global settings (not
@@ -4757,9 +5451,10 @@ namespace TrueforceForAll.Plugin
         // was the reason slider ranges had to cover access-code clamp
         // ranges. Readouts still refresh in one pass so they stay in
         // lockstep with settings changed elsewhere.
-        // Slider ranges SHOULD still cover the matching SetModeBParam
-        // access-code clamp range: WPF clamps a loaded out-of-range value to
-        // the slider Max, and dragging THAT slider would persist the clamp.
+        // Slider ranges SHOULD still cover the SetModeBParam clamp range of
+        // the tuning codes that remain (BDIRK, BLOCKPT, BGTRIM): WPF clamps a
+        // loaded out-of-range value to the slider Max, and dragging THAT
+        // slider would persist the clamp.
         private void ModeBSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -4879,9 +5574,15 @@ namespace TrueforceForAll.Plugin
         private void ModeBReset_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
+            // Named by the family the active game actually uses: the reset only
+            // touches that one, so a confirm saying "all" would be a lie in
+            // either direction (an FS reset leaves Forza alone and vice versa).
+            bool spring = TrueforcePlugin.IsSpringModeGame(_plugin.ActiveGame);
+            string which = spring ? "Farming Simulator" : "Forza";
+            string other = spring ? "Forza" : "Farming Simulator";
             bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
                 "Reset Telemetry Based FFB",
-                "Reset all Telemetry Based FFB tuning to the defaults?\n\nThis puts every slider and feel-feature toggle back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings are kept.",
+                "Reset the " + which + " tuning to the defaults?\n\nThis puts every slider and feel-feature toggle on this tab back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your " + other + " setup is left alone, and so are your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings.",
                 DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
             if (ok != true) return;
             _plugin.ResetModeBTuningToDefaults();
@@ -4928,8 +5629,8 @@ namespace TrueforceForAll.Plugin
             bool slew = SpikeModeSlewRadio.IsChecked == true;
             if (SpikeModeDescription != null)
                 SpikeModeDescription.Text = slew
-                    ? "Slew-rate limiter (iRacing-style): caps how fast the force is allowed to change. No amplitude reduction, sustained forces always reach full strength; a sharp spike just gets spread across a few extra milliseconds."
-                    : "Transient detector: soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big curb hits get rounded off.";
+                    ? "Caps how fast the force is allowed to change. No amplitude reduction, sustained forces always reach full strength; a sharp spike just gets spread across a few extra milliseconds."
+                    : "Soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big curb hits get rounded off.";
             if (FfbSpikeLimitLabel != null)
                 FfbSpikeLimitLabel.Text = slew ? "Slew rate:" : "Spike threshold:";
             if (FfbSpikeLimitHelp != null)
@@ -5095,7 +5796,7 @@ namespace TrueforceForAll.Plugin
                 {
                     var w = noEndpoint[0];
                     sb.AppendLine($"       Wheel recognized ({w.Model}) but its Trueforce/haptic USB "
-                        + "interface isn't available (the 'wheel present but no haptic endpoint' case).");
+                        + "interface isn't available.");
                     sb.AppendLine("       Fix: open G HUB once and let it finish detecting the wheel (this loads "
                         + "the wheel's full interface set), then close G HUB and restart SimHub. If it "
                         + "persists, reboot.");
@@ -5149,17 +5850,16 @@ namespace TrueforceForAll.Plugin
                 // driver hasn't attached since install. FFB pass-through stays
                 // dead until the bus is visible to the capture driver.
                 sb.AppendLine("[FAIL] FFB pass-through: Windows sees your wheel but USBPcap can't capture it on the USB bus.");
-                sb.AppendLine("       Likely the wheel is on a USB port/controller USBPcap doesn't cover, or USBPcap needs a reboot since it was installed.");
-                sb.AppendLine("       Try, in order: reboot (if USBPcap was just installed); move the wheel to a different USB port (rear motherboard ports work best, avoid front-panel ports and hubs); run SimHub as administrator; or use 'Pick device manually' below.");
+                sb.AppendLine("       Likely the wheel is on a USB port/controller USBPcap doesn't cover, or the PC hasn't been rebooted since USBPcap was installed.");
+                // No "Pick device manually" here. That control ships Collapsed and
+                // only appears after the MANUALPIN access code, which is not
+                // documented anywhere a user in this state would find it, so the
+                // instruction named a button that is on nobody's screen. The three
+                // remaining steps are the ones that actually fix this.
+                sb.AppendLine("       Try, in order: reboot (if USBPcap was just installed); move the wheel to a different USB port (rear motherboard ports work best, avoid front-panel ports and hubs); run SimHub as administrator.");
             }
             else
                 sb.AppendLine("[skip] FFB pass-through: " + (string.IsNullOrEmpty(tap) ? "(not started)" : tap));
-            // FFB not confirmed live and experimental detection is off: a wheel
-            // sending force in a shape the default path doesn't recognize is
-            // exactly what experimental mode widens, so suggest it.
-            if (!tapLive && !ffbLiveWatch && !(_plugin.Settings?.ExperimentalFfbCapture ?? false))
-                sb.AppendLine("       If your wheel should have force feedback but you feel none, turn on "
-                    + "'Enable experimental FFB detection' (Effects tab, under FFB tweaks), then drive a few seconds.");
             if (!gameRun && _plugin.IsKnownGameProcessRunning(out string pausedGame))
                 sb.AppendLine($"[skip] Telemetry: '{pausedGame}' is running but paused or in a menu (telemetry resumes on track)");
             else if (!gameRun)
@@ -5206,11 +5906,8 @@ namespace TrueforceForAll.Plugin
                         Dispatcher.Invoke(() =>
                         {
                             string verdict = seen
-                                ? "[OK]   FFB pass-through: LIVE - game forces captured when you moved. Pass-through is working."
-                                : "[skip] FFB pass-through: no game forces seen in 6 s. Be in an ACTIVE session (not a menu/paused) and turn the wheel / drive while the watch runs."
-                                  + ((_plugin.Settings?.ExperimentalFfbCapture ?? false)
-                                      ? ""
-                                      : " If you still feel no force feedback, turn on 'Enable experimental FFB detection' and try again.");
+                                ? "[OK]   FFB pass-through: LIVE - game forces captured when you moved."
+                                : "[skip] FFB pass-through: no game forces seen in 6 s. Be in an ACTIVE session (not a menu/paused) and turn the wheel / drive while the watch runs.";
                             SelfTestResultText.Text = checklist.Replace(FfbLiveWatchSentinel, verdict);
                             SelfTestButton.IsEnabled = true;
                         });
@@ -5624,7 +6321,6 @@ namespace TrueforceForAll.Plugin
                         $"Stream status: {_plugin?.StreamStatus}\n" +
                         $"FFB tap status: {_plugin?.FfbTapStatus}\n" +
                         $"Capture: {_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}\n" +
-                        $"Experimental FFB capture: {(_plugin?.Settings?.ExperimentalFfbCapture ?? false ? "ON" : "OFF")}\n" +
                         $"Forza UDP: {forzaLine}\n" +
                         $"Manual USBPcap override: {(_plugin?.HasManualUsbPcapDevice ?? false ? $"{_plugin.Settings.ManualUsbPcapInterface} dev {_plugin.Settings.ManualUsbPcapDeviceAddress}" : "(none)")}\n" +
                         $"USB byte logging: {(_plugin?.Settings?.LogUsbBytesEnabled ?? false ? "enabled" : "disabled")}\n" +
@@ -5688,12 +6384,6 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null || LogUsbBytesCheck == null) return;
             _plugin.SetUsbBytesLoggingEnabled(LogUsbBytesCheck.IsChecked == true);
-        }
-
-        private void ExperimentalFfbDetection_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin == null || ExperimentalFfbCheck == null) return;
-            _plugin.SetExperimentalFfbCapture(ExperimentalFfbCheck.IsChecked == true);
         }
 
         // Standing mod-install banner on the Telemetry FFB tab. The hold flag
@@ -5790,6 +6480,391 @@ namespace TrueforceForAll.Plugin
             if (SpringStrengthText != null)
                 SpringStrengthText.Text = SpringStrengthSlider.Value.ToString("F2");
             _plugin.PersistSettings();
+        }
+
+        // iRacing's OWN strength (IRacingForceGain), separate from the Forza
+        // ModeBSatGain for the same reason the spring has its own: the paths
+        // are different pipelines. This one multiplies the sim's already
+        // normalized torque, so 1.00 means "exactly what iRacing asked for",
+        // where the Forza gain is a peak-torque fraction defaulting to 0.50.
+        // Read live by ComputeIRacingForce; no apply call needed.
+        private void IRacingGain_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingGainSlider == null) return;
+            _plugin.Settings.IRacingForceGain = (float)IRacingGainSlider.Value;
+            if (IRacingGainText != null)
+                IRacingGainText.Text = IRacingGainSlider.Value.ToString("F2");
+            UpdateIRacingClipWarning();
+            _plugin.PersistSettings();
+        }
+
+        // A/B between the two ways of rendering the sub-tick detail. Live: the
+        // 1 kHz force path reads the setting every pass, so the wheel changes
+        // character under your hands without a restart, which is the only way
+        // to compare them honestly.
+        // One dropdown over two settings. The ladder, and what each rung is:
+        //   0 Plain              360 off        the frame's own value, held
+        //   1 Plain, kept fresh  360 on, mode 2 trend projected, texture dropped
+        //   2 Detailed, sharp    360 on, mode 0 trend projected, texture late
+        //   3 Detailed, smooth   360 on, mode 1 true shape, all predicted forward
+        private void IRacingForceMode_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingForceModeCombo == null) return;
+            switch (IRacingForceModeCombo.SelectedIndex)
+            {
+                case 1:  _plugin.Settings.IRacingUse360Hz = true;  _plugin.Settings.IRacingForceMode = 2; break;
+                case 2:  _plugin.Settings.IRacingUse360Hz = true;  _plugin.Settings.IRacingForceMode = 0; break;
+                case 3:  _plugin.Settings.IRacingUse360Hz = true;  _plugin.Settings.IRacingForceMode = 1; break;
+                default: _plugin.Settings.IRacingUse360Hz = false; break;   // Plain: the mode is moot
+            }
+            _plugin.PersistSettings();
+            UpdateIRacingFeelHelp();
+        }
+
+        /// <summary>Which rung the stored pair of settings sits on. Plain wins
+        /// whenever the detail feed is off, because the mode means nothing
+        /// there.</summary>
+        private int IRacingFeelIndexFromSettings()
+        {
+            var s = _plugin?.Settings;
+            if (s == null || !s.IRacingUse360Hz) return 0;
+            if (s.IRacingForceMode == 2) return 1;
+            return s.IRacingForceMode == 1 ? 3 : 2;
+        }
+
+        private void IRacingMaxNm_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            // Any keystroke marks the box actively edited, so the periodic
+            // re-fill backs off (see MaxNmBoxBeingEdited).
+            _maxNmLastTypedUtc = DateTime.UtcNow;
+            if (e.Key == System.Windows.Input.Key.Enter) CommitIRacingMaxNm();
+        }
+
+        private void IRacingMaxNm_LostFocus(object sender, RoutedEventArgs e)
+        {
+            CommitIRacingMaxNm();
+        }
+
+        // An EMPTY box means "follow iRacing's own number", which is stored as 0.
+        // Typing 0 means the same thing rather than "no force": there is no car
+        // whose peak torque is zero, so the only sane reading of a 0 is the
+        // sentinel. Anything unparseable snaps back to what is really in use, so
+        // a typo cannot silently leave the wheel somewhere the box does not show.
+        private void CommitIRacingMaxNm()
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingMaxNmBox == null) return;
+            string raw = IRacingMaxNmBox.Text?.Trim();
+            double v;
+            if (string.IsNullOrEmpty(raw)) v = 0.0;
+            else if (!double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                                      System.Globalization.CultureInfo.CurrentCulture, out v)
+                     && !double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                                         System.Globalization.CultureInfo.InvariantCulture, out v))
+            {
+                UpdateIRacingMaxNmText();   // unreadable: restore the live value
+                return;
+            }
+            if (v < 0.0) v = 0.0;
+            if (v > 200.0) v = 200.0;   // a sanity ceiling, not a wheel rating
+            // Writes whatever the force path is actually using (the active
+            // car's slot in per-car mode, else the shared override), so the
+            // iRacing-style nudge works: bump the number to make THIS car
+            // heavier or lighter without touching Strength.
+            _plugin.SetEditableMaxForceNm(v);
+            UpdateIRacingMaxNmText();
+            UpdateIRacingClipWarning();
+        }
+
+        // Predictive clip warning, shown at the moment of adjustment. The dash
+        // already reports clipping as it HAPPENS; this is the other half, telling
+        // you before you drive that the setting you just chose cannot fit.
+        //
+        // Uses the real observed peak against the real divisor where possible,
+        // rather than assuming Max force came from Auto. Someone who typed a
+        // deliberately high Max force is not clipping at Strength 1.2 and should
+        // not be told they are. With no peak yet (a fresh car, or straight after
+        // an Auto press reset the observer) it falls back to Auto's own 10
+        // percent margin, which is the honest assumption when Auto set the value.
+        private void UpdateIRacingClipWarning()
+        {
+            if (IRacingClipWarn == null || _plugin == null) return;
+            double strength = _plugin.Settings?.IRacingForceGain ?? 1.0;
+            double peak = _plugin.IRacingObservedPeakNm;
+            double maxF = _plugin.IRacingEffectiveMaxForceNm;
+
+            double predicted = (peak > 0.5 && maxF > 0.5)
+                ? peak * strength / maxF
+                : strength / 1.10;
+
+            IRacingClipWarn.Visibility = predicted > 1.0
+                ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // One shot, exactly like iRacing's own auto button: drive, press, keep a
+        // number you can see. Not a mode that keeps adjusting underneath you.
+        private void IRacingAutoMaxForce_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            // Refuses before the peak has settled, for the same reason the dash
+            // button greys out: pressing on an out-lap calibrates against a force
+            // the car has not produced yet, and everything afterwards is too
+            // strong with nothing on screen to say why.
+            if (!_plugin.IRacingPeakSettled)
+            {
+                if (IRacingAutoMaxForceStatus != null)
+                {
+                    IRacingAutoMaxForceStatus.Text = _plugin.IRacingObservedPeakNm <= 0.5
+                        ? "Drive a lap first, then press this."
+                        : "Still learning what this car pushes. Keep driving; this lights up when the reading has held steady.";
+                    IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+                }
+                return;
+            }
+            double applied = _plugin.ApplyIRacingAutoMaxForce();
+            if (IRacingAutoMaxForceStatus != null)
+            {
+                IRacingAutoMaxForceStatus.Text = applied > 0.5
+                    ? "Set to " + applied.ToString("F1") + " Nm. Watching again from now."
+                    : "Drive a lap first, then press this.";
+                IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+            }
+            _irAutoReadyShown = null;   // force the readiness line to redraw
+            RefreshFromPlugin();
+        }
+
+        // Mode B auto strength: the same "say what you know" treatment the
+        // iRacing panel got. This learner is continuous rather than one-shot, so
+        // there is no button to light; what a user needs instead is whether it
+        // has enough seat time on this car for its number to mean anything, and
+        // what that number currently is.
+        private string _mbAutoStrengthShown;
+        // The click message holds the line for a few seconds. Without this the
+        // 16 ms tick recomputes a learner string, finds it different from what
+        // the click just wrote, and stamps over the acknowledgement inside one
+        // frame, which reads as a dead button.
+        private int _mbAutoStrengthHoldUntilMs;
+
+        private void RefreshModeBAutoStrengthReadiness()
+        {
+            if (ModeBAutoStrengthStatus == null || _plugin == null) return;
+            if (ModeBForzaTuningPanel == null
+                || ModeBForzaTuningPanel.Visibility != Visibility.Visible) return;
+            if (_mbAutoStrengthHoldUntilMs != 0)
+            {
+                if (Environment.TickCount - _mbAutoStrengthHoldUntilMs < 0) return;
+                _mbAutoStrengthHoldUntilMs = 0;
+            }
+
+            string text;
+            double conf = _plugin.ModeBStrengthConfidence;
+            double scale = _plugin.ModeBAutoStrengthScale;
+            bool on = _plugin.Settings?.ModeBAutoStrength == true;
+            if (!_plugin.ModeBEnabledForActiveGame)
+            {
+                text = "";
+            }
+            else if (!on)
+            {
+                // The learner keeps running with the box unticked (so ticking it
+                // later applies everything learned so far), but nothing is being
+                // applied, and saying "applying x1.00" under an unticked box
+                // would claim the opposite.
+                text = conf >= 1.0
+                    ? "This car is learned. Tick the box to apply it."
+                    : "Off. It still learns in the background, so ticking it later applies what it has.";
+            }
+            else if (conf <= 0.0)
+            {
+                text = "Nothing learned for this car yet. Drive it near the limit for a minute.";
+            }
+            else if (conf < 1.0)
+            {
+                text = "Learning this car: " + ((int)Math.Round(conf * 100.0)) + " percent."
+                     + " Applying x" + scale.ToString("0.00") + " so far.";
+            }
+            else
+            {
+                text = "Learned. Applying x" + scale.ToString("0.00") + " to this car.";
+                // A peak pinned to its own sanity ceiling is not a result about
+                // the car, it is the learner running out of range, and every car
+                // that gets there lands on the same scale. Say so rather than
+                // presenting the floor as a measurement.
+                if (_plugin.ModeBStrengthRailed)
+                    text += "  (At the limit of what it can measure, so this is the"
+                          + " smallest scale it will apply.)";
+                else if (_plugin.ModeBGripConfidence < 1.0)
+                    text += "  (Grip calibration is still settling underneath it.)";
+            }
+
+            if (text == _mbAutoStrengthShown) return;
+            _mbAutoStrengthShown = text;
+            ModeBAutoStrengthStatus.Text = text;
+        }
+
+        // One saved slot holds this car's grip peak and its force peak, so
+        // there is no honest way to clear one and keep the other, and the
+        // copy says as much.
+        private void ModeBRelearnCar_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string status = _plugin.RequestGripCalReset();
+            if (ModeBAutoStrengthStatus != null)
+            {
+                ModeBAutoStrengthStatus.Text = status;
+                _mbAutoStrengthShown = status;
+                _mbAutoStrengthHoldUntilMs = Environment.TickCount + 6000;
+                if (_mbAutoStrengthHoldUntilMs == 0) _mbAutoStrengthHoldUntilMs = 1;
+            }
+        }
+
+        // Greys the Auto button until the car's peak has stopped climbing, and
+        // says how far along that is. Ticked rather than event-driven because
+        // readiness is a function of elapsed time, not of anything the user does,
+        // and the whole point is that it arrives while they are looking away.
+        // Only touches the UI when the displayed state actually changes.
+        private bool? _irAutoReadyShown;
+        private int _irAutoPctShown = -1;
+        private string _irAutoBtnShown;
+
+        private void RefreshIRacingAutoReadiness()
+        {
+            if (IRacingAutoMaxForceBtn == null || _plugin == null) return;
+            if (IRacingTuningPanel == null || IRacingTuningPanel.Visibility != Visibility.Visible) return;
+
+            bool ready = _plugin.IRacingPeakSettled;
+            int pct = (int)Math.Round(_plugin.IRacingPeakConfidence * 100.0);
+            double offer = _plugin.IRacingLearnedMaxNm;
+            // The button CARRIES the number it would write. Next to a text box, a
+            // button called "Set" reads as "commit what I typed" and would appear
+            // to clobber it; "Use 23.8" can only mean one thing, and it doubles
+            // as the readout of what the learner currently thinks, so there is no
+            // separate suggestion label to keep in sync.
+            string label = offer > 0.5
+                ? "Use " + offer.ToString("F1")
+                : "Auto";
+            if (_irAutoReadyShown == ready && _irAutoPctShown == pct && _irAutoBtnShown == label) return;
+            bool wasReady = _irAutoReadyShown == true;
+            _irAutoReadyShown = ready;
+            _irAutoPctShown = pct;
+            _irAutoBtnShown = label;
+
+            IRacingAutoMaxForceBtn.Content = label;
+            // Genuinely disabled below settled, not just dimmed: a dim button that
+            // still works is a button that says "not yet" and then does it anyway,
+            // and taking the number early is exactly the mistake this greying is
+            // meant to prevent. Matches the wheel-button action, which refuses.
+            IRacingAutoMaxForceBtn.IsEnabled = ready;
+            IRacingAutoMaxForceBtn.Opacity = ready ? 1.0 : 0.45;
+            if (IRacingAutoMaxForceStatus == null) return;
+            // A press leaves its own confirmation on this line; don't stamp over
+            // it until the state moves on from where the press left it.
+            if (ready)
+            {
+                if (!wasReady)
+                {
+                    IRacingAutoMaxForceStatus.Text = "Ready. Finish a clean lap, then take that number.";
+                    IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+                }
+            }
+            else if (pct > 0)
+            {
+                IRacingAutoMaxForceStatus.Text = "Learning what this car pushes: " + pct + " percent.";
+                IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+            }
+        }
+
+        // Clock gate for the periodic number-box re-fill above (400 ms).
+        private DateTime _maxNmLastFillUtc = DateTime.MinValue;
+
+        // Editing detector for that re-fill. IsFocused alone is wrong for it:
+        // WPF keyboard focus sticks to the box from one click until something
+        // else takes it, so a box touched once was never re-filled again
+        // (owner, 2026-08-15: nudges only showed up after tab switches).
+        // "Being edited" = focused AND typed in within the last few seconds.
+        private DateTime _maxNmLastTypedUtc = DateTime.MinValue;
+        private bool MaxNmBoxBeingEdited =>
+            IRacingMaxNmBox != null && IRacingMaxNmBox.IsKeyboardFocused
+            && (DateTime.UtcNow - _maxNmLastTypedUtc).TotalSeconds < 5.0;
+
+        // Last externally-observed value, for moving the "Set to X" press
+        // confirmation when a nudge changes the number underneath it.
+        private double _maxNmLastSeen = -1.0;
+
+        private void UpdateIRacingMaxNmText()
+        {
+            if (IRacingMaxNmText == null) return;
+            var st = _plugin?.Settings;
+            double shown = 0.0;
+            string src = "";
+            if (st != null && st.IRacingMaxForcePerCar && st.IRacingMaxForceByCar != null
+                && !string.IsNullOrEmpty(_plugin.ActiveCarId)
+                && st.IRacingMaxForceByCar.TryGetValue(_plugin.ActiveCarId, out float pc) && pc > 0.5f)
+            {
+                shown = pc; src = " (this car)";
+            }
+            else if (st != null && st.IRacingMaxForceNmOverride > 0.5f)
+            {
+                shown = st.IRacingMaxForceNmOverride;
+            }
+
+            // The box carries the number and the label beside it carries where
+            // that number came from. Split this way an empty box is a readable
+            // state ("following iRacing, which says 18.5") instead of the old
+            // slider's hard-left zero, which read as no force at all.
+            if (shown > 0.5)
+            {
+                if (!MaxNmBoxBeingEdited)
+                    IRacingMaxNmBox.Text = shown.ToString("F1");
+                IRacingMaxNmText.Text = string.IsNullOrEmpty(src)
+                    ? "for every car"
+                    : "for this car";
+                return;
+            }
+            // Nothing set: we fall back to whatever iRacing itself is using, so
+            // say so and show the number. A bare "Auto" would leave the user
+            // unable to tell a working fallback from a broken one.
+            if (!MaxNmBoxBeingEdited) IRacingMaxNmBox.Text = "";
+            double live = _plugin?.IRacingLiveMaxForceNm ?? 0.0;
+            IRacingMaxNmText.Text = live > 0.5
+                ? "following iRacing, which says " + live.ToString("F1")
+                : "following iRacing";
+        }
+
+        // Feel only means anything with the 360 Hz feed on: without the six
+        // sub-samples there is nothing to arrange differently, so the control
+        // hides with the feed. (The Prediction slider lived here until
+        // 2026-08-16; the plugin learns that lead per car and 1.00 means use
+        // what it learned, so it was never a number to put in front of a
+        // driver. IRacingPredictGain survives as a file-level escape hatch.)
+        // honest rather than offering a knob that does nothing.
+        private void UpdateIRacingFeelHelp()
+        {
+            // BOTH detail paths are gated on the 360 Hz feed: with it off the
+            // force path takes the sim's per-frame value and neither Feel nor
+            // Prediction changes anything at all (owner, 2026-08-15). A live
+            // control that silently does nothing is worse than an absent one,
+            // so the whole pair goes away with the feed that gives it meaning.
+            // Only the chosen rung is described: four descriptions at once is a
+            // wall nobody reads, and the one that applies gets lost in it.
+            if (IRacingFeelHelp == null) return;
+            switch (IRacingFeelIndexFromSettings())
+            {
+                case 0:
+                    IRacingFeelHelp.Text = "Each update is used exactly as the sim sends it, and held until the next one arrives. Nothing is filled in and nothing is added.";
+                    break;
+                case 1:
+                    IRacingFeelHelp.Text = "Fills the time between updates by continuing the force along its own trend, so it keeps moving instead of holding still.";
+                    break;
+                case 2:
+                    IRacingFeelHelp.Text = "Fills the gaps as above, and brings in the detail the sim solves between updates, so kerbs and surface texture reach your hands.";
+                    break;
+                default:
+                    IRacingFeelHelp.Text = "Kerbs and texture arrive whole and in step with the steering weight, instead of split from it. Keeping them together costs a frame of delay, which the plugin predicts forward to cancel.";
+                    break;
+            }
         }
 
         // FS's OWN min-force floor (SpringModeMinForce), separate from the
@@ -5987,6 +7062,19 @@ namespace TrueforceForAll.Plugin
         private void UsbPcapPickDevice_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
+            // Full only. The picker's scan spawns a USBPcapCMD child per root hub
+            // and captures every device on the bus, including the wheel the game is
+            // driving, which is precisely the "no USB capture" the other two modes
+            // promise. The FFB-tap buttons beside it are already inert without a
+            // device; this was the half that still did work.
+            if (_plugin.MasterMode != TrueforceMasterMode.Normal)
+            {
+                TrueforceDialog.Show(Window.GetWindow(this), "Pick device manually",
+                    $"The master mode is {TrueforcePlugin.ModeLabel(_plugin.MasterMode)}, so the plugin is not "
+                    + "capturing USB traffic and there is nothing to pick a device for. Switch to Normal first.",
+                    DialogKind.Info);
+                return;
+            }
             var dlg = new UsbDevicePickerWindow(_plugin);
             try { dlg.Owner = Window.GetWindow(this); } catch { }
             dlg.ShowDialog();
@@ -5999,10 +7087,45 @@ namespace TrueforceForAll.Plugin
         internal const string PrivacyPolicyUrl = "https://github.com/Mhytee/Trueforce-For-All/blob/beta/PRIVACY.md";
         private void PrivacyPolicy_Click(object sender, RoutedEventArgs e) => OpenUrl(PrivacyPolicyUrl);
 
-        // Reciprocal funnel: TF4ALL points iRacing users at MAIRA, whose
-        // "Pass FFB through TF4ALL" toggle is the supported full-feature path.
-        private const string MairaRefactoredUrl = "https://github.com/mherbold/MarvinsAIRARefactored/releases/latest";
-        private void GetMaira_Click(object sender, RoutedEventArgs e) => OpenUrl(MairaRefactoredUrl);
+        // Attribution for the per-car data. Its licence requires the credit, so
+        // this link is a condition of using the data, not decoration. Keep the
+        // wording scoped to what the dataset actually supplies (light patterns,
+        // the per-gear redlines behind them, and each car's blink rate): our own
+        // community car facts supply engine data, car names and the redline
+        // consensus, including for the many games this project does not cover,
+        // and a credit broader than that would misstate it.
+        private void LovelyCredit_Click(object sender, RoutedEventArgs e)
+            => OpenUrl("https://github.com/Lovely-Sim-Racing/lovely-car-data");
+
+        // The per-car LIGHTING switch. The dataset itself rides community
+        // features (see TrueforcePlugin.LovelyDataEnabled); this governs only
+        // whether it reaches the strip, and stays opt-in because lighting a car
+        // borrows one of the user's wheel slots. Turning it off drops the ramps
+        // and hands the slot back at once, so the lights revert this frame
+        // rather than at the next car, while the redlines stay.
+        private void AlwaysRememberPattern_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.AlwaysRememberCarPattern = AlwaysRememberPatternCheck?.IsChecked == true;
+            _plugin.PersistSettings();
+            // The Remember button hides once a pick is pinned, and with this on the
+            // pick pins itself, so the row beside it needs re-reading.
+            RefreshRevLightPicker();
+            RefreshCarRevLightRow();
+        }
+
+        private void LovelyCarData_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            // One switch, and now literally one field. Filling at the car's own
+            // points needs no permission (no extra traffic, nothing of the user's
+            // touched), so it is simply what the data is for; the same switch
+            // decides whether the COLOURS and pattern follow too, which is the
+            // part that writes a slot.
+            _plugin.Settings.LovelyCarDataEnabled = LovelyCarDataCheck?.IsChecked == true;
+            _plugin.PersistSettings();
+            _plugin.OnLovelyEnabledChanged();
+        }
 
         private static void OpenUrl(string url)
         {
@@ -6866,11 +7989,20 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        private void UdpSetupBannerButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>Open the Forza Data Out steps: Settings tab, UDP telemetry
+        /// expanded, scrolled to the numbered steps and the Port box they refer to.
+        ///
+        /// The one place the steps live, so every route to them (both banners, the
+        /// mode note, the header's guide list) lands on the same copy next to the
+        /// controls it talks about. A guide that restates the steps somewhere else
+        /// drifts from the ones the user actually follows.</summary>
+        /// <param name="openTroubleshooter">Open "Not receiving packets?" too. For
+        /// the routes that arrive because nothing is arriving.</param>
+        private void JumpToForzaTelemetrySetup(bool openTroubleshooter)
         {
             if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
             if (UdpTelemetryExpander != null) UdpTelemetryExpander.IsExpanded = true;
-            if (ForzaTroubleshootExpander != null)
+            if (openTroubleshooter && ForzaTroubleshootExpander != null)
                 ForzaTroubleshootExpander.IsExpanded = true;
             // Defer the scroll until the Settings tab has laid out its content.
             FrameworkElement target = ForzaSection;
@@ -6878,6 +8010,9 @@ namespace TrueforceForAll.Plugin
                 Dispatcher.BeginInvoke(new Action(() => target.BringIntoView()),
                     DispatcherPriority.Background);
         }
+
+        private void UdpSetupBannerButton_Click(object sender, RoutedEventArgs e)
+            => JumpToForzaTelemetrySetup(openTroubleshooter: true);
 
         // Drives the "running on SimHub fallback" info banner. Distinct from the
         // no-telemetry setup banner: here telemetry IS reaching SimHub, we just
@@ -6888,18 +8023,11 @@ namespace TrueforceForAll.Plugin
             ForzaFallbackBanner.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        // The user is already receiving telemetry (via SimHub), so jump straight to
+        // the Forza setup section and the forward fields rather than the "not
+        // receiving packets?" troubleshooter.
         private void ForzaFallbackBannerButton_Click(object sender, RoutedEventArgs e)
-        {
-            // The user is already receiving telemetry (via SimHub), so jump
-            // straight to the Forza setup section and the forward fields rather
-            // than the "not receiving packets?" troubleshooter.
-            if (MainTabs != null && SettingsTab != null) MainTabs.SelectedItem = SettingsTab;
-            if (UdpTelemetryExpander != null) UdpTelemetryExpander.IsExpanded = true;
-            FrameworkElement target = ForzaSection;
-            if (target != null)
-                Dispatcher.BeginInvoke(new Action(() => target.BringIntoView()),
-                    DispatcherPriority.Background);
-        }
+            => JumpToForzaTelemetrySetup(openTroubleshooter: false);
 
         // Home-screen gain tile toggle.
         private void ShowFeedbackBox_Changed(object sender, RoutedEventArgs e)
@@ -6943,6 +8071,12 @@ namespace TrueforceForAll.Plugin
                 try { CommunityEnabledCheck.IsChecked = on; }
                 finally { _suppressEvents = prev; }
             }
+            // The LIGHTSYNC per-car lighting box now depends on this switch,
+            // and the controls that say so are written by RefreshFromPlugin. Not
+            // calling it left the box greyed after community features came back
+            // on, and lit after they went off, until the panel was reopened.
+            // (The sibling UseCommunityCarFacts handler already does this.)
+            RefreshFromPlugin();
             // Re-evaluate the per-car community context next tick (turning
             // networking on lets a stale cache refresh; off stops refreshing
             // but keeps applying the cache via UseCommunityCarFacts).
@@ -6974,6 +8108,17 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.ShowEffectsTabShareButtons = EffectsTabShareButtonsCheck.IsChecked == true;
             _plugin.PersistSettings();
             UpdateHeaderShareButtons();
+        }
+
+        // UI toggle: show or hide the Car facts per-gear redline editor. Pure UI
+        // preference; saved per-gear values keep applying to the wheel, and a
+        // variant that has them auto-shows the editor (see RebuildPerGearEditors).
+        private void ShowPerGearRedlineEditor_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.ShowPerGearRedlineEditor = ShowPerGearRedlineEditorCheck.IsChecked == true;
+            _plugin.PersistSettings();
+            RebuildPerGearEditors();
         }
 
         // MOTD level radio: All / Important / None. None is honored literally
@@ -7041,12 +8186,16 @@ namespace TrueforceForAll.Plugin
         }
 
         // Remote dash rev-strip direction radios (Settings tab). Persists the
-        // flag; the dash reads it live via Dash.RevOutsideIn each poll, so
-        // the strip flips without reloading the dashboard.
+        // flags; the dash reads them live via Dash.RevAuto and Dash.RevOutsideIn
+        // each poll, so the strip flips without reloading the dashboard.
         private void RemoteRevDirection_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.DashRevStripOutsideIn = RemoteRevOutsideInRadio?.IsChecked == true;
+            _plugin.Settings.DashRevStripAuto = RemoteRevAutoRadio?.IsChecked == true;
+            // Left alone while Auto is the pick, so it still holds the direction
+            // the user chose the last time they were choosing one.
+            if (!_plugin.Settings.DashRevStripAuto)
+                _plugin.Settings.DashRevStripOutsideIn = RemoteRevOutsideInRadio?.IsChecked == true;
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
@@ -7167,6 +8316,8 @@ namespace TrueforceForAll.Plugin
                 }
                 if (RemoteDashSpotterCheck != null)
                     RemoteDashSpotterCheck.IsChecked = _plugin.Settings?.DashSpotterEnabled != false;
+                if (RemoteDashIncidentsCheck != null)
+                    RemoteDashIncidentsCheck.IsChecked = _plugin.Settings?.DashIncidentsEnabled != false;
                 if (RemoteDashIdleCheck != null)
                     RemoteDashIdleCheck.IsChecked = _plugin.Settings?.DashIdleEnabled != false;
                 if (RemoteDashIdleDelayBox != null)
@@ -7246,6 +8397,13 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.DashSpotterEnabled = RemoteDashSpotterCheck?.IsChecked == true;
+            PersistIdle();
+        }
+
+        private void RemoteDashIncidents_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.DashIncidentsEnabled = RemoteDashIncidentsCheck?.IsChecked == true;
             PersistIdle();
         }
 
@@ -7790,7 +8948,7 @@ namespace TrueforceForAll.Plugin
                     SetBackupStatus(outcome.Message);
                 }
             }
-            catch (Exception ex) { SetBackupStatus("Couldn't back up. Check the folder and your connection, then try again."); TrueforceDialog.LogError("Backup", ex); }
+            catch (Exception ex) { SetBackupStatus("Couldn't back up. Check your connection and try again."); TrueforceDialog.LogError("Backup", ex); }
             finally { if (BackupNowBtn != null) BackupNowBtn.IsEnabled = true; }
         }
 
@@ -7809,7 +8967,7 @@ namespace TrueforceForAll.Plugin
                 var outcome = await _plugin.RestoreFromCloudAsync();
                 SetBackupStatus(outcome.Message);
             }
-            catch (Exception ex) { SetBackupStatus("Couldn't restore. Check the folder and your connection, then try again."); TrueforceDialog.LogError("Restore", ex); }
+            catch (Exception ex) { SetBackupStatus("Couldn't restore. Check your connection and try again."); TrueforceDialog.LogError("Restore", ex); }
             finally { if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = true; }
         }
 
@@ -7931,14 +9089,11 @@ namespace TrueforceForAll.Plugin
 
         private int _supporterBadgeGen;
 
-        // Show the supporter tier. A dev DISPLAY override (the SUPPORTER access code) wins for
-        // preview; otherwise the real entitlement from get_my_entitlement. Display-only: this
-        // never gates backup (server-side RLS does). Hidden when not a supporter.
+        // Show the supporter tier from the real entitlement (get_my_entitlement). Display-only:
+        // this never gates backup (server-side RLS does). Hidden when not a supporter.
         private async Task RefreshSupporterBadgeAsync()
         {
             if (SupporterBadge == null) return;
-            string dev = _plugin?.Settings?.DevSupporterBadgeOverride ?? "";
-            if (!string.IsNullOrEmpty(dev)) { ShowSupporterBadge(dev, true); return; }
             if (_plugin == null || !_plugin.AuthIsSignedIn)
             {
                 SupporterBadge.Visibility = System.Windows.Visibility.Collapsed;
@@ -7949,15 +9104,13 @@ namespace TrueforceForAll.Plugin
             {
                 var (isSupporter, tier, _) = await _plugin.GetSupporterTierAsync(System.Threading.CancellationToken.None);
                 if (gen != _supporterBadgeGen || _plugin == null || !_plugin.AuthIsSignedIn) return;
-                string devNow = _plugin.Settings?.DevSupporterBadgeOverride ?? "";   // override set mid-await still wins
-                if (!string.IsNullOrEmpty(devNow)) { ShowSupporterBadge(devNow, true); return; }
-                if (isSupporter) ShowSupporterBadge(string.IsNullOrEmpty(tier) ? "Supporter" : tier, false);
+                if (isSupporter) ShowSupporterBadge(string.IsNullOrEmpty(tier) ? "Supporter" : tier);
                 else SupporterBadge.Visibility = System.Windows.Visibility.Collapsed;
             }
             catch { /* leave hidden */ }
         }
 
-        private void ShowSupporterBadge(string tier, bool preview)
+        private void ShowSupporterBadge(string tier)
         {
             if (SupporterBadge == null || SupporterBadgeText == null) return;
             string t = (tier ?? "").Trim().ToLowerInvariant();
@@ -7973,18 +9126,12 @@ namespace TrueforceForAll.Plugin
                 SupporterBadgeText.Foreground = new System.Windows.Media.SolidColorBrush(col);
             }
             catch { /* keep XAML defaults */ }
-            SupporterBadgeText.Text = (string.IsNullOrEmpty(tier) ? "Supporter" : tier) + (preview ? "  (preview)" : "");
+            SupporterBadgeText.Text = string.IsNullOrEmpty(tier) ? "Supporter" : tier;
             SupporterBadge.Visibility = System.Windows.Visibility.Visible;
         }
 
         // ---- Cloud upload gating (supporter-only) ----
         private int _cloudGatingGen;
-
-        // Dev display-only preview of the lapsed cloud-backup state (LAPSED access code). -1 = off;
-        // otherwise an index into the representative days-out cycle below. Never persisted, never
-        // enables uploads, never touches the real entitlement.
-        private int _lapsedPreviewIndex = -1;
-        private static readonly int[] _lapsedPreviewDays = { 400, 180, 30, 7, 1 };
 
         // Gate the cloud UPLOAD controls (Back up now, Auto-sync) on real supporter status, and the
         // whole section on sign-in. Download (Restore from cloud) stays active for any signed-in user,
@@ -7995,22 +9142,10 @@ namespace TrueforceForAll.Plugin
         //   * lapsed (retain date set): contextual lapsed note + an orange "Data removal in: X"
         //     countdown once the deletion date is within the warning window.
         //   * supporter: uploads enabled, no notes.
-        // Uses the REAL entitlement, never the dev display override, so the SUPPORTER preview code
-        // can't appear to unlock uploads.
+        // Uses the REAL entitlement, so nothing display-side can appear to unlock uploads.
         private async Task RefreshCloudBackupGatingAsync()
         {
             if (BackupNowBtn == null) return;   // panel not built yet
-            if (_lapsedPreviewIndex >= 0)
-            {
-                // Dev preview of the lapsed look. Uploads stay OFF (display only, grants nothing);
-                // download stays active if signed in. Representative removal date from the cycle.
-                if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = _plugin != null && _plugin.AuthIsSignedIn;
-                SetCloudUploadEnabled(false);
-                SetCloudBackupMessage("Preview (lapsed): your support has paused, so new cloud backups are off. You can still use \"Restore from cloud\" to download any backup you saved.");
-                int dp = _lapsedPreviewDays[_lapsedPreviewIndex];
-                SetRemovalCountdown(dp <= 180 ? (DateTime?)DateTime.UtcNow.AddDays(dp) : (DateTime?)null);
-                return;
-            }
             if (_plugin == null || !_plugin.AuthIsSignedIn)
             {
                 if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = false;
@@ -8123,7 +9258,7 @@ namespace TrueforceForAll.Plugin
             if (BetaUpdatesCheck == null) return;   // panel not built yet
 
             SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
-                ? "You're on the beta channel: the in-app updater will offer pre-release builds."
+                ? (string)null
                 : (_plugin?.UpdateChecker?.CurrentVersionIsPrerelease == true
                     ? "Beta is off: the updater offers the newest main release so you can switch back."
                     : null));
@@ -8222,13 +9357,20 @@ namespace TrueforceForAll.Plugin
                 // user keeps ignoring; refresh the chrome if any badge just cleared.
                 if (_plugin.NoteEffectsViewOpened()) RefreshNewBadges();
             }
+            else if (LightsyncTab != null && ReferenceEquals(MainTabs.SelectedItem, LightsyncTab))
+            {
+                // Deferred so the tab paints behind the dialog rather than after
+                // it, same as the Mode B intro.
+                Dispatcher.BeginInvoke(new Action(MaybeShowLightsyncIntro),
+                                       System.Windows.Threading.DispatcherPriority.Background);
+            }
             else if (TelemetryFfbTab != null && ReferenceEquals(MainTabs.SelectedItem, TelemetryFfbTab))
             {
                 // The one-time Mode B intro shows here, on explicit navigation to the
                 // section, rather than auto-popping on the home screen. Deferred to
                 // Background so the tab paints first and the modal opens over it;
                 // MaybeShowModeBIntro no-ops if already seen or the game can't use it.
-                Dispatcher.BeginInvoke(new Action(MaybeShowModeBIntro),
+                Dispatcher.BeginInvoke(new Action(() => MaybeShowModeBIntro()),
                     System.Windows.Threading.DispatcherPriority.Background);
             }
         }
@@ -8599,7 +9741,6 @@ namespace TrueforceForAll.Plugin
         private readonly System.Collections.Generic.Queue<(string label, bool needsLink)> _toastQueue = new System.Collections.Generic.Queue<(string label, bool needsLink)>();
         private System.Windows.Threading.DispatcherTimer _toastTimer;
         private int _achievementsRefreshGen;
-        private int _toastPreviewIndex;
         private bool _discordLinked;          // cached link state for the toast's "Link" button
         private bool _achievementsWindowOpen; // single-flight guard for the tracker modal
 
@@ -8824,23 +9965,6 @@ namespace TrueforceForAll.Plugin
         {
             _toastQueue.Clear();
             HideToast();
-        }
-
-        // Dev preview: fire a toast cycling through achievements, WITHOUT touching the real
-        // baseline/"earned once" state (so it never suppresses a genuine first-earn).
-        private async Task PreviewAchievementToastAsync()
-        {
-            string label = "Tuner";
-            try
-            {
-                var list = _plugin != null ? await _plugin.GetAchievementsAsync(System.Threading.CancellationToken.None) : null;
-                if (list != null && list.Count > 0)
-                    label = list[_toastPreviewIndex % list.Count].Label ?? "Achievement";
-            }
-            catch { }
-            bool needsLink = (_toastPreviewIndex % 2 == 1);   // alternate so both toast variants preview
-            _toastPreviewIndex++;
-            EnqueueAchievementToast(label, needsLink);
         }
 
         // WARNEMAIL dev code: which warning stage (1..5) the next trigger sends. Cycles 1->5->1.
@@ -10273,47 +11397,20 @@ namespace TrueforceForAll.Plugin
         // still honored as a gate for legacy mid-cadence settings files.
         // iRacing app.ini Trueforce notice. Re-fires each time iRacing becomes
         // the active game until the user dismisses it for good. Trigger lives in
-        // RefreshFromPlugin (transition into "IRacing"); this is the show step.
+        // RefreshFromPlugin (transition into "IRacing"); the show step now lives on
+        // the plugin, which fires it on first sight of the game.
         private string _lastGameForIracingNotice;
-        private bool _iracingNoticeShowing;
-        private const string IracingTrueforceNoticeBody =
-            "Disable iRacing's built-in Trueforce to use the plugin with iRacing:\n\n" +
-            "1. Fully close iRacing.\n" +
-            "2. Open app.ini in your iRacing documents folder (usually Documents\\iRacing).\n" +
-            "3. Change loadTrueForceAPI=1 to loadTrueForceAPI=0, then save.\n" +
-            "4. Relaunch iRacing.\n\n" +
-            "Until then, iRacing keeps the wheel and the plugin's effects won't come through.";
-
-        private void MaybeShowIracingTrueforceNotice()
-        {
-            if (_plugin?.Settings == null) return;
-            if (_plugin.Settings.IRacingTrueforceNoticeDismissed) return;
-            if (!string.Equals(_plugin.ActiveGame, "IRacing", StringComparison.Ordinal)) return;
-            // SimHub caches this control; a dispatched action can fire after
-            // Unloaded, when GetWindow returns null and a modal would detach.
-            var owner = Window.GetWindow(this);
-            if (owner == null) return;
-            if (_iracingNoticeShowing) return;
-            _iracingNoticeShowing = true;
-            try
-            {
-                bool? r = TrueforceDialog.Show(owner,
-                    "Using Trueforce For All in iRacing",
-                    IracingTrueforceNoticeBody,
-                    DialogKind.Info,
-                    okLabel: "Got it, don't show again",
-                    cancelLabel: "Remind me later",
-                    goldOk: true);
-                // true = dismiss for good. false/null (Remind me later / X) leaves
-                // the latch off, so it re-appears on the next iRacing launch.
-                if (r == true)
-                {
-                    _plugin.Settings.IRacingTrueforceNoticeDismissed = true;
-                    _plugin.PersistSettings();
-                }
-            }
-            finally { _iracingNoticeShowing = false; }
-        }
+        // No hand-wrapping: the dialog's body already wraps (TrueforceDialog
+        // sets TextWrapping.Wrap), so baked-in line breaks only fought it and
+        // left ragged short lines (owner, 2026-08-16). Breaks here are
+        // structural now, one per step and a blank line between sections.
+        // Short, and reasons instead of warnings (owner, 2026-08-16). The
+        // long version spent its words on caveats, which reads as risk for
+        // something that is three settings and reversible.
+        // The iRacing notice body and its show step moved to TrueforcePlugin
+        // (ShowIracingNotice) so it can fire the moment iRacing is seen rather
+        // than waiting for someone to open this panel. Only the transition
+        // tracker above stayed, to hand the dialog a window when there is one.
 
         // Telemetry Based FFB (Mode B) intro. Shown once, the first time a
         // Mode-B-capable game (FM8 / FH5 / FH6) is the active game. Trigger is
@@ -10321,10 +11418,17 @@ namespace TrueforceForAll.Plugin
         // so it appears in context instead of over SimHub's home screen. The
         // HasSeenModeBIntro flag keeps it one-time; this is the show step.
         private bool _modeBIntroShowing;
-        private void MaybeShowModeBIntro()
+        /// <param name="force">A deliberate request (the tab's setup-instructions
+        /// link, or the header's guide list), which ignores the one-time latch.
+        /// Someone who asks for the walkthrough is asking for the walkthrough.
+        /// The supported-game gate still stands either way: every line of this
+        /// dialog is addressed to the game you are in, and there is no honest way
+        /// to say "set this game's force feedback to 0" to someone who is not in
+        /// one. The callers send that reader to the tab instead.</param>
+        private void MaybeShowModeBIntro(bool force = false)
         {
             if (_plugin?.Settings == null) return;
-            if (_plugin.Settings.HasSeenModeBIntro) return;
+            if (!force && _plugin.Settings.HasSeenModeBIntro) return;
             if (!_plugin.ActiveGameSupportsModeB) return;
             var owner = Window.GetWindow(this);
             if (owner == null) return;
@@ -10332,27 +11436,48 @@ namespace TrueforceForAll.Plugin
             _modeBIntroShowing = true;
             try
             {
-                string body =
-                    "Instead of passing this game's own force feedback through, the plugin "
-                    + "can build the steering force itself. There's a real sense of grip. "
-                    + "The wheel goes light as the front washes out and it pulls into a "
-                    + "countersteer as the rear steps out.\n\n"
-                    + "It also unlocks your wheel's rev lights: they share a channel with "
-                    + "game force feedback, so they can only run when the plugin owns the "
-                    + "whole signal, as it does here.\n\n"
-                    + "To try it, set this game's force feedback and vibration to 0 in its "
-                    + "wheel settings, so the plugin is the only force on the wheel. "
-                    + "Then activate it below.";
+                // iRacing is NOT the synthesis pitch. There the plugin carries
+                // the sim's own solved forces rather than building its own from
+                // telemetry, and saying otherwise promises a different feel
+                // than the one that arrives (owner, 2026-08-16).
+                bool reshape = _plugin.ActiveGameIsReshapeGame;
+                // Whether there is anything left to offer. Read BEFORE the body is
+                // built, because the closing sentence points at a button that only
+                // exists when this is true: re-opened from the tab's link with the
+                // feature already on, "Then activate it below" sat above a lone
+                // "Got it".
+                bool canActivate = !_plugin.ModeBEnabledForActiveGame;
+                string body = reshape
+                    ? "The plugin can carry iRacing's force feedback for you. It does not "
+                      + "replace it: iRacing still works out what the car is doing and hands "
+                      + "over those same forces, so the feel stays the sim's own.\n\n"
+                      + "What it buys you is your wheel's rev lights and screen. They share a "
+                      + "channel with force feedback, so they can only run when the plugin "
+                      + "owns that channel instead of the sim.\n\n"
+                      + "It needs two switches on iRacing's side first: turn iRacing's own "
+                      + "force feedback off (not its strength to 0), and set loadTrueForceAPI=0 "
+                      + "in app.ini. The iRacing notice walks through both."
+                    : "Instead of passing this game's own force feedback through, the plugin "
+                      + "can build the steering force itself. There's a real sense of grip. "
+                      + "The wheel goes light as the front washes out and it pulls into a "
+                      + "countersteer as the rear steps out.\n\n"
+                      + "It also unlocks your wheel's rev lights: they share a channel with "
+                      + "game force feedback, so they can only run when the plugin owns the "
+                      + "whole signal, as it does here.\n\n"
+                      + "To try it, set this game's force feedback and vibration to 0 in its "
+                      + "wheel settings, so the plugin is the only force on the wheel."
+                      + (canActivate ? " Then activate it below." : "");
                 bool? r = TrueforceDialog.Show(owner,
-                    "Telemetry Based FFB is available",
+                    reshape ? "Let the plugin carry iRacing's force feedback"
+                            : "Telemetry Based FFB is available",
                     body,
                     DialogKind.Info,
-                    okLabel: "Activate for this game",
-                    cancelLabel: "Not now",
+                    okLabel: canActivate ? "Activate for this game" : "Got it",
+                    cancelLabel: canActivate ? "Not now" : null,
                     goldOk: true);
                 // One-time: mark seen on any outcome so it never re-nags.
                 _plugin.Settings.HasSeenModeBIntro = true;
-                if (r == true)
+                if (r == true && canActivate)
                 {
                     _plugin.SetModeBEnabledForActiveGame(true);
                     if (ModeBEnabledCheck != null)
@@ -10367,6 +11492,13 @@ namespace TrueforceForAll.Plugin
             }
             finally { _modeBIntroShowing = false; }
         }
+
+        // The standing route back to the introduction above, which is otherwise
+        // one-time and gone for good once it has been answered. The steps it
+        // carries (set the game's force feedback and vibration to 0) are needed
+        // long after the dialog that delivered them.
+        private void ModeBIntroLink_Click(object sender, RoutedEventArgs e)
+            => MaybeShowModeBIntro(force: true);
 
         private void MaybeShowNetworkedWelcome()
         {
@@ -10755,6 +11887,8 @@ namespace TrueforceForAll.Plugin
             var s = _plugin.GetActiveCarFactsSummary();
             if (!s.HasCar) return;
 
+            RefreshCarRevLightRow();
+
             string carNameText = s.CarName ?? "";
             // The raw car id ("Car_242") is the display fallback for unnamed
             // cars, not a name: show the box empty instead so typing a real
@@ -10766,6 +11900,22 @@ namespace TrueforceForAll.Plugin
             {
                 _lastCarFactsNameText = carNameText;
                 CarFactsNameBox.Text = carNameText;
+            }
+            // Pre-fill from the SIM when nothing is saved yet. iRacing publishes
+            // the official car name (CarScreenName), so there is no reason to
+            // make the user type what the game already told us.
+            //
+            // Deliberately does NOT touch _lastCarFactsNameText: that tracks the
+            // SAVED name, and moving it here would make the pre-filled text look
+            // already-saved, hiding the Save button and quietly ensuring the
+            // name is never stored or shared. Leaving it alone means the button
+            // appears, so accepting the sim's name is one click.
+            if (CarFactsNameBox != null && !CarFactsNameBox.IsKeyboardFocusWithin
+                && string.IsNullOrEmpty((CarFactsNameBox.Text ?? "").Trim())
+                && string.IsNullOrEmpty(carNameText))
+            {
+                string simName = _plugin.ActiveSimCarName;
+                if (!string.IsNullOrEmpty(simName)) CarFactsNameBox.Text = simName;
             }
             // Recompute the Save button here too: setting the box above to an
             // unchanged string raises no TextChanged, so a just-saved name would
@@ -10954,11 +12104,20 @@ namespace TrueforceForAll.Plugin
         // ---- Per-gear redline editor (Car Facts panel; the Rev Limiter
         // section's duplicate copy was retired with the centralization) ----
 
+        // Last (variant id | override count) the meter tick rebuilt the per-gear
+        // editor for; owned by the 4 Hz block in MeterTimer_Tick.
+        private string _perGearShownKey;
+
         private void RebuildPerGearEditors()
         {
             if (_plugin == null) return;
-            bool show = !string.IsNullOrEmpty(_plugin.ActiveCarId);
-            var list = show ? _plugin.GetActiveVariantPerGearRedlines() : null;
+            bool carDetected = !string.IsNullOrEmpty(_plugin.ActiveCarId);
+            var list = carDetected ? _plugin.GetActiveVariantPerGearRedlines() : null;
+            // Hidden by default: the editor shows only when the user opts in via
+            // the Settings toggle, or when this variant already carries per-gear
+            // values, so stored data is never in effect without visible UI.
+            bool show = carDetected && (_plugin.Settings?.ShowPerGearRedlineEditor == true
+                                        || (list != null && list.Count > 0));
             BuildPerGearRows(CarFactsPerGearRows, CarFactsPerGearExpander, list, show);
         }
 
@@ -11617,7 +12776,7 @@ namespace TrueforceForAll.Plugin
         // Forza's per-tire data, so it is always on for Forza (see
         // SwapTelemetrySource). Only the port / bind / forwarding are tunable.
 
-        // ---------- Tester access code (unlocks the rim-LED / MAIRA section) ----------
+        // ---------- Tester access code (unlocks the rim-LED section) ----------
 
         private void AccessCode_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
@@ -11679,17 +12838,13 @@ namespace TrueforceForAll.Plugin
         // HELP stays accurate as the set of codes grows.
         private const string TestCodeCatalog =
             "Trueforce For All test codes (type one in the access box):\n\n" +
-            "HELP / CODES   Show this list.\n" +
-            "SHARE          Force the 'spread the word' banner on now.\n" +
+            "HELP / CODES / ?   Show this list.\n" +
             "SUPPORT        Preview the periodic Patreon support modal now (pacing untouched).\n" +
             "SUPPORTRESET   Reset the support-prompt ladder back to its first rung.\n" +
-            "RATCHET        Play the auto-tuned ring-buffer banner sequence.\n" +
             "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
             "CAPTURE        Toggle the aligned telemetry+FFB capture CSV (v2 golden fixture format) under Documents\\TrueforceForAll.\n" +
-            "UDP            Toggle the persistent UDP setup banner to test the 'Set up...' jump: off -> Forza -> off.\n" +
             "FZBANNERS      Toggle the two info-tier Forza banners (SimHub-fallback notice + discovered-port) on to eyeball their button styling.\n" +
             "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
-            "REV            Redline buzz from a synthetic redline (tests the RPM trigger + hold).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
             "WELCOME        Reset the networked-welcome modal AND the Mode B intro seen state and re-trigger them now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt / HasSeenModeBIntro all cleared).\n" +
             "MOTDFLUSH      Clear the Message-of-the-day cache + all MOTD dismissals and refetch now (so dismissed/edited messages reappear; bypasses the ~6h cache).\n" +
@@ -11697,9 +12852,7 @@ namespace TrueforceForAll.Plugin
             "MOTDDATE<MMDDYYYY>  Preview the MOTD strip as if it were that date, e.g. MOTDDATE12252026, to see upcoming messages before they trigger.\n" +
             "MOTDLIVE       Leave MOTD preview and return to today's real messages.\n" +
             "CACHEFACTS     Clear the community car-facts cache (names/engine types/redlines); it refetches per car.\n" +
-            "CACHEBROWSE    Clear the community preset browse cache (the browse/search result lists).\n" +
             "CLEARCACHES    Clear ALL re-fetchable network caches at once: MOTD (+dismissals), community car-facts, browse lists. Leaves your car corrections, local detections, and sign-in alone.\n" +
-            "STALECACHES    Mark all re-fetchable network caches stale (MOTD, community facts, browse lists) so they refetch fresh, WITHOUT wiping the offline copies. Soft version of CLEARCACHES.\n" +
             "PREVIEW        Render the release-notes markdown on your clipboard exactly as the in-app 'What's new' will (copy the GitHub notes first, then type PREVIEW).\n" +
             "UPDATE         Simulate an available update (banner + update dialog).\n" +
             "CLOSESIM       Pick an installer and run it with /CloseSimHub=1 to test the silent SimHub auto-close. Closes SimHub.\n" +
@@ -11707,32 +12860,27 @@ namespace TrueforceForAll.Plugin
             "UPDATEPOLL     Simulate a release shipping AFTER launch: arms a fake newer release that only a BACKGROUND re-check applies, on a fast cadence (every 5s; UPDATEPOLL<n> for n seconds), so the 'Update to vX.Y.Z' banner appears on its own within seconds, no restart. Tests the periodic re-check end-to-end. Run again to stop + clear. Toggle.\n" +
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
-            "FFBX           Opt in to the experimental FFB-capture path (HID++ report 0x12 + faster index resolve; issue #8 RS50/FH6). Persists. Toggle.\n" +
+            "CSPFFB         Assetto Corsa: the TF4ALL CSP Bridge is used AUTOMATICALLY when its script is installed (install it from Settings > Game mods, the on-screen prompt, or the guide), otherwise the USB capture is used. This code is a DEV force-off: type it to make AC use the capture even with the bridge installed, type again for automatic. Sub-commands pick the read field: VALUE (default, post-gain, keeps your CSP tweaks), PURE or TORQUE (pre-gain, work at in-game gain 0), FINAL, FINALFF; 'CSPFFB NM 8' sets full-scale torque for TORQUE; 'CSPFFB SUP/NOSUP' is a suppression diagnostic. Persists.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
-            "NOLOCK         Issue #13 test: while the game is paused, fully leave Trueforce mode so the wheel reverts to the game's native FFB / auto-center instead of holding a force (stops the G923/FH6 full-lock). Persists. Toggle.\n" +
-            "FFBOK          Force the 'is your FFB working?' success banner on now, to test the Yes (report) and No (troubleshooter) paths.\n" +
-            "HOMEBOX        Toggle the TF4ALL master + audio gain tile in SimHub's home 'Feedback' section (next to Motors/Wind). On by default now; the real switch is Settings > Extras. This is just a quick dev toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
-            "FOLDDEFAULTS   DEV one-shot: for every car whose default points at a user preset, promote that user preset to a factory built-in (replaces existing built-ins for the car), repoint the factory car-default, and delete the user preset. Other user presets for the same car stay put. Idempotent.\n" +
-            "NORMALIZEFORZA DEV one-shot: rename legacy Forza_<n> car ids to Car_<n> (matches SimHub's data feed). If both exist, Car_<n> wins and Forza_<n> is dropped. Touches factory + user folders, car-defaults files, and Settings.CarDefaults/CarOverrides. Idempotent.\n" +
+            "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup taken before the plugin first wrote the slot. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
+            "LEDRATE<ms>    DEV: how often the rev lights may update, 10 to 1000 ms (default 40, measured safe on a G PRO; G HUB itself uses 160). Live only, resets on restart. For finding whether a faster bar costs anything on the shared HID++ pipe: drive it and watch the FORCE.\n" +
+            "SLOTBLANK<n>   DEV: make custom slot n (1-5) read as NEVER PROGRAMMED, so the factory-wheel first run can be tested. Backs the slot up FIRST and refuses if it cannot. PERSISTS across a restart, which is the point, and your colors stay held in the backup the whole time. SLOTRESTORE<n> puts them back. SLOTBLANKALL does all five at once (the real factory-wheel case) and SLOTRESTOREALL gives them all back.\n" +
+            "SLOTPICK<n>    Designate which LIGHTSYNC custom slot the plugin may borrow for the live pattern: 1-5 for CUSTOM n, 0 for automatic (the first slot never programmed, or CUSTOM 5 when all five are in use). The slot's contents are backed up before the first write and SLOTRESTORE<n> puts them back. Persists and travels in backups.\n" +
+            "SLOTPROBE      Ask the wheel whether it supports per-slot LIGHTSYNC colors (HID++ 0x807B) and dump what each of the five custom slots currently holds. READ-ONLY: writes nothing, selects nothing, safe with a game running. Answers whether custom colors are possible on this wheel at all.\n" +
+            "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
+            "CYCLEHINT      Re-arm the LIGHTSYNC intro modal and force the cycle-binding hint on screen even though the pattern cycle action is already bound. For testing them, since anyone working on them has it bound. Session only. Toggle.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
-            "F8SWEEP / F8   Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. F8SLOW = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval.\n" +
+            "F8SWEEP        Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. 'F8SWEEP FAST' = resend every 16 ms; 'F8SWEEP SLOW' = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval (0-1000).\n" +
+            "F8ANY          G923 PS/PC only: run the legacy F8 rev lights in ANY game, including ones driving their own force feedback, so you can answer this by playing and revving rather than watching a test sweep. The question is whether the lights come on AND the game's force stays solid; if the force cuts, that is the answer, not a fault. Persists. Toggle.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
             "SWEEP          Motor characterization: 15 s log-sine force sweep 8-300 Hz through the wheel (hands lightly on the rim). SWEEP1..SWEEP6 = one octave band each (~5 s): 8-16, 16-32, 32-63, 63-125, 125-250, 250-400 Hz.\n" +
-            "MODEB <0|1>    Arm/disarm telemetry based FFB (Mode B) directly, bypassing the capable-game gate (dev override). Persists and syncs the Telemetry Based FFB tab checkbox.\n" +
-            "B* <value>     Live Mode B tuning, e.g. 'BSAT 1.2': BSAT strength, BRISE weight buildup, BPEAK grip limit, BFLOOR slide lightness, BEMA smoothing ms, BDAMP damping, BCENTER centering, BLAT cornering weight, BDIRK center feel, BRECOVER lockup-recovery ms, BLOCKPT lockup slip point, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car, BGTRIM braking-grip trim, BAUTOS 1/0 auto strength per car, BLDEM 1/0 lateral-demand force, BMINF min force floor, MBCPD 1/0 direct centering + BCLEAD look-ahead ms, MBREV 1/0 reversal damping + BREVG strength, MBLEAD 1/0 anticipation + BLEAD lead ms, BSIGN 1/-1 force direction (all persist); BFULL full-slip point + BSPD full-force speed km/h are live-only.\n" +
+            "B* <value>     Live Mode B tuning, e.g. 'BDIRK 0.5': MBCPD 1/0 direct centering, BDIRK center feel, BLOCKPT lockup slip point, BGTRIM braking-grip trim, BCIRCLE 1/0 friction-circle braking, BLEARN 1/0 auto braking grip per car (these persist); BFULL full-slip point + BSPD full-force speed km/h are live-only. The other tuning values now have sliders or checkboxes on the Telemetry Based FFB tab and the phone dash.\n" +
             "OLEDTEST       Show sample wheel-screen frames on the OLED so you can check it works (no game running).\n" +
-            "OLEDDIAG       Ask the wheel for its own OLED layout table, log it, then show a lettered ruler that maps each layout's field boundaries. How this wheel's layouts were decoded.\n" +
-            "OLEDMS <ms>    How often the wheel's OLED may be redrawn, in milliseconds (20-1000; default 100 = 10 per second). Lower is smoother and uses more of the wheel's shared command channel. Type OLEDMS with no number to read the current value. Persists.\n" +
-            "OLEDANY        Run the wheel's OLED screen regardless of Telemetry Based FFB, to find out whether writing the screen really does cut a game's own force feedback the way the rev lights do (never tested for the screen; the restriction is inherited). EXPECT THE FORCE TO DROP OUT. Persists. Toggle.\n" +
-            "RESETGRIP      Wipe the learned grip auto-calibration for the ACTIVE car variant (peak + confidence) and re-learn from scratch. Use after a tune or tire change that leaves the old calibration feeling off.\n" +
-            "PREVIEWOFF     Toggle the import preview modal off; falls back to today's silent commit-on-pick path. Persists. Toggle.\n" +
-            "SUPPORTER      Preview the supporter badge: cycles none -> Supporter -> Gold -> Platinum. DISPLAY ONLY (does not grant supporter access). Persists.\n" +
-            "TOAST          Preview the achievement celebration toast (cycles achievements). Does NOT count toward the celebrate-once baseline.\n" +
-            "SHOWALL        Reveal hidden/secret achievements (OG, Founding Supporter) in the tracker even when unearned, for testing. Reopen the tracker after toggling. Persists. Toggle.\n" +
-            "WARNEMAIL      Email yourself the backup-deletion warning, cycling 6mo -> 3mo -> 1mo -> 1wk -> 1day each use. Preview only; never changes your real data or timer.\n" +
-            "LAPSED         Preview the lapsed cloud-backup look in the Account tab (note + orange 'Data removal in: X'), cycling 400d -> 180d -> 30d -> 7d -> 1d -> off. Display only; uploads stay off, nothing changed.";
+            "OLEDMS <ms>    How often the wheel's OLED may be redrawn, in milliseconds (20-1000; default 20 = 50 per second). Lower is smoother and uses more of the wheel's shared command channel. Type OLEDMS with no number to read the current value. Persists.\n" +
+            "WARNEMAIL / WARN   Email yourself the backup-deletion warning, cycling 6mo -> 3mo -> 1mo -> 1wk -> 1day each use. Preview only; never changes your real data or timer.\n" +
+            "IRRAW          iRacing raw-data support probe: logs what the user's SimHub build exposes (whether SimHub's raw data object reaches us live per tick, whether SteeringWheelTorque carries force while iRacing's own force feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST array is reachable). One arming dump plus one '[TF4ALL] IRRAW' line every 5 s in SimHub.txt. Toggle.";
 
         private void CommitAccessCode()
         {
@@ -11776,12 +12924,13 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings == null || AccessCodeBox == null) return;
             if (string.IsNullOrEmpty(code)) return;
 
-            // Live Mode B tuning: "NAME value" (e.g. "BSAT 1.2", "BEMA 30",
-            // "MODEB 1"). Two tokens with a numeric second token; single-word
+            // Live Mode B tuning: "NAME value" (e.g. "BDIRK 0.5", "BLOCKPT 0.2",
+            // "MBCPD 1"). Two tokens with a numeric second token; single-word
             // codes below never match. Dispatches to the plugin-side
             // clamp+apply switch (SetModeBParam) and echoes its status. Names
             // that map to a Settings field persist; BFULL/BSPD are live-only
-            // model probes.
+            // model probes. The other Mode B tunables have sliders or
+            // checkboxes on the Telemetry Based FFB tab and the phone dash.
             {
                 var parts = code.Split(new[] { ' ', '=', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 2 && float.TryParse(parts[1],
@@ -11789,17 +12938,8 @@ namespace TrueforceForAll.Plugin
                         System.Globalization.CultureInfo.InvariantCulture, out float mbVal))
                 {
                     string pn = parts[0].ToUpperInvariant();
-                    if (pn == "MODEB" || pn == "BSIGN" || pn == "BSAT"
-                        || pn == "BPEAK" || pn == "BFLOOR" || pn == "BFULL" || pn == "BSPD"
-                        || pn == "BRISE" || pn == "BEMA" || pn == "BDAMP" || pn == "BCENTER"
-                        || pn == "BLAT" || pn == "BDIRK"
-                        || pn == "BRECOVER" || pn == "BLOCKPT" || pn == "BCIRCLE"
-                        || pn == "BLEARN" || pn == "BGTRIM" || pn == "BLDEM"
-                        || pn == "BAUTOS"
-                        || pn == "MBREV" || pn == "BREVG"
-                       
-                        || pn == "MBLEAD" || pn == "BLEAD"
-                        || pn == "BMINF" || pn == "MBCPD" || pn == "BCLEAD")
+                    if (pn == "MBCPD" || pn == "BDIRK" || pn == "BLOCKPT" || pn == "BGTRIM"
+                        || pn == "BCIRCLE" || pn == "BLEARN" || pn == "BFULL" || pn == "BSPD")
                     {
                         string st = _plugin.SetModeBParam(pn, mbVal);
                         // Re-sync ALL controls from the now-updated settings
@@ -11893,13 +13033,6 @@ namespace TrueforceForAll.Plugin
             }
             // Dev-only: clear the community car-facts cache (names/engine types/
             // redlines). Refetches per car on the next car open.
-            if (code.Equals("RESETGRIP", StringComparison.OrdinalIgnoreCase))
-            {
-                string gripStatus = _plugin.RequestGripCalReset();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null) AccessCodeStatus.Text = gripStatus;
-                return;
-            }
             if (code.Equals("CACHEFACTS", StringComparison.OrdinalIgnoreCase))
             {
                 _plugin.Settings.CommunityFactCache?.Clear();
@@ -11908,15 +13041,6 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Community car-facts cache cleared; it refetches per car.";
-                return;
-            }
-            // Dev-only: clear the community preset browse cache (result lists).
-            if (code.Equals("CACHEBROWSE", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.ClearBrowseCache();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Community preset browse cache cleared.";
                 return;
             }
             // Dev-only: clear every re-fetchable NETWORK cache at once. Excludes
@@ -11936,19 +13060,6 @@ namespace TrueforceForAll.Plugin
                 _motdStrip?.Refresh(forceFetch: true);
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Cleared all network caches (MOTD, community facts, browse lists).";
-                return;
-            }
-            // Dev-only: mark every re-fetchable network cache stale WITHOUT wiping
-            // it, so the next access refetches fresh while offline copies still
-            // apply. Soft counterpart to CLEARCACHES.
-            if (code.Equals("STALECACHES", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.MarkAllNetworkCachesStale();
-                _engineCommunityFetchedKey = null;   // active car re-evaluates next tick
-                AccessCodeBox.Text = string.Empty;
-                _motdStrip?.Refresh(forceFetch: true);
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "All network caches marked stale; refetching fresh (offline copies kept).";
                 return;
             }
             // Dev-only: launch a chosen installer with /CloseSimHub=1 so the
@@ -12008,49 +13119,6 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = "Support-prompt pacing reset.";
                 return;
             }
-            // Dev-only: force the one-and-done word-of-mouth banner to show
-            // now (it normally needs ~2h of banked seat time). Lets us see
-            // the real banner + share dialog before any of it ships. Resets
-            // the dismissed latch too, so it's repeatable.
-            if (code.Equals("SHARE", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.Settings.ActiveStreamingSeconds = double.MaxValue;
-                _plugin.Settings.ShareCtaDismissed = false;
-                _plugin.PersistSettings();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Word-of-mouth banner forced on (test).";
-                RefreshShareCtaBanner();
-                return;
-            }
-
-            // Dev-only: fire a synthetic auto-ratchet sequence so the
-            // inline "Auto-tuned ring buffer" banner can be exercised
-            // without waiting for real underruns. The full UP-then-DOWN
-            // arc demonstrates:
-            //   t=0.0s   TF up  8 → 16    → banner appears
-            //   t=0.7s   TF up  16 → 32   → same banner, "8 → 32"
-            //   t=1.4s   Audio up 16 → 32 → same banner, both rings
-            //   t=3.5s   TF down 32 → 16  → TF segment shrinks to "8 → 16"
-            //   t=4.2s   TF down 16 → 8   → TF back to start, segment drops
-            //   t=4.9s   Audio down 32 → 16 → audio back to start, banner auto-dismisses
-            if (code.Equals("RATCHET", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_plugin != null)
-                {
-                    _plugin.DebugFireRatchet(true,  8,  16);
-                    ScheduleDispatcherDelay(700,  () => _plugin.DebugFireRatchet(true,  16, 32));
-                    ScheduleDispatcherDelay(1400, () => _plugin.DebugFireRatchet(false, 16, 32));
-                    ScheduleDispatcherDelay(3500, () => _plugin.DebugFireRatchet(true,  32, 16));
-                    ScheduleDispatcherDelay(4200, () => _plugin.DebugFireRatchet(true,  16, 8));
-                    ScheduleDispatcherDelay(4900, () => _plugin.DebugFireRatchet(false, 32, 16));
-                }
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Synthetic ratchet sequence fired (UP then DOWN; ~5 s total). Banner should appear, evolve, then auto-dismiss as both rings return to start.";
-                return;
-            }
-
             // Dev-only: toggle the aligned telemetry+FFB capture log (v2 golden
             // format, the replay-harness fixture recorder). Pure observation;
             // safe while driving. See TrueforcePlugin.ToggleFfbCapture.
@@ -12080,25 +13148,10 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Toggle the persistent UDP-setup banner so the whole flow (banner ->
-            // "Set up..." -> jump to the Forza UDP section on the Settings tab)
-            // can be tested without a live session: off -> Forza -> off.
-            // Lands on the next refresh tick.
-            if (code.Equals("UDP", StringComparison.OrdinalIgnoreCase))
-            {
-                _forceUdpSetupBanner = (_forceUdpSetupBanner + 1) % 2;
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text =
-                        _forceUdpSetupBanner == 1 ? "UDP setup banner: simulating Forza (type UDP again to clear)."
-                      : "UDP setup banner simulation cleared.";
-                return;
-            }
-
             // Toggle the two info-tier Forza banners (SimHub-fallback notice +
             // discovered-port banner) so their InfoBannerButton styling can be
             // checked without getting Forza into those telemetry states. Lands
-            // on the next refresh tick, same as UDP.
+            // on the next refresh tick.
             if (code.Equals("FZBANNERS", StringComparison.OrdinalIgnoreCase))
             {
                 _forceForzaInfoBanners = (_forceForzaInfoBanners + 1) % 2;
@@ -12128,63 +13181,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Dev-only: cycle the supporter BADGE through tiers so the badge UI can be
-            // previewed without being a real supporter. DISPLAY ONLY: it sets a local
-            // override feeding only the badge label; the real backup gate is enforced
-            // server-side (RLS), so this never grants supporter access. Persists. Cycles
-            // none -> Supporter -> Gold Supporter -> Platinum Supporter -> none.
-            if (code.Equals("SUPPORTER", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("BADGE", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                string cur = _plugin.Settings.DevSupporterBadgeOverride ?? "";
-                string next;
-                switch (cur)
-                {
-                    case "":               next = "Supporter";          break;
-                    case "Supporter":      next = "Gold Supporter";     break;
-                    case "Gold Supporter": next = "Platinum Supporter"; break;
-                    default:               next = "";                   break;
-                }
-                _plugin.Settings.DevSupporterBadgeOverride = next;
-                try { _plugin.PersistSettings(); } catch { }
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = string.IsNullOrEmpty(next)
-                        ? "Supporter badge override cleared (shows your real entitlement again)."
-                        : "Supporter badge preview: " + next + " (DISPLAY ONLY; does not grant supporter access).";
-                _ = RefreshSupporterBadgeAsync();
-                return;
-            }
-
-            // Dev-only: preview the achievement celebration toast, cycling through the
-            // achievements on each use. Does NOT affect the real "earned once" baseline.
-            if (code.Equals("TOAST", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("CELEBRATE", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                _ = PreviewAchievementToastAsync();
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Preview achievement toast fired (does not affect your real progress).";
-                return;
-            }
-
-            // Dev-only: reveal the secret achievements (OG, Founding Supporter) in the tracker even
-            // when unearned, by asking the server to include them (get_my_achievements p_include_secret).
-            // Toggle; persists (machine-local).
-            if (code.Equals("SHOWALL", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("ALLACHIEVEMENTS", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                bool next = !_plugin.Settings.DevShowAllAchievements;
-                _plugin.Settings.DevShowAllAchievements = next;
-                try { _plugin.PersistSettings(); } catch { }
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = next
-                        ? "Showing ALL achievements incl. hidden ones. Reopen the achievements tracker to see them."
-                        : "Hidden achievements back to normal (shown only when earned).";
-                return;
-            }
-
             // Dev-only: email yourself the backup-deletion warning, cycling stage 1..5
             // (6mo / 3mo / 1mo / 1wk / 1day) on each use so you can see the escalating copy.
             // Sends to your signed-in address; never changes your real entitlement / timer.
@@ -12205,47 +13201,25 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Dev-only: cycle a DISPLAY-ONLY preview of the lapsed cloud-backup state in the Account
-            // tab (the contextual note + the orange "Data removal in: X" countdown), stepping the
-            // representative removal date 400d -> 180d -> 30d -> 7d -> 1d -> off. Never enables
-            // uploads and never touches your real entitlement; it only changes what is drawn.
-            if (code.Equals("LAPSED", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("LAPSE", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                _lapsedPreviewIndex++;
-                if (_lapsedPreviewIndex >= _lapsedPreviewDays.Length) _lapsedPreviewIndex = -1;   // wrap to off
-                _ = RefreshCloudBackupGatingAsync();
-                if (AccessCodeStatus != null)
-                {
-                    AccessCodeStatus.Text = _lapsedPreviewIndex < 0
-                        ? "Lapsed cloud-backup preview off (showing your real state). Open the Account tab to see it."
-                        : "Lapsed cloud-backup preview: removal in ~" + _lapsedPreviewDays[_lapsedPreviewIndex]
-                          + " days (display only; uploads stay off, nothing changed). Open the Account tab to see it.";
-                }
-                return;
-            }
-
             // Dev-only: toggle the experimental legacy "F8 12" rev-LED sweep on
             // the wheel's gamepad/DirectInput collection (off the HID++ FFB pipe).
             // Confirms on hardware whether the legacy LED command lights the strip
-            // AND coexists with live FFB -- a non-contending LED path we could use
-            // in every game, not just iRacing+MAIRA. Toggle: type it again to stop
-            // (LEDs off). See LegacyLedF8Channel + project_led_ffb_contention_model.
+            // AND coexists with live FFB: a non-contending LED path we could use
+            // in every game, not just iRacing. Toggle: type it again to stop
+            // (LEDs off). "F8SWEEP FAST" resends every 16 ms, "F8SWEEP SLOW" is
+            // paced write-on-change, "F8SWEEP <ms>" sets a custom resend
+            // interval. See LegacyLedF8Channel + project_led_ffb_contention_model.
             {
                 var f8parts = code.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                 string f8cmd = f8parts.Length > 0 ? f8parts[0].ToUpperInvariant() : string.Empty;
-                if (f8cmd == "F8SWEEP" || f8cmd == "F8" || f8cmd == "F8FAST"
-                    || f8cmd == "F8SPAM" || f8cmd == "F8SLOW")
+                if (f8cmd == "F8SWEEP")
                 {
                     AccessCodeBox.Text = string.Empty;
                     int? resend = null;        // null => simple on/off toggle (paced)
-                    if (f8cmd == "F8FAST" || f8cmd == "F8SPAM") resend = 16;
-                    else if (f8cmd == "F8SLOW") resend = 0;
-                    else if (f8parts.Length > 1)
+                    if (f8parts.Length > 1)
                     {
                         string a = f8parts[1].ToUpperInvariant();
-                        if (a == "FAST" || a == "SPAM") resend = 16;
+                        if (a == "FAST") resend = 16;
                         else if (a == "SLOW") resend = 0;
                         else if (int.TryParse(f8parts[1], out int ms))
                             resend = Math.Max(0, Math.Min(1000, ms));
@@ -12272,50 +13246,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Dev-only one-shot: for every car whose default points at a USER
-            // preset, promote that user preset to a factory built-in (replacing
-            // existing built-in(s) for that car), repoint the factory car-default,
-            // and delete the user preset. Other user presets for the same car
-            // stay put. Idempotent.
-            // Dev-only one-shot: legacy 'Forza_<ordinal>' car ids from the old
-            // UDP fallback get normalized to 'Car_<ordinal>' (what SimHub's
-            // data feed emits for Forza). Per-car rule: if Car_<n> already
-            // exists, drop the Forza_<n>; otherwise rename Forza_<n> to
-            // Car_<n> and rewrite the inner CarId/PresetName fields.
-            if (code.Equals("NORMALIZEFORZA", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                if (_plugin != null)
-                {
-                    int n = _plugin.DevNormalizeForzaCarIds(out var details);
-                    if (n > 0) _presetManager?.RefreshLists();
-                    if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
-                    TrueforceDialog.Show(Window.GetWindow(this),
-                        "Trueforce For All: normalize Forza car ids", details,
-                        DialogKind.Info);
-                }
-                return;
-            }
-
-            if (code.Equals("FOLDDEFAULTS", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                if (_plugin != null)
-                {
-                    int n = _plugin.DevConsolidateUserCarDefaults(out var details);
-                    // The plugin reloads its own caches; the preset manager
-                    // caches its row collections separately and needs an
-                    // explicit refresh.
-                    if (n > 0) _presetManager?.RefreshLists();
-                    if (AccessCodeStatus != null) AccessCodeStatus.Text = details;
-                    if (n > 0)
-                        TrueforceDialog.Show(Window.GetWindow(this),
-                            "Trueforce For All: consolidated car defaults", details,
-                            DialogKind.Info);
-                }
-                return;
-            }
-
             // Dev-only: feel the stationary spring on the desk without a game.
             // Drives a synthetic centering force that flips direction every
             // ~1.5 s for ~6 s, bypassing the enabled/speed/steering gates.
@@ -12328,18 +13258,6 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = "Stationary-spring test (~6 s): hold the wheel; the motor pushes one way, then the other, every ~1.5 s, so you can feel the spring strength and direction. (Needs the wheel connected and streaming.)";
-                return;
-            }
-
-            // Dev-only: exercise the rev limiter's RPM threshold + hold from
-            // synthetic telemetry (the Test button only plays the buzz). Sweeps
-            // below threshold (silent) -> over redline (buzz) -> off.
-            if (code.Equals("REV", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.DebugRevLimiterBounce();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Rev limiter test (~5 s): silent for ~1.5 s (below redline), buzzes ~2.7 s (at/over redline), then stops. Confirms it engages on RPM and holds, independent of the Test button.";
                 return;
             }
 
@@ -12495,6 +13413,25 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // iRacing raw-data support probe. Answers, from SimHub.txt on a
+            // user's rig, what their SimHub build exposes: whether SimHub's raw
+            // iRacing object reaches a third-party plugin per tick, whether
+            // SteeringWheelTorque carries force while iRacing's own force
+            // feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST
+            // array is reachable through the telemetry object's dictionary base.
+            // Toggle. The probe itself lives in
+            // TrueforcePlugin.DebugToggleIracingRawProbe.
+            if (code.Equals("IRRAW", StringComparison.OrdinalIgnoreCase))
+            {
+                bool irRawOn = _plugin.DebugToggleIracingRawProbe();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = irRawOn
+                        ? "iRacing raw-telemetry probe armed. Get on track and drive: it writes one arming dump plus one '[TF4ALL] IRRAW' line every 5 seconds to SimHub.txt. Drive about 30 s with iRacing's own force feedback DISABLED, then about 30 s with it enabled, then type IRRAW again to stop."
+                        : "iRacing raw-telemetry probe stopped. Look for '[TF4ALL] IRRAW' lines in SimHub.txt.";
+                return;
+            }
+
             // Motor-characterization sweeps. Plain SWEEP: 15 s log sine, 8 to
             // 300 Hz, even time per octave. SWEEP1..SWEEP6: one octave band
             // each (~5 s) so a tester can judge bands independently instead
@@ -12547,26 +13484,67 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Opt in to the experimental FFB-capture path (issue #8: HID++
-            // very-long report 0x12 + lower index-resolve floor). Persisted and
-            // applied live; drive to let it re-resolve the FFB index. Toggle.
-            if (code.Equals("FFBX", StringComparison.OrdinalIgnoreCase))
+            // CSP bridge force: the sim's pre-gain force from the TF4ALL CSP
+            // script's shared-memory block, ahead of finalFF and the tap.
+            // "CSPFFB" toggles it; "CSPFFB PURE|TORQUE|FINAL|VALUE" picks the
+            // field; "CSPFFB NM <n>" sets the full-scale torque for TORQUE.
+            if (code.Equals("CSPFFB", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("CSPFFB ", StringComparison.OrdinalIgnoreCase))
             {
-                bool on = _plugin.DebugToggleExperimentalCapture();
-                // Reflect the new state on both checkboxes without re-firing
-                // their handlers (the plugin setter already ran above).
-                var prevSuppress = _suppressEvents;
-                _suppressEvents = true;
-                try
-                {
-                    if (ExperimentalFfbCheck != null) ExperimentalFfbCheck.IsChecked = on;
-                }
-                finally { _suppressEvents = prevSuppress; }
+                var cspParts = code.Split(new[] { ' ', '=', '	' }, StringSplitOptions.RemoveEmptyEntries);
                 AccessCodeBox.Text = string.Empty;
+                if (cspParts.Length == 1)
+                {
+                    // The AC CSP bridge is automatic (used whenever its script
+                    // is installed, else the tap). This bare toggle is only a dev
+                    // force-off. Field/diagnostic sub-commands are below.
+                    bool on = _plugin.ToggleCspBridgeFfb();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = on
+                            ? "CSP bridge ON (automatic): the plugin uses the TF4ALL CSP Bridge when its script is installed, otherwise the USB capture. Install the script from the Assetto Corsa prompt, the guide, or the settings button. Type CSPFFB again to force it off."
+                            : "CSP bridge FORCED OFF: the plugin uses the USB capture in Assetto Corsa even if the bridge script is installed. Type CSPFFB again to return to automatic.";
+                    return;
+                }
+                string arg = cspParts[1].ToUpperInvariant();
+                if (arg == "NM")
+                {
+                    if (cspParts.Length >= 3 && double.TryParse(cspParts[2],
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double nm))
+                    {
+                        double set = _plugin.SetCspBridgeMaxNm(nm);
+                        if (AccessCodeStatus != null)
+                            AccessCodeStatus.Text = $"CSP bridge full-scale torque set to {set:F1} Nm (that many Nm of column torque = full wheel force, for the TORQUE field).";
+                    }
+                    else if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "Usage: CSPFFB NM <number>, e.g. CSPFFB NM 8.";
+                    return;
+                }
+                if (arg == "SUP" || arg == "NOSUP")
+                {
+                    bool sup = _plugin.SetCspSuppress(arg == "SUP");
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = sup
+                            ? "CSP wheel-output suppression ON: the script returns 0 to the wheel (normal takeover)."
+                            : "CSP wheel-output suppression OFF: the game keeps driving the wheel while the plugin only reads the bridge. Diagnostic for whether our 0 output is what zeroes AC's ffb fields; expect the game and plugin to fight the wheel meanwhile.";
+                    return;
+                }
+                if (arg == "PURE" || arg == "TORQUE" || arg == "FINAL" || arg == "VALUE" || arg == "FINALFF")
+                {
+                    string f = _plugin.SetCspBridgeField(arg);
+                    string note = f == "finalff"
+                        ? "  (AC's vanilla finalFF, the field FFB Clip reads; post-gain and keeps your AC tuning; the CSP script only frees the pipe)"
+                        : (f == "final" || f == "value")
+                        ? "  (CSP post-gain field: reads 0 at in-game gain 0, for comparison with the gain up)"
+                        : (f == "torque"
+                            ? "  (raw column torque in Nm, scaled by CSPFFB NM; feels proportional to the car)"
+                            : "  (pre-gain, normalized to the car; carries force at gain 0)");
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = $"CSP force now reading the {f} field{note}.";
+                    return;
+                }
                 if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "Experimental FFB capture ON (persists). Load a game and drive for a few seconds so the tap re-resolves the FFB index; check the FFB-tap status. Type FFBX again to turn it off."
-                        : "Experimental FFB capture OFF. Back to the standard capture path.";
+                    AccessCodeStatus.Text = "CSPFFB fields: FINALFF, VALUE, PURE, TORQUE, FINAL; CSPFFB NM <n>; CSPFFB SUP/NOSUP.";
                 return;
             }
 
@@ -12617,8 +13595,6 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            // Issue #13 test: stop the Trueforce stream while paused so the wheel
-            // hands back to the game's native FFB / auto-center. Persists. Toggle.
             if (code.Equals("OLEDTEST", StringComparison.OrdinalIgnoreCase))
             {
                 if (_plugin == null) return;
@@ -12630,19 +13606,6 @@ namespace TrueforceForAll.Plugin
                         + "line beside the wheel-screen settings for each step. Run it with no game driving "
                         + "the wheel: writing the screen while a game sends its own force feedback cuts that "
                         + "force feedback out.";
-                return;
-            }
-
-            if (code.Equals("OLEDDIAG", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_plugin == null) return;
-                _plugin.ReportOledLayouts();
-                PollOledStatus();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Reading the wheel's own layout table into the log, then showing "
-                        + "a lettered ruler so each layout's field boundaries can be read off the screen. "
-                        + "Look for [OLED] lines in SimHub.txt.";
                 return;
             }
 
@@ -12669,78 +13632,35 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
-            if (code.Equals("OLEDANY", StringComparison.OrdinalIgnoreCase))
+            if (code.Equals("F8ANY", StringComparison.OrdinalIgnoreCase))
             {
                 if (_plugin?.Settings == null) return;
-                bool on = !_plugin.Settings.OledIgnoreModeBGate;
-                _plugin.Settings.OledIgnoreModeBGate = on;
-                _plugin.PersistSettings();
-                if (!on) _plugin.TurnOffOled();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "OLED gate OFF: the wheel screen now runs in any game, including ones sending their own force feedback. This is the experiment, so EXPECT the force to cut out; if it does, that confirms the screen shares the rev lights' limitation. Type OLEDANY again to put the gate back."
-                        : "OLED gate back on: the wheel screen runs only under Telemetry Based FFB again.";
-                return;
-            }
-
-            if (code.Equals("NOLOCK", StringComparison.OrdinalIgnoreCase))
-            {
-                bool on = _plugin.DebugToggleStopStreamOnPause();
-                // Keep the visible checkbox in sync without re-firing its handler.
-                var prevSuppress = _suppressEvents;
-                _suppressEvents = true;
-                try { if (StopStreamOnPauseCheck != null) StopStreamOnPauseCheck.IsChecked = on; }
-                finally { _suppressEvents = prevSuppress; }
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "Pause behavior: stop-stream ON (persists). On pause / fast-travel the wheel now reverts to the game's native FFB (auto-center) instead of holding a force. Type NOLOCK again to go back to the default."
-                        : "Pause behavior: back to default (release FFB to zero while paused).";
-                return;
-            }
-
-            // Opt in to the experimental home-screen Feedback gain tile. Splices a
-            // Trueforce master + audio gain box into SimHub's hardcoded Feedback
-            // section (next to Motors/Wind) via a defensive visual-tree injection.
-            // Persisted and applied live. Toggle.
-            if (code.Equals("HOMEBOX", StringComparison.OrdinalIgnoreCase))
-            {
-                bool on = _plugin.DebugToggleFeedbackBox();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = on
-                        ? "Home Feedback gain tile ON (persists). Open SimHub's home screen; a 'Trueforce' box appears next to Motors/Wind. If it doesn't show, the home tab may not be open yet, switch to it. Type HOMEBOX again to turn it off."
-                        : "Home Feedback gain tile OFF. Removed from the home screen.";
-                return;
-            }
-
-            // Escape hatch for the import preview modal. Off by default; flip
-            // on to fall back to today's silent commit-on-pick path if the
-            // modal breaks on a specific file. Persists.
-            if (code.Equals("PREVIEWOFF", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.Settings.ImportPreviewBypass = !_plugin.Settings.ImportPreviewBypass;
+                bool on = !_plugin.Settings.F8IgnoreQuietGate;
+                _plugin.Settings.F8IgnoreQuietGate = on;
                 _plugin.PersistSettings();
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = _plugin.Settings.ImportPreviewBypass
-                        ? "Import preview OFF. Picks commit silently on Import. Type PREVIEWOFF again to re-enable."
-                        : "Import preview ON. Import shows a confirmation modal before committing.";
-                return;
-            }
-
-            // Dev/test: force the "is your FFB working?" success banner on now,
-            // so the Yes (prefilled report) and No (troubleshooter) paths can be
-            // exercised without real hardware. Dismiss (or click either button)
-            // clears it.
-            if (code.Equals("FFBOK", StringComparison.OrdinalIgnoreCase))
-            {
-                _plugin.DebugShowSuccessBanner();
-                RefreshExperimentalSuccessBanner();
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Success banner forced on (test). Click 'Yes, it's working' to see the prefilled report, or 'No' for the troubleshooter. The x or either button clears it.";
+                {
+                    // Says what it is for, because the person typing it is
+                    // running an experiment for us rather than using a feature,
+                    // and both outcomes are a result worth reporting.
+                    if (!on)
+                        AccessCodeStatus.Text =
+                            "Rev-light gate back on: the legacy F8 lights run only when the game's "
+                            + "own force feedback is quiet.";
+                    else if (_plugin.WheelDetected && !_plugin.WheelIsLegacyF8)
+                        AccessCodeStatus.Text =
+                            "Set, but this wheel does not use the legacy F8 rev lights, so nothing "
+                            + "changes here. It applies to the G923 PS/PC only; every other wheel "
+                            + "drives its lights over HID++, where the answer is already known.";
+                    else
+                        AccessCodeStatus.Text =
+                            "Rev-light gate OFF: the legacy F8 lights now run in any game, including "
+                            + "ones driving their own force feedback. Go and drive. Two things to "
+                            + "watch: do the five lights follow your revs, and does the game's force "
+                            + "stay solid while they move. If the force cuts out, that IS the answer "
+                            + "we need, not a fault. Type F8ANY again to put the gate back.";
+                }
                 return;
             }
 
@@ -12751,6 +13671,247 @@ namespace TrueforceForAll.Plugin
             // (issue #17). Power users with a real need (multi-wheel
             // disambiguation, or a USBPcap interface mismatch they want to
             // override) flip it on here; persists across restarts.
+            // Live rev-light cadence, so the real limit can be found on the
+            // wheel instead of guessed at. The 160 ms default is only "what
+            // G HUB does": the FFB-limp bug it was long credited with avoiding
+            // turned out to be FFB on the LED endpoint, not write rate.
+            if (code.StartsWith("LEDRATE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                int ms;
+                if (!int.TryParse(code.Substring("LEDRATE".Length).Trim(), out ms))
+                {
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "LEDRATE<ms>: 10 to 1000. Currently "
+                            + WheelLedChannel.ChangeMinMsValue + " ms.";
+                    return;
+                }
+                WheelLedChannel.ChangeMinMsValue = ms;
+                int now = WheelLedChannel.ChangeMinMsValue;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Rev lights now update at most every " + now
+                        + " ms (about " + (1000 / Math.Max(now, 1)) + " Hz). Live only, back to 40 on restart. "
+                        + "Drive it and watch the FORCE, not just the lights.";
+                return;
+            }
+
+            // Dev-only: make a slot read as NEVER PROGRAMMED, so the first-run
+            // path for a factory wheel can be tested at all. Adoption skips a
+            // slot whose bytes are all zero, and there is otherwise no way to
+            // produce one without going back to G HUB.
+            //
+            // Two writes on purpose. The first is a normal borrow, which is what
+            // captures the backup; the second settles the loan so the zeros
+            // survive a restart, which they must, since the test is what happens
+            // on the NEXT launch. SLOTRESTORE<n> puts the slot back.
+            // Blank or give back EVERY custom slot in one go, which is the shape
+            // the factory-wheel rehearsal actually needs: a wheel with one slot
+            // left full is not the case being tested.
+            //
+            // Checked BEFORE the single-slot codes below, and deliberately so:
+            // StartsWith("SLOTBLANK") also matches "SLOTBLANKALL", which would
+            // then try to read "ALL" as a slot number and report a range error.
+            if (code.Equals("SLOTBLANKALL", StringComparison.OrdinalIgnoreCase)
+             || code.Equals("SLOTRESTOREALL", StringComparison.OrdinalIgnoreCase))
+            {
+                bool restoring = code.Equals("SLOTRESTOREALL", StringComparison.OrdinalIgnoreCase);
+                AccessCodeBox.Text = string.Empty;
+
+                var lines = new System.Collections.Generic.List<string>();
+                int okCount = 0;
+                for (int slot = 0; slot < WheelLedChannel.CustomSlotCount; slot++)
+                {
+                    string m; bool ok;
+                    if (restoring) ok = _plugin.RestoreSlot(slot, out m, undoBlank: true);
+                    else
+                    {
+                        // Same two steps as SLOTBLANK<n>: BorrowSlot takes the
+                        // backup and refuses if it cannot, then the blank is
+                        // recorded WITHOUT settling the loan, so the colors stay
+                        // protected while the slot reads empty.
+                        var zeros = new byte[WheelLedChannel.LedCount * 3];
+                        ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
+                        { Slot = (byte)slot, DirectionWire = 3, Rgb = zeros }, out m,
+                          displayLevel: 0);
+                        if (ok) ok = _plugin.MarkSlotBlanked(slot, out m);
+                    }
+                    if (ok) okCount++;
+                    lines.Add((ok ? "OK   " : "SKIP ") + "CUSTOM " + (slot + 1)
+                              + ": " + (m ?? "(no detail)"));
+                }
+
+                // Per-slot lines rather than a count. A slot that refused because
+                // it could not be read is a different thing from one that had no
+                // backup to give back, and whoever is running the rehearsal needs
+                // to tell them apart.
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    restoring ? "Give every light slot back" : "Blank every light slot",
+                    string.Join(Environment.NewLine, lines)
+                    + Environment.NewLine + Environment.NewLine
+                    + (restoring
+                       ? okCount + " of " + WheelLedChannel.CustomSlotCount + " restored. "
+                         + "SKIP on a slot that was never blanked is expected: there is nothing held for it."
+                       : okCount + " of " + WheelLedChannel.CustomSlotCount + " blanked, and every one of "
+                         + "those was backed up first. Your colors stay held until you type SLOTRESTOREALL."
+                         + Environment.NewLine + Environment.NewLine
+                         + "Delete light-patterns.json and relaunch to test the factory-wheel first run."),
+                    okCount > 0 ? DialogKind.Info : DialogKind.Warning);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = (restoring ? "Restored " : "Blanked ")
+                        + okCount + " of " + WheelLedChannel.CustomSlotCount + " slots.";
+                return;
+            }
+
+            if (code.StartsWith("SLOTBLANK", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                int n;
+                if (!int.TryParse(code.Substring("SLOTBLANK".Length).Trim(), out n) || n < 1 || n > 5)
+                {
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "SLOTBLANK<n>: 1-5.";
+                    return;
+                }
+                int slot = n - 1;
+                var zeros = new byte[WheelLedChannel.LedCount * 3];
+
+                string msg;
+                // ONE write, and the loan stays OPEN. Settling it with
+                // permanent:true was the obvious way to make the blank survive a
+                // restart and it was quietly destructive: a settled loan makes the
+                // NEXT borrow of this slot treat it as un-backed-up, re-read it,
+                // and record the blank we just wrote as "the original", discarding
+                // the last copy of the user's real colors. Marking it blanked
+                // instead keeps the debt open, so the backup stays protected and
+                // SLOTRESTORE still works.
+                bool ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
+                { Slot = (byte)slot, DirectionWire = 3, Rgb = zeros }, out msg,
+                  displayLevel: 0);
+                if (ok) ok = _plugin.MarkSlotBlanked(slot, out msg);
+
+                TrueforceDialog.Show(Window.GetWindow(this), "Blank a light slot",
+                    (msg ?? "(no detail)") + "\n\n"
+                    + (ok
+                       ? "CUSTOM " + n + " now reads as never programmed, and stays that way "
+                         + "across a restart." + "\n\n"
+                         + "Delete light-patterns.json and relaunch to test the factory-wheel "
+                         + "first run. Type SLOTRESTORE" + n + " to put your own colors back."
+                       : "Nothing was written, so the slot is untouched."),
+                    ok ? DialogKind.Info : DialogKind.Warning);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                return;
+            }
+
+            // Designate which custom slot the plugin may borrow, or 0 for none.
+            if (code.StartsWith("SLOTPICK", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                int n;
+                if (!int.TryParse(code.Substring("SLOTPICK".Length).Trim(), out n) || n < 0 || n > 5)
+                {
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "SLOTPICK<n>: 1-5 to designate CUSTOM n, or 0 for none.";
+                    return;
+                }
+                _plugin.ReleaseBorrowedSlot();
+                _plugin.Settings.LightsyncDynamicSlot = n == 0 ? -1 : n - 1;
+                _plugin.ResetStageSlot();
+                _plugin.PersistSettings();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = n == 0
+                        ? "Back to automatic. The plugin picks the slot itself: the first one "
+                          + "never programmed, or CUSTOM 5 when all five are in use. Its contents are "
+                          + "backed up before the first write."
+                        : "CUSTOM " + n + " designated. Its contents are backed up before the first write, "
+                          + "and SLOTRESTORE" + n + " puts them back.";
+                return;
+            }
+
+            // Put the user's own colors back into a slot from the backup taken
+            // before the plugin first wrote it.
+            if (code.StartsWith("SLOTRESTORE", StringComparison.OrdinalIgnoreCase))
+            {
+                int n;
+                if (!int.TryParse(code.Substring("SLOTRESTORE".Length).Trim(), out n)
+                    || n < 1 || n > 5) n = 5;
+                int slot = n - 1;
+                AccessCodeBox.Text = string.Empty;
+
+                string msg;
+                // undoBlank: typing SLOTRESTORE is a person asking for their
+                // colors back, which is exactly the case the automatic paths must
+                // not do on their own.
+                bool ok = _plugin.RestoreSlot(slot, out msg, undoBlank: true);
+
+                string detail = "Check the wheel's own LIGHTSYNC menu: CUSTOM " + n
+                    + " should look as it did before the plugin first wrote the slot.";
+
+                TrueforceDialog.Show(Window.GetWindow(this),
+                    "Restore light slot",
+                    (msg ?? "(no detail)") + "\n\n" + detail,
+                    ok ? DialogKind.Info : DialogKind.Warning);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                return;
+            }
+
+            // Read-only: ask the wheel whether it implements per-slot LIGHTSYNC
+            // colors and dump what each custom slot holds. Writes nothing.
+            if (code.Equals("SLOTPROBE", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string body = _plugin.ProbeLedSlotFeature();
+                TrueforceDialog.Show(Window.GetWindow(this), "Wheel slot-feature probe (read-only)", body);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "Slot probe done. Full detail is in the dialog and in SimHub.txt.";
+                return;
+            }
+
+            // Move the wheel lights + screen controls onto their own tab and
+            // reveal it. Nothing is duplicated: the blocks are reparented.
+            if (code.Equals("LIGHTSYNC", StringComparison.OrdinalIgnoreCase))
+            {
+                _plugin.Settings.LightsyncTabUnlocked = !_plugin.Settings.LightsyncTabUnlocked;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                ApplyLightsyncTabVisibility();
+                // The FFB tab's own name depends on whether it still owns the
+                // lights, so re-run the pass that sets it rather than leaving a
+                // stale header until the next game-context refresh.
+                try { RefreshFromPlugin(); } catch { }
+                if (_plugin.Settings.LightsyncTabUnlocked && MainTabs != null && LightsyncTab != null)
+                    MainTabs.SelectedItem = LightsyncTab;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = _plugin.Settings.LightsyncTabUnlocked
+                        ? "LIGHTSYNC & OLED tab ON. Type LIGHTSYNC again to put the wheel lights and screen controls back on the Telemetry FFB tab."
+                        : "LIGHTSYNC & OLED tab OFF: the wheel lights and screen controls are back on the Telemetry FFB tab.";
+                return;
+            }
+
+            // Dev-only: re-arm the LIGHTSYNC intro modal and force the inline
+            // cycle-binding hint on screen even though the action is bound. Both
+            // normally stay quiet once bound, which is right for users and useless
+            // for testing. Session-only; lapses on restart.
+            if (code.Equals("CYCLEHINT", StringComparison.OrdinalIgnoreCase))
+            {
+                _forceCycleHint = !_forceCycleHint;
+                if (_forceCycleHint)
+                {
+                    _plugin.Settings.LightsyncCycleHintDismissed = false;
+                    _plugin.Settings.HasSeenLightsyncIntro = false;
+                }
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                RefreshLightsyncCycleHint();
+                if (_forceCycleHint && MainTabs != null && LightsyncTab != null
+                    && _plugin.Settings.LightsyncTabUnlocked)
+                    MainTabs.SelectedItem = LightsyncTab;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = _forceCycleHint
+                        ? "Cycle hint and intro FORCED ON for this session. Open LIGHTSYNC to see them. Type CYCLEHINT again for normal behaviour."
+                        : "Cycle hint back to normal: it shows only when the pattern cycle action is unbound.";
+                return;
+            }
+
             if (code.Equals("MANUALPIN", StringComparison.OrdinalIgnoreCase))
             {
                 bool on = !(_plugin.Settings.ShowManualOverrideUi);
@@ -12766,18 +13927,6 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Manual device picker revealed (Diagnostics + the contextual banner). Persists. Type MANUALPIN again to hide it."
                         : "Manual device picker hidden (persists).";
-                return;
-            }
-
-            if (code.Equals("MAIRA", StringComparison.OrdinalIgnoreCase)
-                || code.Equals("TEST", StringComparison.OrdinalIgnoreCase))
-            {
-                // Retired 2026-08-01: the iRacing/MAIRA section is permanently
-                // hidden (passthrough declined). Answer instead of silently
-                // ignoring a code that used to work.
-                AccessCodeBox.Text = string.Empty;
-                if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "The iRacing section is retired. Rev lights now have a toggle on the Telemetry FFB tab.";
                 return;
             }
 
@@ -12845,6 +13994,649 @@ namespace TrueforceForAll.Plugin
             if (!_plugin.Settings.ModeBRevLightsEnabled) _plugin.TurnOffRpmLeds();
         }
 
+        // Labels for effects 1-9 (index = effect number; [0] unused). The
+        // wheel stores the patterns; picking one sets the wheel's single
+        // selector, exactly like the base's own menu. The 1-4 direction
+        // names are INFERRED from mescon's 9.4.1 direction table
+        // (1=inside-out, 2=outside-in, 3=L->R, 4=R->L); effect 2 =
+        // outside-in is confirmed on hardware and matches that table, the
+        // other three are eyeball-checkable in seconds via the pick preview.
+        private static readonly string[] RevLightEffectLabels =
+        {
+            "(unused)",
+            "Inside-out (built-in 1)", "Outside-in (built-in 2)",
+            "Left to right (built-in 3)", "Right to left (built-in 4)",
+            "Custom slot 1", "Custom slot 2", "Custom slot 3",
+            "Custom slot 4", "Custom slot 5",
+        };
+
+        // Fill a pattern combo with effects 1-9 (Tag = effect number).
+        /// <summary>Build the pattern picker.
+        ///
+        /// Three groups, and which of them appear depends on the tab. Locked, it
+        /// is the wheel's own nine effects and nothing else. Unlocked, the five
+        /// slots stop being listed as CUSTOM 1 to 5, because the library lists
+        /// them by name instead, and listing both would show every slot twice.
+        ///
+        /// Tags carry identity: an int for one of the wheel's effects, a pattern
+        /// id for a library row, and "*auto*" for the car's own colors. Nothing
+        /// keys off position.</summary>
+        private void FillPatternCombo(ComboBox combo, System.Windows.Input.MouseButtonEventHandler onItemClick)
+        {
+            combo.Items.Clear();
+
+            void Add(object content, object tag, bool enabled = true)
+            {
+                var it = new ComboBoxItem { Content = content, Tag = tag, IsEnabled = enabled };
+                // Re-picking the SELECTED item raises no SelectionChanged;
+                // the click handler replays the preview for that case.
+                if (enabled) it.PreviewMouseLeftButtonUp += onItemClick;
+                combo.Items.Add(it);
+            }
+
+            if (_plugin != null && _plugin.AutoCarColorsAvailable())
+                Add("Auto (this car's own colors)", "*auto*");
+
+            bool unlocked = _plugin?.Settings?.LightsyncTabUnlocked == true;
+
+            // Unlocked, only the four firmware sweeps: slots 5 to 9 are the
+            // library's top five and are listed below under their own names.
+            int last = unlocked ? 4 : RevLightEffectLabels.Length - 1;
+            for (int i = 1; i <= last; i++) Add(RevLightEffectLabels[i], i);
+
+            if (!unlocked) return;
+
+            var lib = _plugin.LightPatterns;
+            if (lib?.Patterns == null || lib.Patterns.Count == 0) return;
+
+            Add("- your patterns -", null, enabled: false);
+            foreach (var p in lib.Patterns)
+                Add(p.OnWheel ? p.Name + "   (CUSTOM " + (p.Slot + 1) + ")" : p.Name, p.Id);
+        }
+
+        /// <summary>Sync one pattern combo to the wheel's known selection.
+        /// Both pickers show the same thing: where the wheel actually is
+        /// (empty until the channel has read it once).</summary>
+        /// <summary>Point the combo at whatever the wheel is actually showing.
+        ///
+        /// By TAG rather than by index: the list is no longer a fixed 1..9 of the
+        /// wheel's own effects. It carries an automatic entry and one row per
+        /// library pattern, so position means nothing and only the tag
+        /// identifies a row.
+        ///
+        /// Three cases, most specific first. The car's own colors are showing
+        /// and the user has not overridden them; a library pattern is in a slot,
+        /// where the borrowed slot means "whatever we last wrote there" and any
+        /// other slot means the pattern that lives in it; or it is one of the
+        /// wheel's own nine effects.</summary>
+        private void SyncPatternCombo(ComboBox combo)
+        {
+            int sel = _plugin.GetWheelPatternSelection();
+
+            if (_plugin.AutoCarColorsAvailable() && !_plugin.HasExplicitCarLightChoice()
+                && _plugin.AutoColorsShowing && PointComboAtTag(combo, "*auto*"))
+                return;
+
+            if (_plugin.Settings?.LightsyncTabUnlocked == true && sel >= 5 && sel <= 9)
+            {
+                var lib = _plugin.LightPatterns;
+                int slot = sel - 5;
+                string tag = _plugin.BorrowedSlot == slot
+                    ? lib?.CurrentId
+                    : lib?.Patterns.FirstOrDefault(p => p != null && p.Slot == slot)?.Id;
+                if (PointComboAtTag(combo, tag)) return;
+            }
+
+            PointComboAtTag(combo, (sel >= 1 && sel <= 9) ? (object)sel : null);
+        }
+
+        /// <summary>Sync a row's Remember button + status line to the active
+        /// car and the pattern the row's combo is showing (the combo, not
+        /// the channel, so the state is right in the instant after a pick,
+        /// before the background write lands).</summary>
+        private void SyncRememberControls(ComboBox combo, System.Windows.Controls.Button btn,
+            TextBlock status, System.Windows.Documents.Run run)
+        {
+            // Two kinds of thing can be remembered for a car now: one of the
+            // wheel's own nine effects (an int tag) or a library pattern (a
+            // string id tag). Both have to be handled, or Remember reads as
+            // broken for exactly the patterns this tab exists to make.
+            bool hasCar = !string.IsNullOrEmpty(_plugin.ActiveCarId);
+            object tag = (combo?.SelectedItem as ComboBoxItem)?.Tag;
+            int selEffect = tag is int t ? t : 0;
+            string selPatternId = tag as string;
+
+            int? remEffect = hasCar ? _plugin.GetCarRememberedPattern() : null;
+            LightPattern remPattern = hasCar ? _plugin.GetCarRememberedLightPattern() : null;
+
+            if (btn != null)
+            {
+                // Shown only when pressing it would CHANGE something. Selecting Auto
+                // with nothing pinned is already the stored state, so a Remember
+                // button there asks the user to confirm the status quo; and a pattern
+                // that is already remembered was showing a dead "Remembered" button
+                // next to a status line saying the same thing and a Forget link that
+                // undoes it, which is three controls for one fact.
+                //
+                // Auto is the odd one: its tag is a sentinel rather than a pattern id,
+                // and "remembering" it means clearing the pin, so it matches the
+                // stored state precisely when nothing is pinned at all.
+                bool already =
+                    selPatternId == TrueforcePlugin.AutoPatternTag
+                        ? (remPattern == null && !remEffect.HasValue)
+                    : selPatternId != null
+                        ? remPattern?.Id == selPatternId
+                        : remEffect.HasValue && remEffect.Value == selEffect;
+
+                bool offerable = hasCar && !already
+                    && (selPatternId != null || (selEffect >= 1 && selEffect <= 9));
+                btn.Visibility = offerable ? Visibility.Visible : Visibility.Collapsed;
+                btn.IsEnabled = offerable;
+                btn.Content = "Remember for this car";
+                btn.ToolTip = "Optional: re-apply this pattern whenever this car loads. "
+                            + "Your pick is already on the wheel either way.";
+            }
+            if (status != null)
+            {
+                string what = remPattern != null
+                    ? remPattern.Name
+                    : (remEffect.HasValue && remEffect.Value >= 1 && remEffect.Value <= 9)
+                        ? RevLightEffectLabels[remEffect.Value]
+                        : null;
+                status.Visibility = what == null ? Visibility.Collapsed : Visibility.Visible;
+                if (what != null && run != null) run.Text = "Remembered: " + what;
+            }
+        }
+
+        /// <summary>Sync the Wheel-lights row (combo + remember controls).
+        /// A blank combo means the wheel's selection has never been read;
+        /// kick a background channel open (safe-gated in the plugin) and
+        /// poll briefly so the value fills in by itself instead of waiting
+        /// for a game or the Test button to open the channel.</summary>
+        /// <summary>One-time explainer on first LIGHTSYNC open: what this tab
+        /// lifts off the wheel's own five-pattern menu, with the binder in it so
+        /// the one thing it asks for can be done on the spot.
+        ///
+        /// Fired on navigation INTO the tab, deferred so the tab paints first,
+        /// and latched on ANY outcome so it never re-nags.</summary>
+        private void MaybeShowLightsyncIntro()
+        {
+            var set = _plugin?.Settings;
+            if (set == null || !set.LightsyncTabUnlocked) return;
+            if (set.HasSeenLightsyncIntro && !_forceCycleHint) return;
+            var owner = Window.GetWindow(this);
+            if (owner == null) return;
+            if (_lightsyncIntroShowing) return;
+            _lightsyncIntroShowing = true;
+            try
+            {
+                // CYCLEHINT pretends the action is unbound as well as re-arming
+                // the modal, so the dev code shows the whole first-run flow
+                // including the binder rather than the shortened already-sorted
+                // version. Nobody testing this has it unbound.
+                bool bound = !_forceCycleHint && IsPatternCycleBound();
+
+                string body =
+                    "Your wheel has its own built-in sweeps and five slots you can fill. "
+                  + "This tab goes further.\n\n"
+                  + "•  As many patterns as you like, not just five slots\n"
+                  + "•  Change pattern from anything SimHub can see: a wheel button, "
+                  + "a button box, the keyboard, a pedal\n"
+                  + "•  Give a car its own pattern, so it comes up as you get in\n"
+                  + "•  Match the real car's own lights, where the shared car data "
+                  + "covers it. Best in the serious sims, and it grows as the data does\n"
+                  + "•  Put the gear, your speed and your last lap on the wheel's screen"+
+                    "\n\n"
+                  + "Driving the bar with your revs shares a channel with game force "
+                  + "feedback, so that part needs Telemetry Based FFB on. The patterns "
+                  + "do not: Lightsync only, at the top of the panel, switches our "
+                  + "Trueforce effects and FFB tap off and leaves the rest of this "
+                  + "tab working.";
+
+                // The binder itself, in the dialog. Sending someone to another tab
+                // to find a row called "Rev pattern next" is how a feature stays
+                // undiscovered. Skipped when it is already bound, and wrapped
+                // because ControlsEditor is only proven to render from XAML.
+                UIElement binder = null;
+                if (!bound)
+                {
+                    try
+                    {
+                        var row = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                        var lbl = new TextBlock
+                        {
+                            Text = "Next pattern",
+                            Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0)),
+                            FontSize = 12,
+                            VerticalAlignment = VerticalAlignment.Center,
+                        };
+                        Grid.SetColumn(lbl, 0);
+                        var ed = new SimHub.Plugins.UI.ControlsEditor
+                        {
+                            ActionName = "TrueforcePlugin.RevLightPatternNext",
+                            FriendlyName = "TF4ALL: rev-light pattern next",
+                        };
+                        Grid.SetColumn(ed, 1);
+                        row.Children.Add(lbl);
+                        row.Children.Add(ed);
+                        binder = row;
+                    }
+                    catch { binder = null; }
+                }
+
+                TrueforceDialog.Show(owner, "What your wheel can do from here", body,
+                    DialogKind.Info, okLabel: "Got it", cancelLabel: null,
+                    goldOk: true, extraContent: binder);
+
+                // One-time on ANY outcome. Nothing here is a decision, so there is
+                // no version of this worth asking twice.
+                set.HasSeenLightsyncIntro = true;
+                _plugin.PersistSettings();
+                RefreshLightsyncCycleHint();
+            }
+            finally { _lightsyncIntroShowing = false; }
+        }
+
+        private bool _lightsyncIntroShowing;
+
+        // Session-only, set by the CYCLEHINT dev code. Never persisted.
+        private bool _forceCycleHint;
+
+        /// <summary>Is the pattern cycle action bound to anything? ControlsEditorModel's
+        /// constructor filters PluginManager's mapping list by target, so its Triggers
+        /// count answers this with public API and no reflection.</summary>
+        private static bool IsPatternCycleBound()
+        {
+            try
+            {
+                var m = new SimHub.Plugins.UI.ControlsEditorModel(
+                    "TrueforcePlugin.RevLightPatternNext", "TF4ALL: rev-light pattern next");
+                return m?.Triggers != null && m.Triggers.Count > 0;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Show the inline cycle-binding hint, or hide it for good. It is
+        /// the durable mention once the intro modal has been read: hidden when the
+        /// action is bound, so whoever already sorted it is never nagged, and hidden
+        /// once dismissed.</summary>
+        private void RefreshLightsyncCycleHint()
+        {
+            if (LightsyncCycleHint == null) return;
+            var set = _plugin?.Settings;
+            if (set == null || !set.LightsyncTabUnlocked
+                || (set.LightsyncCycleHintDismissed && !_forceCycleHint))
+            {
+                LightsyncCycleHint.Visibility = Visibility.Collapsed;
+                return;
+            }
+            if (_forceCycleHint) { LightsyncCycleHint.Visibility = Visibility.Visible; return; }
+            LightsyncCycleHint.Visibility = IsPatternCycleBound()
+                ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        private void LightsyncCycleHintDismiss_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin?.Settings == null) return;
+            _plugin.Settings.LightsyncCycleHintDismissed = true;
+            _plugin.PersistSettings();
+            if (LightsyncCycleHint != null) LightsyncCycleHint.Visibility = Visibility.Collapsed;
+        }
+
+        // Signatures of what the two pattern combos were last filled from, so a
+        // repeated refresh does not rebuild an unchanged list underneath the user.
+        private string _revComboSig;
+        private string _carComboSig;
+
+        /// <summary>Reparent a block rather than duplicating it. The wheel-lights and
+        /// wheel-screen groups live on the Telemetry FFB tab when LIGHTSYNC is locked
+        /// and on the LIGHTSYNC tab when it is not, and there is only ever ONE of
+        /// each, so the controls keep their state and their x:Name bindings.
+        /// Idempotent: a block already in the right panel is left alone.</summary>
+        private static void MoveBlock(FrameworkElement block, Panel wanted)
+        {
+            if (block == null || wanted == null) return;
+            var from = block.Parent as Panel;
+            if (from == wanted) return;
+            if (from != null) from.Children.Remove(block);
+            wanted.Children.Add(block);
+        }
+
+        /// <summary>Select the combo item whose Tag equals <paramref name="tag"/>,
+        /// comparing ints as ints and strings as strings. Clears the selection and
+        /// returns false when nothing matches, so a caller can tell "pointed at it"
+        /// from "that entry is gone".</summary>
+        private static bool PointComboAtTag(ComboBox combo, object tag)
+        {
+            if (combo == null) return false;
+            if (tag != null)
+            {
+                for (int i = 0; i < combo.Items.Count; i++)
+                {
+                    object t = (combo.Items[i] as ComboBoxItem)?.Tag;
+                    if (t == null) continue;
+
+                    bool hit;
+                    if (t is int ti && tag is int wi) hit = ti == wi;
+                    else if (t is string ts && tag is string ws) hit = string.Equals(ts, ws, StringComparison.Ordinal);
+                    else continue;
+
+                    if (hit) { combo.SelectedIndex = i; return true; }
+                }
+            }
+            combo.SelectedIndex = -1;
+            return false;
+        }
+
+        /// <summary>What the pattern combos are built FROM: the auto-colors
+        /// capability plus every pattern's id, slot and name. Comparing this against
+        /// the last one is how a refresh avoids rebuilding an identical list, which
+        /// would drop the user's selection mid-interaction.</summary>
+        private string PatternComboSignature()
+        {
+            if (_plugin?.Settings?.LightsyncTabUnlocked != true) return "locked";
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append(_plugin.AutoCarColorsAvailable() ? "auto|" : "noauto|");
+            var lib = _plugin.LightPatterns;
+            if (lib?.Patterns != null)
+            {
+                foreach (var p in lib.Patterns)
+                {
+                    if (p == null) continue;
+                    sb.Append(p.Id).Append(':').Append(p.Slot).Append(':').Append(p.Name).Append('|');
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Refill both pattern combos and put their selections back.
+        /// Events are suppressed across the whole rebuild, because clearing and
+        /// refilling a ComboBox raises SelectionChanged twice and each one would
+        /// otherwise read as the user picking something.</summary>
+        private void RebuildPatternCombos()
+        {
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (RevLightEffectCombo != null) FillPatternCombo(RevLightEffectCombo, RevLightItem_Clicked);
+                if (CarRevLightCombo != null) FillPatternCombo(CarRevLightCombo, CarRevLightItem_Clicked);
+                if (RevLightEffectCombo != null) SyncPatternCombo(RevLightEffectCombo);
+                if (CarRevLightCombo != null) SyncPatternCombo(CarRevLightCombo);
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        /// <summary>Put the wheel-lights and wheel-screen blocks on whichever tab
+        /// owns them right now, show or hide the LIGHTSYNC tab, and never leave the
+        /// selection stranded on a tab that just went away.</summary>
+        // What the last call decided, so the periodic refresh can re-run this when
+        // the answer changes without doing MoveBlock work on every tick.
+        private bool? _lightsyncTabShown;
+
+        private void ApplyLightsyncTabVisibility()
+        {
+            // A G923's strip lights one fixed look and its slots cannot be
+            // programmed, so there is nothing on this tab its owner can use. The
+            // most we could do for that wheel is drive the fixed ladder in step with
+            // the game, which does not earn a tab.
+            //
+            // Fail OPEN on an unknown wheel: the capability property answers false
+            // both for "cannot" and for "no wheel found yet", and a wheel powered on
+            // after SimHub would otherwise take the tab away for the session.
+            bool wheelCannot = _plugin != null
+                            && _plugin.WheelDetected
+                            && !_plugin.WheelHasSelectableLightPattern;
+
+            bool on = _plugin?.Settings?.LightsyncTabUnlocked == true && !wheelCannot;
+            _lightsyncTabShown = on;
+
+            MoveBlock(WheelLightsBlock, on ? LightsyncTabHost : ModeBSupportedPanel);
+            MoveBlock(WheelScreenBlock, on ? LightsyncScreenHost : ModeBSupportedPanel);
+
+            if (LightsyncTab != null)
+            {
+                // Hiding the tab the user is standing on would leave an empty pane,
+                // so move them off it first.
+                if (!on && MainTabs != null && ReferenceEquals(MainTabs.SelectedItem, LightsyncTab))
+                    MainTabs.SelectedItem = TelemetryFfbTab ?? MainTabs.Items[0];
+                LightsyncTab.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            // Built in every mode. The wheel traffic it used to do is gated at
+            // source now (the channel open inside it, the slot writes, the names,
+            // the brightness), and skipping the build instead left the tab visible
+            // with none of its controls constructed: _patternStore stayed null, this
+            // method is one-shot and nothing re-ran it on a mode change, so New threw
+            // a NullReferenceException out of a click handler for the rest of the
+            // session.
+            if (on)
+            {
+                try { EnsurePatternUi(); }
+                catch (Exception ex)
+                { SimHub.Logging.Current.Info("[TF4ALL] pattern UI init failed: " + ex.Message); }
+            }
+        }
+
+        private void RefreshRevLightPicker()
+        {
+            if (RevLightEffectCombo == null || _plugin?.Settings == null) return;
+            // Fixed-look strips (G923) get no picker at all; a pattern
+            // selector there reads as a feature the owner is missing.
+            bool selectable = _plugin.WheelHasSelectableLightPattern;
+            if (RevLightPatternRow != null)
+                RevLightPatternRow.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (RevLightPatternHelp != null)
+                RevLightPatternHelp.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            // Same reasoning for the pattern maker: a library of custom slots is
+            // no use on a strip that cannot hold one. The three PIDs behind this
+            // flag are exactly the wheels WheelLedChannel will write a slot to,
+            // so it is the right gate rather than a proxy.
+            if (PatternMakerExpander != null)
+                PatternMakerExpander.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (!selectable) return;
+            if (RevLightEffectCombo.IsDropDownOpen) return;
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                string sig = PatternComboSignature();
+                if (RevLightEffectCombo.Items.Count == 0 || sig != _revComboSig)
+                {
+                    FillPatternCombo(RevLightEffectCombo, RevLightItem_Clicked);
+                    _revComboSig = sig;
+                }
+                SyncPatternCombo(RevLightEffectCombo);
+                SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
+                    RevLightRememberStatus, RevLightRememberRun);
+            }
+            finally { _suppressEvents = prev; }
+
+            if (_plugin.GetWheelPatternSelection() <= 0) KickPatternRead();
+        }
+
+        // One-shot read-back poll: the channel open runs in the background
+        // and there is no callback path from it to this panel, so poll a few
+        // times and stop the moment the selection is known (or give up
+        // quietly; blank remains the honest state for an absent wheel).
+        private System.Windows.Threading.DispatcherTimer _revReadPoll;
+        private int _revReadPollTicks;
+
+        private void KickPatternRead()
+        {
+            _plugin.EnsureWheelPatternRead();
+            if (_revReadPoll != null) return;
+            _revReadPollTicks = 0;
+            _revReadPoll = new System.Windows.Threading.DispatcherTimer
+            { Interval = TimeSpan.FromMilliseconds(700) };
+            _revReadPoll.Tick += (s, a) =>
+            {
+                bool known = _plugin?.GetWheelPatternSelection() > 0;
+                if (known || ++_revReadPollTicks > 15)
+                {
+                    _revReadPoll.Stop();
+                    _revReadPoll = null;
+                    if (known)
+                    {
+                        RefreshRevLightPicker();
+                        RefreshCarRevLightRow();
+                    }
+                }
+            };
+            _revReadPoll.Start();
+        }
+
+        /// <summary>Sync the Car facts row: the SAME nine items and the SAME
+        /// value as the Wheel-lights picker (two remotes for the wheel's one
+        /// selector), plus this row's remember controls. Left alone while
+        /// the dropdown is open so the poll that drives RefreshCarFactsPanel
+        /// cannot yank a menu out from under the user's cursor.</summary>
+        private void RefreshCarRevLightRow()
+        {
+            if (CarRevLightCombo == null || _plugin?.Settings == null) return;
+            bool selectable = _plugin.WheelHasSelectableLightPattern;
+            if (CarRevLightSeparator != null)
+                CarRevLightSeparator.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (CarRevLightRow != null)
+                CarRevLightRow.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (CarRevLightRowHelp != null)
+                CarRevLightRowHelp.Visibility = selectable ? Visibility.Visible : Visibility.Collapsed;
+            if (!selectable) return;
+            if (CarRevLightCombo.IsDropDownOpen) return;
+            bool prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                string sig = PatternComboSignature();
+                if (CarRevLightCombo.Items.Count == 0 || sig != _carComboSig)
+                {
+                    FillPatternCombo(CarRevLightCombo, CarRevLightItem_Clicked);
+                    _carComboSig = sig;
+                }
+                SyncPatternCombo(CarRevLightCombo);
+                SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
+                    CarRevLightRememberStatus, CarRevLightRememberRun);
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        private void CarRevLight_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var picked = CarRevLightCombo.SelectedItem as ComboBoxItem;
+            if (!ApplyPickedComboItem(picked)) return;
+            RefreshRevLightPicker();   // the other remote for the same selector
+            SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
+                CarRevLightRememberStatus, CarRevLightRememberRun);
+        }
+
+        private void CarRevLightItem_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (!ReferenceEquals(CarRevLightCombo.SelectedItem, sender)) return;
+            _plugin.PreviewRevLightPattern();
+        }
+
+        private void RevLightItem_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            // Only the re-pick of the CURRENT item: a real change raises
+            // SelectionChanged and the changed-handler previews it.
+            if (!ReferenceEquals(RevLightEffectCombo.SelectedItem, sender)) return;
+            _plugin.PreviewRevLightPattern();
+        }
+
+        /// <summary>Shared by both rows' Remember buttons: store the pattern
+        /// the row's combo currently shows for the active car.</summary>
+        private void RevLightRemember_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin?.Settings == null) return;
+            var combo = ReferenceEquals(sender, CarRevLightRememberBtn)
+                ? CarRevLightCombo : RevLightEffectCombo;
+            object tag = (combo?.SelectedItem as ComboBoxItem)?.Tag;
+
+            // Remembering "Auto" means the opposite of storing something: it
+            // CLEARS the pinned choice and hands the car back to its own data.
+            if (tag as string == TrueforcePlugin.AutoPatternTag) _plugin.UseAutoForActiveCar();
+            else if (tag is string patternId) _plugin.RememberLightPatternForActiveCar(patternId);
+            else if (tag is int v && v >= 1) _plugin.RememberPatternForActiveCar(v);
+            else return;
+
+            RefreshRevLightPicker();
+            RefreshCarRevLightRow();
+        }
+
+        /// <summary>Shared by both rows' Forget links. Deliberately leaves
+        /// the wheel's current selection alone: removing automation must
+        /// not yank the lights.</summary>
+        private void RevLightForget_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin?.Settings == null) return;
+            _plugin.ForgetPatternForActiveCar();
+            _plugin.ForgetLightPatternForActiveCar();   // either kind may be pinned
+            RefreshRevLightPicker();
+            RefreshCarRevLightRow();
+        }
+
+        private void RevLightEffect_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var picked = RevLightEffectCombo.SelectedItem as ComboBoxItem;
+            if (!ApplyPickedComboItem(picked)) return;
+            RefreshCarRevLightRow();
+            SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
+                RevLightRememberStatus, RevLightRememberRun);
+        }
+
+        /// <summary>Act on whichever kind of entry was picked. Both pattern combos
+        /// now mix three things: the wheel's own effects (an int tag), one of our
+        /// library patterns (its id), and Auto (a sentinel meaning "no override").
+        /// Returns false when the item is not actionable, e.g. the disabled
+        /// group heading.</summary>
+        private bool ApplyPickedComboItem(ComboBoxItem picked)
+        {
+            object tag = picked?.Tag;
+
+            if (tag as string == TrueforcePlugin.AutoPatternTag)
+            {
+                _plugin.UseAutoForActiveCar();
+                return true;
+            }
+            if (tag is string patternId)
+            {
+                var p = _plugin.LightPatterns?.Patterns?.FirstOrDefault(x => x.Id == patternId);
+                if (p == null) return false;
+                string msg;
+                _plugin.ApplyLightPattern(p, out msg);
+                return true;
+            }
+            if (tag is int v && v >= 1)
+            {
+                // These two are part of the gated feature and this handler is on
+                // an ALWAYS-VISIBLE control, so they must not run for a locked
+                // user: opening the channel is HID++ traffic that picking a
+                // pattern never used to cause, and the release check is a disk
+                // read for a backup that cannot exist.
+                if (_plugin.Settings?.LightsyncTabUnlocked == true
+                    && _plugin.MasterMode != TrueforceMasterMode.Off)
+                {
+                    // A real thing on the wheel, so any slot we were borrowing has
+                    // done its job and goes back to the user before we switch.
+                    _plugin.EnsureLedChannelOpen();
+                    _plugin.ReleaseBorrowedSlot();
+                }
+                // Sets the wheelbase's selection, exactly like the base's own
+                // menu (staged with a log line while a game's own FFB holds the
+                // pipe). Then one preview cycle wherever that is safe.
+                _plugin.PickRevLightPattern(v, previewAfter: true);
+                return true;
+            }
+            return false;
+        }
+
         // ---- Wheel-base Dynamic OLED (experimental) ----------------------
         // Mirrors the rev-light handlers: the screen shares that HID++ pipe and
         // its Mode B gate, so turning it off must hand the panel back at once
@@ -12869,10 +14661,13 @@ namespace TrueforceForAll.Plugin
             // First time into the editor, start from the screen they were just
             // on instead of four empty slots. Nobody wants to build a screen
             // from nothing, and a blank panel on the wheel looks like a bug.
+            // Coming from Nothing there is no screen to copy, so the editor
+            // starts from the first one offered, for that same reason.
             if (s.OledScreen == OledScreen.Custom && was != OledScreen.Custom
                 && (s.OledCustomSlots == null || s.OledCustomSlots.Count == 0))
             {
-                OledScreenModel.Preset(was, s.OledUseMph, deltaOk: true,
+                var seed = was == OledScreen.None ? OledScreenModel.ScreenOrder[0] : was;
+                OledScreenModel.Preset(seed, s.OledUseMph, deltaOk: true,
                                        out var kind, out var slots, out var texts);
                 s.OledCustomLayout = kind;
                 s.OledCustomSlots = new List<string>(slots);
@@ -12881,7 +14676,11 @@ namespace TrueforceForAll.Plugin
             }
             _plugin.PersistSettings();
             RefreshOledEditor();
-            PreviewOledNow();
+            // Picking Nothing has nothing to preview, and leaving the old
+            // screen sitting on the wheel would read as the choice not having
+            // taken. Hand the panel back instead, which IS the preview.
+            if (s.OledScreen == OledScreen.None) _plugin.TurnOffOled();
+            else PreviewOledNow();
         }
 
         private ComboBox[] OledSlotCombos() => new[]
@@ -12904,6 +14703,9 @@ namespace TrueforceForAll.Plugin
             var s = _plugin.Settings;
             bool custom = s.OledScreen == OledScreen.Custom;
             OledCustomPanel.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+            if (OledNoScreenText != null)
+                OledNoScreenText.Visibility = s.OledScreen == OledScreen.None
+                    ? Visibility.Visible : Visibility.Collapsed;
 
             bool prevSuppress = _suppressEvents;
             _suppressEvents = true;
@@ -13124,12 +14926,11 @@ namespace TrueforceForAll.Plugin
             PreviewOledNow();
         }
 
-        // The OLED sample sequence and the layout report used to be buttons in
-        // the settings section. They are diagnostics, not settings, and the
-        // section had grown too long to spend two controls on them, so they
-        // moved to access codes (OLEDTEST / OLEDDIAG). The code behind them is
-        // unchanged and still worth having: the report is how this wheel's
-        // layout table was read in the first place.
+        // The OLED sample sequence used to be a button in the settings section.
+        // It is a diagnostic, not a setting, and the section had grown too long
+        // to spend a control on it, so it moved to the OLEDTEST access code. The
+        // layout report that sat beside it has been retired: it was how this
+        // wheel's layout table was read in the first place, and that job is done.
 
         /// <summary>Live-poll the controller's status while a sequence runs, so
         /// a wheel that never answers says so in the panel and not only in the
@@ -13146,18 +14947,6 @@ namespace TrueforceForAll.Plugin
                 else if (++idleTicks > 4) t.Stop();   // ~1s after it ends
             };
             t.Start();
-        }
-
-        private void MairaPassthrough_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppressEvents || _plugin?.Settings == null) return;
-            _plugin.Settings.MairaFfbPassthrough = MairaPassthroughCheck.IsChecked == true;
-            _plugin.PersistSettings();
-            // Takes effect on next device (re)start; surface that to the user.
-            if (RpmLedStatusText != null)
-                RpmLedStatusText.Text = "MAIRA auto-link "
-                    + (_plugin.Settings.MairaFfbPassthrough ? "ON" : "OFF")
-                    + " (restart plugin to apply)";
         }
 
         private void RpmLedTest_Click(object sender, RoutedEventArgs e)
@@ -14225,7 +16014,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't back up. Check the folder and your connection, then try again.",
+                    "Couldn't back up. Check your connection and try again.",
                     ex);
             }
         }
@@ -14347,7 +16136,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(owner,
-                    "Couldn't restore. Check the folder and your connection, then try again.",
+                    "Couldn't restore. Check your connection and try again.",
                     ex);
             }
         }
@@ -14600,11 +16389,6 @@ namespace TrueforceForAll.Plugin
             // path or have nothing to choose), but their dispatch still
             // happens in the same loop afterward so the summary at the end
             // covers the whole batch.
-            //
-            // PREVIEWOFF access code bypasses the preview entirely
-            // (commit-on-pick path), kept as an escape hatch while the
-            // modal stabilizes.
-            bool previewBypass = plugin.Settings != null && plugin.Settings.ImportPreviewBypass;
             var candidates = new List<ImportCandidate>(paths.Length);
             foreach (var path in paths)
                 candidates.Add(BuildImportCandidate(plugin, path));
@@ -14615,7 +16399,7 @@ namespace TrueforceForAll.Plugin
                  || c.Kind == ImportCandidateKind.CarPreset)
                 && c.Items != null && c.Items.Count > 0);
 
-            if (anyPreviewable && !previewBypass)
+            if (anyPreviewable)
             {
                 var previewable = candidates
                     .Where(c => c.Kind == ImportCandidateKind.Pack
@@ -14637,26 +16421,6 @@ namespace TrueforceForAll.Plugin
                     {
                         case ImportCandidateKind.Pack:
                         {
-                            if (previewBypass)
-                            {
-                                // Full-pack import via the old commit-on-pick
-                                // path. Bypasses BuildImportCandidate's
-                                // manifest-shaped enumeration so even
-                                // manifest-incomplete zips import the full
-                                // set of zip entries.
-                                var r0 = plugin.ImportPack(c.Path);
-                                if (r0.PresetsImported > 0 || r0.CarsImported > 0)
-                                {
-                                    presetsImported += r0.PresetsImported;
-                                    carsImported    += r0.CarsImported;
-                                    packsImported++;
-                                }
-                                else
-                                {
-                                    filesSkipped++;
-                                }
-                                continue;
-                            }
                             // Preview path: collect the user's per-row choices.
                             // Skip the candidate when every item got unchecked
                             // in the modal — nothing to commit and we'd
@@ -15105,24 +16869,12 @@ namespace TrueforceForAll.Plugin
                 $"Audio ring{auLabel}: {auWindow} glitches/min";
         }
 
-        // Inline ratchet-notice banner state. Per-ring "original" caps are
-        // pinned to whatever was active when the banner first became
-        // visible; "latest" updates with each subsequent bump. Both rings
-        // share one banner so the user gets at most one consolidated
-        // notice no matter how many bumps land in the same session.
-        // Cleared on Revert / Dismiss. Not persisted (the resized caps are
-        // already saved by Apply*RingSize; the banner itself is ephemeral).
-        private int? _ratchetTfOriginalCap;
-        private int  _ratchetTfLatestCap;
-        private int? _ratchetAudioOriginalCap;
-        private int  _ratchetAudioLatestCap;
-
         private void OnAutoRatchetBumped(bool isTf, int oldCap, int newCap)
         {
             // Fired on the producer thread. Marshal to UI to refresh the
             // live Performance-tab readout (ring caps / counters) so it
-            // stays accurate while Auto adjusts. The old inline notice
-            // banner is intentionally NOT shown: in Auto the ratchet is
+            // stays accurate while Auto adjusts. No per-bump notice
+            // banner is shown (the old one was removed): in Auto the ratchet is
             // self-healing (walks all the way back down once things go
             // quiet, and re-drains a warm-started seed next session), so a
             // per-bump banner over-signals a value the user delegated to
@@ -15132,118 +16884,6 @@ namespace TrueforceForAll.Plugin
                 Dispatcher.BeginInvoke(new Action(RefreshFromPlugin));
             }
             catch { }
-        }
-
-        /// <summary>Update (or first-time show) the inline ratchet notice
-        /// banner. Per-ring "original" cap is pinned on first event so
-        /// successive bumps consolidate into one banner that always shows
-        /// the net delta from session start (or first event of this run).
-        /// Handles both UP and DOWN events; if every tracked ring's
-        /// latest cap returns to its pinned original, the banner auto-
-        /// dismisses because there's nothing notable left to show.
-        /// Replaces the old centered Window modal that stole foreground
-        /// and re-opened on every bump.</summary>
-        private void UpdateRatchetNotice(bool isTf, int oldCap, int newCap)
-        {
-            if (isTf)
-            {
-                if (_ratchetTfOriginalCap == null) _ratchetTfOriginalCap = oldCap;
-                _ratchetTfLatestCap = newCap;
-            }
-            else
-            {
-                if (_ratchetAudioOriginalCap == null) _ratchetAudioOriginalCap = oldCap;
-                _ratchetAudioLatestCap = newCap;
-            }
-
-            // If every tracked ring is back to where it started, there's
-            // nothing to report. Auto-dismiss so the user isn't left
-            // staring at a stale "ring was bumped" notice after the
-            // ratchet itself decided to walk it back down.
-            bool tfBackToStart = _ratchetTfOriginalCap is int tfStart
-                                 && _ratchetTfLatestCap == tfStart;
-            bool auBackToStart = _ratchetAudioOriginalCap is int auStart
-                                 && _ratchetAudioLatestCap == auStart;
-            bool anythingToShow =
-                (_ratchetTfOriginalCap    is int && !tfBackToStart) ||
-                (_ratchetAudioOriginalCap is int && !auBackToStart);
-            if (!anythingToShow)
-            {
-                ClearRatchetNotice();
-                return;
-            }
-
-            // Build the consolidated detail line. Each ring contributes a
-            // "label: oldCap → newCap samples (oldMs → newMs ms)" segment;
-            // segments are joined with " · ". Ms = samples * 0.25 (4 kHz
-            // sample rate = 1000 packets/s × 4 per packet; 1 sample =
-            // 0.25 ms). Rings that have returned
-            // to their original cap are omitted from this run's notice.
-            var segments = new System.Collections.Generic.List<string>();
-            if (_ratchetTfOriginalCap is int tfOrig && !tfBackToStart)
-            {
-                segments.Add(
-                    $"Output ring: {tfOrig} → {_ratchetTfLatestCap} samples " +
-                    $"({tfOrig * 0.25:0.#} → {_ratchetTfLatestCap * 0.25:0.#} ms)");
-            }
-            if (_ratchetAudioOriginalCap is int auOrig && !auBackToStart)
-            {
-                segments.Add(
-                    $"Audio ring: {auOrig} → {_ratchetAudioLatestCap} samples " +
-                    $"({auOrig * 0.25:0.#} → {_ratchetAudioLatestCap * 0.25:0.#} ms)");
-            }
-
-            if (RatchetNoticeDetail != null)
-            {
-                RatchetNoticeDetail.Text = string.Join("  ·  ", segments)
-                    + ". Persisted across sessions. Revert to restore the size(s) at the start of this run, or dismiss to keep the current size(s).";
-            }
-            if (RatchetNoticeBanner != null)
-                RatchetNoticeBanner.Visibility = Visibility.Visible;
-        }
-
-        private void RatchetNoticeRevert_Click(object sender, RoutedEventArgs e)
-        {
-            // Revert every ring that bumped this session back to its
-            // original pre-bump cap. Apply* persists and resizes live.
-            if (_ratchetTfOriginalCap is int tfOrig && _plugin != null)
-                _plugin.ApplyTfRingSize(tfOrig);
-            if (_ratchetAudioOriginalCap is int auOrig && _plugin != null)
-                _plugin.ApplyAudioRingSize(auOrig);
-            ClearRatchetNotice();
-            RefreshFromPlugin();
-        }
-
-        private void RatchetNoticeDismiss_Click(object sender, RoutedEventArgs e)
-        {
-            ClearRatchetNotice();
-        }
-
-        private void ClearRatchetNotice()
-        {
-            _ratchetTfOriginalCap = null;
-            _ratchetTfLatestCap = 0;
-            _ratchetAudioOriginalCap = null;
-            _ratchetAudioLatestCap = 0;
-            if (RatchetNoticeBanner != null)
-                RatchetNoticeBanner.Visibility = Visibility.Collapsed;
-        }
-
-        // One-shot dispatcher-thread timer. Used by the RATCHET test code
-        // to stage synthetic ratchet events with visible delays between
-        // them so the consolidation behavior is observable.
-        private void ScheduleDispatcherDelay(int delayMs, Action action)
-        {
-            var t = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(delayMs),
-            };
-            t.Tick += (_, __) =>
-            {
-                t.Stop();
-                try { action(); } catch { }
-            };
-            t.Start();
         }
 
         // ---------- Support ----------
@@ -15389,8 +17029,7 @@ namespace TrueforceForAll.Plugin
         // Performance, Sidechain ducking, and Diagnostics live inline in
         // AdvancedSettingsHost at the bottom of the Settings tab. This entry
         // point used to open a modal; now it just brings the Settings tab
-        // forward and expands Diagnostics. Kept because the "No, still no FFB"
-        // path (ExperimentalSuccessNo_Click) routes users here.
+        // forward and expands Diagnostics.
         private void OpenAdvancedSettings_Click(object sender, RoutedEventArgs e)
         {
             if (MainTabs != null && SettingsTab != null)
@@ -15402,334 +17041,6 @@ namespace TrueforceForAll.Plugin
                 Dispatcher.BeginInvoke(new Action(() => DiagnosticsExpander.BringIntoView()),
                     System.Windows.Threading.DispatcherPriority.Background);
             }
-        }
-
-        // Render a GitHub-flavored Markdown release body as a stack of styled
-        // TextBlocks. Supports headings (#..######) and bullets (- / *); other
-        // syntax falls through as plain text. We don't pull in a real markdown
-        // parser because the release notes only ever use these two constructs
-        // and we want zero added dependencies in net48 plugin land.
-        private static StackPanel RenderReleaseNotes(string body)
-        {
-            var panel = new StackPanel();
-            if (string.IsNullOrWhiteSpace(body))
-            {
-                panel.Children.Add(new TextBlock
-                {
-                    Text = "(No release notes published.)",
-                    FontSize = 12,
-                    Opacity = 0.7,
-                });
-                return panel;
-            }
-
-            // Normalize line endings: GitHub bodies usually arrive with \r\n.
-            string[] lines = body.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-            bool prevWasBlank = false;
-            bool imageNoteShown = false;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                string raw = lines[i] ?? "";
-                string trimmed = raw.TrimStart();
-
-                if (string.IsNullOrWhiteSpace(trimmed))
-                {
-                    // Collapse runs of blank lines into a single small gap.
-                    if (!prevWasBlank && panel.Children.Count > 0)
-                    {
-                        panel.Children.Add(new TextBlock { Height = 6 });
-                        prevWasBlank = true;
-                    }
-                    continue;
-                }
-                prevWasBlank = false;
-
-                // Markdown images (![alt](url), or link-wrapped [![...]) and
-                // the HTML ones GitHub writes when you drag a file into the
-                // release editor (<img src="...user-attachments/...">, and
-                // <video> / <picture> for the same reason).
-                // This renderer is text-only (and WPF wouldn't animate a
-                // release GIF anyway), so image lines are dropped instead of
-                // showing as raw markup. One dim pointer per body tells
-                // in-app readers where the visuals live.
-                if (trimmed.StartsWith("![", StringComparison.Ordinal)
-                    || trimmed.StartsWith("[![", StringComparison.Ordinal)
-                    || trimmed.StartsWith("<img", StringComparison.OrdinalIgnoreCase)
-                    || trimmed.StartsWith("<video", StringComparison.OrdinalIgnoreCase)
-                    || trimmed.StartsWith("<picture", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!imageNoteShown)
-                    {
-                        imageNoteShown = true;
-                        panel.Children.Add(new TextBlock
-                        {
-                            Text = "(screenshots on the GitHub release page)",
-                            FontSize = 11,
-                            Opacity = 0.55,
-                            Margin = new Thickness(0, 0, 0, 2),
-                        });
-                    }
-                    continue;
-                }
-
-                // Blockquote ("> ..." lines), including GitHub alert callouts
-                // ("> [!WARNING]" etc.). Consecutive quote lines collapse into
-                // one left-accented callout box; the quoted content re-enters
-                // this renderer, so headers/bullets/bold inside it work.
-                if (trimmed[0] == '>')
-                {
-                    var quoted = new System.Collections.Generic.List<string>();
-                    int j = i;
-                    while (j < lines.Length)
-                    {
-                        string q = (lines[j] ?? "").TrimStart();
-                        if (q.Length == 0 || q[0] != '>') break;
-                        string innerLine = q.Substring(1);
-                        if (innerLine.StartsWith(" ", StringComparison.Ordinal))
-                            innerLine = innerLine.Substring(1);
-                        quoted.Add(innerLine);
-                        j++;
-                    }
-                    panel.Children.Add(BuildQuoteCallout(quoted));
-                    i = j - 1;   // loop ++ lands on the first non-quote line
-                    continue;
-                }
-
-                // Heading levels 1..3 (deeper levels fall through to plain).
-                int hashCount = 0;
-                while (hashCount < trimmed.Length && trimmed[hashCount] == '#') hashCount++;
-                if (hashCount >= 1 && hashCount <= 3
-                    && hashCount < trimmed.Length && trimmed[hashCount] == ' ')
-                {
-                    string text = trimmed.Substring(hashCount + 1).Trim();
-                    double size = hashCount == 1 ? 16 : hashCount == 2 ? 14 : 13;
-                    var hdr = new TextBlock
-                    {
-                        Text = text,
-                        FontSize = size,
-                        FontWeight = FontWeights.SemiBold,
-                        Margin = new Thickness(0, panel.Children.Count == 0 ? 0 : 10, 0, 2),
-                        TextWrapping = TextWrapping.Wrap,
-                    };
-                    // Gold the section (###) headers to match the bundled
-                    // changelog's grouped look; keep the title (#/##) default.
-                    if (hashCount >= 3)
-                        hdr.Foreground = new SolidColorBrush(Color.FromRgb(0xC8, 0x86, 0x0B));
-                    panel.Children.Add(hdr);
-                    continue;
-                }
-
-                // Bullet rows ("- foo" / "* foo"). Use a real bullet glyph
-                // indented one step. Inline **bold** spans get rendered as
-                // bold runs so release notes like "- **Headline.** desc"
-                // don't show literal asterisks.
-                if (trimmed.Length >= 2
-                    && (trimmed[0] == '-' || trimmed[0] == '*')
-                    && trimmed[1] == ' ')
-                {
-                    string content = trimmed.Substring(2);
-                    // Two-tier: when the bullet opens with a **bold** lead-in
-                    // (our "- **Headline:** description" shape), render the
-                    // headline as a bulleted bold line and the rest as a dimmed,
-                    // indented description line, echoing the bundled changelog.
-                    if (content.StartsWith("**", StringComparison.Ordinal))
-                    {
-                        int close = content.IndexOf("**", 2, StringComparison.Ordinal);
-                        if (close > 2)
-                        {
-                            string headline = content.Substring(2, close - 2);
-                            string desc = content.Substring(close + 2).TrimStart();
-                            var hl = new TextBlock
-                            {
-                                FontSize = 12,
-                                Margin = new Thickness(8, 4, 0, 0),
-                                TextWrapping = TextWrapping.Wrap,
-                            };
-                            hl.Inlines.Add(new Run("• "));
-                            // Through the inline renderer (re-wrapped in **
-                            // so it keeps the bold weight) instead of a raw
-                            // bold Run: headlines can carry links, like the
-                            // bold Patreon link in the v0.2.1 warning.
-                            AppendInlineMarkdown(hl, "**" + headline + "**");
-                            panel.Children.Add(hl);
-                            if (desc.Length > 0)
-                            {
-                                var db = new TextBlock
-                                {
-                                    FontSize = 11,
-                                    Opacity = 0.7,
-                                    Margin = new Thickness(22, 2, 0, 0),
-                                    TextWrapping = TextWrapping.Wrap,
-                                };
-                                AppendInlineMarkdown(db, desc);
-                                panel.Children.Add(db);
-                            }
-                            continue;
-                        }
-                    }
-                    var tb = new TextBlock
-                    {
-                        FontSize = 12,
-                        Margin = new Thickness(8, 2, 0, 2),
-                        TextWrapping = TextWrapping.Wrap,
-                    };
-                    tb.Inlines.Add(new Run("• "));
-                    AppendInlineMarkdown(tb, content);
-                    panel.Children.Add(tb);
-                    continue;
-                }
-
-                // Plain paragraph line. Same **bold** treatment as bullets.
-                var para = new TextBlock
-                {
-                    FontSize = 12,
-                    Margin = new Thickness(0, 2, 0, 2),
-                    TextWrapping = TextWrapping.Wrap,
-                };
-                AppendInlineMarkdown(para, trimmed);
-                panel.Children.Add(para);
-            }
-            return panel;
-        }
-
-        // A "> quoted" block as a left-accented callout box. A GitHub alert
-        // marker ("[!WARNING]" etc.) as the first quoted line picks the title
-        // and accent color, echoing how GitHub renders it; a plain quote gets
-        // a neutral bar and no title. Content re-enters RenderReleaseNotes,
-        // so everything the renderer knows works inside the box too.
-        private static Border BuildQuoteCallout(System.Collections.Generic.List<string> quoted)
-        {
-            string title  = null;
-            Color  accent = Color.FromRgb(0x88, 0x88, 0x88);
-            int start = 0;
-            string first = null;
-            for (int k = 0; k < quoted.Count; k++)
-            {
-                if (!string.IsNullOrWhiteSpace(quoted[k])) { first = quoted[k].Trim(); start = k; break; }
-            }
-            if (first != null
-                && first.StartsWith("[!", StringComparison.Ordinal)
-                && first.EndsWith("]", StringComparison.Ordinal))
-            {
-                switch (first.Substring(2, first.Length - 3).ToUpperInvariant())
-                {
-                    case "WARNING":   title = "Warning";   accent = Color.FromRgb(0xE5, 0xC0, 0x4A); break;
-                    case "CAUTION":   title = "Caution";   accent = Color.FromRgb(0xE0, 0x62, 0x5A); break;
-                    case "IMPORTANT": title = "Important"; accent = Color.FromRgb(0xB0, 0x87, 0xE8); break;
-                    case "NOTE":      title = "Note";      accent = Color.FromRgb(0x6C, 0xA0, 0xDD); break;
-                    case "TIP":       title = "Tip";       accent = Color.FromRgb(0x5F, 0xB8, 0x6A); break;
-                }
-                if (title != null) start++;   // the marker line itself isn't content
-            }
-
-            StackPanel inner;
-            string bodyText = string.Join("\n", quoted.Skip(start));
-            inner = string.IsNullOrWhiteSpace(bodyText) ? new StackPanel() : RenderReleaseNotes(bodyText);
-            if (title != null)
-            {
-                inner.Children.Insert(0, new TextBlock
-                {
-                    Text = title,
-                    FontSize = 12,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(accent),
-                    Margin = new Thickness(0, 0, 0, 2),
-                });
-            }
-            return new Border
-            {
-                BorderBrush = new SolidColorBrush(accent),
-                BorderThickness = new Thickness(3, 0, 0, 0),
-                Background = new SolidColorBrush(Color.FromArgb(0x16, accent.R, accent.G, accent.B)),
-                CornerRadius = new CornerRadius(2),
-                Padding = new Thickness(10, 6, 10, 6),
-                Margin = new Thickness(0, 6, 0, 6),
-                Child = inner,
-            };
-        }
-
-        // Append `text` to a TextBlock's Inlines, rendering **bold** runs in
-        // bold and [label](https://url) as clickable links. Anything outside
-        // those is plain. An unclosed `**` stays literal rather than being
-        // dropped, so a body that opens bold without closing degrades
-        // gracefully; a malformed or non-http link stays literal too. Links
-        // may sit inside bold spans (and carry the bold weight); bold markers
-        // inside a link label are consumed as styling, not shown.
-        private static void AppendInlineMarkdown(TextBlock tb, string text)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            bool bold = false;
-            var sb = new System.Text.StringBuilder();
-            void Flush()
-            {
-                if (sb.Length == 0) return;
-                tb.Inlines.Add(new Run(sb.ToString())
-                {
-                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
-                });
-                sb.Clear();
-            }
-            int i = 0;
-            while (i < text.Length)
-            {
-                if (i + 1 < text.Length && text[i] == '*' && text[i + 1] == '*')
-                {
-                    // Opening bold needs a closer somewhere ahead; otherwise
-                    // the marker is literal text.
-                    if (!bold && text.IndexOf("**", i + 2, StringComparison.Ordinal) < 0)
-                    {
-                        sb.Append("**");
-                        i += 2;
-                        continue;
-                    }
-                    Flush();
-                    bold = !bold;
-                    i += 2;
-                    continue;
-                }
-                if (text[i] == '[')
-                {
-                    int closeBracket = text.IndexOf(']', i + 1);
-                    if (closeBracket > i && closeBracket + 1 < text.Length && text[closeBracket + 1] == '(')
-                    {
-                        int closeParen = text.IndexOf(')', closeBracket + 2);
-                        if (closeParen > closeBracket)
-                        {
-                            string label = text.Substring(i + 1, closeBracket - i - 1).Replace("**", "");
-                            string url   = text.Substring(closeBracket + 2, closeParen - closeBracket - 2);
-                            if (label.Length > 0
-                                && Uri.TryCreate(url, UriKind.Absolute, out var uri)
-                                && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
-                            {
-                                Flush();
-                                var link = new System.Windows.Documents.Hyperlink(new Run(label)
-                                {
-                                    FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
-                                })
-                                {
-                                    NavigateUri = uri,
-                                    Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xB4, 0xEE)),
-                                };
-                                link.RequestNavigate += (s, e) =>
-                                {
-                                    try
-                                    {
-                                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                                            e.Uri.AbsoluteUri) { UseShellExecute = true });
-                                    }
-                                    catch { }
-                                };
-                                tb.Inlines.Add(link);
-                                i = closeParen + 1;
-                                continue;
-                            }
-                        }
-                    }
-                }
-                sb.Append(text[i]);
-                i++;
-            }
-            Flush();
         }
 
         // Manual "Check for updates" link in the header. The plugin already
@@ -15897,7 +17208,7 @@ namespace TrueforceForAll.Plugin
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
                 Padding = new Thickness(10),
             };
-            notesScroll.Content = RenderReleaseNotes(upd.ReleaseNotes);
+            notesScroll.Content = MarkdownView.Render(upd.ReleaseNotes);
             root.Children.Add(notesScroll);
 
             win.Content = root;
@@ -16097,7 +17408,7 @@ namespace TrueforceForAll.Plugin
 
             // GitHub release notes are the canonical source for this modal (so
             // notes can be fixed post-release without a plugin update); the
-            // bundled EffectChangelog is the offline fallback. RenderReleaseNotes
+            // bundled EffectChangelog is the offline fallback. MarkdownView.Render
             // styles the markdown to echo the bundled changelog's look (gold
             // section headers, dimmed two-tier entries).
             var ghReleases = _plugin.GetGitHubReleasesForBanner();
@@ -16178,7 +17489,7 @@ namespace TrueforceForAll.Plugin
                         FontSize = 14,
                         Margin = new Thickness(0, i == 0 ? 0 : 14, 0, 6),
                     });
-                    bodyStack.Children.Add(RenderReleaseNotes(r.Body));
+                    bodyStack.Children.Add(MarkdownView.Render(r.Body));
                 }
             }
             else if (useLocal)
@@ -16281,7 +17592,7 @@ namespace TrueforceForAll.Plugin
         }
 
         // Dev/test: render arbitrary release-notes markdown through the exact
-        // production path (RenderReleaseNotes) so the GitHub notes can be
+        // production path (MarkdownView.Render) so the GitHub notes can be
         // previewed before publishing (the plugin can't fetch an unpublished
         // draft). Driven by the PREVIEW access code from clipboard text.
         private void ShowNotesPreview(string markdown)
@@ -16328,7 +17639,7 @@ namespace TrueforceForAll.Plugin
                 BorderThickness = new Thickness(1),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
                 Padding = new Thickness(12),
-                Content = RenderReleaseNotes(markdown),
+                Content = MarkdownView.Render(markdown),
             };
             root.Children.Add(scroll);
 

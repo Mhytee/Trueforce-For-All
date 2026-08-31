@@ -58,7 +58,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "This is your public name across the community, shown as your username on anything you share. 3 to 32 characters, letters / numbers / underscore.",
+                Text = "Your public name, shown on anything you share with the community. 3 to 32 characters, letters / numbers / underscore.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,

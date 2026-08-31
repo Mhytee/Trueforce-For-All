@@ -106,7 +106,7 @@ namespace TrueforceForAll.Plugin
                     leadColor  = AlternativeFg;
                     bodyText   = $"Community currently says \"{consensusLayoutDisplay}\""
                                + (supportingSubmissions > 0 ? $" ({supportingSubmissions} {driverWord})." : ".")
-                               + " Yours joins as a counter.";
+                               + " Yours joins as an alternative.";
                     break;
             }
 
@@ -152,7 +152,7 @@ namespace TrueforceForAll.Plugin
             });
 
             root.Children.Add(new TextBlock {
-                Text = "Submitted as your signed-in account. Your username isn't shown on submissions.",
+                Text = "Submitted. Your username isn't shown on submissions.",
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,

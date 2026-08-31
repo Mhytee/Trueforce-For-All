@@ -83,6 +83,20 @@ namespace TrueforceForAll.Core
         /// <summary>Yaw rate in deg/s. Null when source doesn't surface it.</summary>
         public double? YawRateDegPerSec;
 
+        /// <summary>MEASURED vehicle sideslip in degrees: the signed angle between
+        /// where the car points and where it is actually travelling, from the
+        /// velocity vector in body axes. Positive and negative are opposite
+        /// directions of slide, so unlike an inferred magnitude this can tell a
+        /// left slide from a right one.
+        ///
+        /// Only set by sources that publish the velocity vector directly. It is
+        /// deliberately NOT the same quantity as the sideslip TractionLossEffect
+        /// infers from lateral acceleration and yaw rate: that identity assumes
+        /// steady-state circular motion, blows up through acos when the two
+        /// inputs nearly cancel, and carries no sign. Where this is present it
+        /// should be preferred outright.</summary>
+        public double? SideslipDeg;
+
         /// <summary>Steering input normalized to roughly [-1, 1]: 0 = centered,
         /// -1 / +1 = full lock either way (may slightly exceed on countersteer).
         /// Sign convention is the source's, not the wheel's. Only the enhanced
@@ -96,6 +110,15 @@ namespace TrueforceForAll.Core
         /// <summary>"R", "N", "1", "2", …, string convention matches SimHub's
         /// StatusDataBase.Gear so existing effect code compares unchanged.</summary>
         public string Gear;
+
+        /// <summary>How many FORWARD gears this car has, when the source knows.
+        /// Null means unknown, and consumers must treat unknown as "no opinion"
+        /// rather than guessing: a learned highest-gear-seen would wrongly read
+        /// 5th as top until the driver first used 6th, which would silence the
+        /// shift cue exactly when it is most wanted. iRacing publishes it
+        /// outright as DriverCarGearNumForward in its session info; most other
+        /// sources leave this null and keep their existing behaviour.</summary>
+        public int? ForwardGearCount;
         /// <summary>0 = ABS not active, &gt;0 = active. Edge transitions drive AbsClick PerTick mode.</summary>
         public int AbsActive;
 

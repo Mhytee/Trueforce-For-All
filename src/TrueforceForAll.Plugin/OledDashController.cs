@@ -73,6 +73,10 @@ namespace TrueforceForAll.Plugin
         public string ReadoutLabel;
         public string ReadoutValue;
         public bool GameFfbContending;
+        /// <summary>iRacing's own word for what a moment just cost: "1x", "2x",
+        /// "4x". Non-empty only while the announcement is live, and the plugin
+        /// expires it, so nothing here has to time it.</summary>
+        public string IncidentFlash;
 
         // Race context, straight off SimHub's status object. Zero means the
         // game does not report it.
@@ -110,7 +114,8 @@ namespace TrueforceForAll.Plugin
 
         // Contention alert state. The plugin's ModeBContentionDetected is a
         // LATCH, not an event: once the game is caught streaming its own FFB it
-        // stays set until Mode B disarms or the game changes. Holding the alert
+        // stays set until Mode B disarms, the game changes, or the game's own
+        // FFB stays quiet for 10 s (the recovery edge). Holding the alert
         // for as long as the latch is set would eat the screen for the rest of
         // the session, so this announces on the rising edge, gets out of the
         // way, and comes back at a slow interval while the problem persists.
@@ -198,9 +203,13 @@ namespace TrueforceForAll.Plugin
 
         public bool IsReady => _channel.IsReady;
         public bool IsTesting => _testing;
+        // The open state used to append WheelOledChannel.ResolvedInfo, i.e. the
+        // HID++ feature index, the layout count and the device path. That is
+        // log material, not panel material, and the log already carries the
+        // same string from the open itself ("[OLED] resolved ...").
         public string Status =>
             _testing ? _testStatus
-          : _openState == 2 ? $"open ({_channel.ResolvedInfo})"
+          : _openState == 2 ? "open"
           : _openState == 3 ? "no OLED wheel found (see log)"
           : _openState == 1 ? "opening…"
           : "idle";
@@ -225,15 +234,10 @@ namespace TrueforceForAll.Plugin
                 _wasContending = false;   // re-announce if it comes back
                 _lapResultFrame = null;
                 _prevGear = null;         // do not flash the gear on re-entry
-                // Release for real (game switch, pause, Mode B disarm). Clear()
-                // also STOPS the sender thread, so we stop writing the HID++
-                // pipe entirely and the wheel's own menu has the screen back.
-                // Once released this no-ops.
-                if (_showing && _channel.IsReady)
-                {
-                    try { _channel.Clear(); } catch { }
-                }
-                _showing = false;
+                // Release for real (game switch, pause, Mode B disarm): stop
+                // writing the HID++ pipe entirely and the wheel's own menu has
+                // the screen back. Once released this no-ops.
+                ReleaseAll();
                 return;
             }
 
@@ -266,17 +270,24 @@ namespace TrueforceForAll.Plugin
                 //      changes what you would DO right now, and it explains a
                 //      wheel that already feels wrong, so it outranks a value
                 //      you just asked for.
-                //   2. a readout: a control that changes a number takes the
+                //   2. an incident you just took. Rare, involuntary, and it
+                //      changes how you drive the next ten minutes, so it
+                //      outranks anything you asked for on purpose. It also has
+                //      no second chance: it is over in a couple of seconds and
+                //      the number it names is never shown again.
+                //   3. a readout: a control that changes a number takes the
                 //      screen over while it reports, the same way it takes over
                 //      the dash's bar. This is the case the panel is best at:
                 //      you press a wheel button without looking at anything and
                 //      the answer appears where you were already looking.
-                //   3. the lap you just finished. Worth more than a value echo,
+                //   4. the lap you just finished. Worth more than a value echo,
                 //      and it only competes with one for a few seconds a lap.
-                //   4. the shift flash, lowest of the interruptions: it fires
+                //   5. the shift flash, lowest of the interruptions: it fires
                 //      constantly, so it must never bury something rarer.
-                //   5. the driving screen you picked.
-                // Levels 1 to 3 use layout H, which puts the label small over
+                //   6. the driving screen you picked, or, when that is Nothing,
+                //      the wheel's own display: we let the panel go and it
+                //      comes back on its own until there is news again.
+                // Levels 1 to 4 use layout H, which puts the label small over
                 // the value large: the dash's readout bar stood on end.
                 // Edge detection runs on EVERY frame: a gear change or a lap
                 // time can land on any one of them, and a missed edge is a
@@ -321,6 +332,13 @@ namespace TrueforceForAll.Plugin
                     // large row, and shortened to fit it stops saying what to
                     // set, so the two swap jobs instead.
                     setter = Stacked("SET GAME FFB TO ZERO", "FFB CLASH");
+                else if (!string.IsNullOrEmpty(ctx.IncidentFlash))
+                    // iRacing's own language on the large row, so what the
+                    // panel says and what the sim just said are the same
+                    // thing. The label carries the meaning, which leaves the
+                    // whole large row to a value that is only two characters:
+                    // legible in peripheral vision, which is all this gets.
+                    setter = Stacked("INCIDENT", ctx.IncidentFlash);
                 else if (GreetingDue(in ctx, out byte[] greeting))
                     setter = greeting;
                 else if (!string.IsNullOrEmpty(ctx.ReadoutLabel) || !string.IsNullOrEmpty(ctx.ReadoutValue))
@@ -343,6 +361,19 @@ namespace TrueforceForAll.Plugin
                                 OledScreenModel.GearText(frame.Gear, 1),
                                 OledScreenModel.SpeedText(frame.SpeedKmh, ctx.UseMph)))
                         : Stacked("GEAR", OledScreenModel.GearText(frame.Gear, 10));
+                else if (ctx.Screen == OledScreen.None)
+                {
+                    // Nothing above is due and no driving screen was asked
+                    // for, so the panel goes back to the wheel until there is
+                    // news again. A SOFT release: the next takeover can be one
+                    // shift away, and stopping and restarting the sender
+                    // between every one of them would be churn for nothing.
+                    // The gate path above still does the full release, which is
+                    // where getting off the pipe actually matters.
+                    if (_showing) { try { _channel.Release(); } catch { } }
+                    _showing = false;
+                    return;
+                }
                 else
                     setter = Compose(frame, ctx);
 
@@ -388,6 +419,23 @@ namespace TrueforceForAll.Plugin
             // so repeat until it more than fills one screenful.
             while (loop.Length < 12) loop += loop;
             return loop;
+        }
+
+        /// <summary>Give the panel back AND get off the pipe, for when there is
+        /// no reason to be holding the channel at all.
+        ///
+        /// The IsHolding test earns its place with the Nothing screen: that
+        /// mode releases the panel on its own between takeovers, so _showing is
+        /// routinely false while the sender thread is still parked and waiting
+        /// for the next one. Asking _showing alone would leave that thread
+        /// running for the rest of the session.</summary>
+        private void ReleaseAll()
+        {
+            if ((_showing || _channel.IsHolding) && _channel.IsReady)
+            {
+                try { _channel.Clear(); } catch { }
+            }
+            _showing = false;
         }
 
         /// <summary>Something time-boxed is still on screen and has not had its
@@ -471,11 +519,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!has)
             {
-                if (_showing && _channel.IsReady)
-                {
-                    try { _channel.Clear(); } catch { }
-                }
-                _showing = false;
+                ReleaseAll();
                 return;
             }
             if (!EnsureOpening()) return;
@@ -595,6 +639,9 @@ namespace TrueforceForAll.Plugin
         {
             OledLayoutKind kind;
             string[] slots, texts;
+            // With no driving screen there is nothing showing the gear, so the
+            // flash is the only thing that ever says it.
+            if (ctx.Screen == OledScreen.None) return false;
             if (ctx.Screen == OledScreen.Custom)
                 slots = OledScreenModel.SanitizeSlots(ctx.CustomSlots, ctx.CustomLayout);
             else
@@ -610,6 +657,12 @@ namespace TrueforceForAll.Plugin
         /// and a hand-built one can never diverge in how they draw.</summary>
         private byte[] Compose(in TelemetryFrame frame, in OledFrameContext ctx)
         {
+            // No screen to build. OnFrame never gets this far with Nothing
+            // picked, so this is for the settings preview, which asks Compose
+            // what the current choice looks like: the honest answer is no
+            // frame, and its caller treats that as nothing to show.
+            if (ctx.Screen == OledScreen.None) return null;
+
             OledLayoutKind kind;
             string[] slots, texts;
             if (ctx.Screen == OledScreen.Custom)
@@ -784,105 +837,41 @@ namespace TrueforceForAll.Plugin
             return total;
         }
 
-        /// <summary>Two experiments that together settle what this wheel's
-        /// layouts really are, rather than what one RS50's captures implied.
-        ///
-        ///   1. The wheel's own layout table, logged raw. Authoritative, and
-        ///      directly comparable with the same dump from another wheel.
-        ///   2. A ruler frame per interesting layout: every payload byte is a
-        ///      different character, so whatever the panel draws names the
-        ///      offsets each field starts at. Report what you SEE for each and
-        ///      the field boundaries fall straight out.
-        ///
-        /// Layout 7 is the one in question and layout 9 is the control, since
-        /// it has always rendered as documented.</summary>
-        public int RunLayoutReport()
-        {
-            if (_testing) return 0;
-            const int holdMs = 6000;
-            int total = 4 * holdMs + 1500;
-
-            _testing = true;
-            Task.Run(() =>
-            {
-                bool opened = _channel.IsReady;
-                try
-                {
-                    if (!opened)
-                    {
-                        bool ok;
-                        try { ok = _channel.OpenAndResolve(); }
-                        catch (Exception ex) { _log($"[OLED] report open threw: {ex.Message}"); ok = false; }
-                        Interlocked.Exchange(ref _openState, ok ? 2 : 3);
-                        opened = ok;
-                    }
-                    if (!opened)
-                    {
-                        _testStatus = "could not open the OLED channel (see log)";
-                        return;
-                    }
-
-                    _testStatus = "▶ reading the wheel's layout table…";
-                    _log("[OLED] ---- layout table for THIS wheel ----");
-                    _log("[OLED] " + _channel.ReadLayoutTable());
-                    _log("[OLED] ---- end layout table ----");
-
-                    // Look for a function that CLAIMS the display. The panel
-                    // keeps reverting to the wheel's own view between our
-                    // writes, and the gate is not to blame (it never flapped),
-                    // so we are feeding a surface we never took ownership of.
-                    // Only fn0-fn3 are documented; anything above is unexplored.
-                    _testStatus = "▶ probing undocumented functions…";
-                    _log("[OLED] ---- function probe fn4-fn15 ----");
-                    _channel.ProbeFunctions(4, 15);
-                    _log("[OLED] ---- end function probe ----");
-
-                    // Ruler offsets, so a photograph can be read without
-                    // counting: A=5, B=6 ... Z=30, 0=31 ... 9=40, a=41 ... w=63.
-                    _log("[OLED] ruler key: A=offset 5, B=6, ... Z=30, 0=31, ... 9=40, a=41, ... w=63");
-                    _testStatus = "▶ 1/4 layout 7 ruler - is the lower row one run of letters?";
-                    _channel.Show(_channel.BuildRuler(OledLayout.TwoRow));
-                    Thread.Sleep(holdMs);
-
-                    // The split was reported with a SHORT string and denied with
-                    // a full-width ruler. A full field would look contiguous
-                    // even if the firmware drew it as two adjacent sub-fields,
-                    // so only a short string can tell them apart. These three
-                    // isolate it: the original case verbatim, the same without
-                    // its label in case the label is what moves things, and the
-                    // same string on the layout that has always looked right.
-                    _testStatus = "▶ 2/4 layout 7, \"112%\" with a label - GAP or no gap?";
-                    _channel.Show(_channel.BuildTwoRow("TWO ROW 112%", "112%"));
-                    Thread.Sleep(holdMs);
-                    _testStatus = "▶ 3/4 layout 7, \"112%\" alone - GAP or no gap?";
-                    _channel.Show(_channel.BuildTwoRow("", "112%"));
-                    Thread.Sleep(holdMs);
-                    _testStatus = "▶ 4/4 layout 9, \"112%\" alone - the control";
-                    _channel.Show(_channel.BuildFourRowCenter("", "112%", "", ""));
-                    Thread.Sleep(holdMs);
-                }
-                catch (Exception ex) { _log($"[OLED] layout report error: {ex.Message}"); }
-                finally
-                {
-                    if (opened)
-                    {
-                        try { _channel.Clear(); } catch { }
-                        _showing = false;
-                        _testStatus = "layout report finished - see the log";
-                    }
-                    _testing = false;
-                }
-            });
-            return total;
-        }
-
         private void Hold(string status, byte[] setter, int ms)
         {
-            if (!_channel.IsReady) return;
+            // Abandoned is checked HERE rather than only between calls, because a
+            // single hold is several seconds and a test is a run of them: without
+            // this a master-mode switch two seconds in kept drawing on the wheel's
+            // screen for the rest of the sequence.
+            if (!_channel.IsReady || _abandoned) return;
             _testStatus = status;
             _channel.Show(setter);
             Thread.Sleep(ms);
         }
+
+        /// <summary>Set while a test should stop early. Not a generation counter
+        /// like the LED side's, because a test cannot run concurrently with
+        /// itself: _testing already refuses a second one.</summary>
+        private volatile bool _abandoned;
+
+        /// <summary>Hand the screen back and stop anything already running.
+        ///
+        /// ForceOff is not enough on its own: it stands down while _testing is set,
+        /// which covers the whole of a test (about 13 s), so a mode switch during
+        /// one left the panel being written long after the plugin had promised to
+        /// stop.</summary>
+        public void AbandonScreen()
+        {
+            _abandoned = true;
+            try { if (_channel.IsReady) _channel.Clear(); } catch { }
+            _showing = false;
+            _testing = false;
+            _testStatus = "";
+        }
+
+        /// <summary>Clear the abandon latch when a mode that may write the screen
+        /// comes back, so a later test is not refused by a stale flag.</summary>
+        public void AllowScreen() { _abandoned = false; }
 
         /// <summary>Hand the screen back now (feature unchecked / plugin
         /// disabled). No telemetry frames arrive after that to drive the
