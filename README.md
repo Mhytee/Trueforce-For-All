@@ -1,6 +1,6 @@
 # Trueforce For All
 
-**Everything your Logitech wheel can do, in games that never supported it.**
+**Unlock everything your Logitech wheel can do, and more.**
 Trueforce, rev lights, the screen.
 
 > **You are on the beta branch.** This branch carries the next release
@@ -28,30 +28,37 @@ assets are used or redistributed.
 | Logitech RS50 | Yes | Yes | Yes |
 | Logitech G923 (Xbox/PC and PS/PC) | Yes | Yes | No screen |
 
-> Rev lights and the screen run where the plugin carries the force itself
-> ([Telemetry Based FFB](#telemetry-based-ffb), [iRacing](#iracing), or
-> [Assetto Corsa](#assetto-corsa) with the bridge); with the game's force
-> passing through the USB capture they stay off. The LIGHTSYNC pattern works
-> in any game. The G923 is a quieter gear-driven wheel: if it feels light,
-> raise the gain.
+> The plugin can add rev light support and control the Dynamic OLED screen
+> in games with [Telemetry Based FFB](#telemetry-based-ffb), in
+> [iRacing](#iracing), and in [Assetto Corsa](#assetto-corsa) with the CSP
+> Bridge. LIGHTSYNC car pattern matching works in every game the pattern
+> data covers.
 
 ## What it does
 
 The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
-in real time. Everything rides on top of your real force feedback, which it
-preserves via FFB pass-through. It mixes:
+in real time. The steering force underneath the effects comes from one of
+three places:
 
-- **FFB pass-through (the foundation).** Driving the Trueforce motor would
+- **FFB pass-through (most games).** Driving the Trueforce motor would
   otherwise silence the game's own force feedback, so the plugin taps that
   signal off the USB bus and folds it back into the Trueforce stream. Your
   real cornering load, weight transfer and curb forces keep coming through
-  underneath every effect below, in any game whose force feedback uses
-  standard HID++ (effectively all of them on these wheels). Two games hand
-  their force to the plugin directly instead, with no capture involved:
-  [iRacing](#iracing), and [Assetto Corsa](#assetto-corsa) with the TF4ALL
-  CSP Bridge.
+  underneath every effect, in any game whose force feedback uses standard
+  HID++ (effectively all of them on these wheels).
+- **Handed over directly.** [iRacing](#iracing), and
+  [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge, give the
+  plugin their force feedback with no capture involved.
+- **Built from telemetry.** In some games the plugin can fully replace the
+  game's force feedback using telemetry
+  ([Telemetry Based FFB](#telemetry-based-ffb)). Currently supported:
+  Forza Horizon 4, 5 and 6, Forza Motorsport, and Farming Simulator 22
+  and 25.
 
-- **Telemetry-derived effects** synthesized from live game data.
+On top of that force it mixes:
+
+- **Telemetry-derived haptic effects**, synthesized from live game data and
+  played over the Trueforce protocol.
 
   - **Engine pulse**: rumble at the engine's firing pattern, derived
     from RPM and cylinder count (auto-detected per car when possible).
@@ -107,11 +114,103 @@ panel inside SimHub: master gain, individual effect tuning, precise typed
 values on every slider, sidechain ducking between continuous and transient
 effects, and a preset library with community sharing built in.
 
+## The wheel's lights
+
+A G PRO or RS50 stores lighting patterns for its rev strip, and until now
+the only way to choose between them was the wheelbase's own menu or G HUB.
+The LIGHTSYNC tab takes that over. The G923's strip has a fixed layout, so
+the tab stays hidden there.
+
+- **The pattern can match the car you are driving.** Tick "Match my wheel
+  to the car I'm driving" and the strip takes on each car's own colors and
+  fill direction as you get in, lighting where the real car lights. The
+  data comes from [Lovely Sim Racing][lovely] (CC BY-NC-SA 4.0); a car
+  they have not covered keeps whatever pattern you chose.
+- **Save as many patterns as you want.** The wheel itself stores five; the
+  plugin's library has no limit, and a bound button walks the whole library
+  without taking your hands off the wheel.
+- **A pattern maker.** Ten LEDs, click one and color it, with the wheel
+  showing the whole pattern as you work. Thirteen hand-made patterns come
+  built in, yours to copy and edit.
+- **Color trim, pre-tuned.** The three colors inside an LED are not equally
+  bright, so an even mix of red and green can reach the rim looking lime.
+  Three sliders correct the balance, shipped already set from measurements
+  on a G PRO.
+- **A car can remember its own.** One click on "Remember for this car" and
+  the pattern comes back whenever that car loads.
+- **The TF4ALL Dash's rev strip can match the wheel's**, colors, fill
+  direction and switch-on points included.
+
+Picks apply immediately, in and out of game. In a game whose force feedback
+passes through the USB capture, changing the pattern interrupts that force
+for a moment, so it is best done parked; where the plugin carries the force
+itself, there is nothing to interrupt.
+
 **Three modes, remembered per game.** The switch at the top of the panel
 is Normal (everything), Lightsync only (the plugin leaves the game's force
 feedback and Trueforce completely alone and only sets the wheel's light
 pattern for the car you are in) or Off. Games that bring their own
 Trueforce start on Lightsync only.
+
+## The wheel's OLED screen
+
+The G PRO and RS50 have a small display in the middle of the wheel. The
+plugin takes it over, and you choose what goes on it.
+
+- **Eleven ready-made screens.** Speed over gear and gear over speed,
+  captioned or not; speed alone or gear alone; a big gear with the speed
+  beside it, and the reverse; and three that carry your lap delta. Or pick
+  Nothing and keep the wheel's own display, with shifts, finished laps and
+  warnings still taking the screen for a moment.
+- **Or build your own.** Pick a layout, then choose what goes in each
+  slot: gear, speed, lap delta, position, lap of total, last lap time, or
+  your own text. The editor gives each slot's size and character limit,
+  and shows the screen on the wheel as you build it.
+- **It reacts as you drive.** Shift and it flashes the gear, unless your
+  screen already shows it. Cross the line and it puts up the lap time with
+  your delta underneath, and tells you when it was a personal best.
+- **It reports changes as they happen**, like a preset loading or a gain
+  you just nudged, and warns you if the game is still sending its own
+  force feedback.
+
+Bind a button to step through your screens without letting go of the
+wheel.
+
+## Install
+
+The easiest path is the bundled installer:
+
+1. Download `TrueforceForAll-Setup.exe` from the [latest release][releases].
+2. Close SimHub if it's running.
+3. Run the installer. It detects SimHub, copies the plugin files into the
+   SimHub install folder, and (if USBPcap isn't already installed) runs
+   the bundled USBPcap setup automatically.
+4. Close Logitech G HUB (it claims the wheel's HID interface).
+5. Launch SimHub. The plugin auto-enables on first run.
+
+The **?** in the panel's header opens the guides: setup for the games that
+need it (iRacing, Assetto Corsa, Forza, Farming Simulator), what to do when
+something is wrong, and the questions people ask most. Search reads the
+guides themselves, so typing G HUB, app.ini or 5300 lands on the one that
+explains it.
+
+The installer is conservative on uninstall: it removes our files but leaves
+SimHub, USBPcap, and shared dependencies (HidSharp, NAudio) alone, so other
+plugins that share those keep working.
+
+## Requirements
+
+- Windows 10 / 11
+- [SimHub](https://www.simhubdash.com/)
+- A supported Logitech wheel (table above)
+- [USBPcap](https://github.com/desowin/usbpcap), bundled with our installer
+  if you don't already have it. Used to mirror the game's existing FFB
+  signal into the Trueforce stream so the two coexist.
+- Logitech G HUB **closed** while playing (it claims the HID interface and
+  blocks us from talking to the wheel)
+- **SimHub running as administrator.** Reading the wheel's USB traffic needs
+  it, so without it the force feedback pass-through never starts. Turn on
+  Run as administrator in SimHub's own settings, then restart SimHub.
 
 ## Telemetry Based FFB
 
@@ -133,13 +232,10 @@ it is **off by default**. Farming Simulator is the other way round: there it
 is the only thing making real force feedback, so it **arms itself** as
 soon as the game is running.
 
-**It also unlocks the wheel's lights and its screen.** The rev lights fill
-and flash with the engine, honoring the car's real redline where the
-community has confirmed one, and on a G PRO or RS50 the OLED screen comes
-to life (below). Both share a control channel with the game's force
-feedback, so they run where the plugin carries the force itself: here, in
-[iRacing](#iracing), and in [Assetto Corsa](#assetto-corsa) with the
-bridge. (A custom driver that lifts this restriction is in development.)
+Like [iRacing](#iracing) and [Assetto Corsa](#assetto-corsa) with the
+bridge, it also unlocks the wheel's rev lights and screen: the rev lights
+fill and flash with the engine, honoring the car's real redline where the
+community has confirmed one.
 
 ## iRacing
 
@@ -183,65 +279,6 @@ restart of the game, and Content Manager closed while it installs.
 - **No USB capture needed.** With the bridge installed, Assetto Corsa no
   longer depends on USBPcap. Without it, everything keeps working through
   the capture as before; there is no setting to manage.
-
-## The wheel's OLED screen
-
-The G PRO and RS50 have a small display in the middle of the wheel. The
-plugin takes it over, and you choose what goes on it.
-
-- **Eleven ready-made screens.** Speed over gear and gear over speed,
-  captioned or not; speed alone or gear alone; a big gear with the speed
-  beside it, and the reverse; and three that carry your lap delta. Or pick
-  Nothing and keep the wheel's own display, with shifts, finished laps and
-  warnings still taking the screen for a moment.
-- **Or build your own.** Pick a layout, then choose what goes in each
-  slot: gear, speed, lap delta, position, lap of total, last lap time, or
-  your own text. The editor gives each slot's size and character limit,
-  and shows the screen on the wheel as you build it.
-- **It reacts as you drive.** Shift and it flashes the gear, unless your
-  screen already shows it. Cross the line and it puts up the lap time with
-  your delta underneath, and tells you when it was a personal best.
-- **It reports changes as they happen**, like a preset loading or a gain
-  you just nudged, and warns you if the game is still sending its own
-  force feedback.
-
-Bind a button to step through your screens without letting go of the
-wheel. Like the rev lights, the screen runs where the plugin carries the
-force: with [Telemetry Based FFB](#telemetry-based-ffb), in
-[iRacing](#iracing), and in [Assetto Corsa](#assetto-corsa) with the
-bridge.
-
-## The wheel's lights
-
-A G PRO or RS50 stores lighting patterns for its rev strip, and until now
-the only way to choose between them was the wheelbase's own menu or G HUB.
-The LIGHTSYNC tab takes that over. The G923's strip has a fixed layout, so
-the tab stays hidden there.
-
-- **The pattern can match the car you are driving.** Tick "Match my wheel
-  to the car I'm driving" and the strip takes on each car's own colors and
-  fill direction as you get in, lighting where the real car lights. The
-  data comes from [Lovely Sim Racing][lovely] (CC BY-NC-SA 4.0); a car
-  they have not covered keeps whatever pattern you chose.
-- **Save as many patterns as you want.** The wheel itself stores five; the
-  plugin's library has no limit, and a bound button walks the whole library
-  without taking your hands off the wheel.
-- **A pattern maker.** Ten LEDs, click one and color it, with the wheel
-  showing the whole pattern as you work. Thirteen hand-made patterns come
-  built in, yours to copy and edit.
-- **Color trim, pre-tuned.** The three colors inside an LED are not equally
-  bright, so an even mix of red and green can reach the rim looking lime.
-  Three sliders correct the balance, shipped already set from measurements
-  on a G PRO.
-- **A car can remember its own.** One click on "Remember for this car" and
-  the pattern comes back whenever that car loads.
-- **The TF4ALL Dash's rev strip can match the wheel's**, colors, fill
-  direction and switch-on points included.
-
-Picks apply immediately, in and out of game. In a game whose force feedback
-passes through the USB capture, changing the pattern interrupts that force
-for a moment, so it is best done parked; where the plugin carries the force
-itself, there is nothing to interrupt.
 
 ## Farming Simulator
 
@@ -349,42 +386,6 @@ getting downloads, submitting car facts other drivers end up using)
 grant matching roles in the server.
 
 Feedback is welcome there, or on [GitHub issues][issues].
-
-## Install
-
-The easiest path is the bundled installer:
-
-1. Download `TrueforceForAll-Setup.exe` from the [latest release][releases].
-2. Close SimHub if it's running.
-3. Run the installer. It detects SimHub, copies the plugin files into the
-   SimHub install folder, and (if USBPcap isn't already installed) runs
-   the bundled USBPcap setup automatically.
-4. Close Logitech G HUB (it claims the wheel's HID interface).
-5. Launch SimHub. The plugin auto-enables on first run.
-
-The **?** in the panel's header opens the guides: setup for the games that
-need it (iRacing, Assetto Corsa, Forza, Farming Simulator), what to do when
-something is wrong, and the questions people ask most. Search reads the
-guides themselves, so typing G HUB, app.ini or 5300 lands on the one that
-explains it.
-
-The installer is conservative on uninstall: it removes our files but leaves
-SimHub, USBPcap, and shared dependencies (HidSharp, NAudio) alone, so other
-plugins that share those keep working.
-
-## Requirements
-
-- Windows 10 / 11
-- [SimHub](https://www.simhubdash.com/)
-- A supported Logitech wheel (table above)
-- [USBPcap](https://github.com/desowin/usbpcap), bundled with our installer
-  if you don't already have it. Used to mirror the game's existing FFB
-  signal into the Trueforce stream so the two coexist.
-- Logitech G HUB **closed** while playing (it claims the HID interface and
-  blocks us from talking to the wheel)
-- **SimHub running as administrator.** Reading the wheel's USB traffic needs
-  it, so without it the force feedback pass-through never starts. Turn on
-  Run as administrator in SimHub's own settings, then restart SimHub.
 
 ## Per-game enhancements
 
@@ -502,6 +503,20 @@ says so in its status and stands down.
   plugin is driving Trueforce: the wheel's own intensity scaling stops
   responding to it. Use the plugin's Master Gain and per-effect Gain
   controls to set intensity instead.
+- **Rev lights and the screen depend on who carries the force.** The
+  wheel's lights and screen share a control channel with the game's force
+  feedback, and writing to them while the game's force passes through the
+  USB capture cuts that force. So the plugin only adds rev lights and
+  drives the screen where it carries the force itself: Telemetry Based
+  FFB, iRacing, and Assetto Corsa with the CSP Bridge. For the same
+  reason, changing a LIGHTSYNC pattern in a pass-through game interrupts
+  the force for a moment, so it is best done parked. A custom driver that
+  lifts this is in development.
+- **The plugin cannot run alongside a game's own Trueforce.** The wheel's
+  Trueforce stream has room for one sender, so in a native-Trueforce game
+  the plugin stays on Lightsync only unless the game's Trueforce is
+  switched off (see the table above). Running MAIRA at the same time is
+  not supported for the same reason.
 
 ## FAQ
 
