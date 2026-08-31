@@ -13,16 +13,19 @@ everyone: switch channels in the plugin's settings to try things early.
 
 ## On the beta channel now
 
-The 0.2 line has been on the beta channel since July and is nearing its move
-to stable. It has had extensive testing and bug reports have slowed a lot; we
-are letting it live in the wild a while longer so people have more time to
-find what is left.
+The 0.3 line is on the beta channel now: v0.3.0 added full iRacing and
+Assetto Corsa support, the LIGHTSYNC tab and the in-app guides on top of
+everything the 0.2 line proved through the summer. Bug reports on the older
+features have slowed a lot; the newest ones now get the same time in the
+wild before the move to stable.
 
 What it carries:
 
 - **iRacing support.** The sim's own steering force carried to the wheel with
   TF4ALL's effects layered on top, and the rev lights and wheel screen working
   at the same time.
+- **Assetto Corsa support** through the TF4ALL CSP Bridge: the game's finished
+  force handed over directly, with the screen and pattern switching free.
 - **Telemetry Based FFB** for the Forza titles and Farming Simulator 22 and 25:
   the steering force built entirely from telemetry, with Auto strength to land
   every car at the heaviness you set. The Farming Simulator side comes with an
@@ -31,6 +34,10 @@ What it carries:
   layout of your own.
 - **LIGHTSYNC.** A tab for the wheel's lights: a pattern library bigger than
   the wheel's five slots, and colors that match the car you are driving.
+- **Lightsync only mode, and the step-aside.** A middle position on the master
+  switch that leaves a game's force feedback alone and only drives the lights,
+  and a plugin that notices a game's own Trueforce streaming beside it and
+  steps aside by itself instead of whining.
 - **TF4ALL Dash.** A phone or tablet dashboard that also controls the plugin
   while you drive.
 - **Guides in the app.** Setup for the games that need it and answers to the
