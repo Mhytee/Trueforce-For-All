@@ -1,6 +1,6 @@
 # Trueforce For All
 
-**Everything your Logitech wheel can do, in games that never supported it.**
+**Unlock everything your Logitech wheel can do, and more.**
 Trueforce, rev lights, the OLED screen.
 
 > **Two channels.** Stable builds are the ones marked "Latest" on the
@@ -27,28 +27,38 @@ assets are used or redistributed.
 | Logitech RS50 | Yes | Yes | Yes |
 | Logitech G923 (Xbox/PC and PS/PC) | Yes | Yes | No screen |
 
-Rev lights and the OLED screen are _Beta_ features, and both need
-[Telemetry Based FFB](#telemetry-based-ffb-beta) switched on. They share a control
-channel with the wheel's force, so they can only run when the plugin is
-generating that force itself.
-
-The G923 is a quieter gear-driven wheel than the G PRO and RS50, so if it
-feels light, raise master or Trueforce gain.
+> Rev lights, the OLED screen and the LIGHTSYNC tab are _Beta_ features.
+> The plugin can add rev light support and control the Dynamic OLED screen
+> in games with [Telemetry Based FFB](#telemetry-based-ffb-beta), in
+> [iRacing](#iracing-beta), and in [Assetto Corsa](#assetto-corsa-beta)
+> with the CSP Bridge. LIGHTSYNC car pattern matching works in every game
+> the pattern data covers.
 
 ## What it does
 
 The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
-in real time. Everything rides on top of your real force feedback, which it
-preserves via FFB pass-through. It mixes:
+in real time. The steering force underneath the effects comes from one of
+three places:
 
-- **FFB pass-through (the foundation).** Driving the Trueforce motor would
+- **FFB pass-through (most games).** Driving the Trueforce motor would
   otherwise silence the game's own force feedback, so the plugin taps that
   signal off the USB bus and folds it back into the Trueforce stream. Your
   real cornering load, weight transfer and curb forces keep coming through
-  underneath every effect below, in any game whose force feedback uses
-  standard HID++ (effectively all of them on these wheels).
+  underneath every effect, in any game whose force feedback uses standard
+  HID++ (effectively all of them on these wheels).
+- **Handed over directly** _(Beta)_. [iRacing](#iracing-beta), and
+  [Assetto Corsa](#assetto-corsa-beta) with the TF4ALL CSP Bridge, give the
+  plugin their force feedback with no capture involved.
+- **Built from telemetry** _(Beta)_. In some games the plugin can fully replace the
+  game's force feedback using telemetry
+  ([Telemetry Based FFB](#telemetry-based-ffb-beta)). Currently supported:
+  Forza Horizon 4, 5 and 6, Forza Motorsport, and Farming Simulator 22
+  and 25.
 
-- **Telemetry-derived effects** synthesized from live game data.
+On top of that force it mixes:
+
+- **Telemetry-derived haptic effects**, synthesized from live game data and
+  played over the Trueforce protocol.
 
   - **Engine pulse**: rumble at the engine's firing pattern, derived
     from RPM and cylinder count (auto-detected per car when possible).
@@ -62,32 +72,26 @@ preserves via FFB pass-through. It mixes:
   - **DRS**: short chirp on the rising edge when the wing opens, plus an
     optional sustained flutter while DRS stays active. Silent on games
     that don't expose the flag.
-  - **Road bumps**: triggered by vertical acceleration so rough terrain
-    rumbles through the wheel. On Forza, the per-tire surface-rumble
-    field is read directly for a richer, more accurate continuous road
-    feel on top of the heave channel.
-  - **Implement thud** _(Beta)_: lower, raise or extend an implement, or
-    work a loader or crane arm yourself, and you feel the hydraulic hum
-    while it moves and the thump as it lands. (Farming Simulator.)
+  - **Road bumps**: rough terrain rumbles through the wheel. On Forza,
+    the per-tire surface rumble is read directly for a richer, more
+    accurate road feel.
+  - **Implement thud** _(Beta)_: lower, raise or extend an implement, or work a
+    loader or crane arm yourself, and you feel the hydraulic hum while it
+    moves and the thump as it lands. (Farming Simulator.)
   - **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
-    lockup, drift). Read directly from per-wheel slip in games that
-    expose it (AC and the Forza titles), weighing each tire by load so
-    it reflects how much of the car is actually losing grip; inferred on
-    the SimHub universal path from wheel-vs-ground speed plus a
-    yaw-rate / lateral-G discrepancy check. In Farming Simulator, Axle
-    slip covers this instead.
-  - **Axle slip** _(Beta)_: understeer and oversteer as two distinct
-    feelings instead of one blur: a high scrub texture as the front washes
-    wide, a deeper pulse as the rear steps out. (Per-tire telemetry: the
-    Forza titles, Assetto Corsa and Farming Simulator.)
+    lockup, drift), sharpest in games that report per-wheel slip (AC and
+    the Forza titles). In Farming Simulator, Axle slip covers this
+    instead.
+  - **Axle slip** _(Beta)_: understeer and oversteer as two distinct feelings
+    instead of one blur: a high scrub texture as the front washes wide,
+    a deeper pulse as the rear steps out. (Per-tire telemetry: the Forza
+    titles, Assetto Corsa and Farming Simulator.)
   - **Lockup judder** _(Beta)_: when a wheel locks under braking, a coarse
     pulsing judder kicks in, the feel of a flat-spotted tire skidding
     rather than rolling, fading as the car slows. A locked wheel becomes
     something you feel and can correct instead of a silent loss of grip.
     (Per-tire telemetry: the Forza titles and Assetto Corsa.)
-  - **Collision**: amplitude-scaled thud on impact, with a soft-knee
-    curve so harder hits feel stronger without becoming unsafe, plus a
-    refractory window so multi-frame crashes don't stutter.
+  - **Collision**: a thud on impact, scaled to the hit.
   - **Airborne ducking**: when the car leaves the ground, the chosen
     effects cut out so jumps feel weightless, then return on landing.
     Detected from wheel load / suspension (AC, the Forza titles and
@@ -105,58 +109,60 @@ preserves via FFB pass-through. It mixes:
   doesn't expose, and works even for games which do not output telemetry data
   since capture targets the game process directly.
 
-All of it is configurable per-game, per-car, from the plugin's panel inside
-SimHub: master gain, individual effect tuning, sidechain ducking between
-continuous and transient effects, and a savable preset library. The tabbed
-layout, typed values on every slider, and community sharing in the preset
-library are _Beta_.
+All of it is configurable per-game, per-car, from the plugin's tabbed
+panel inside SimHub: master gain, individual effect tuning, precise typed
+values on every slider, sidechain ducking between continuous and transient
+effects, and a preset library with community sharing built in. The
+library and the sharing are _Beta_.
 
-Four pairs of controls can be bound to anything SimHub can see, a
-wheel button, a button box, a keyboard key, so the things worth changing
-mid-stint do not cost you a hand: Trueforce gain up and down, Telemetry
-Based FFB strength up and down, the wheel's screen forward and back, and
-dash tabs forward and back. The two gain controls report their new value
-on the dash and on the wheel's screen at the same time. (_Beta_)
+## The wheel's lights (_Beta_)
 
-## Telemetry Based FFB (_Beta_)
+A G PRO or RS50 stores lighting patterns for its rev strip, and until now
+the only way to choose between them was the wheelbase's own menu or G HUB.
+The LIGHTSYNC tab takes that over. The G923's strip has a fixed layout, so
+the tab stays hidden there.
 
+- **The pattern can match the car you are driving.** Tick "Match my wheel
+  to the car I'm driving" and the strip takes on each car's own colors and
+  fill direction as you get in, lighting where the real car lights. The
+  data comes from [Lovely Sim Racing][lovely] (CC BY-NC-SA 4.0); a car
+  they have not covered keeps whatever pattern you chose.
+- **Save as many patterns as you want.** The wheel itself stores five; the
+  plugin's library has no limit, and a bound button walks the whole library
+  without taking your hands off the wheel.
+- **A pattern maker.** Ten LEDs, click one and color it, with the wheel
+  showing the whole pattern as you work. Thirteen hand-made patterns come
+  built in, yours to copy and edit.
+- **Color trim, pre-tuned.** The three colors inside an LED are not equally
+  bright, so an even mix of red and green can reach the rim looking lime.
+  Three sliders correct the balance, shipped already set from measurements
+  on a G PRO.
+- **A car can remember its own.** One click on "Remember for this car" and
+  the pattern comes back whenever that car loads.
+- **The TF4ALL Dash's rev strip can match the wheel's**, colors, fill
+  direction and switch-on points included.
 
-In supported games the plugin builds the entire steering force itself,
-instead of passing the game's own force feedback through. Today that means
-the Forza titles (Forza Motorsport and Forza Horizon 4, 5, and 6) and
-Farming Simulator 22 and 25. Support is planned for more titles over time.
+Picks apply immediately, in and out of game. In a game whose force feedback
+passes through the USB capture, changing the pattern interrupts that force
+for a moment, so it is best done parked; where the plugin carries the force
+itself, there is nothing to interrupt.
 
-In Forza you get a real sense of the grip limit: the wheel goes light as
-the front washes wide, loads up through a corner, and pulls into a
-countersteer as the rear steps out. Farming Simulator gets a model built
-for heavy machinery instead: see [Farming Simulator](#farming-simulator-beta).
-
-It tunes itself as you drive, and the optional **Auto strength** levels
-cars out so you stop retuning at every swap. (Forza only.)
-
-In the Forza titles it can replace the game's force feedback wholesale, so
-it is **off by default**. Farming Simulator is the other way round: there it
-is the only thing making real force feedback, so it **arms itself** as
-soon as the game is running. Still being dialed in, so feedback on how it
-feels is welcome.
-
-**It also unlocks the wheel's lights and its screen.** The rev lights fill
-and flash with the engine, honoring the car's real redline where the
-community has confirmed one, and on a G PRO or RS50 the OLED screen comes
-to life (below). Both share a control channel with the game's force
-feedback, so they can only run while the plugin is generating that force
-itself. (A custom driver that lifts this restriction in every game is in
-progress; Microsoft has to sign it before it can ship.)
+**Three modes, remembered per game.** The switch at the top of the panel
+is Normal (everything), Lightsync only (the plugin leaves the game's force
+feedback and Trueforce completely alone and only sets the wheel's light
+pattern for the car you are in) or Off. Games that bring their own
+Trueforce start on Lightsync only.
 
 ## The wheel's OLED screen (_Beta_)
-
 
 The G PRO and RS50 have a small display in the middle of the wheel. The
 plugin takes it over, and you choose what goes on it.
 
 - **Eleven ready-made screens.** Speed over gear and gear over speed,
   captioned or not; speed alone or gear alone; a big gear with the speed
-  beside it, and the reverse; and three that carry your lap delta.
+  beside it, and the reverse; and three that carry your lap delta. Or pick
+  Nothing and keep the wheel's own display, with shifts, finished laps and
+  warnings still taking the screen for a moment.
 - **Or build your own.** Pick a layout, then choose what goes in each
   slot: gear, speed, lap delta, position, lap of total, last lap time, or
   your own text. The editor gives each slot's size and character limit,
@@ -169,8 +175,114 @@ plugin takes it over, and you choose what goes on it.
   force feedback.
 
 Bind a button to step through your screens without letting go of the
-wheel. Like the rev lights, the screen needs
-[Telemetry Based FFB](#telemetry-based-ffb-beta).
+wheel.
+
+## Install
+
+The easiest path is the bundled installer:
+
+1. Download `TrueforceForAll-Setup.exe` from the [releases page][releases].
+   The build marked "Latest" is stable. For anything marked _Beta_ in this
+   README, take the newest build marked "Pre-release" instead; the in-app
+   updater then keeps you on that channel.
+2. Close SimHub if it's running.
+3. Run the installer. It detects SimHub, copies the plugin files into the
+   SimHub install folder, and (if USBPcap isn't already installed) runs
+   the bundled USBPcap setup automatically.
+4. Close Logitech G HUB (it claims the wheel's HID interface).
+5. Launch SimHub. The plugin auto-enables on first run.
+
+The **?** in the panel's header opens the guides: setup for the games that
+need it (iRacing, Assetto Corsa, Forza, Farming Simulator), what to do when
+something is wrong, and the questions people ask most. Search reads the
+guides themselves, so typing G HUB, app.ini or 5300 lands on the one that
+explains it. (_Beta_)
+
+The installer is conservative on uninstall: it removes our files but leaves
+SimHub, USBPcap, and shared dependencies (HidSharp, NAudio) alone, so other
+plugins that share those keep working.
+
+## Requirements
+
+- Windows 10 / 11
+- [SimHub](https://www.simhubdash.com/)
+- A supported Logitech wheel (table above)
+- [USBPcap](https://github.com/desowin/usbpcap), bundled with our installer
+  if you don't already have it. Used to mirror the game's existing FFB
+  signal into the Trueforce stream so the two coexist.
+- Logitech G HUB **closed** while playing (it claims the HID interface and
+  blocks us from talking to the wheel)
+- **SimHub running as administrator.** Reading the wheel's USB traffic needs
+  it, so without it the force feedback pass-through never starts. Turn on
+  Run as administrator in SimHub's own settings, then restart SimHub.
+
+## Telemetry Based FFB (_Beta_)
+
+In supported games the plugin builds the entire steering force itself,
+instead of passing the game's own force feedback through. Today that means
+the Forza titles (Forza Motorsport and Forza Horizon 4, 5, and 6) and
+Farming Simulator 22 and 25.
+
+In Forza you get a real sense of the grip limit: the wheel goes light as
+the front washes wide, loads up through a corner, and pulls into a
+countersteer as the rear steps out. Farming Simulator gets a model built
+for heavy machinery instead: see [Farming Simulator](#farming-simulator-beta).
+
+It tunes itself as you drive, and the optional **Auto strength** levels
+cars out so you stop retuning at every swap. (Forza only.)
+
+In the Forza titles it can replace the game's force feedback wholesale, so
+it is **off by default**. Farming Simulator is the other way round: there it
+is the only thing making real force feedback, so it **arms itself** as
+soon as the game is running.
+
+Like [iRacing](#iracing-beta) and [Assetto Corsa](#assetto-corsa-beta) with the
+bridge, it also unlocks the wheel's rev lights and screen: the rev lights
+fill and flash with the engine, honoring the car's real redline where the
+community has confirmed one.
+
+## iRacing (_Beta_)
+
+iRacing keeps publishing the steering torque it wants the wheel to hold
+even with its own force feedback switched off. The plugin reads that torque
+straight from the sim and carries it to the wheel at 1 kHz, so the force you
+feel is iRacing's own, with the plugin's effects layered on top, and the
+rev lights and the wheel's screen come with it.
+
+- **Each car keeps its own max force.** Cars follow the max-force number
+  iRacing already holds for them. The plugin also watches what a car
+  really pushes as you drive: drive a clean lap, and once the reading holds
+  steady, one press takes it. Nudge any car heavier or lighter from there.
+- **Incident points, announced.** The dash shows your count against the
+  session's limit, and the wheel's screen flashes what each new one cost.
+- **Engines sound like themselves.** iRacing states each car's cylinder
+  count, and a shipped table adds the crank layout, so a cross-plane V8
+  pulses like one.
+
+Four steps, once, and a first-launch notice walks you through them: set
+`loadTrueForceAPI=0` in `app.ini` and turn iRacing's own force feedback off
+(off, not strength zero), then set the mode to Normal and tick "Take over
+force feedback for iRacing". Until then the plugin sits on Lightsync only
+in iRacing and leaves the sim alone. Running MAIRA alongside the plugin is
+not supported.
+
+## Assetto Corsa (_Beta_)
+
+Assetto Corsa can hand the plugin its force feedback directly through a
+small CSP script, the TF4ALL CSP Bridge. The plugin offers to install it
+the first time it sees the game, and the Game Mods section in Settings
+installs or removes it any time after. It needs Custom Shaders Patch, one
+restart of the game, and Content Manager closed while it installs.
+
+- **The wheel feels exactly as you have tuned it.** The bridge hands over
+  the game's finished force, after your in-game gain and every CSP FFB
+  tweak, and the plugin carries it to the wheel with the effects on top.
+- **The screen stops costing force.** With the bridge carrying the force,
+  the wheel's screen runs in Assetto Corsa, and LIGHTSYNC patterns can be
+  switched mid-session.
+- **No USB capture needed.** With the bridge installed, Assetto Corsa no
+  longer depends on USBPcap. Without it, everything keeps working through
+  the capture as before; there is no setting to manage.
 
 ## Farming Simulator (_Beta_)
 
@@ -198,21 +310,17 @@ Some games (Assetto Corsa being the worst offender we've seen) deliver
 curb and collision FFB spikes wildly out of proportion to what's safe or
 comfortable. On a strong wheelbase they can ruin a racing line or cause
 real wrist strain over a session. iRacing has a built-in softener; most
-other games don't. The plugin taps the game's outgoing FFB on the USB
-bus and attenuates spikes only, so curbs land as confident pushes
-instead of yanks while sustained cornering load and weight transfer
-pass through untouched. Useful on its own, even with all our other
-effects turned off.
+other games don't. The plugin attenuates spikes only, so curbs land as
+confident pushes instead of yanks while sustained cornering load and
+weight transfer pass through untouched. Useful on its own, even with all
+our other effects turned off.
 
 ## TF4ALL Dash (_Beta_)
-
 
 The plugin ships its own SimHub dashboard, made for a phone or tablet
 kept next to you or mounted on the rig: something to read while you
 drive, and a way to change things mid-session without alt-tabbing out of
 the game.
-
-![TF4ALL Dash](docs/images/tf4all-dash-tabs.gif)
 
 - Drive tab: a race-ready view. Gear, speed and revs in the middle with
   pedals and steering around them, and the rest of the screen is boxes
@@ -241,6 +349,7 @@ the game.
 - Make it yours: hide the tabs you don't use and reorder the rest, in
   Settings > TF4ALL Dash.
 
+![TF4ALL Dash](docs/images/tf4all-dash-tabs.gif)
 
 Installs with the plugin and appears in SimHub's dashboard list.
 
@@ -280,52 +389,7 @@ plugin and the achievements you earn for contributing (sharing presets,
 getting downloads, submitting car facts other drivers end up using)
 grant matching roles in the server.
 
-The plugin is in active development and functional today. Feedback is
-welcome there, or on [GitHub issues][issues].
-
-## Supporting the project
-
-The plugin is free and stays that way. For anyone who wants to support
-it, there is a **[Patreon][patreon]**. It covers the real costs behind
-the project: hosting for the community backend, the code-signing
-certificate for the upcoming driver, and the time that goes into
-building all this. As a thank-you, supporters get cross-device backup
-and sync of their full setup (sign in on another PC and your tuning
-rides with you) and a spot on the supporters wall in the plugin.
-Manual export/import stays available to everyone.
-
-## Install
-
-The easiest path is the bundled installer:
-
-1. Download `TrueforceForAll-Setup.exe` from the [releases page][releases].
-   The build marked "Latest" is stable. For anything marked _Beta_ in this
-   README, take the newest build marked "Pre-release" instead; the in-app
-   updater then keeps you on that channel.
-2. Close SimHub if it's running.
-3. Run the installer. It detects SimHub, copies the plugin files into the
-   SimHub install folder, and (if USBPcap isn't already installed) runs
-   the bundled USBPcap setup automatically.
-4. Close Logitech G HUB (it claims the wheel's HID interface).
-5. Launch SimHub. The plugin auto-enables on first run.
-
-The installer is conservative on uninstall: it removes our files but leaves
-SimHub, USBPcap, and shared dependencies (HidSharp, NAudio) alone, so other
-plugins that share those keep working.
-
-## Requirements
-
-- Windows 10 / 11
-- [SimHub](https://www.simhubdash.com/)
-- A supported Logitech wheel (table above)
-- [USBPcap](https://github.com/desowin/usbpcap), bundled with our installer
-  if you don't already have it. Used to mirror the game's existing FFB
-  signal into the Trueforce stream so the two coexist.
-- Logitech G HUB **closed** while playing (it claims the HID interface and
-  blocks us from talking to the wheel)
-- **SimHub running as administrator.** Reading the wheel's USB traffic needs
-  it, so without it the force feedback pass-through never starts. Turn on
-  Run as administrator in SimHub's own settings, then restart SimHub.
+Feedback is welcome there, or on [GitHub issues][issues].
 
 ## Per-game enhancements
 
@@ -334,26 +398,27 @@ higher rate than SimHub's 60 Hz cap. That makes their effects sharper and
 more responsive, and it needs no SimHub license:
 
 **Assetto Corsa** has a dedicated path: shared memory is read directly at
-AC's native 333 Hz physics rate (polled at 1 kHz so events are seen within
-1 ms of being written). The higher rate makes curb collisions, road-bumps,
-traction-loss and other haptic effects noticeably sharper and more
-responsive than SimHub's 60 Hz feed can deliver.
+AC's native 333 Hz physics rate, which makes curb collisions, road bumps,
+traction loss and the other haptic effects noticeably sharper than
+SimHub's 60 Hz feed can deliver. With the
+[TF4ALL CSP Bridge](#assetto-corsa-beta) installed (_Beta_), the game's force
+feedback arrives the same way.
 
-**Forza Horizon 4, 5, and 6, plus Forza Motorsport** _(Motorsport is Beta)_
-also have a direct UDP Data Out reader that picks up per-tire fields for the
-surface-texture, curb-strike and collision effects, and feeds
+**iRacing** _(Beta)_ is read through the sim's own SDK at 1 kHz: the steering torque
+it wants the wheel to hold, plus the session data behind incident points,
+per-car max force and engine layout. See [iRacing](#iracing-beta).
+
+**Forza Motorsport and Forza Horizon 4, 5, and 6** _(Motorsport is Beta)_ also have a direct UDP
+Data Out reader that picks up per-tire fields for the surface-texture,
+curb-strike and collision effects, and feeds
 [Telemetry Based FFB](#telemetry-based-ffb-beta). The Horizon games send this
-telemetry once per rendered frame, so it tracks your frame rate (often
-well above 60 Hz), giving more depth in surface detail effects than some
-other titles offer. All four are auto-detected from SimHub's game
-profile.
+telemetry once per rendered frame, so it tracks your frame rate, often
+well above 60 Hz. All four are auto-detected from SimHub's game profile.
 
-**Farming Simulator 22 and 25** _(Beta)_ are read through the TF4ALL
-Enhanced Telemetry mod the plugin installs for you, at up to 100 Hz. The game
+**Farming Simulator 22 and 25** _(Beta)_ are read through the TF4ALL Enhanced
+Telemetry mod the plugin installs for you, at up to 100 Hz. The game
 publishes almost nothing on its own, so the mod is what makes
 [Farming Simulator](#farming-simulator-beta) force feedback possible at all.
-
-Additional direct-read titles will be added over time.
 
 Every other SimHub-supported game runs through SimHub's universal telemetry
 feed instead. The plugin works there without a SimHub license, but
@@ -361,53 +426,45 @@ unlicensed that feed is capped at 10 Hz, which makes the effects feel coarse.
 A licensed copy of SimHub (a small one-time payment) lifts it to 60 Hz, a
 big step up in feel.
 
-### Forza UDP setup
+### Forza setup
 
-In Forza Horizon 4/5/6, open Settings → HUD and Gameplay → UDP RACE
-TELEMETRY. In Forza Motorsport the same settings live under Settings →
-Gameplay & HUD. Turn DATA OUT ON, set DATA OUT IP ADDRESS to `127.0.0.1`,
-and set DATA OUT IP PORT to match the plugin's Port field in the Forza
-section (`5300` by default). That is the whole setup.
-
-#### Also forwarding to SimHub (dashboards, bass shakers, Buttkicker)
-
-This plugin passes a copy of Forza's telemetry on to SimHub, so anything
-SimHub drives (dashboards, ShakeIt bass shakers, a Buttkicker, arduino
-devices) keeps working too. You have already pointed Forza at the plugin
-in the setup above; this just adds the relay to SimHub. In the Forza
-section of the plugin settings:
-
-1. In SimHub, click the Home button at the top of the left sidebar. It
-   should show Forza Horizon as the active game (if not, click Change
-   game). Open Game config and note the UDP port it shows (often 8000).
-   You are only reading this number here, so do not change anything.
-2. Enable "Also forward to SimHub", set the forward host to `127.0.0.1`,
-   and set the forward port to that SimHub port.
-3. Drive for a moment and check the "Forwarded:" line in that section.
-   Once it shows packets, SimHub's dashboards and bass shakers are back.
-
-The result is `Forza → this plugin → SimHub`, so haptics from this plugin
-and everything SimHub drives both work at the same time.
+Forza needs its telemetry pointed at the plugin (Data Out to `127.0.0.1`,
+port `5300` by default), and the plugin can pass a copy on to SimHub so
+dashboards and bass shakers keep working. Both are walked through in the
+in-app guides (the **?** in the panel's header): Forza setup, and
+Forwarding to SimHub.
 
 ## Games with native Trueforce
 
-Some titles already ship Trueforce on PC, so the plugin defaults itself
-**off** for them. Switch off the game's native Trueforce and you can run
-the plugin instead, tuning the feel yourself rather than taking whatever
-the game hardcodes (and on Automobilista 2, adding Trueforce that was never
-really there).
+Some titles already ship Trueforce on PC, so the plugin starts on
+**Lightsync only** (_Beta_) for them: their force feedback and Trueforce are left
+alone, and only the wheel's light pattern is set. Switch off the game's
+native Trueforce and set the plugin to Normal mode to take over, tuning the
+feel yourself rather than taking whatever the game hardcodes (and on
+Automobilista 2, adding Trueforce that was never really there).
 
 The catch: **a slider at 0 is not off.** Many games keep the Trueforce API
 live even at 0, so the plugin fights a channel the game is still driving and
 the wheel whines. Only a real on/off switch or a config-file setting fully
 releases the wheel.
 
+The plugin catches this itself (_Beta_). The USB capture sees every Trueforce
+packet on the wheel, so when a game streams beside the plugin, the plugin
+drops to Lightsync only for that game session within a couple of seconds
+(the log and the status panel say why) instead of whining beside it. Set the
+plugin to Normal mode to try again once the game's Trueforce is off. Without
+USBPcap there is nothing to watch, and nothing changes.
+
+Running MAIRA and the plugin at the same time is not supported: with MAIRA's
+RPM lights on, the plugin steps aside for it. Close MAIRA, then set the mode
+to Normal.
+
 | Game | How to disable native Trueforce | Plugin takes over? |
 |---|---|---|
 | iRacing | Set `loadTrueForceAPI=0` in `app.ini` | Yes |
 | Dirt Rally 2.0 | In-game Trueforce on/off switch | Yes |
 | GRID (2019) | In-game Trueforce on/off switch | Yes |
-| Forza Motorsport (2023) | Not tested | Yes, through [Telemetry Based FFB](#telemetry-based-ffb-beta). Enable the plugin for the game first |
+| Forza Motorsport (2023) | Not tested | Yes, through [Telemetry Based FFB](#telemetry-based-ffb-beta). Set the mode to Normal first |
 | Automobilista 2 | Steam launch option `disableTF` (try `-disableTF` if that fails) | Likely, untested |
 | Assetto Corsa Competizione | Slider only, no off switch found | No, stays live |
 | Assetto Corsa EVO | Slider only, no off switch found | No, stays live |
@@ -435,18 +492,10 @@ here at all, please open an issue and let me know.
 
 ## Auto-discovery
 
- On startup the plugin:
-
-1. Enumerates connected HID devices, finds the wheel's Trueforce interface
-   (`MI_02`, vendor usage page `0xFFFD`).
-2. Enumerates USBPcap interfaces and parses injected device descriptors to
-   find which root hub the wheel is on and what USB address the OS assigned
-   it this boot.
-3. Starts the FFB tap and Trueforce stream automatically.
-
-If the wheel isn't detected (G HUB still running, USBPcap not installed,
-wheel unplugged) the plugin logs a clear status message and disables itself
-gracefully.
+On startup the plugin finds the wheel and its USB capture interface by
+itself and starts the FFB tap and the Trueforce stream. If the wheel isn't
+detected (G HUB still running, USBPcap not installed, wheel unplugged) it
+says so in its status and stands down.
 
 ## Known limitations
 
@@ -454,11 +503,24 @@ gracefully.
   use, not just at launch. G HUB claims the wheel's HID interface and
   blocks us from talking to it. If G HUB is opened mid-session, close
   it and reload the SimHub plugin to reattach.
-- **The Trueforce level dial on the wheel doesn't apply** while this
-  plugin is driving Trueforce. Once we take over the ep3 stream, the
-  wheel's own Trueforce intensity scaling stops responding to the dial.
-  Use the in-plugin Master Gain and per-effect Gain controls to set
-  intensity instead.
+- **The Trueforce level dial on the wheel doesn't apply** while the
+  plugin is driving Trueforce: the wheel's own intensity scaling stops
+  responding to it. Use the plugin's Master Gain and per-effect Gain
+  controls to set intensity instead.
+- **Rev lights and the screen depend on who carries the force.** The
+  wheel's lights and screen share a control channel with the game's force
+  feedback, and writing to them while the game's force passes through the
+  USB capture cuts that force. So the plugin only adds rev lights and
+  drives the screen where it carries the force itself: Telemetry Based
+  FFB, iRacing, and Assetto Corsa with the CSP Bridge. For the same
+  reason, changing a LIGHTSYNC pattern in a pass-through game interrupts
+  the force for a moment, so it is best done parked. A custom driver that
+  lifts this is in development.
+- **The plugin cannot run alongside a game's own Trueforce.** The wheel's
+  Trueforce stream has room for one sender, so in a native-Trueforce game
+  the plugin stays on Lightsync only unless the game's Trueforce is
+  switched off (see the table above). Running MAIRA at the same time is
+  not supported for the same reason.
 
 ## FAQ
 
@@ -466,8 +528,8 @@ gracefully.
 The audio-derived effects work in any game at all, since the plugin captures
 the game's audio directly with no SimHub support needed. Games that SimHub
 supports additionally get the telemetry-derived effects (engine pulse, gear
-shifts, ABS, and so on). Assetto Corsa, Forza Motorsport, the Forza
-Horizon games and Farming Simulator go further with a higher-fidelity
+shifts, ABS, and so on). Assetto Corsa, iRacing, Forza Motorsport, the
+Forza Horizon games and Farming Simulator go further with a higher-fidelity
 direct path (see Per-game enhancements).
 
 **Do I need to pay for SimHub?**
@@ -475,8 +537,9 @@ SimHub itself is free, and the plugin works without a SimHub license. The
 difference is the telemetry rate: unlicensed, games the plugin doesn't read
 directly run at only 10 Hz, which makes the effects feel coarse. A licensed
 copy lifts that to 60 Hz, which is a big step up in feel. SimHub is cheap and
-well worth it. (Assetto Corsa, the Forza titles and Farming Simulator are
-read directly, so they run at their full rate regardless of license.)
+well worth it. (Assetto Corsa, iRacing, the Forza titles and Farming
+Simulator are read directly, so they run at their full rate regardless of
+license.)
 
 **Is this anti-cheat safe?**
 Yes. The plugin operates entirely outside the game. It never injects code,
@@ -495,7 +558,8 @@ is [Telemetry Based FFB](#telemetry-based-ffb-beta), which deliberately builds
 the steering force from telemetry instead. In the Forza titles that is
 opt-in and stays off until you turn it on. In Farming Simulator it runs
 automatically, because the centering spring it replaces is all the game
-offers.
+offers. In iRacing, and in Assetto Corsa with the bridge, the force is the
+sim's own, carried by the plugin, so it feels exactly as you tuned it.
 
 **Why does it need USBPcap, and is that safe?**
 USBPcap is an open-source USB capture driver. The plugin uses it to read the
@@ -527,11 +591,23 @@ so all intensity is set in the plugin. The G923 is a quieter gear-driven
 wheel and usually needs more gain than the G PRO or RS50.
 
 **Can I use this in games that already support Trueforce?**
-By default the plugin stays off for native-Trueforce titles, since the game
-already provides it. But you can switch off the game's native Trueforce and
-run the plugin instead, which lets you tune the feel yourself. See
+By default the plugin starts on Lightsync only for native-Trueforce titles,
+since the game already provides it, and if both end up streaming at once it
+steps aside by itself. But you can switch off the game's native Trueforce
+and run the plugin instead, which lets you tune the feel yourself. See
 [Games with native Trueforce](#games-with-native-trueforce) for which titles
 allow this and how.
+
+## Supporting the project
+
+The plugin is free and stays that way. For anyone who wants to support
+it, there is a **[Patreon][patreon]**. It covers the real costs behind
+the project: hosting for the community backend, the code-signing
+certificate for the upcoming driver, and the time that goes into
+building all this. As a thank-you, supporters get cross-device backup
+and sync of their full setup (sign in on another PC and your tuning
+rides with you) and a spot on the supporters wall in the plugin.
+Manual export/import stays available to everyone.
 
 ## Community coverage
 
@@ -568,12 +644,17 @@ The wire protocol and init sequence are derived from the
 
 ## Acknowledgments
 
-- **[mescon/logitech-rs50-linux-driver][mescon]**: reverse-engineered
-  the wheel's driver and wire protocol. This project would not exist
-  without their work.
+- **[mescon/logitech-trueforce-linux-driver][mescon]**: reverse-engineered
+  the wheel's driver and wire protocol, and later the light-slot protocol
+  (the staging and commit sequence behind the LIGHTSYNC tab). This project
+  would not exist without their work.
 - **[PeposCJ/LogiDynamicDash][logidynamicdash]**: worked out how the wheel
   base's OLED screen is driven and documented it publicly. The wheel screen
-  support here is built on that work.
+  support here is built on that work, and PeposCJ's captures settled when
+  the wheel's own pattern selection has to be left alone.
+- **[Lovely Sim Racing's car data][lovely]**: the per-car light patterns,
+  per-gear redlines and blink rates behind "Match my wheel to the car",
+  shared under CC BY-NC-SA 4.0.
 - **Andrew Boersma**: built the telemetry-based force feedback engine
   and the axle slip, curb thump, and lockup judder effects. The headline
   features of the 0.2.0 release are his work.
@@ -596,20 +677,16 @@ The wire protocol and init sequence are derived from the
   plugin in Forza Horizon 6 and tuned his own presets for it.
 - **Revasio**: produced a [French-language installation tutorial][revasio]
   on TikTok, helping French-speaking drivers get set up.
-- **Caleb Pearson**: reported that the plugin was not working on the
-  RS50, exported the TF4ALL logs that helped pinpoint the cause, and
-  validated the fix on his hardware. Without his report the RS50 issue
-  would have gone unnoticed. He also discovered and confirmed that the
-  plugin brings Trueforce back to iRacing when running MAIRA.
 - **Svenmoor**: tested the plugin against a range of native-Trueforce
   titles and mapped which ones have a true Trueforce off switch (so the
   plugin can take over cleanly) versus which only expose an intensity
   slider, which populated the "Games with native Trueforce" table above.
 
-Logitech, Trueforce, G PRO, RS50, and G923 are trademarks of Logitech.
+Logitech, Trueforce, LIGHTSYNC, G PRO, RS50, and G923 are trademarks of Logitech.
 This project is not affiliated with, endorsed by, or sponsored by Logitech.
 
-[mescon]: https://github.com/mescon/logitech-rs50-linux-driver
+[mescon]: https://github.com/mescon/logitech-trueforce-linux-driver
+[lovely]: https://github.com/Lovely-Sim-Racing/lovely-car-data
 [logidynamicdash]: https://github.com/PeposCJ/LogiDynamicDash
 [usbpcap]: https://github.com/desowin/usbpcap
 [acshmem]: https://github.com/mdjarv/assettocorsasharedmemory
