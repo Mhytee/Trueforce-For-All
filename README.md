@@ -15,10 +15,8 @@ Official Trueforce support keeps growing, but many major titles are still
 waiting and some will never get it. This plugin brings Trueforce to any
 game, building the haptics from telemetry or from the game's own audio.
 
-Original Windows code, built on a wire protocol reverse-engineered by the
-[mescon Linux driver project][mescon] and, for the wheel's OLED screen, on
-protocol work by [PeposCJ][logidynamicdash]. No Logitech source, firmware or
-assets are used or redistributed.
+Original Windows code, built on protocols reverse-engineered by the community
+and me. No Logitech source, firmware or assets are used or redistributed.
 
 ## Supported wheels
 
@@ -613,15 +611,34 @@ Manual export/import stays available to everyone.
 
 ## How it works
 
-The wire protocol (init sequence and ep3 streaming format) was
-reverse-engineered by the [mescon Linux driver project][mescon]. This
-repo is the Windows-side glue on top of that: a SimHub plugin that opens
-the wheel, synthesizes the telemetry/audio-derived effects, handles
-per-game tuning, and runs the USBPcap-based FFB tap that mirrors the
-game's HID++ output into bytes 6-9 of the Trueforce ep3 stream. That
-mechanism (bytes 6-9 as the motor torque target, the rolling window as
-an additive overlay on top) has since been independently confirmed by
-the mescon driver's own implementation on RS50 hardware.
+The plugin opens the wheel, runs the Trueforce init sequence, and streams
+haptics to endpoint 3 at 1 kHz. The effects themselves are synthesized from
+telemetry or from the game's own audio, with per-game tuning on top.
+
+A USBPcap-based tap reads the game's own force feedback off the USB
+connection. Its plain force is mirrored into bytes 6-9 of that stream, which
+the wheel takes as its motor torque target, with the rolling window riding on
+top as an additive overlay. The game's DirectInput effects, its spring,
+damper, friction, inertia and waveforms, are decoded from the same traffic and
+rendered into the stream alongside it.
+
+In some games Telemetry Based FFB is an alternative to capturing. The force
+is built from the telemetry itself, from per-axle grip and slip and the load
+through the corner, and some prefer that to what their game sends. For the
+games that send nothing usable, Farming Simulator among them, it is the only
+route. Where a sim publishes its own steering torque, that torque is
+reshaped rather than synthesized.
+
+Some games need no tap at all. Assetto Corsa and iRacing publish their own
+force values in telemetry, so the plugin reads them from there and leaves
+the wheel's HID++ pipe alone, which is what lets the rev lights and the
+screen run alongside the force.
+
+The rev lights and the wheel base's screen take a different path, the wheel's
+HID++ control pipe rather than the haptic stream: level and slot writes for
+the lights, frames for the screen. That pipe carries one writer at a time, so
+the plugin watches what else is writing to it and stands down while a game is
+driving the lights itself.
 
 ## Privacy
 
