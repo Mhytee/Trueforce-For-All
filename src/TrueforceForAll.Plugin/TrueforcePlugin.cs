@@ -31100,7 +31100,7 @@ namespace TrueforceForAll.Plugin
 
         private const string AcCspScriptName = "tf4all";
         // Bumped when the bridge script changes so the mods list can show it.
-        private const string AcCspBridgeVersion = "1.1";
+        private const string AcCspBridgeVersion = "1.2";
         public string AcCspBridgeVersionString => AcCspBridgeVersion;
         public string FsModVersionString => FsModVersion;
 
