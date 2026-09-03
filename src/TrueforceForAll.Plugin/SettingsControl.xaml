@@ -3543,6 +3543,88 @@
             </StackPanel><!-- /WheelScreenBlock -->
             </StackPanel><!-- ModeBSupportedPanel -->
 
+                <!-- Effect test bench. Hidden until the FXTEST access
+                     code reveals it: it drives the wheel directly and
+                     stops the Trueforce stream to do it, which is not
+                     something to leave a hand's width from the normal
+                     FFB controls. -->
+                <StackPanel x:Name="FxBenchSection" Visibility="Collapsed">
+                    <!-- Effect test bench: native (firmware-rendered DirectInput
+                         effect, stream in keepalive) vs the plugin's renderer,
+                         side by side on the same parameters. Tune, compare,
+                         save. Collapsed by default; needs no game. -->
+                    <Expander Header="Effect test bench" Margin="0,14,0,0" IsExpanded="False" Loaded="FxBench_Loaded">
+                        <StackPanel Margin="8,8,0,0">
+                            <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,0,0,6" TextWrapping="Wrap"
+                                Text="Play an effect through the wheel's own firmware (native: the reference feel), then the same effect through the plugin's renderer, and tune until they match. The gain belongs to the picked effect, so you can tune one effect, switch to the next, and tune that one without disturbing the first. Native playback needs the wheel free (no game running). Save stores every effect's tuning as the default for future sessions."/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Text="Effect:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="FxTestEffectBox" Width="110" Margin="8,0,0,0" SelectedIndex="0" VerticalAlignment="Center"
+                                          SelectionChanged="FxTestEffect_Changed"
+                                          ToolTip="The effect to compare. The gain below belongs to whichever effect is picked here, so each one tunes and saves separately.">
+                                    <ComboBoxItem Content="DAMPER"/>
+                                    <ComboBoxItem Content="SPRING"/>
+                                    <ComboBoxItem Content="FRICTION"/>
+                                    <ComboBoxItem Content="INERTIA"/>
+                                    <ComboBoxItem Content="SINE"/>
+                                    <ComboBoxItem Content="SQUARE"/>
+                                    <ComboBoxItem Content="TRIANGLE"/>
+                                    <ComboBoxItem Content="SAWUP"/>
+                                    <ComboBoxItem Content="SAWDOWN"/>
+                                    <ComboBoxItem Content="RAMP"/>
+                                </ComboBox>
+                                <TextBlock Text="Strength:" Style="{StaticResource LabelText}" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                <Slider x:Name="FxTestStrengthSlider" Width="110" Minimum="0" Maximum="100" Value="50"
+                                        Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTestParam_Changed"/>
+                                <TextBlock x:Name="FxTestStrengthLabel" Text="50%" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Period:" Style="{StaticResource LabelText}" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                <Slider x:Name="FxTestPeriodSlider" Width="90" Minimum="50" Maximum="1000" Value="250"
+                                        Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTestParam_Changed"/>
+                                <TextBlock x:Name="FxTestPeriodLabel" Text="250 ms" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                                <Button x:Name="FxTestNativeButton" Content="Play native" Width="100" Height="24" Click="FxTestNative_Click"
+                                        ToolTip="The wheel's own DirectInput effect with the Trueforce stream fully STOPPED: the wheel exactly as it is without the plugin. The reference feel."/>
+                                <Button x:Name="FxTestEngineButton" Content="Play engine" Width="100" Height="24" Margin="8,0,0,0" Click="FxTestEngine_Click"
+                                        ToolTip="The identical effect through the plugin's renderer, streamed as Trueforce force: what games feel under the plugin."/>
+                                <Button x:Name="FxTestStopButton" Content="Stop" Width="70" Height="24" Margin="8,0,0,0" Click="FxTestStop_Click"/>
+                                <TextBlock x:Name="FxTestStatus" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,2">
+                                <TextBlock x:Name="FxTuneGainCaption" Text="Damper gain:" MinWidth="94"
+                                           Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                <Slider x:Name="FxTuneGainSlider" Width="130" Minimum="0" Maximum="5" Value="0.25"
+                                        Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTuneGain_Changed"
+                                        ToolTip="Scales the picked effect only: each family (damper, spring, friction, inertia, waveforms, ramp) keeps its own gain, so you can tune one, switch, and tune the next. Live while an engine effect plays. Save tuning stores them all."/>
+                                <TextBlock x:Name="FxTuneGainLabel" Text="0.25" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                <Button x:Name="FxTuneResetKindButton" Content="Reset" Width="60" Height="22" Margin="10,0,0,0"
+                                        VerticalAlignment="Center" Click="FxTuneResetKind_Click"
+                                        ToolTip="Puts the picked effect's gain back to its shipped default. The other effects keep their tuning."/>
+                                <CheckBox x:Name="FxTuneInertiaCoastsCheck" Content="Inertia coasts" Margin="14,0,0,0" VerticalAlignment="Center"
+                                          Checked="FxTuneInertiaCoasts_Changed" Unchecked="FxTuneInertiaCoasts_Changed"
+                                          ToolTip="Off (default) matches the wheel: rendered inertia only ever resists, like the firmware's own. On is the DirectInput reading, a lossless flywheel that coasts on after a push. Affects inertia only."/>
+                                <CheckBox x:Name="FxTuneSignCheck" Content="Flip direction" Margin="16,0,0,0" VerticalAlignment="Center"
+                                          Checked="FxTuneSign_Changed" Unchecked="FxTuneSign_Changed"
+                                          ToolTip="Flips the velocity-coupled effects (damper, friction, inertia) if the rendered damper feels like an anti-damper. Springs never flip."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                                <TextBlock Text="Condition filter:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                <Slider x:Name="FxTuneLpfSlider" Width="130" Minimum="0" Maximum="500" Value="200"
+                                        Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTuneLpf_Changed"
+                                        ToolTip="Low-pass on the rendered condition outputs (anti-ringing; every shipping implementation filters here). 0 = off."/>
+                                <TextBlock x:Name="FxTuneLpfLabel" Text="200 Hz" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                <CheckBox x:Name="FxAutoTuneRepeatCheck" Content="x5" Margin="16,0,0,0" VerticalAlignment="Center"
+                                          ToolTip="Run the calibration five times from the SAME starting gains and take the median, reporting the spread. More samples tighten the median: the noisier a measurement is, the more it needs them. Successive single runs are not independent (each measures a correction relative to the gains it starts from), so this is the way to tell a repeatable measurement from a noisy one. Takes about five times as long."/>
+                                <Button x:Name="FxAutoTuneButton" Content="Auto-tune…" Width="100" Height="24" Margin="8,0,0,0" Click="FxAutoTune_Click"
+                                        ToolTip="Hands-free calibration (about a minute, hands OFF the wheel): bounded self-pulses measure the wheel's native damper, spring and friction against the plugin's renderer and set the gains to match; also measures the real native-vs-stream force scale. Verify by feel afterwards, then Save. Stop cancels."/>
+                                <Button x:Name="FxTuneSaveButton" Content="Save tuning" Width="100" Height="24" Margin="8,0,0,0" Click="FxTuneSave_Click"
+                                        ToolTip="Persists every effect's gain plus direction and filter as the defaults for every session (auto-tune and DAMPCAL update gains too; save afterwards to keep them)."/>
+                                <Button x:Name="FxTuneResetAllButton" Content="Reset all" Width="80" Height="24" Margin="8,0,0,0" Click="FxTuneResetAll_Click"
+                                        ToolTip="Puts every effect's gain, the direction and the filter back to shipped defaults. Live only: Save afterwards to keep it, or reopen SimHub to get your saved tuning back."/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </sh:SHTabItem>
@@ -4964,81 +5046,6 @@
                     <TextBlock x:Name="AccessCodeStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Effect test bench: native (firmware-rendered DirectInput
-                     effect, stream in keepalive) vs the plugin's renderer,
-                     side by side on the same parameters. Tune, compare,
-                     save. Collapsed by default; needs no game. -->
-                <Expander Header="Effect test bench" Margin="0,14,0,0" IsExpanded="False" Loaded="FxBench_Loaded">
-                    <StackPanel Margin="8,8,0,0">
-                        <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,0,0,6" TextWrapping="Wrap"
-                            Text="Play an effect through the wheel's own firmware (native: the reference feel), then the same effect through the plugin's renderer, and tune until they match. The gain belongs to the picked effect, so you can tune one effect, switch to the next, and tune that one without disturbing the first. Native playback needs the wheel free (no game running). Save stores every effect's tuning as the default for future sessions."/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <TextBlock Text="Effect:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                            <ComboBox x:Name="FxTestEffectBox" Width="110" Margin="8,0,0,0" SelectedIndex="0" VerticalAlignment="Center"
-                                      SelectionChanged="FxTestEffect_Changed"
-                                      ToolTip="The effect to compare. The gain below belongs to whichever effect is picked here, so each one tunes and saves separately.">
-                                <ComboBoxItem Content="DAMPER"/>
-                                <ComboBoxItem Content="SPRING"/>
-                                <ComboBoxItem Content="FRICTION"/>
-                                <ComboBoxItem Content="INERTIA"/>
-                                <ComboBoxItem Content="SINE"/>
-                                <ComboBoxItem Content="SQUARE"/>
-                                <ComboBoxItem Content="TRIANGLE"/>
-                                <ComboBoxItem Content="SAWUP"/>
-                                <ComboBoxItem Content="SAWDOWN"/>
-                                <ComboBoxItem Content="RAMP"/>
-                            </ComboBox>
-                            <TextBlock Text="Strength:" Style="{StaticResource LabelText}" Margin="14,0,0,0" VerticalAlignment="Center"/>
-                            <Slider x:Name="FxTestStrengthSlider" Width="110" Minimum="0" Maximum="100" Value="50"
-                                    Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTestParam_Changed"/>
-                            <TextBlock x:Name="FxTestStrengthLabel" Text="50%" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="Period:" Style="{StaticResource LabelText}" Margin="14,0,0,0" VerticalAlignment="Center"/>
-                            <Slider x:Name="FxTestPeriodSlider" Width="90" Minimum="50" Maximum="1000" Value="250"
-                                    Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTestParam_Changed"/>
-                            <TextBlock x:Name="FxTestPeriodLabel" Text="250 ms" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
-                            <Button x:Name="FxTestNativeButton" Content="Play native" Width="100" Height="24" Click="FxTestNative_Click"
-                                    ToolTip="The wheel's own DirectInput effect with the Trueforce stream fully STOPPED: the wheel exactly as it is without the plugin. The reference feel."/>
-                            <Button x:Name="FxTestEngineButton" Content="Play engine" Width="100" Height="24" Margin="8,0,0,0" Click="FxTestEngine_Click"
-                                    ToolTip="The identical effect through the plugin's renderer, streamed as Trueforce force: what games feel under the plugin."/>
-                            <Button x:Name="FxTestStopButton" Content="Stop" Width="70" Height="24" Margin="8,0,0,0" Click="FxTestStop_Click"/>
-                            <TextBlock x:Name="FxTestStatus" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,2">
-                            <TextBlock x:Name="FxTuneGainCaption" Text="Damper gain:" MinWidth="94"
-                                       Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                            <Slider x:Name="FxTuneGainSlider" Width="130" Minimum="0" Maximum="5" Value="0.25"
-                                    Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTuneGain_Changed"
-                                    ToolTip="Scales the picked effect only: each family (damper, spring, friction, inertia, waveforms, ramp) keeps its own gain, so you can tune one, switch, and tune the next. Live while an engine effect plays. Save tuning stores them all."/>
-                            <TextBlock x:Name="FxTuneGainLabel" Text="0.25" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                            <Button x:Name="FxTuneResetKindButton" Content="Reset" Width="60" Height="22" Margin="10,0,0,0"
-                                    VerticalAlignment="Center" Click="FxTuneResetKind_Click"
-                                    ToolTip="Puts the picked effect's gain back to its shipped default. The other effects keep their tuning."/>
-                            <CheckBox x:Name="FxTuneInertiaCoastsCheck" Content="Inertia coasts" Margin="14,0,0,0" VerticalAlignment="Center"
-                                      Checked="FxTuneInertiaCoasts_Changed" Unchecked="FxTuneInertiaCoasts_Changed"
-                                      ToolTip="Off (default) matches the wheel: rendered inertia only ever resists, like the firmware's own. On is the DirectInput reading, a lossless flywheel that coasts on after a push. Affects inertia only."/>
-                            <CheckBox x:Name="FxTuneSignCheck" Content="Flip direction" Margin="16,0,0,0" VerticalAlignment="Center"
-                                      Checked="FxTuneSign_Changed" Unchecked="FxTuneSign_Changed"
-                                      ToolTip="Flips the velocity-coupled effects (damper, friction, inertia) if the rendered damper feels like an anti-damper. Springs never flip."/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
-                            <TextBlock Text="Condition filter:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
-                            <Slider x:Name="FxTuneLpfSlider" Width="130" Minimum="0" Maximum="500" Value="200"
-                                    Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTuneLpf_Changed"
-                                    ToolTip="Low-pass on the rendered condition outputs (anti-ringing; every shipping implementation filters here). 0 = off."/>
-                            <TextBlock x:Name="FxTuneLpfLabel" Text="200 Hz" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                            <CheckBox x:Name="FxAutoTuneRepeatCheck" Content="x5" Margin="16,0,0,0" VerticalAlignment="Center"
-                                      ToolTip="Run the calibration five times from the SAME starting gains and take the median, reporting the spread. More samples tighten the median: the noisier a measurement is, the more it needs them. Successive single runs are not independent (each measures a correction relative to the gains it starts from), so this is the way to tell a repeatable measurement from a noisy one. Takes about five times as long."/>
-                            <Button x:Name="FxAutoTuneButton" Content="Auto-tune…" Width="100" Height="24" Margin="8,0,0,0" Click="FxAutoTune_Click"
-                                    ToolTip="Hands-free calibration (about a minute, hands OFF the wheel): bounded self-pulses measure the wheel's native damper, spring and friction against the plugin's renderer and set the gains to match; also measures the real native-vs-stream force scale. Verify by feel afterwards, then Save. Stop cancels."/>
-                            <Button x:Name="FxTuneSaveButton" Content="Save tuning" Width="100" Height="24" Margin="8,0,0,0" Click="FxTuneSave_Click"
-                                    ToolTip="Persists every effect's gain plus direction and filter as the defaults for every session (auto-tune and DAMPCAL update gains too; save afterwards to keep them)."/>
-                            <Button x:Name="FxTuneResetAllButton" Content="Reset all" Width="80" Height="24" Margin="8,0,0,0" Click="FxTuneResetAll_Click"
-                                    ToolTip="Puts every effect's gain, the direction and the filter back to shipped defaults. Live only: Save afterwards to keep it, or reopen SimHub to get your saved tuning back."/>
-                        </StackPanel>
-                    </StackPanel>
-                </Expander>
                     </StackPanel>
                 </ScrollViewer>
             </sh:SHTabItem>

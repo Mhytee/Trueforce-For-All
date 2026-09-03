@@ -99,6 +99,7 @@ namespace TrueforceForAll.Plugin
             "RpmLedUnlocked", "ShowManualOverrideUi", "ExperimentalFfbCapture",
             "ExperimentalDriverIntercept", "DriverTestingUnlocked",
             "DevModeUnlocked", "ImportPreviewBypass", "OledIgnoreModeBGate", "F8IgnoreQuietGate",
+            "FxBenchUnlocked",
             "LightsyncTabUnlocked", "LovelyCarDataEnabled", "LightsyncDynamicSlot",
             "AlwaysRememberCarPattern",
             // LED color trim. Portable because it describes the WHEEL, which

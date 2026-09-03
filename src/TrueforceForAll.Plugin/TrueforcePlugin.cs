@@ -4731,7 +4731,6 @@ namespace TrueforceForAll.Plugin
                 _inertiaCoasts   = Settings.FfbConditionInertiaCoasts;
                 _inertiaAsDamping = Settings.FfbConditionInertiaAsDamping;
                 ApplyConditionLpf();
-                WarnIfConditionScaleChanged();
 
                 // Apply persisted ring capacity. Sanitize: clamp to allowed
                 // range and force pow2 so a hand-edited settings file can't
@@ -32900,29 +32899,6 @@ namespace TrueforceForAll.Plugin
 
         public bool InertiaCoastsNow => _inertiaCoasts;
 
-        /// <summary>The condition gains describe how much force the render
-        /// path delivers, and FfbScale multiplies that force, so the two are
-        /// only meaningful together: FfbScale x gain is the invariant. A
-        /// calibration taken at one scale is wrong at another, by the ratio
-        /// between them. FfbScale is preset-carried while the gains are
-        /// global, so ordinary preset switching can move it without anyone
-        /// touching the calibration.</summary>
-        private void WarnIfConditionScaleChanged()
-        {
-            var s = Settings;
-            if (s == null) return;
-            double at = s.FfbConditionMeasuredAtScale;
-            if (at <= 0) return;                      // never calibrated
-            double now = s.FfbScale;
-            if (now <= 0) return;
-            double ratio = now / at;
-            if (ratio > 0.98 && ratio < 1.02) return;
-            SimHub.Logging.Current.Info(
-                $"[TF4ALL] Condition gains were calibrated at FfbScale {at:F2} but it is now {now:F2}: "
-                + $"the rendered damper, spring and friction are {ratio:P0} of what was measured. "
-                + "Re-run auto-tune, or set FfbScale back, to keep them matched to the wheel.");
-        }
-
         /// <summary>Whether rendered inertia coasts like a flywheel (the
         /// DirectInput reading) or only ever resists, which is what the
         /// wheel's own firmware does.</summary>
@@ -32968,7 +32944,7 @@ namespace TrueforceForAll.Plugin
                 + $"friction {_frictionGain:F2}, inertia {_inertiaGain:F2}, waveform {_periodicGain:F2}, "
                 + $"ramp {_rampGain:F2}, inertia {(_inertiaAsDamping ? "as damping" : _inertiaCoasts ? "coasts" : "resists")}, "
                 + $"direction {(_damperSign < 0 ? "flipped" : "normal")}, "
-                + $"filter {_conditionLpfHz:F0} Hz.");
+                + $"filter {_conditionLpfHz:F0} Hz, at FfbScale {Settings?.FfbScale ?? 1.0:F2}.");
         }
 
         /// <summary>Starts the CSPFFB DAMPTEST damper wiggle. True when AC is

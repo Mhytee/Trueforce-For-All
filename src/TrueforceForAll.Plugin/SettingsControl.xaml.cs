@@ -272,6 +272,7 @@ namespace TrueforceForAll.Plugin
             // Restores the unlocked layout on a dev machine before the first
             // RefreshFromPlugin, so the block is already in its tab by the time
             // any visibility pass runs over the controls inside it.
+            ApplyFxBenchVisibility();
             ApplyLightsyncTabVisibility();
 
             // Header version readout. Read once at construction; doesn't change
@@ -6099,6 +6100,17 @@ namespace TrueforceForAll.Plugin
         private const string RepoUrl          = "https://github.com/Mhytee/Trueforce-For-All";
 
         // ---- Effect test bench (the FXTEST UI) ----
+
+        /// <summary>Shows the bench only once the FXTEST code has revealed
+        /// it, and stops any running test on the way out so hiding the panel
+        /// cannot leave the wheel driven by a control nobody can see.</summary>
+        private void ApplyFxBenchVisibility()
+        {
+            if (FxBenchSection == null) return;
+            bool on = _plugin?.Settings?.FxBenchUnlocked == true;
+            FxBenchSection.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            if (!on) { try { _plugin?.StopFxTest(true); } catch { } }
+        }
 
         private void FxBench_Loaded(object sender, RoutedEventArgs e)
         {
@@ -13020,7 +13032,7 @@ namespace TrueforceForAll.Plugin
             "DIDAMP [pct]   DEV: drive the wheel's NATIVE DirectInput damper from the plugin (default 75%) with the Trueforce stream fully stopped (the wheel exactly as without the plugin), and log the position read rate: the DAMPCAL feasibility spike. DIDAMP OFF ends it (auto-off after 60 s).\n" +
             "DAMPCAL        Damper calibration wizard, NO GAME NEEDED: three conditions x three hand flicks (the plugin stands aside and drives the wheel's own damper = the native reference; stream at raw zero = friction only; synthesized at the current gain). Fits each flick's decay on the wheel's DirectInput position, cancels friction and inertia, and sets the synthesized gain to match the native damper for this session. Progress on the status line and the wheel screen. DAMPCAL OFF cancels. CSPFFB DAMPSIGN flips the damper if it feels like an anti-damper.\n" +
             "DICOND         A/B: the game's DirectInput condition effects (damper, spring, friction, inertia) and rumble, decoded from the USB wire and rendered into the Trueforce stream (the wheel firmware ignores them while any stream is live). ON by default; type to disable or re-enable. Session only.\n" +
-            "FXTEST         Effect test bench, NO GAME NEEDED: 'FXTEST NATIVE <effect>' plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel); 'FXTEST ENGINE <effect>' plays the identical effect through the plugin's renderer into the Trueforce stream. Effects: DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP; optional strength% (default 50) and period ms (default 250). Alternate the two and tune with CSPFFB DAMPK / DAMPSIGN until they match. FXTEST OFF ends it; auto-off after 30 s.\n" +
+            "FXTEST         Shows or hides the effect test bench at the bottom of the FFB tab (type it again to hide it). NO GAME NEEDED: the bench plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel), then the identical effect through the plugin's renderer, so you can alternate the two and tune until they match. It also carries the hands-free Auto-tune. The typed forms still work: 'FXTEST NATIVE <effect>' and 'FXTEST ENGINE <effect>'; effects DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP, with optional strength% (default 50) and period ms (default 250). FXTEST OFF ends a running test; auto-off after 30 s.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup taken before the plugin first wrote the slot. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
@@ -13892,7 +13904,31 @@ namespace TrueforceForAll.Plugin
             {
                 var fxParts = code.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 AccessCodeBox.Text = string.Empty;
-                if (fxParts.Length < 2 || fxParts[1].Equals("OFF", StringComparison.OrdinalIgnoreCase))
+                // Bare FXTEST shows or hides the bench on the FFB tab. The
+                // argument forms still drive it from here for anyone who
+                // prefers typing to clicking.
+                if (fxParts.Length < 2)
+                {
+                    _plugin.Settings.FxBenchUnlocked = !_plugin.Settings.FxBenchUnlocked;
+                    _plugin.PersistSettings();
+                    ApplyFxBenchVisibility();
+                    if (_plugin.Settings.FxBenchUnlocked)
+                    {
+                        if (MainTabs != null && TelemetryFfbTab != null)
+                            MainTabs.SelectedItem = TelemetryFfbTab;
+                        if (AccessCodeStatus != null)
+                            AccessCodeStatus.Text = "Effect test bench ON, at the bottom of the FFB tab. "
+                                + "Type FXTEST again to hide it.";
+                    }
+                    else
+                    {
+                        _plugin.StopFxTest();
+                        if (AccessCodeStatus != null)
+                            AccessCodeStatus.Text = "Effect test bench hidden.";
+                    }
+                    return;
+                }
+                if (fxParts[1].Equals("OFF", StringComparison.OrdinalIgnoreCase))
                 {
                     _plugin.StopFxTest();
                     if (AccessCodeStatus != null)

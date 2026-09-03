@@ -864,12 +864,25 @@ namespace TrueforceForAll.Plugin
         // (per velocity here, per acceleration otherwise), so a value tuned
         // under one does not carry to the other.
         public bool   FfbConditionInertiaAsDamping { get; set; } = true;
+        // Reveals the effect test bench at the bottom of the FFB tab. Off by
+        // default and unlocked with the FXTEST access code: the bench drives
+        // the wheel directly and stops the Trueforce stream to do it, which
+        // does not belong a hand's width from the normal FFB controls.
+        public bool   FxBenchUnlocked { get; set; } = false;
         // The FfbScale the condition gains were calibrated under. Every gain
         // is only valid at one scale: the auto-tune measures how much force
         // the chain actually delivers, and FfbScale multiplies that force, so
         // FfbScale x gain is the invariant. Change the scale and the rendered
         // conditions change with it, which is why a calibration has to record
         // the scale it was taken at. 0 = never calibrated.
+        // The FfbScale a calibration was taken at, recorded as provenance.
+        // NOT a staleness check: the gains express condition force as a
+        // fraction of full scale and FfbScale scales the whole output, so the
+        // balance between the game's force and the conditions holds at any
+        // scale. Turning the wheel down turns the damping down with it, which
+        // is what a strength slider should do (owner's call, 2026-09-03). An
+        // earlier version warned the calibration had drifted and told the user
+        // to re-run auto-tune, which was wrong advice for the normal case.
         public double FfbConditionMeasuredAtScale { get; set; } = 0.0;
         public double FfbConditionPeriodicGain { get; set; } = 1.0;
         public double FfbConditionRampGain     { get; set; } = 1.0;
