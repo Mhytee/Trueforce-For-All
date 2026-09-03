@@ -824,6 +824,15 @@ namespace TrueforceForAll.Core
             // stale-force replay this method exists to prevent). Safe here: a
             // volatile reference write; slot state itself stays parser-owned.
             _playingSprings = null;
+            // Same reasoning for the HID++ parametric table: a paused game's
+            // held spring or damper must not keep rendering; the game
+            // re-downloads its effects the moment it drives the wheel again.
+            // Snapshot drops NOW (cross-thread-safe volatile write); the slot
+            // table clears on the parser thread via the deferred flag, so
+            // parser-owned state is never mutated from here (the classic
+            // path's _classicResetRequested pattern; audit 2026-09-01).
+            _hidppResetRequested = true;
+            _hidppEffects.ClearPlayingSnapshot();
             System.Threading.Interlocked.Exchange(ref _packed, 0);
         }
 
@@ -1353,31 +1362,34 @@ namespace TrueforceForAll.Core
                 // path's resolver only sees ep0 traffic, so without this an
                 // interrupt-only wheel never resolves and never matches.
                 if (isOut && xfer == 0x01 && headerLen + 12 <= caplen
-                    && payload[headerLen] == 0x11 && payload[headerLen + 1] == 0xff)
+                    && (payload[headerLen] == 0x11 || payload[headerLen] == 0x12)
+                    && payload[headerLen + 1] == 0xff)
                 {
+                    byte iRid  = payload[headerLen];
                     byte iFeat = payload[headerLen + 2];
                     byte iFunc = payload[headerLen + 3];
-                    RecordTupleSeen(0x11, iFeat, iFunc);
-                    if ((iFunc & 0xf0) == 0x60) NoteLevelWrite(iFeat, payload[headerLen + 9]);
-                    if (iFeat == _ffbFeatureIndex && (iFunc & 0xf0) == 0x20)
-                    {
-                        NoteForceTraffic(0x11);
-                        short ffbTarget = (short)((payload[headerLen + 10] << 8) | payload[headerLen + 11]);
-                        bool accept = _reportArbiter.Accept(0x11, ffbTarget, Environment.TickCount);
-                        string decision = _reportArbiter.TakeDecision();
-                        if (decision != null) Log("FFB tap: " + decision);
-                        if (accept && !SimulateNoFfbCapture)
-                        {
-                            long ts = _sw.ElapsedTicks & TimestampMask;
-                            long pk = (ts << 16) | (uint)(ushort)ffbTarget;
-                            System.Threading.Interlocked.Exchange(ref _packed, pk);
-                            System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
-                            FfbSamplesCaptured++;
-                            _ffbIndexConfirmed = true;   // real FFB flowed on this index; lock the resolver
-                            NoteExtraction("interrupt-out", 0x11, iFeat, "hidpp-int16be@10");
-                        }
-                    }
+                    RecordTupleSeen(iRid, iFeat, iFunc);
+                    if (iRid == 0x11 && (iFunc & 0xf0) == 0x60) NoteLevelWrite(iFeat, payload[headerLen + 9]);
+                    if (iFeat == _ffbFeatureIndex)
+                        HandleHidppFfbFunction(iRid, iFunc, payload, headerLen, caplen - headerLen, "interrupt-out");
                 }
+
+                // HID++ replies ride interrupt IN. The one we need is the
+                // DOWNLOAD_EFFECT ack: the wheel assigns the slot for a
+                // new-effect download (slot byte 0) and names it in
+                // params[0] (fn2 echo; seen as `12 ff 0e 2a 01` on a G PRO).
+                if (!isOut && xfer == 0x01 && headerLen + 5 <= caplen
+                    && (payload[headerLen] == 0x11 || payload[headerLen] == 0x12)
+                    && payload[headerLen + 1] == 0xff
+                    && payload[headerLen + 2] == _ffbFeatureIndex
+                    && (payload[headerLen + 3] & 0xf0) == 0x20
+                    // Not while a pause suspend is pending: the ack's slot
+                    // move republishes the snapshot, and a reply completing a
+                    // pre-pause request must not resurrect effects mid-pause
+                    // (only an OUT command proves the game is driving again;
+                    // verify workflow 2026-09-01).
+                    && !_hidppResetRequested)
+                    _hidppEffects.AssignSlotFromReply(payload[headerLen + 4]);
 
                 MaybeConfirmCaptureFingerprint();
                 MaybeEmitDiagnostics();
@@ -1421,35 +1433,18 @@ namespace TrueforceForAll.Core
                     NoteLevelWrite(featIdx, payload[dataOffset + 9]);
 
                 // G-series FFB: HID++ page 0x8123 long (0x11) or very-long
-                // (0x12) form, function 2 (high nibble of funcByte), at the
-                // per-wheel-resolved feature index. Both report IDs share the
-                // same header+payload layout (force = signed int16, big-endian,
-                // at offset 10-11). Which one carries the game's stream is a
-                // per-session driver fact (RS50: mostly 0x12; the owner's G PRO:
-                // 0x11 for months, then two sessions of 0x12 only on
-                // 2026-08-28), so FfbReportArbiter picks the live report from
-                // the traffic and the other one's same-shaped management
-                // writes are ignored.
-                if ((reportId == 0x11 || reportId == 0x12)
-                    && featIdx == _ffbFeatureIndex && (funcByte & 0xf0) == 0x20)
-                {
-                    NoteForceTraffic(reportId);
-                    short ffbTarget = (short)((payload[dataOffset + 10] << 8) | payload[dataOffset + 11]);
-                    bool accept = _reportArbiter.Accept(reportId, ffbTarget, Environment.TickCount);
-                    string decision = _reportArbiter.TakeDecision();
-                    if (decision != null) Log("FFB tap: " + decision);
-
-                    if (accept && !SimulateNoFfbCapture)
-                    {
-                        long timestamp = _sw.ElapsedTicks & TimestampMask;
-                        long packed = (timestamp << 16) | (uint)(ushort)ffbTarget;
-                        System.Threading.Interlocked.Exchange(ref _packed, packed);
-                        System.Threading.Interlocked.Exchange(ref _lastSampleTicks, timestamp);
-                        FfbSamplesCaptured++;
-                        _ffbIndexConfirmed = true;   // real FFB flowed on this index; lock the resolver
-                        NoteExtraction("ep0-ctrl", reportId, featIdx, "hidpp-int16be@10");
-                    }
-                }
+                // (0x12) form at the per-wheel-resolved feature index. fn2
+                // downloads either carry the constant force (signed int16 BE
+                // at offset 10-11; the legacy scalar path, arbitrated by
+                // FfbReportArbiter) or a parametric effect (type byte at
+                // offset 5; the effect engine). fn1/3/4/8 are the slot
+                // engine's state functions. Which report id a driver uses is
+                // its own business (RS50: conditions ride 0x12 because the
+                // 18-byte block does not fit 0x11; the owner's G PRO ran two
+                // whole sessions of constants on 0x12 on 2026-08-28); the
+                // type byte classifies either way.
+                if ((reportId == 0x11 || reportId == 0x12) && featIdx == _ffbFeatureIndex)
+                    HandleHidppFfbFunction(reportId, funcByte, payload, dataOffset, dataLen, "ep0-ctrl");
             }
             CloseRawLog();
         }
@@ -1569,6 +1564,233 @@ namespace TrueforceForAll.Core
         /// FFB even though TryGetFreshFfbTarget stays null, so the quiet
         /// probe must consult this too.</summary>
         public bool AnyClassicSpringPlaying => !SimulateNoFfbCapture && _playingSprings != null;
+
+        // ---------- HID++ parametric effects (DirectInput conditions) --------
+        //
+        // The Windows runtime downloads the game's DirectInput effects to the
+        // wheel as the mainline hidpp_ff slot dialect on 0x8123 (fn2 with the
+        // effect type at payload offset 5; docs/di-condition-engine.md). The
+        // firmware ignores the whole slot engine while our ep3 stream is
+        // live, so everything except the constant force (which the scalar
+        // path above already mirrors) is decoded into HidppEffectEngine and
+        // rendered by the plugin at the 1 kHz pump against the physical
+        // wheel's position and velocity. Routing non-constant types here is
+        // also what keeps a condition download's saturation field (0x7FFF at
+        // offset 10-11) out of the scalar extractor for good.
+        private readonly HidppEffectEngine _hidppEffects = new HidppEffectEngine();
+
+        // Pause SUSPEND for the parametric table, deferred to the parser
+        // thread exactly like _classicResetRequested: ClearLastFfbTarget
+        // (plugin threads) sets the flag and drops the playing snapshot; the
+        // parser honors the flag on the next HID++ FFB function (the game is
+        // driving again) by republishing the RETAINED table, so a game that
+        // downloads its conditions once and then only sends state commands
+        // keeps them across every pause, like the firmware would (verify
+        // workflow 2026-09-01). A game's own fn1 RESET_ALL still wipes.
+        private volatile bool _hidppResetRequested;
+
+        // Arming gate for everything the parametric decode is allowed to DO
+        // beyond populating the table (render, stamp samples, confirm the
+        // feature index): either the index was already confirmed by the
+        // constant path, or the same (slot, type) has been downloaded
+        // ParametricArmStreak times in a row. One parametric-shaped packet
+        // on an unconfirmed index guess must not lock the resolver, disarm
+        // the no-FFB watchdog and render garbage as torque (the FM8
+        // LED-feature class; verify workflow 2026-09-01). Real games re-send
+        // a stable (slot, type) constantly; random non-FFB bytes do not.
+        private const int ParametricArmStreak = 4;
+        private volatile bool _parametricArmed;
+        private bool _parametricLogged;
+        private int _paraStreakKey = -1;
+        private int _paraStreak;
+        private ushort _lastLoggedGain = 0xffff;
+
+        /// <summary>The decoded DirectInput effect table (conditions,
+        /// periodics, ramps). Counters and gain are diagnostics; evaluation
+        /// goes through <see cref="TryEvaluateHidppEffects"/>.</summary>
+        public HidppEffectEngine HidppEffects => _hidppEffects;
+
+        /// <summary>True while any decoded parametric effect is live
+        /// (expiry-aware). Like <see cref="AnyClassicSpringPlaying"/>: it is
+        /// captured game FFB even though no scalar force appears, so
+        /// quiet-probe and no-FFB escalation logic must consult it.</summary>
+        /// <summary>How many times a re-created condition replaced an
+        /// already-playing one of its type. Climbing means destroys are being
+        /// missed and effects would otherwise have accumulated.</summary>
+        public int HidppReplacedStaleConditions => _hidppEffects.ReplacedStaleConditions;
+
+        public bool AnyHidppParametricPlaying
+            => _parametricArmed && !SimulateNoFfbCapture
+               && _hidppEffects.AnyPlayingAt(_sw.ElapsedTicks, Stopwatch.Frequency);
+
+        /// <summary>A decoded damper or friction condition is live right now
+        /// (expiry-aware): the CSP-synthesized damper stands down only while
+        /// this is true, so an expired decoded damper cannot pin the
+        /// fallback off (audit 2026-09-01).</summary>
+        public bool AnyHidppDamperPlayingNow
+            => _parametricArmed && !SimulateNoFfbCapture
+               && _hidppEffects.AnyDamperPlayingAt(_sw.ElapsedTicks, Stopwatch.Frequency);
+
+        /// <summary>Evaluate the playing parametric effects at the wheel's
+        /// physical state. Inputs in normalized units (position -1..1, +1 =
+        /// right; velocity per second; acceleration per second squared).
+        /// Sign space matches the classic springs and the scalar decode:
+        /// positive pulls toward lower steer. velTermSign flips only the
+        /// velocity-derived terms (DAMPSIGN's job; the spring never flips).
+        /// Returns null when nothing is playing (or NOFFB simulates a dead
+        /// capture); the caller caps and sums into the stream target.
+        /// Allocation-free; safe at 1 kHz.</summary>
+        public short? TryEvaluateHidppEffects(float posNorm, float velNormPerSec, float accel,
+                                              float damperGain, float inertiaGain,
+                                              int velTermSign = 1, float springGain = 1f,
+                                              float frictionGain = 1f, float periodicGain = 1f,
+                                              float rampGain = 1f)
+        {
+            if (!_parametricArmed || SimulateNoFfbCapture) return null;
+            float f = _hidppEffects.Evaluate(posNorm, velNormPerSec, accel,
+                                             damperGain, inertiaGain,
+                                             _sw.ElapsedTicks, Stopwatch.Frequency,
+                                             out bool anyPlaying, velTermSign, springGain, frictionGain,
+                                             periodicGain, rampGain);
+            if (!anyPlaying) return _hidppEffects.AnyPlaying ? (short?)0 : null;
+            int v = (int)(f * 32767f);
+            if (v > 32767) v = 32767; else if (v < -32768) v = -32768;
+            return (short)v;
+        }
+
+        // Shared HID++ 0x8123 function router for both transports (ep0
+        // SET_REPORT and raw interrupt OUT). fn2 constants stay on the
+        // legacy scalar pipeline (arbiter, _packed, freshness); fn2
+        // parametric types and the state functions feed the effect engine.
+        private void HandleHidppFfbFunction(byte reportId, byte funcByte,
+                                            byte[] payload, int off, int len, string transport)
+        {
+            if (_hidppResetRequested)
+            {
+                // The game is driving again after a pause suspend: restore
+                // the retained effects (a native wheel's slots survive a
+                // pause too), then process this command against them.
+                _hidppResetRequested = false;
+                _hidppEffects.RepublishFromTable();
+            }
+            switch (funcByte & 0xf0)
+            {
+                case 0x20:   // DOWNLOAD_EFFECT
+                {
+                    NoteForceTraffic(reportId);
+                    // An effect download of a type this build does not know,
+                    // with the autostart bit set (the bit makes it definitely
+                    // an effect download, not some foreign dialect's force
+                    // write): count and drop, so its parameter bytes can
+                    // never publish as force (audit 2026-09-01). Without the
+                    // bit the packet is ambiguous and falls through to the
+                    // scalar path, where the arbiter's change gate guards it;
+                    // dropping those too could deafen an unknown dialect.
+                    if (len >= 12 && (payload[off + 5] & 0x7f) > HidppEffectEngine.TypeRamp
+                        && (payload[off + 5] & HidppEffectEngine.AutostartBit) != 0)
+                    {
+                        _hidppEffects.CountUnknownType();
+                        if (_hidppEffects.UnknownTypeDownloads == 1)
+                            Log($"FFB tap: game downloaded an effect type this build does not know " +
+                                $"(0x{payload[off + 5] & 0x7f:X2}); ignored, not rendered.");
+                        return;
+                    }
+                    if (len >= 12 && HidppEffectEngine.IsParametricType(payload[off + 5]))
+                    {
+                        bool indexWasConfirmed = _ffbIndexConfirmed;
+                        if (_hidppEffects.HandleDownload(payload, off, len, _sw.ElapsedTicks)
+                            && !SimulateNoFfbCapture)
+                        {
+                            // Arm the side effects (render, sample stamps,
+                            // index confirm) only when this is credibly the
+                            // FFB feature: the constant path already
+                            // confirmed the index, or the same (slot, type)
+                            // pair has streamed ParametricArmStreak downloads
+                            // in a row. Until then downloads only populate
+                            // the table: nothing renders, nothing confirms,
+                            // the resolver and no-FFB watchdog stay live (one
+                            // parametric-shaped packet on a wrong index guess
+                            // must not lock the session; the FM8 LED-feature
+                            // class, verify workflow 2026-09-01).
+                            int paraKey = (payload[off + 4] << 8) | (payload[off + 5] & 0x7f);
+                            if (paraKey == _paraStreakKey) _paraStreak++;
+                            else { _paraStreakKey = paraKey; _paraStreak = 1; }
+                            if (indexWasConfirmed || _paraStreak >= ParametricArmStreak)
+                                _parametricArmed = true;
+                            if (_parametricArmed)
+                            {
+                                // Decoded game FFB with no scalar to publish.
+                                // Stamp the sample clock so re-downloads (a
+                                // parked AC re-sends the damper on every
+                                // coefficient jitter) don't read as undecoded
+                                // traffic and break the quiet-spell hold, and
+                                // confirm the feature index so a
+                                // condition-only game does not trip the
+                                // no-FFB escalation (audit 2026-09-01). NOFFB
+                                // simulates a dead capture: it does neither.
+                                System.Threading.Interlocked.Exchange(
+                                    ref _lastSampleTicks, _sw.ElapsedTicks & TimestampMask);
+                                _ffbIndexConfirmed = true;
+                                NoteExtraction(transport, reportId, _ffbFeatureIndex, "hidpp-slot-effect@5");
+                                if (!_parametricLogged)
+                                {
+                                    _parametricLogged = true;
+                                    Log($"FFB tap: game uses DirectInput parametric effects " +
+                                        $"(type=0x{payload[off + 5] & 0x7f:X2} on report 0x{reportId:X2}); rendering into the stream.");
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    // A constant download between a new-effect parametric
+                    // download and its ack makes the pending ack ambiguous
+                    // (constants never enter the effect table, so their acks
+                    // would pass the move-guard and relocate the parametric
+                    // effect); stop waiting for it (verify workflow
+                    // 2026-09-01).
+                    _hidppEffects.CancelProvisional();
+                    short ffbTarget = (short)((payload[off + 10] << 8) | payload[off + 11]);
+                    bool accept = _reportArbiter.Accept(reportId, ffbTarget, Environment.TickCount);
+                    string decision = _reportArbiter.TakeDecision();
+                    if (decision != null) Log("FFB tap: " + decision);
+                    if (accept && !SimulateNoFfbCapture)
+                    {
+                        long timestamp = _sw.ElapsedTicks & TimestampMask;
+                        long packed = (timestamp << 16) | (uint)(ushort)ffbTarget;
+                        System.Threading.Interlocked.Exchange(ref _packed, packed);
+                        System.Threading.Interlocked.Exchange(ref _lastSampleTicks, timestamp);
+                        FfbSamplesCaptured++;
+                        _ffbIndexConfirmed = true;   // real FFB flowed on this index; lock the resolver
+                        NoteExtraction(transport, reportId, _ffbFeatureIndex, "hidpp-int16be@10");
+                    }
+                    return;
+                }
+                case 0x10:   // RESET_ALL
+                    _hidppEffects.ResetAll();
+                    return;
+                case 0x30:   // SET_EFFECT_STATE [slot, state]
+                    if (len >= 6) _hidppEffects.HandleSetState(payload[off + 4], payload[off + 5], _sw.ElapsedTicks);
+                    return;
+                case 0x40:   // DESTROY_EFFECT [slot]
+                    if (len >= 5) _hidppEffects.HandleDestroy(payload[off + 4]);
+                    return;
+                case 0x80:   // SET_GLOBAL_GAINS [gain u16, boost u16]
+                    if (len >= 6)
+                    {
+                        ushort g = (ushort)((payload[off + 4] << 8) | payload[off + 5]);
+                        // Log on CHANGE only: a title that re-sends or ramps
+                        // its gain per frame must not write one line per
+                        // packet (verify workflow 2026-09-01).
+                        if (g != _lastLoggedGain)
+                        {
+                            _lastLoggedGain = g;
+                            if (g != 0xffff) Log($"FFB tap: game set global FFB gain to {g / 655.35:F0}%.");
+                        }
+                        _hidppEffects.HandleSetGain(g);
+                    }
+                    return;
+            }
+        }
 
         private static ClassicSpring ParseHiResSpring(byte[] p, int off, int len)
         {
@@ -1932,6 +2154,12 @@ namespace TrueforceForAll.Core
                 $"matched={FfbSamplesCaptured} tuples=[{tuples}]" +
                 (SpringUpdatesCaptured > 0
                     ? $" springs={SpringUpdatesCaptured}{(_playingSprings != null ? " (playing)" : "")}"
+                    : "") +
+                (_hidppEffects.ParametricDownloads > 0
+                    ? $" dieffects={_hidppEffects.ParametricDownloads}{(_hidppEffects.AnyPlaying ? " (playing)" : "")}" +
+                      (_hidppEffects.GlobalGain < 0.999f ? $" gain={_hidppEffects.GlobalGain:P0}" : "") +
+                      (_hidppEffects.ReplacedStaleConditions > 0
+                          ? $" restacked={_hidppEffects.ReplacedStaleConditions}" : "")
                     : "") +
                 (_rawLogStream != null ? $" trace={RawLogBytesWritten}b" : ""));
         }

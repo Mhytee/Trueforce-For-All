@@ -823,6 +823,56 @@ namespace TrueforceForAll.Plugin
         // the opposite convention, so the user-facing "Invert FFB sign" toggle
         // stays. Uncheck it when forces feel reversed.
         public bool  FfbInvertSign            { get; set; } = true;
+
+        // Condition-render tuning (the FXTEST bench / DAMPCAL): strength of
+        // the rendered DirectInput damper/inertia terms (force fraction per
+        // coefficient x range/s; DAMPCAL measures it), the velocity-term
+        // direction for rigs whose DirectInput axis frame opposes the stream
+        // torque frame (springs never flip with it), and the per-condition
+        // output low-pass in Hz (anti-ringing; 0 = off). Written by the
+        // bench's Save button; the session knobs (CSPFFB DAMPK / DAMPSIGN)
+        // do not persist until saved.
+        public double FfbConditionDamperGain   { get; set; } = 0.25;
+        public bool   FfbConditionSignInverted { get; set; } = false;
+        public double FfbConditionLpfHz        { get; set; } = 200;
+        // Per-effect scales the auto-tuner measures (1.0 = the DI model's
+        // own scale, the pre-measurement assumption). Each effect family the
+        // renderer covers gets its own, so the bench can tune one at a time
+        // without disturbing the others.
+        //
+        // Inertia is NOT on the damper's scale and must never inherit it:
+        // the damper's gain is force per unit VELOCITY and inertia's is
+        // force per unit ACCELERATION, and a hand-turned wheel reaches an
+        // order of magnitude more range/s^2 than range/s. Sharing the
+        // number saturates the inertia term on every push, which on the rig
+        // read as grain (2026-09-01). 0.05 keeps a full-coefficient inertia
+        // effect inside its saturation over a normal turn.
+        public double FfbConditionSpringGain   { get; set; } = 1.0;
+        public double FfbConditionFrictionGain { get; set; } = 1.0;
+        public double FfbConditionInertiaGain  { get; set; } = 0.05;
+        // Whether rendered inertia coasts (a lossless flywheel) or only ever
+        // resists. The G PRO firmware only resists (rig A/B 2026-09-01), and
+        // matching the wheel is the point, so this is off by default; on is
+        // the DirectInput-spec reading, for the bench A/B.
+        public bool   FfbConditionInertiaCoasts { get; set; } = false;
+        // Render inertia against velocity (damping-shaped) rather than
+        // acceleration. Default ON because that is what the wheel's own
+        // firmware appears to do: native inertia reads as damping by feel,
+        // reported twice, and matching the wheel is the point. It also loses
+        // the grain, acceleration being a second derivative of a quantized
+        // encoder. The inertia GAIN means something different in each mode
+        // (per velocity here, per acceleration otherwise), so a value tuned
+        // under one does not carry to the other.
+        public bool   FfbConditionInertiaAsDamping { get; set; } = true;
+        // The FfbScale the condition gains were calibrated under. Every gain
+        // is only valid at one scale: the auto-tune measures how much force
+        // the chain actually delivers, and FfbScale multiplies that force, so
+        // FfbScale x gain is the invariant. Change the scale and the rendered
+        // conditions change with it, which is why a calibration has to record
+        // the scale it was taken at. 0 = never calibrated.
+        public double FfbConditionMeasuredAtScale { get; set; } = 0.0;
+        public double FfbConditionPeriodicGain { get; set; } = 1.0;
+        public double FfbConditionRampGain     { get; set; } = 1.0;
         public float FfbSmoothTimeConstantMs  { get; set; } = 0.0f;
 
         // Stationary-spring "parking force". The plugin passes the game's own
@@ -1275,6 +1325,14 @@ namespace TrueforceForAll.Plugin
         // (Shipped briefly at 0.5, which was incoherent: halving a value the
         // predictor derived is just a hand-tuned gain wearing a disguise.)
         public float IRacingPredictGain { get; set; } = 1.0f;
+
+        // RaceRoom shared-memory FFB route (dev, the R3EFFB access code): drive
+        // the wheel from the sim's own pre-gain steering force, read straight
+        // from its "$R3E" shared memory, instead of the USB tap. While on,
+        // RaceRoom counts as a reshape game and arms the iRacing-style
+        // pipeline; in-game FFB intensity should be 0 so the game is not also
+        // driving the wheel. Off = the tap route, exactly as before.
+        public bool R3ESharedMemoryFfb { get; set; } = false;
         public float ModeBRiseGamma { get; set; } = 0.80f;   // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
         public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit

@@ -11,7 +11,8 @@ namespace TrueforceForAll.Core.Tests
     {
         private static byte[] Block(uint seq, float pure = 0.25f, float final = 0.0f, float gain = 0.0f,
                                     float torque = 3.5f, uint magic = AcCspBridgeLayout.Magic,
-                                    uint version = AcCspBridgeLayout.Version)
+                                    uint version = AcCspBridgeLayout.Version,
+                                    float damper = 0.6f, float steerSpeed = 1.5f)
         {
             var b = new byte[AcCspBridgeLayout.Size];
             BitConverter.GetBytes(magic).CopyTo(b, AcCspBridgeLayout.OffMagic);
@@ -24,6 +25,11 @@ namespace TrueforceForAll.Core.Tests
             BitConverter.GetBytes(torque).CopyTo(b, AcCspBridgeLayout.OffSteerTorque);
             BitConverter.GetBytes(-0.3f).CopyTo(b, AcCspBridgeLayout.OffSteerInput);
             BitConverter.GetBytes(0.003f).CopyTo(b, AcCspBridgeLayout.OffDt);
+            if (version >= 2)
+            {
+                BitConverter.GetBytes(damper).CopyTo(b, AcCspBridgeLayout.OffFfbDamper);
+                BitConverter.GetBytes(steerSpeed).CopyTo(b, AcCspBridgeLayout.OffSteerInputSpeed);
+            }
             return b;
         }
 
@@ -39,6 +45,17 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(3.5f, s.SteerTorque);
             Assert.Equal(-0.3f, s.SteerInput);
             Assert.Equal(0.003f, s.Dt);
+            Assert.Equal(0.6f, s.FfbDamper);
+            Assert.Equal(1.5f, s.SteerInputSpeed);
+        }
+
+        [Fact]
+        public void Parse_V1Block_DecodesWithZeroTailFields()
+        {
+            Assert.Equal(AcCspBridgeParse.Ok, AcCspBridgeLayout.TryParse(Block(42, version: 1), out var s));
+            Assert.Equal(3.5f, s.SteerTorque);
+            Assert.Equal(0f, s.FfbDamper);
+            Assert.Equal(0f, s.SteerInputSpeed);
         }
 
         [Fact]
@@ -49,7 +66,7 @@ namespace TrueforceForAll.Core.Tests
         public void Parse_RejectsForeignHeader()
         {
             Assert.Equal(AcCspBridgeParse.BadMagic,   AcCspBridgeLayout.TryParse(Block(2, magic: 0x11111111), out _));
-            Assert.Equal(AcCspBridgeParse.BadVersion, AcCspBridgeLayout.TryParse(Block(2, version: 2), out _));
+            Assert.Equal(AcCspBridgeParse.BadVersion, AcCspBridgeLayout.TryParse(Block(2, version: 3), out _));
             Assert.Equal(AcCspBridgeParse.TooShort,   AcCspBridgeLayout.TryParse(new byte[10], out _));
         }
 

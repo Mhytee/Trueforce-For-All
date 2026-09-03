@@ -6098,6 +6098,159 @@ namespace TrueforceForAll.Plugin
         private const string ReportIssuesBase = "https://github.com/Mhytee/Trueforce-For-All/issues/new";
         private const string RepoUrl          = "https://github.com/Mhytee/Trueforce-For-All";
 
+        // ---- Effect test bench (the FXTEST UI) ----
+
+        private void FxBench_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            var prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                FxTuneSignCheck.IsChecked = _plugin.DamperSignInvertedNow;
+                FxTuneInertiaCoastsCheck.IsChecked = _plugin.InertiaCoastsNow;
+                FxTuneLpfSlider.Value     = Math.Max(0, Math.Min(500, _plugin.ConditionLpfHzNow));
+                FxTuneLpfLabel.Text       = $"{_plugin.ConditionLpfHzNow:F0} Hz";
+                FxLoadGainForSelectedKind();
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        private string FxSelectedKind()
+            => (FxTestEffectBox?.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "DAMPER";
+
+        // The gain row belongs to whichever effect is picked: each family
+        // keeps its own render gain, so tune -> switch -> tune leaves the
+        // earlier one intact (rig 2026-09-01). Caller owns _suppressEvents
+        // when it is already set; this sets it too so a direct call from the
+        // picker cannot write the freshly loaded value straight back.
+        private void FxLoadGainForSelectedKind()
+        {
+            if (_plugin == null || FxTuneGainSlider == null) return;
+            string kind = FxSelectedKind();
+            var prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                double g = _plugin.FxKindGainNow(kind);
+                FxTuneGainSlider.Value = TrueforcePlugin.ClampFxGain(g);
+                if (FxTuneGainLabel != null)   FxTuneGainLabel.Text   = g.ToString("F2");
+                if (FxTuneGainCaption != null) FxTuneGainCaption.Text = TrueforcePlugin.FxGainFamilyLabel(kind);
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        private void FxTestEffect_Changed(object sender, SelectionChangedEventArgs e)
+            => FxLoadGainForSelectedKind();
+
+        private void FxTestParam_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (FxTestStrengthLabel != null && FxTestStrengthSlider != null)
+                FxTestStrengthLabel.Text = $"{(int)FxTestStrengthSlider.Value}%";
+            if (FxTestPeriodLabel != null && FxTestPeriodSlider != null)
+                FxTestPeriodLabel.Text = $"{(int)FxTestPeriodSlider.Value} ms";
+        }
+
+        private void FxTestNative_Click(object sender, RoutedEventArgs e) => FxTestStart("NATIVE");
+        private void FxTestEngine_Click(object sender, RoutedEventArgs e) => FxTestStart("ENGINE");
+
+        private void FxTestStart(string mode)
+        {
+            if (_plugin == null) return;
+            string kind = FxSelectedKind();
+            int pct = (int)FxTestStrengthSlider.Value;
+            int per = (int)FxTestPeriodSlider.Value;
+            string err = _plugin.StartFxTest(mode, kind, pct, per);
+            if (FxTestStatus != null)
+                FxTestStatus.Text = err == null
+                    ? $"{mode} {kind} playing at {pct}% (auto-off after 30 s)."
+                    : "Could not start: " + err + ".";
+        }
+
+        private void FxTestStop_Click(object sender, RoutedEventArgs e)
+        {
+            _plugin?.CancelAutoTune();
+            _plugin?.StopFxTest();
+            if (FxTestStatus != null) FxTestStatus.Text = "Stopped.";
+        }
+
+        private void FxAutoTune_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            int runs = FxAutoTuneRepeatCheck?.IsChecked == true ? 5 : 1;
+            string err = _plugin.StartAutoTune(msg => Dispatcher.BeginInvoke((Action)(() =>
+            {
+                if (FxTestStatus != null) FxTestStatus.Text = msg;
+                // Keep the tuning sliders live with the measured values.
+                FxBench_Loaded(this, null);
+            })), runs);
+            if (FxTestStatus != null)
+                FxTestStatus.Text = err == null
+                    ? $"AUTO-TUNE running ({runs} run{(runs == 1 ? "" : "s")}): hands OFF the wheel "
+                      + $"(about {(runs == 1 ? "two minutes" : $"{runs * 2} minutes")}; Stop cancels)."
+                    : "Auto-tune could not start: " + err + ".";
+        }
+
+        private void FxTuneGain_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (FxTuneGainLabel != null && FxTuneGainSlider != null)
+                FxTuneGainLabel.Text = FxTuneGainSlider.Value.ToString("F2");
+            if (_suppressEvents || _plugin == null) return;
+            // Per-effect: a hand edit here touches ONLY the picked family.
+            // (Only the measurement paths, auto-tune and DAMPCAL, carry the
+            // damper number across to inertia, which they cannot measure.)
+            _plugin.SetFxKindGain(FxSelectedKind(), FxTuneGainSlider.Value);
+        }
+
+        private void FxTuneSign_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetDamperSignInverted(FxTuneSignCheck.IsChecked == true);
+        }
+
+        private void FxTuneInertiaCoasts_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetInertiaCoasts(FxTuneInertiaCoastsCheck.IsChecked == true);
+        }
+
+        private void FxTuneLpf_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (FxTuneLpfLabel != null && FxTuneLpfSlider != null)
+                FxTuneLpfLabel.Text = $"{(int)FxTuneLpfSlider.Value} Hz";
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetConditionLpfHz(FxTuneLpfSlider.Value);
+        }
+
+        private void FxTuneResetKind_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string kind = FxSelectedKind();
+            double v = _plugin.ResetFxKindGain(kind);
+            FxLoadGainForSelectedKind();
+            if (FxTestStatus != null)
+                FxTestStatus.Text = $"{kind} gain back to its default ({v:F2}). Save tuning to keep it.";
+        }
+
+        private void FxTuneResetAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            _plugin.ResetAllFxTuning();
+            FxBench_Loaded(this, null);
+            if (FxTestStatus != null)
+                FxTestStatus.Text = "All tuning back to defaults. Save tuning to keep it, "
+                                  + "or reopen SimHub to get your saved values back.";
+        }
+
+        private void FxTuneSave_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            _plugin.SaveFxTuning();
+            if (FxTestStatus != null)
+                FxTestStatus.Text = "Saved: every effect's gain, plus direction and filter, "
+                                  + "are now the every-session defaults.";
+        }
+
         private void ReportIssue_Click(object sender, RoutedEventArgs e)
         {
             // Offer to bundle logs before opening the issue form. GitHub's URL
@@ -12860,8 +13013,14 @@ namespace TrueforceForAll.Plugin
             "UPDATEPOLL     Simulate a release shipping AFTER launch: arms a fake newer release that only a BACKGROUND re-check applies, on a fast cadence (every 5s; UPDATEPOLL<n> for n seconds), so the 'Update to vX.Y.Z' banner appears on its own within seconds, no restart. Tests the periodic re-check end-to-end. Run again to stop + clear. Toggle.\n" +
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
-            "CSPFFB         Assetto Corsa: the TF4ALL CSP Bridge is used AUTOMATICALLY when its script is installed (install it from Settings > Game mods, the on-screen prompt, or the guide), otherwise the USB capture is used. This code is a DEV force-off: type it to make AC use the capture even with the bridge installed, type again for automatic. Sub-commands pick the read field: VALUE (default, post-gain, keeps your CSP tweaks), PURE or TORQUE (pre-gain, work at in-game gain 0), FINAL, FINALFF; 'CSPFFB NM 8' sets full-scale torque for TORQUE; 'CSPFFB SUP/NOSUP' is a suppression diagnostic. Persists.\n" +
+            "CSPFFB         Assetto Corsa: the TF4ALL CSP Bridge is used AUTOMATICALLY when its script is installed (install it from Settings > Game mods, the on-screen prompt, or the guide), otherwise the USB capture is used. This code is a DEV force-off: type it to make AC use the capture even with the bridge installed, type again for automatic. Sub-commands pick the read field: VALUE (default, post-gain, keeps your CSP tweaks), PURE or TORQUE (pre-gain, work at in-game gain 0), FINAL, FINALFF; 'CSPFFB NM 8' sets full-scale torque for TORQUE; 'CSPFFB SUP/NOSUP' is a suppression diagnostic; 'CSPFFB DAMP' toggles the synthesized damper; 'CSPFFB DAMPK <x>' sets its strength (0..2, default 0.25); 'CSPFFB DAMPSIGN' flips its direction; 'CSPFFB DAMPTEST' runs a 28 s damper wiggle (off/on flips, then ramps). Persists.\n" +
+            "R3EFFB         RaceRoom: drive the wheel from the sim's own pre-gain steering force (read straight from its shared memory) instead of the USB capture; set in-game FFB intensity to 0 first. Frees the HID++ pipe for the rev lights and screen the way CSPFFB does in Assetto Corsa. Enabling also opts RaceRoom into Telemetry Based FFB, so this one code is the whole A/B switch against the tap route. 'R3EFFB INV' flips the force sign, 'R3EFFB NM 15' reads the raw SteeringForce channel with that full scale, 'R3EFFB PCT' returns to the percentage channel (those three are session only). Persists. Toggle.\n" +
+            "R3EPROBE       RaceRoom signal probe: '[TF4ALL] R3EPROBE' lines every ~2 s with the sim's SteeringForce and percentage (current + min/max), steering input, tick rate and control state. For verifying, before trusting R3EFFB, that the force survives in-game FFB intensity 0 and that its sign matches the steering direction. Session only. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
+            "DIDAMP [pct]   DEV: drive the wheel's NATIVE DirectInput damper from the plugin (default 75%) with the Trueforce stream fully stopped (the wheel exactly as without the plugin), and log the position read rate: the DAMPCAL feasibility spike. DIDAMP OFF ends it (auto-off after 60 s).\n" +
+            "DAMPCAL        Damper calibration wizard, NO GAME NEEDED: three conditions x three hand flicks (the plugin stands aside and drives the wheel's own damper = the native reference; stream at raw zero = friction only; synthesized at the current gain). Fits each flick's decay on the wheel's DirectInput position, cancels friction and inertia, and sets the synthesized gain to match the native damper for this session. Progress on the status line and the wheel screen. DAMPCAL OFF cancels. CSPFFB DAMPSIGN flips the damper if it feels like an anti-damper.\n" +
+            "DICOND         A/B: the game's DirectInput condition effects (damper, spring, friction, inertia) and rumble, decoded from the USB wire and rendered into the Trueforce stream (the wheel firmware ignores them while any stream is live). ON by default; type to disable or re-enable. Session only.\n" +
+            "FXTEST         Effect test bench, NO GAME NEEDED: 'FXTEST NATIVE <effect>' plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel); 'FXTEST ENGINE <effect>' plays the identical effect through the plugin's renderer into the Trueforce stream. Effects: DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP; optional strength% (default 50) and period ms (default 250). Alternate the two and tune with CSPFFB DAMPK / DAMPSIGN until they match. FXTEST OFF ends it; auto-off after 30 s.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup taken before the plugin first wrote the slot. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
@@ -13529,6 +13688,47 @@ namespace TrueforceForAll.Plugin
                             : "CSP wheel-output suppression OFF: the game keeps driving the wheel while the plugin only reads the bridge. Diagnostic for whether our 0 output is what zeroes AC's ffb fields; expect the game and plugin to fight the wheel meanwhile.";
                     return;
                 }
+                if (arg == "DAMP")
+                {
+                    bool off = _plugin.ToggleCspZeroDamper();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = off
+                            ? "CSP synthesized damper OFF (A/B: the wheel runs undamped). Applies instantly; type CSPFFB DAMP again to turn it back on. Session only."
+                            : "CSP synthesized damper ON: the plugin renders AC's damper into the force stream (the wheel ignores the classic damper channel while Trueforce streams).";
+                    return;
+                }
+                if (arg == "DAMPSIGN")
+                {
+                    bool flipped = _plugin.ToggleDamperSign();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = flipped
+                            ? "Synthesized damper sign FLIPPED (for a wheel whose DirectInput axis runs opposite to the stream's torque direction). Session only."
+                            : "Synthesized damper sign back to normal.";
+                    return;
+                }
+                if (arg == "DAMPK")
+                {
+                    if (cspParts.Length >= 3 && double.TryParse(cspParts[2],
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double dk))
+                    {
+                        double set = _plugin.SetCspDamperGain(dk);
+                        if (AccessCodeStatus != null)
+                            AccessCodeStatus.Text = $"Synthesized damper gain set to {set:F2} (0 to 2, default 0.25). Session only.";
+                    }
+                    else if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "Usage: CSPFFB DAMPK <number>, e.g. CSPFFB DAMPK 0.4.";
+                    return;
+                }
+                if (arg == "DAMPTEST")
+                {
+                    bool started = _plugin.StartCspDamperTest();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = started
+                            ? "CSP damper test running for 28 seconds: damper flips fully off and on every three seconds for 12 s, then ramps down and up twice over 16 s, then back to normal. Alt-tab into the game and feel the wheel; the force itself should never cut."
+                            : "CSP damper test needs Assetto Corsa to be the active game.";
+                    return;
+                }
                 if (arg == "PURE" || arg == "TORQUE" || arg == "FINAL" || arg == "VALUE" || arg == "FINALFF")
                 {
                     string f = _plugin.SetCspBridgeField(arg);
@@ -13548,6 +13748,76 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // RaceRoom shared-memory FFB route (dev A/B against the USB tap):
+            // the sim's pre-gain steering force read straight from "$R3E" and
+            // reshaped onto the wheel the way the iRacing path does. "R3EFFB"
+            // toggles the route; INV flips the sign, NM <n> reads the raw
+            // SteeringForce channel with that full scale, PCT returns to the
+            // percentage channel (INV/NM/PCT are session only).
+            if (code.Equals("R3EFFB", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("R3EFFB ", StringComparison.OrdinalIgnoreCase))
+            {
+                var r3eParts = code.Split(new[] { ' ', '=', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                AccessCodeBox.Text = string.Empty;
+                if (r3eParts.Length == 1)
+                {
+                    bool on = _plugin.ToggleR3ESharedMemoryFfb();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = on
+                            ? "R3E shared-memory FFB ON: in RaceRoom the wheel is driven from the sim's own steering force, read straight from its shared memory, instead of the USB capture. Set RaceRoom's FFB intensity to 0 so the game is not also driving the wheel. Type R3EFFB again for the tap route."
+                            : "R3E shared-memory FFB OFF: RaceRoom is back on the USB capture. Restore your in-game FFB intensity.";
+                    return;
+                }
+                string r3eArg = r3eParts[1].ToUpperInvariant();
+                if (r3eArg == "INV")
+                {
+                    bool inv = _plugin.ToggleR3EForceInvert();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = inv
+                            ? "R3E force sign INVERTED (session only). If the wheel now pulls into corners instead of centering, type R3EFFB INV again."
+                            : "R3E force sign back to normal.";
+                    return;
+                }
+                if (r3eArg == "NM")
+                {
+                    if (r3eParts.Length >= 3 && double.TryParse(r3eParts[2],
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double r3eNm))
+                    {
+                        double set = _plugin.SetR3ERawFullScaleNm(r3eNm);
+                        if (AccessCodeStatus != null)
+                            AccessCodeStatus.Text = $"R3E force now reading the raw SteeringForce channel, full scale {set:F1} (that much force = full wheel force). Session only; R3EFFB PCT returns to the percentage channel.";
+                    }
+                    else if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "Usage: R3EFFB NM <number>, e.g. R3EFFB NM 15.";
+                    return;
+                }
+                if (r3eArg == "PCT")
+                {
+                    _plugin.UseR3EPctChannel();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "R3E force back to the SteeringForcePercentage channel (the default).";
+                    return;
+                }
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "R3EFFB sub-commands: INV (flip sign), NM <n> (raw channel + full scale), PCT (percentage channel).";
+                return;
+            }
+
+            // RaceRoom signal probe: no force, just the numbers needed to trust
+            // R3EFFB (does the force survive in-game FFB intensity 0, does its
+            // sign match the steering direction, how fast does it tick).
+            if (code.Equals("R3EPROBE", StringComparison.OrdinalIgnoreCase))
+            {
+                bool on = _plugin.ToggleR3EProbe();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "R3E probe ON: '[TF4ALL] R3EPROBE' lines land in SimHub.txt every ~2 s while RaceRoom runs. Drive a steady corner each way (sign check), then set in-game FFB intensity to 0 and drive again (pre-gain check). Type R3EPROBE again to stop."
+                        : "R3E probe OFF.";
+                return;
+            }
+
             // Driver testing mode: route FFB through the TFFA kernel filter
             // driver (sole wheel ownership) instead of the USBPcap tap. Needs
             // the TFFA filter driver installed. The code both REVEALS the
@@ -13556,6 +13826,95 @@ namespace TrueforceForAll.Plugin
             // on/off (ExperimentalDriverIntercept). Once revealed the checkbox
             // stays visible across restarts and the user drives it from there.
             // Applied on the next plugin init (re-detect / restart SimHub).
+            // DAMPCAL [OFF]: the damper calibration wizard. No game needed;
+            // three conditions of three flicks each, measured on the wheel's
+            // own DirectInput position; result lands in the synthesized gain.
+            if (code.Equals("DAMPCAL", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("DAMPCAL ", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (code.IndexOf("OFF", StringComparison.OrdinalIgnoreCase) > 0)
+                {
+                    _plugin.CancelDamperCalibration();
+                    if (AccessCodeStatus != null) AccessCodeStatus.Text = "DAMPCAL cancelled; everything back to normal.";
+                    return;
+                }
+                string calErr = _plugin.StartDamperCalibration(msg =>
+                    Dispatcher.BeginInvoke((Action)(() => { if (AccessCodeStatus != null) AccessCodeStatus.Text = msg; })));
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = calErr == null
+                        ? "DAMPCAL started, no game needed. Follow this line (or the wheel screen): three conditions, three flicks each, about a minute. DAMPCAL OFF cancels."
+                        : "DAMPCAL could not start: " + calErr + ".";
+                return;
+            }
+            // DIDAMP [pct|OFF]: the DAMPCAL feasibility spike. Drives the
+            // wheel's native DirectInput damper from the plugin with the
+            // Trueforce stream in keepalive, and logs the position read rate.
+            if (code.Equals("DIDAMP", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("DIDAMP ", StringComparison.OrdinalIgnoreCase))
+            {
+                var diParts = code.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                AccessCodeBox.Text = string.Empty;
+                if (diParts.Length >= 2 && diParts[1].Equals("OFF", StringComparison.OrdinalIgnoreCase))
+                {
+                    _plugin.StopDiDamperSpike();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "DirectInput damper released; the Trueforce stream is back to normal.";
+                    return;
+                }
+                int diPct = 75;
+                if (diParts.Length >= 2) int.TryParse(diParts[1], out diPct);
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(Window.GetWindow(this)).Handle;
+                string diErr = _plugin.StartDiDamperSpike(diPct, hwnd);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = diErr == null
+                        ? $"DirectInput damper ON at {diPct}% with the Trueforce stream fully stopped. Flick the wheel: that is the wheel's native damper, exactly as without the plugin. DIDAMP OFF ends it (auto-off after 60 s); the log shows the position read rate."
+                        : "DirectInput damper failed: " + diErr + ".";
+                return;
+            }
+            // DICOND: A/B the decoded DirectInput effect rendering (the
+            // game's damper/spring/friction/inertia and periodics, read off
+            // the wire and played into the stream). ON by default.
+            if (code.Equals("DICOND", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                bool dicondOff = _plugin.ToggleDicondRendering();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = dicondOff
+                        ? "DirectInput effect rendering OFF (A/B: the game's damper and spring are dropped again while Trueforce streams). Session only."
+                        : "DirectInput effect rendering ON: the game's condition effects are decoded from the wire and played into the stream. CSPFFB DAMPSIGN flips the direction, CSPFFB DAMPK scales the damper, DAMPCAL measures it.";
+                return;
+            }
+            // FXTEST <NATIVE|ENGINE> <effect> [strength%] [periodMs] and
+            // FXTEST OFF: the native-vs-engine effect A/B, no game needed.
+            if (code.Equals("FXTEST", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("FXTEST ", StringComparison.OrdinalIgnoreCase))
+            {
+                var fxParts = code.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                AccessCodeBox.Text = string.Empty;
+                if (fxParts.Length < 2 || fxParts[1].Equals("OFF", StringComparison.OrdinalIgnoreCase))
+                {
+                    _plugin.StopFxTest();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "FXTEST off; the stream is back to normal.";
+                    return;
+                }
+                if (fxParts.Length < 3)
+                {
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "Usage: FXTEST NATIVE|ENGINE <DAMPER|SPRING|FRICTION|INERTIA|SINE|SQUARE|TRIANGLE|SAWUP|SAWDOWN|RAMP> [strength%, default 50] [periodMs, default 250]. FXTEST OFF ends it.";
+                    return;
+                }
+                int fxPct = 50, fxPeriod = 250;
+                if (fxParts.Length >= 4) int.TryParse(fxParts[3], out fxPct);
+                if (fxParts.Length >= 5) int.TryParse(fxParts[4], out fxPeriod);
+                string fxErr = _plugin.StartFxTest(fxParts[1], fxParts[2], fxPct, fxPeriod);
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = fxErr == null
+                        ? $"FXTEST {fxParts[1].ToUpperInvariant()} {fxParts[2].ToUpperInvariant()} at {fxPct}%. Feel the wheel, then run the other mode on the same effect and compare; tune with CSPFFB DAMPK / DAMPSIGN. FXTEST OFF ends it (auto-off after 30 s)."
+                        : "FXTEST could not start: " + fxErr + ".";
+                return;
+            }
             if (code.Equals("DRIVER", StringComparison.OrdinalIgnoreCase))
             {
                 // DRIVER is a full on/off for driver testing mode. First entry:

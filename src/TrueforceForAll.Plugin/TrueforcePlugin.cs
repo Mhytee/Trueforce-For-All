@@ -1925,7 +1925,7 @@ namespace TrueforceForAll.Plugin
                     dev.Pause();
                     outcome = "plugin is disabled; left Trueforce mode so the wheel stays on native FFB";
                 }
-                else if (dev.IsPaused && !_stopStreamPauseActive)
+                else if (dev.IsPaused && !_stopStreamPauseActive && !_nativeTestStreamSuspended)
                 {
                     // Enabled but the device sits paused (e.g. cold start with
                     // the toggle off, then a restore/import lands "enabled").
@@ -2809,6 +2809,9 @@ namespace TrueforceForAll.Plugin
         // called directly.
         private short? ApplyStationarySpringIfActive(short? gameTarget)
         {
+            // FXTEST owns the wheel while it runs: the parked-car spring
+            // would contaminate the very feel being compared.
+            if (_fxTestMode != 0) return gameTarget;
             bool testArmed = System.Threading.Interlocked.Read(ref _springTestEndTicks) != 0;
             var s = Settings;
             if (!testArmed && (s == null || !s.StationarySpringEnabled))
@@ -4406,6 +4409,10 @@ namespace TrueforceForAll.Plugin
                     // teardown is always a released wheel (the close-SimHub
                     // pull, 2026-08-08).
                     if (_shuttingDown) return null;
+                    // DIDAMP spike / FXTEST NATIVE: keepalive so the wheel's
+                    // own effect path is live and a DirectInput effect we
+                    // create is rendered by the firmware.
+                    if (_diSpikeHold || _dampCalHold || _fxTestNativeHold) return null;
 
                     // Pause release (issue #13). When the game is paused / in a
                     // menu, replaying the last captured force is wrong: the FFB
@@ -4428,7 +4435,15 @@ namespace TrueforceForAll.Plugin
                     // telemetry to stop, and a title still idling its car in the
                     // background offers neither, so the tap's last force streamed
                     // for its full hold and the wheel walked to lock.
-                    if (_gameFocusLost) { NoteFfbSource("focus-release"); return (short?)0; }
+                    if (_gameFocusLost && _autoTuner == null && _fxTestMode == 0
+                        && _dampCal == null && !_diSpikeHold)
+                    {
+                        // Bench tools own the stream; a latched focus-loss
+                        // from an idle background game must not silence them
+                        // (audit stale-focus-latch / AT2-03).
+                        NoteFfbSource("focus-release");
+                        return (short?)0;
+                    }
 
                     var src = _telemetrySource;
                     // This zero-return applies to Mode B as well, on every
@@ -4438,7 +4453,16 @@ namespace TrueforceForAll.Plugin
                     // should be quiet. Keepalive packets no longer flap the
                     // flag mid-race (see ForzaUdpTelemetrySource.ShouldEmit),
                     // so this reads stable while driving.
-                    if (src != null && !src.IsSessionActive
+                    // DAMPCAL / AUTO-TUNE own the stream while they run (no
+                    // game, so IsSessionActive is false and this release
+                    // branch would short-circuit their scripted output before
+                    // it ever reached the wheel; verify workflow 2026-09-01).
+                    if (src != null && !src.IsSessionActive && _dampCal == null && _autoTuner == null
+                        && _fxTestMode == 0
+                        // FXTEST ENGINE with no game: the always-attached
+                        // SimHub fallback source reads "paused" here and this
+                        // early return silenced every bench engine effect
+                        // (rig, 2026-09-01). The bench owns the stream too.
                         && (src.HasAuthoritativeSessionState || src.MeasuredHz <= 0))
                     {
                         // Paused / menu / pre-race countdown / race-end results.
@@ -4596,7 +4620,13 @@ namespace TrueforceForAll.Plugin
                                  // is live by telemetry, or the last force is
                                  // simply recent.
                                  && (_ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000).HasValue
-                                     || (_ffbTap.LiveForceReport != 0 && (src?.IsSessionActive ?? false)))
+                                     || (_ffbTap.LiveForceReport != 0 && (src?.IsSessionActive ?? false))
+                                     // A live decoded condition/periodic is
+                                     // game FFB too: without this, a game that
+                                     // sends only parametric effects never
+                                     // enters the active shape and the engine
+                                     // renders to nobody (audit 2026-09-01).
+                                     || _ffbTap.AnyHidppParametricPlaying)
                                  // The capture itself is alive: packets for the
                                  // wheel within the last two seconds.
                                  && _ffbTap.MsSinceDevicePacket < 2000
@@ -4640,8 +4670,39 @@ namespace TrueforceForAll.Plugin
                     // Mode B is armed (everything the spring added is
                     // discarded with it; the spring is also excluded for the
                     // whole Forza session, and all Mode B games are Forza).
+                    // DAMPCAL friction/synth conditions: the stream in raw
+                    // torque mode at zero, so only friction (and the
+                    // synthesized damper below) act on the wheel.
+                    // AUTO-TUNE owns the stream through its engine phases:
+                    // the scripted probe pulse plus the effect under test,
+                    // nothing else may shape the wheel.
+                    var autoTuner = _autoTuner;
+                    if (autoTuner != null)
+                    {
+                        NoteFfbSource("autotune");
+                        return AutoTuneTick(autoTuner);
+                    }
+                    if (_dampCalActiveZero)
+                    {
+                        // Calibration is authoritative: raw zero plus ONLY
+                        // the synthesized damper under test. The reshape /
+                        // stationary-spring tail must not repaint the
+                        // calibration zero (verify workflow 2026-09-01).
+                        NoteFfbSource("dampcal");
+                        return AddSynthesizedDamper((short)0);
+                    }
+                    // The game's DirectInput conditions (damper, spring,
+                    // friction, inertia) and periodics, decoded off the wire
+                    // by the tap, ride the game force here. Only in the
+                    // ACTIVE shape: a null (keepalive) hands the wheel back
+                    // to the firmware, which then renders them itself.
+                    chosen = AddHidppDiEffects(chosen);
+                    // FXTEST ENGINE: a hand-triggered synthetic effect through
+                    // the same renderer, streamed even with no game (base 0).
+                    chosen = ApplyFxTestEngine(chosen);
                     var afterSpring = ApplyStationarySpringIfActive(chosen);
                     var finalOut    = MaybeReshapeFfb(afterSpring);
+                    finalOut = AddSynthesizedDamper(finalOut);
                     TraceFfb(tapQuiet ? (short?)null : chosen, afterSpring, finalOut);
                     NoteFfbSource(finalOut.HasValue
                         ? (chosen.HasValue ? ffbSrc : "authored")
@@ -4655,6 +4716,22 @@ namespace TrueforceForAll.Plugin
                 _device.FfbSpikeUseSlewLimiter   = Settings.FfbSpikeUseSlewLimiter;
                 _device.FfbSpikeMaxLsbPerMs      = Settings.FfbSpikeMaxLsbPerMs;
                 _device.FfbPeakSoftLimitLsb      = Settings.FfbPeakSoftLimitLsb;
+
+                // Persisted condition-render tuning (FXTEST / DAMPCAL): the
+                // calibrated damper gain, direction and output filter are
+                // every-session defaults, not session-only knobs.
+                _damperGain      = (float)Settings.FfbConditionDamperGain;
+                _damperSign      = Settings.FfbConditionSignInverted ? -1 : 1;
+                _conditionLpfHz  = Settings.FfbConditionLpfHz;
+                _springGain      = (float)Settings.FfbConditionSpringGain;
+                _frictionGain    = (float)Settings.FfbConditionFrictionGain;
+                _inertiaGain     = (float)Settings.FfbConditionInertiaGain;
+                _periodicGain    = (float)Settings.FfbConditionPeriodicGain;
+                _rampGain        = (float)Settings.FfbConditionRampGain;
+                _inertiaCoasts   = Settings.FfbConditionInertiaCoasts;
+                _inertiaAsDamping = Settings.FfbConditionInertiaAsDamping;
+                ApplyConditionLpf();
+                WarnIfConditionScaleChanged();
 
                 // Apply persisted ring capacity. Sanitize: clamp to allowed
                 // range and force pow2 so a hand-edited settings file can't
@@ -5732,6 +5809,19 @@ namespace TrueforceForAll.Plugin
             for (int i = 0; i < 100 && System.Threading.Volatile.Read(ref _pipelineReconciling) != 0; i++)
                 System.Threading.Thread.Sleep(50);
 
+            // Bench tools own real hardware: a run left alive would keep the
+            // wheel exclusively acquired and PULSING after "Plugin stopped"
+            // (audit AT-05). Tear them down before anything else goes away.
+            try
+            {
+                CancelAutoTune(silent: true);
+                StopFxTest(silent: true);
+                CancelDamperCalibration();
+                StopDiDamperSpike();
+                StopWheelMotion();
+            }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] bench teardown on exit: " + ex.Message); }
+
             // Give back any borrowed light slot FIRST, while the HID++ channel is
             // still up. A slot write persists on the wheel, so leaving one held
             // means the user's own colors stay overwritten after we exit. Runs
@@ -5757,6 +5847,9 @@ namespace TrueforceForAll.Plugin
             try { StopIRacingDirect(); } catch { }
             try { _irSdk?.Dispose(); } catch { }
             _irSdk = null;
+            try { StopR3EDirect(); } catch { }
+            try { _r3e?.Dispose(); } catch { }
+            _r3e = null;
 
             // Restore the process GC latency mode if a game was still streaming.
             ExitStreamingGcMode();
@@ -5912,6 +6005,11 @@ namespace TrueforceForAll.Plugin
             // iRacing reshape: latch the sim's own steering torque for the
             // 1 kHz FFB thread. Returns immediately unless that mode is armed.
             IRacingTelemetryTick(data);
+
+            // RaceRoom shared-memory route (dev): run or stop the "$R3E"
+            // reader. Returns immediately unless RaceRoom is active with the
+            // route or its probe switched on.
+            R3ETelemetryTick();
 
             // Continuous (telemetry-independent) tick: tell the FFB tap whether
             // force feedback should be flowing right now, from the active
@@ -6384,6 +6482,11 @@ namespace TrueforceForAll.Plugin
                 // reading against it.
                 IRacingIncidentsReset();
             }
+
+            // The condition renderer's damper is a feedback loop, so it wants
+            // the freshest velocity available for as long as it is rendering.
+            try { MaintainRendererMotionSource(); } catch { }
+            try { MaintainStreamNotStuckSuspended(); } catch { }
 
             // Watch what this game reports, so the picker learns which boxes
             // it can never fill. After the block above, so a frame of the new
@@ -7271,10 +7374,16 @@ namespace TrueforceForAll.Plugin
                 bool modeBOled = MasterMode == TrueforceMasterMode.Normal
                             && (Settings?.ModeBOledEnabled ?? false)
                             && hidppFreeForScreen;
-                // Latched for the settings panel, which needs to know whether a
-                // preview is safe to draw and runs on another thread. Uses the
-                // screen rule so pattern previews are allowed under CSP too.
+                // Latched for the settings panel, which runs on another
+                // thread. TWO gates, because they answer different questions:
+                // the screen rule opens under the CSP bridge (the game writes
+                // nothing to the pipe), but the preview sweep writes rev-light
+                // LEVELS, and in AC the game still owns the bar and re-zeroes
+                // it constantly, so a preview there flickers against the
+                // game's writer (tester, 2026-08-31). Previews take the base
+                // lights rule; only the screen takes the extended one.
                 _oledHidppFree = hidppFreeForScreen;
+                _ledsHidppFree = hidppFree;
                 // The quiet term alone, for one-shot user actions (the rev
                 // pattern picker). hidppFree bundles "force mode armed" and
                 // "session live", which gate CONTINUOUS driving of the
@@ -7878,11 +7987,11 @@ namespace TrueforceForAll.Plugin
         /// Covers both pipelines: Forza synthesis and iRacing reshape.</summary>
         public bool ActiveGameSupportsModeB => IsTelemetryFfbCapableGame(_activeGame);
 
-        /// <summary>True while the active game's Telemetry Based FFB is the
-        /// iRacing reshape rather than Forza synthesis. Surfaces that show
-        /// tuning controls use this to hide the slip-model sliders, which do
-        /// nothing on the reshape path.</summary>
-        public bool ActiveGameIsReshapeGame => IsIRacingReshapeGame(_activeGame);
+        /// <summary>True while the active game's Telemetry Based FFB is a
+        /// reshape (iRacing, or RaceRoom on the R3EFFB route) rather than Forza
+        /// synthesis. Surfaces that show tuning controls use this to hide the
+        /// slip-model sliders, which do nothing on the reshape path.</summary>
+        public bool ActiveGameIsReshapeGame => IsReshapeGame(_activeGame);
 
         /// <summary>True while a spring-mode game (Farming Simulator) is the
         /// active game. Deliberately not folded into ActiveGameSupportsModeB:
@@ -7935,9 +8044,10 @@ namespace TrueforceForAll.Plugin
                             : s.ModeBMinForce > 0.5f ? 0.5f : s.ModeBMinForce;
 
             bool want = ModeBEnabledForActiveGame;
-            // Which pipeline the opt-in arms. iRacing reshapes the sim's own
-            // torque; every other capable game synthesizes from slip.
-            int wantMode = IsIRacingReshapeGame(_activeGame)
+            // Which pipeline the opt-in arms. Reshape games (iRacing, RaceRoom
+            // on the R3EFFB route) render the sim's own torque; every other
+            // capable game synthesizes from slip.
+            int wantMode = IsReshapeGame(_activeGame)
                          ? ForceModeIRacing : ForceModeModeB;
             if (want && _forceMode != wantMode)
             {
@@ -8093,7 +8203,8 @@ namespace TrueforceForAll.Plugin
         private volatile int _shPosition, _shCurrentLap, _shTotalLaps;
         private volatile int _shLastLapMs, _shBestLapMs;
         private int _oledPrevLastLapMs;           // lap-completion edge detector
-        private volatile bool _oledHidppFree;     // last computed gate, for the settings panel
+        private volatile bool _oledHidppFree;     // last computed SCREEN gate, for the settings panel
+        private volatile bool _ledsHidppFree;     // last computed rev-LIGHTS gate (never opens under the CSP bridge)
         private volatile bool _ffbQuietNow;       // just the FFB-quiet term, for one-shot writes
 
         /// <summary>The pipe-safety rule for a one-shot level write: never while a
@@ -8116,7 +8227,7 @@ namespace TrueforceForAll.Plugin
         /// in a tap-path game and opened the sweep mid-session (owner, AC,
         /// 2026-08-29). With no telemetry there is no game and no bar to
         /// fight, so the answer is yes.</summary>
-        private bool PreviewSweepAllowed => NoTelemetryArriving() || _oledHidppFree;
+        private bool PreviewSweepAllowed => NoTelemetryArriving() || _ledsHidppFree;
 
         /// <summary>The level to leave the strip at after a slot rewrite that
         /// must not show itself: what the game last wrote to it, as seen on
@@ -8419,6 +8530,7 @@ namespace TrueforceForAll.Plugin
             // full it parks in the same idle sleep a disabled plugin has always used,
             // and tearing it down would mean rebuilding it on the way back for no gain.
             try { StopIRacingDirect(); } catch { }
+            try { StopR3EDirect(); } catch { }
 
             _capturePollStop = true;
             var poll = _capturePollThread;
@@ -9802,6 +9914,9 @@ namespace TrueforceForAll.Plugin
             public float   Latest;     // the per-frame scalar, Nm
             public float   MaxNm;      // SteeringWheelMaxForceNm, the sim's own full-scale
             public bool    GameFfbOn;  // SteeringFFBEnabled: the sim is driving the wheel itself
+            public bool    FixedScale; // frame already carries its final scale (the R3E route
+                                       // publishes a normalized value): the iRacing max-force
+                                       // override and per-car map must not rescale it
             public long    Ticks;      // Stopwatch timestamp at arrival
         }
         private volatile IRacingTorqueFrame _irFrame;
@@ -10241,6 +10356,225 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] iRacing telemetry: direct reader stopped, back to SimHub's copy.");
         }
+
+        // ------------------------------------------------------------------
+        // RaceRoom shared-memory FFB route (dev; the R3EFFB and R3EPROBE
+        // access codes). Reads the sim's own pre-gain steering force straight
+        // from its "$R3E" block at the sim's physics rate and publishes it as
+        // reshape frames, so RaceRoom can run tap-free the way iRacing does:
+        // no USBPcap, and with the in-game FFB at 0 no HID++ force traffic
+        // left for the rev lights and screen to contend with. The A/B against
+        // the tap route is the whole point right now; nothing here runs unless
+        // the route or the probe is switched on.
+
+        private R3ESharedMemoryReader _r3e;
+        private bool _r3eLive;
+        private volatile bool _r3eProbe;            // R3EPROBE: log signal lines, force not required
+        private volatile bool _r3eInvert;           // R3EFFB INV: flip the published sign (session)
+        private volatile float _r3eRawFullScaleNm;  // >0 = read raw SteeringForce with this full
+                                                    // scale (R3EFFB NM n); 0 = the percentage
+                                                    // channel (default)
+        private long _r3eProbeLogTicks;
+        private volatile float _r3ePrMinF, _r3ePrMaxF, _r3ePrMinP, _r3ePrMaxP;
+        private volatile bool _r3ePrHave;
+
+        /// <summary>Once per SimHub tick: run or stop the "$R3E" reader for
+        /// the active game. Cheap and silent for every other game.</summary>
+        private void R3ETelemetryTick()
+        {
+            bool want = IsR3EGame(_activeGame)
+                && MasterMode == TrueforceMasterMode.Normal
+                && (_r3eProbe || (Settings?.R3ESharedMemoryFfb ?? false));
+            if (!want) { StopR3EDirect(); return; }
+
+            if (_r3e == null)
+            {
+                _r3e = new R3ESharedMemoryReader
+                {
+                    Logger = msg => SimHub.Logging.Current.Info("[TF4ALL] " + msg),
+                    OnSample = R3EDirectSample,
+                };
+            }
+            if (!_r3eLive)
+            {
+                _r3e.Start();   // the reader retries the open itself while the sim is absent
+                _r3eLive = true;
+                SimHub.Logging.Current.Info("[TF4ALL] R3E shared-memory reader started"
+                    + (_r3eProbe ? " (probe on)" : "") + ".");
+            }
+
+            if (_r3eProbe) MaybeLogR3EProbe();
+        }
+
+        private void StopR3EDirect()
+        {
+            if (_r3e == null || !_r3eLive) return;
+            _r3eLive = false;
+            try { _r3e.Stop(); } catch { }
+            SimHub.Logging.Current.Info("[TF4ALL] R3E shared-memory reader stopped.");
+        }
+
+        /// <summary>Reader thread, once per NEW physics tick: aggregate for
+        /// the probe and, while the reshape is armed for RaceRoom, publish the
+        /// force frame the iRacing consumer already knows how to render.</summary>
+        private void R3EDirectSample(R3EFfbSample s)
+        {
+            if (_r3eProbe)
+            {
+                float fv = (float)s.SteeringForce, pv = (float)s.SteeringForcePct;
+                if (!_r3ePrHave)
+                {
+                    _r3ePrMinF = _r3ePrMaxF = fv;
+                    _r3ePrMinP = _r3ePrMaxP = pv;
+                    _r3ePrHave = true;
+                }
+                else
+                {
+                    if (fv < _r3ePrMinF) _r3ePrMinF = fv;
+                    if (fv > _r3ePrMaxF) _r3ePrMaxF = fv;
+                    if (pv < _r3ePrMinP) _r3ePrMinP = pv;
+                    if (pv > _r3ePrMaxP) _r3ePrMaxP = pv;
+                }
+            }
+
+            if (_forceMode != ForceModeIRacing || !IsR3EGame(_activeGame)) return;
+            var cfg = Settings;
+            if (cfg == null || !cfg.R3ESharedMemoryFfb) return;
+
+            // Player at the wheel, actually driving. Anything else (AI,
+            // remote, replay, menus, garage, pause) publishes nothing and the
+            // 250 ms age gate in ComputeIRacingForce decays whatever was last
+            // shown: same shape as iRacing's IsOnTrack guard against the
+            // parked-car runaway.
+            bool inCar = s.ControlType == 0 && !s.GamePaused && !s.GameInMenus
+                && !s.GameInReplay && !s.InGarage;
+            if (!inCar) { _irFrame = null; return; }
+
+            float latest, maxNm;
+            float rawScale = _r3eRawFullScaleNm;
+            if (rawScale > 0.5f) { latest = (float)s.SteeringForce; maxNm = rawScale; }
+            else { latest = (float)s.SteeringForcePct; maxNm = 1f; }
+            if (float.IsNaN(latest) || float.IsInfinity(latest)) return;
+            if (_r3eInvert) latest = -latest;
+
+            var prev = _irFrame;
+            _irFrame = new IRacingTorqueFrame
+            {
+                Sub = null,          // no sub-tick history; the scalar holds
+                Latest = latest,
+                MaxNm = maxNm,
+                GameFfbOn = false,   // R3E publishes no such flag; the setup
+                                     // instruction (in-game FFB at 0) is the guard
+                FixedScale = true,
+                Ticks = Stopwatch.GetTimestamp(),
+            };
+
+            if (prev == null)
+            {
+                var rd = _r3e;
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] R3E FFB: authoring force from "
+                    + (rawScale > 0.5f
+                        ? "SteeringForce (full scale " + rawScale.ToString("F1", ci) + ")"
+                        : "SteeringForcePercentage")
+                    + (_r3eInvert ? " INVERTED" : "")
+                    + ", tick rate " + (rd != null ? rd.MeasuredHz.ToString("F0", ci) : "?")
+                    + "/s. Set RaceRoom's FFB intensity to 0 so the game is not also driving the wheel.");
+            }
+        }
+
+        /// <summary>One probe line every ~2 s while R3EPROBE is on, kept alive
+        /// even when the sim is paused and the tick counter is frozen so the
+        /// control state stays visible. SimHub data thread.</summary>
+        private void MaybeLogR3EProbe()
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_r3eProbeLogTicks != 0 && (now - _r3eProbeLogTicks) < Stopwatch.Frequency * 2) return;
+            _r3eProbeLogTicks = now;
+
+            var rd = _r3e;
+            if (rd == null) return;
+            if (!rd.IsOpen)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] R3EPROBE waiting for RaceRoom ($R3E not found yet).");
+                return;
+            }
+            var s = rd.LastSample;
+            if (s == null)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] R3EPROBE map open (layout " + rd.VersionSeen + "), no sample yet.");
+                return;
+            }
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string ctrl = s.ControlType == 0 ? "player" : s.ControlType == 1 ? "AI"
+                : s.ControlType == 2 ? "remote" : s.ControlType == 3 ? "replay"
+                : s.ControlType.ToString(inv);
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] R3EPROBE layout=" + rd.VersionSeen
+                + " ticksPerSec=" + rd.MeasuredHz.ToString("F0", inv)
+                + " force=" + s.SteeringForce.ToString("F3", inv)
+                + " [" + _r3ePrMinF.ToString("F2", inv) + ".." + _r3ePrMaxF.ToString("F2", inv) + "]"
+                + " pct=" + s.SteeringForcePct.ToString("F3", inv)
+                + " [" + _r3ePrMinP.ToString("F2", inv) + ".." + _r3ePrMaxP.ToString("F2", inv) + "]"
+                + " steer=" + s.SteerInputRaw.ToString("F2", inv)
+                + " speedKmh=" + (s.CarSpeedMps * 3.6f).ToString("F0", inv)
+                + " gear=" + s.Gear
+                + " ctrl=" + ctrl
+                + " paused=" + (s.GamePaused ? "Y" : "n")
+                + " menus=" + (s.GameInMenus ? "Y" : "n")
+                + " replay=" + (s.GameInReplay ? "Y" : "n")
+                + " garage=" + (s.InGarage ? "Y" : "n")
+                + " model=" + s.ModelId + ".");
+            _r3ePrHave = false;   // fresh min/max window per line
+        }
+
+        // ---- Access-code surface (SettingsControl) ----
+
+        /// <summary>R3EFFB: flip the RaceRoom shared-memory route. Enabling
+        /// also opts RaceRoom into Telemetry Based FFB so one code is the
+        /// whole A/B switch; disabling returns to the tap route (the per-game
+        /// opt-in is left as set, harmless while the game is not
+        /// reshape-capable).</summary>
+        public bool ToggleR3ESharedMemoryFfb()
+        {
+            var s = Settings;
+            if (s == null) return false;
+            bool on = !s.R3ESharedMemoryFfb;
+            s.R3ESharedMemoryFfb = on;
+            if (on)
+            {
+                if (s.ModeBGameEnabled == null) s.ModeBGameEnabled = new Dictionary<string, bool>();
+                s.ModeBGameEnabled["RaceRoomRacingExperience"] = true;
+            }
+            ApplyModeBFromSettings(save: true);
+            SimHub.Logging.Current.Info("[TF4ALL] R3E shared-memory FFB route " + (on ? "ON" : "OFF") + ".");
+            return on;
+        }
+
+        public bool ToggleR3EProbe()
+        {
+            _r3eProbe = !_r3eProbe;
+            _r3ePrHave = false;
+            _r3eProbeLogTicks = 0;
+            SimHub.Logging.Current.Info("[TF4ALL] R3EPROBE " + (_r3eProbe ? "ON" : "OFF") + ".");
+            return _r3eProbe;
+        }
+
+        public bool ToggleR3EForceInvert()
+        {
+            _r3eInvert = !_r3eInvert;
+            return _r3eInvert;
+        }
+
+        public double SetR3ERawFullScaleNm(double nm)
+        {
+            float v = (float)(nm < 1.0 ? 1.0 : nm);
+            _r3eRawFullScaleNm = v;
+            return v;
+        }
+
+        public void UseR3EPctChannel() => _r3eRawFullScaleNm = 0f;
 
         /// <summary>Called on the reader's own thread, once per sim tick. Builds
         /// exactly the same latches the SimHub path builds, from the same
@@ -11609,7 +11943,10 @@ namespace TrueforceForAll.Plugin
             // driver who has set nothing still gets something sane.
             double fullScaleNm = f.MaxNm;
             var irScale = Settings;
-            if (irScale != null)
+            // FixedScale frames (the R3E route) arrive pre-normalized with a
+            // synthetic full scale; the overrides below are iRacing wheel
+            // ratings in Nm and would divide them to nonsense.
+            if (irScale != null && !f.FixedScale)
             {
                 float perCar;
                 if (irScale.IRacingMaxForcePerCar
@@ -14453,13 +14790,35 @@ namespace TrueforceForAll.Plugin
             return string.Equals(game, "IRacing", StringComparison.Ordinal);
         }
 
+        /// <summary>SimHub's GameName for RaceRoom ("RaceRoomRacingExperience";
+        /// "RRRE" accepted defensively in case a build reports the short
+        /// code).</summary>
+        private static bool IsR3EGame(string game)
+        {
+            return string.Equals(game, "RaceRoomRacingExperience", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(game, "RRRE", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>True for games whose Telemetry Based FFB is a RESHAPE of
+        /// the sim's own steering torque: iRacing always, and RaceRoom while
+        /// the R3EFFB shared-memory route is opted in (dev A/B against the USB
+        /// tap). This is the PIPELINE predicate; surfaces that mean "iRacing
+        /// the sim" (its setup notice, loadTrueForceAPI handling, the direct
+        /// SDK reader, incident points) stay on IsIRacingReshapeGame.</summary>
+        private bool IsReshapeGame(string game)
+        {
+            if (IsIRacingReshapeGame(game)) return true;
+            var s = Settings;
+            return s != null && s.R3ESharedMemoryFfb && IsR3EGame(game);
+        }
+
         /// <summary>True if a game offers Telemetry Based FFB by ANY pipeline.
         /// The per-game opt-in, the tab toggle and the arming logic all key off
         /// this; which pipeline actually runs is decided in
         /// ApplyModeBFromSettings.</summary>
-        private static bool IsTelemetryFfbCapableGame(string game)
+        private bool IsTelemetryFfbCapableGame(string game)
         {
-            return IsModeBCapableGame(game) || IsIRacingReshapeGame(game);
+            return IsModeBCapableGame(game) || IsReshapeGame(game);
         }
 
         /// <summary>Pick the right ITelemetrySource for <paramref name="game"/>
@@ -30558,7 +30917,7 @@ namespace TrueforceForAll.Plugin
 
         private const string AcCspScriptName = "tf4all";
         // Bumped when the bridge script changes so the mods list can show it.
-        private const string AcCspBridgeVersion = "1.0";
+        private const string AcCspBridgeVersion = "1.1";
         public string AcCspBridgeVersionString => AcCspBridgeVersion;
         public string FsModVersionString => FsModVersion;
 
@@ -30583,12 +30942,119 @@ namespace TrueforceForAll.Plugin
         /// <summary>Called on the game-change edge. Clears the once-per-session
         /// latch on the way OUT of AC so the next AC session offers again (until
         /// dismissed for good).</summary>
+        /// <summary>Keeps the DirectInput reader running whenever the
+        /// condition renderer needs it, checked every update rather than only
+        /// on the game-change edge: a game can start sending effects long
+        /// after it launches, and the renderer's damper wants a fresh velocity
+        /// from the first one.</summary>
+        private void MaintainRendererMotionSource()
+        {
+            if (_dampCal != null || _autoTuner != null || _fxTestMode != 0 || _diSpikeHold) return;
+            var tap = _ffbTap;
+            bool wants = _dicondEnabled && tap != null && tap.AnyHidppParametricPlaying;
+            var wheel = _wheelMotion;
+            if (wants && (wheel == null || !wheel.IsRunning))
+                EnsureWheelMotion(exclusive: false);
+        }
+
         private void MaybeFireAcCspNotice(string game)
         {
             if (string.Equals(_lastGameSeenForAcCsp, game, StringComparison.Ordinal)) return;
             _lastGameSeenForAcCsp = game;
-            if (string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)) ShowAcCspNotice(null);
-            else _acCspNoticeShownThisSession = false;
+            if (string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+            {
+                MaybeUpdateAcCspBridge();
+                ShowAcCspNotice(null);
+                // The synthesized damper reads wheel speed from DirectInput;
+                // a shared reader rides along with every AC session. NEVER
+                // while a bench run holds the wheel: replacing the exclusive
+                // reader kills the run's sample loop with outputs latched
+                // (audit AT-03).
+                if (_dampCal == null && _autoTuner == null && _fxTestMode == 0 && !_diSpikeHold)
+                    EnsureWheelMotion(exclusive: false);
+            }
+            else
+            {
+                _acCspNoticeShownThisSession = false;
+                // Keep the shared reader for the DirectInput effect renderer,
+                // which needs it in EVERY game, not just AC.
+                //
+                // A damper is a feedback loop: it turns measured velocity back
+                // into force. Its stability is governed by how OLD that
+                // velocity is, and the fallbacks are far older than this
+                // reader. WheelSteeringReader arrives on HID reports and game
+                // steering arrives at frame rate, so a damper built on either
+                // is being asked to react to where the wheel WAS. That rings,
+                // and it rings worse the stronger the effect: a coefficient
+                // that is stable at the bench's 50 % need not be at the 75 %+
+                // a game sends (owner, 2026-09-02: matched on the bench, wheel
+                // shook in game, "I think it's the damper").
+                //
+                // The reader is only stopped when nothing needs it: no
+                // decoded effects to render and no bench tool holding it.
+                bool rendererWantsIt = _dicondEnabled
+                                       && (_ffbTap?.AnyHidppParametricPlaying ?? false);
+                if (_dampCal == null && !_diSpikeHold && _autoTuner == null && _fxTestMode == 0)
+                {
+                    if (rendererWantsIt) EnsureWheelMotion(exclusive: false);
+                    else                 StopWheelMotion();
+                }
+            }
+        }
+
+        // Once per session, entering AC: if the bridge is installed but older
+        // than the copy this build embeds, rewrite it in place. The consent
+        // moment was installing the mod; keeping a mod the user chose current
+        // is maintenance, so this asks nothing and logs one line. Safe with AC
+        // running (CSP reads scripts at launch); takes effect next start.
+        private bool _acCspUpdateChecked;
+        private void MaybeUpdateAcCspBridge()
+        {
+            if (_acCspUpdateChecked) return;
+            _acCspUpdateChecked = true;
+            try
+            {
+                string ac = FindAcInstallDir();
+                if (ac == null) return;
+                string dir = Path.Combine(ac, "extension", "lua", "ffb-postprocess", AcCspScriptName);
+                string manifest = Path.Combine(dir, "manifest.ini");
+                if (!File.Exists(manifest)) return;   // not installed: nothing to maintain
+                string installed = ReadAcCspInstalledVersion(manifest);
+                if (installed == null || AcCspVersionCurrent(installed)) return;
+                WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.ffb.lua",
+                                      Path.Combine(dir, "ffb.lua"));
+                WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.manifest.ini", manifest);
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] TF4ALL CSP Bridge updated {installed} -> {AcCspBridgeVersion}; "
+                    + "takes effect the next time Assetto Corsa starts.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] CSP bridge update check failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>True when the installed script is at least this build's
+        /// version, so an older plugin never DOWNGRADES a newer script. When
+        /// either side does not parse as a version, equality decides.</summary>
+        private static bool AcCspVersionCurrent(string installed)
+        {
+            if (Version.TryParse(installed, out var i) && Version.TryParse(AcCspBridgeVersion, out var e))
+                return i >= e;
+            return string.Equals(installed, AcCspBridgeVersion, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ReadAcCspInstalledVersion(string manifestPath)
+        {
+            foreach (var raw in File.ReadAllLines(manifestPath))
+            {
+                var line = raw.Trim();
+                if (!line.StartsWith("VERSION", StringComparison.OrdinalIgnoreCase)) continue;
+                int eq = line.IndexOf('=');
+                if (eq < 0) continue;
+                return line.Substring(eq + 1).Trim();
+            }
+            return null;
         }
 
         /// <summary>Show the Assetto Corsa CSP setup offer. Safe from any thread;
@@ -31141,6 +31607,1380 @@ namespace TrueforceForAll.Plugin
             return on;
         }
 
+        // A/B for the damper pass-through (CSPFFB DAMP): tell the script to
+        // zero the DAMPER channel too, the pre-fix behaviour, so the fix can
+        // be felt against the bug in one session. Session only, applies on the
+        // next control heartbeat (instant, no game restart).
+        public bool ToggleCspZeroDamper()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            bool now = !(src?.CspZeroDamper ?? false);
+            if (src != null) src.CspZeroDamper = now;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] CSP synthesized damper {(now ? "OFF (A/B: wheel undamped)" : "ON")}.");
+            return now;
+        }
+
+        /// <summary>Sets the synthesized damper strength (CSPFFB DAMPK).
+        /// Returns the clamped value.</summary>
+        public double SetCspDamperGain(double k)
+        {
+            // Damper only: inertia is force per unit ACCELERATION and does
+            // not share this scale (see TrueforceSettings).
+            _damperGain = (float)ClampFxGain(k);
+            SimHub.Logging.Current.Info($"[TF4ALL] Synthesized damper gain = {_damperGain:F2}.");
+            return _damperGain;
+        }
+
+        /// <summary>CSPFFB DAMPSIGN: flip the synthesized damper's sign, for
+        /// the case where DirectInput's axis direction and the stream's torque
+        /// direction disagree (a wrong sign is an anti-damper).</summary>
+        public bool ToggleDamperSign()
+        {
+            _damperSign = -_damperSign;
+            SimHub.Logging.Current.Info($"[TF4ALL] Synthesized damper sign = {_damperSign:+0;-0}.");
+            return _damperSign < 0;
+        }
+
+        // ---- The synthesized damper (every game, DirectInput wheel speed) ----
+        // The wheel ignores the classic damper channel while any Trueforce
+        // stream is live (parked flick, 2026-08-31), so the damper is a torque
+        // we add to the stream: -coefficient x wheel speed x gain, capped at
+        // half of full scale so it resists but never dominates. Coefficient:
+        // the wizard's probe while calibrating, else AC's live value through
+        // the bridge (DAMP/DAMPTEST shape it there), else nothing (other games
+        // get a coefficient source later). Wheel speed: DirectInputWheel,
+        // started shared for AC sessions, exclusive for the wizard.
+        private DirectInputWheel _wheelMotion;
+        private float  _damperGain = 0.25f;
+        private int    _damperSign = 1;
+        private double _damperCoefOverride = double.NaN;
+        // Per-effect render gains (auto-tune measures damper/spring/friction;
+        // the bench tunes any of them by hand; Save persists). Spring,
+        // friction, periodic and ramp default 1.0: the DI model's own scale
+        // until a measurement says otherwise. Inertia is per ACCELERATION,
+        // a scale of its own, never the damper's (see TrueforceSettings).
+        private float  _springGain = 1f;
+        private float  _frictionGain = 1f;
+        private float  _inertiaGain = 0.05f;
+        private float  _periodicGain = 1f;
+        private float  _rampGain = 1f;
+        private bool   _inertiaCoasts;
+        private bool   _inertiaAsDamping = true;
+
+        // ---- Decoded DirectInput effects (every tap game) ----
+        // The tap decodes the game's 0x8123 effect downloads (damper,
+        // spring, friction, inertia, periodics; docs/di-condition-engine.md)
+        // and this renders them into the stream at the pump against the
+        // physical wheel's motion, because the firmware ignores its own
+        // slot engine while any ep3 stream is live. DICOND is the A/B;
+        // CSPFFB DAMPSIGN flips the output for a mismatched axis frame;
+        // CSPFFB DAMPK / DAMPCAL own the damper scale.
+        private volatile bool _dicondEnabled = true;
+        private readonly WheelMotionEstimator _hidppMotion = new WheelMotionEstimator();
+
+        /// <summary>DICOND: A/B the decoded DirectInput effect rendering.
+        /// Returns true when the toggle lands OFF.</summary>
+        public bool ToggleDicondRendering()
+        {
+            _dicondEnabled = !_dicondEnabled;
+            SimHub.Logging.Current.Info($"[TF4ALL] Decoded DirectInput effect rendering {(_dicondEnabled ? "ON" : "OFF")}.");
+            return !_dicondEnabled;
+        }
+
+        // Adds the decoded parametric effects to the game force. Position
+        // source, best first: the shared DirectInput reader (AC sessions),
+        // the HID steering reader, the game's own steering while fresh.
+        // Velocity and acceleration come from one estimator so the units
+        // stay DAMPCAL's regardless of source. No live position = render
+        // nothing rather than render wrong.
+        private short? AddHidppDiEffects(short? force)
+        {
+            if (!force.HasValue || !_dicondEnabled) return force;
+            // The bench owns the wheel while it runs.
+            //
+            // A NATIVE bench effect is a real DirectInput download, so it goes
+            // out over USB, and our own tap captures it and hands it to this
+            // renderer. Test a native damper, then an engine damper, and the
+            // wheel gets ours PLUS the captured copy of theirs: effects
+            // stacking as you test, and a native play appearing to "wake up"
+            // the engine side when it was only doubling it (owner, 2026-09-03).
+            // Nothing decoded belongs in a controlled comparison.
+            if (_fxTestMode != 0) return force;
+            var tap = _ffbTap;
+            if (tap == null || !tap.AnyHidppParametricPlaying) return force;
+            if (_dampCal != null || _dampCalActiveZero || _diSpikeHold) return force;
+
+            long now = Stopwatch.GetTimestamp();
+            if (!TryUpdateWheelMotion(now)) return force;
+            // DAMPSIGN is scoped inside the engine to the velocity-derived
+            // terms (damper, friction, inertia): flipping an anti-damper must
+            // not turn the game's spring into an anti-spring.
+            short? term = tap.TryEvaluateHidppEffects(
+                (float)_hidppMotion.Position, (float)_hidppMotion.Velocity,
+                (float)_hidppMotion.Acceleration, _damperGain, _inertiaGain, _damperSign,
+                _springGain, _frictionGain, _periodicGain, _rampGain);
+            if (!term.HasValue || term.Value == 0) return force;
+            int t = term.Value;
+            // Authority cap while the on-wheel sign and scale checks are
+            // young: conditions may resist and center, never dominate.
+            if (t > 16384) t = 16384; else if (t < -16384) t = -16384;
+            int v = force.Value + t;
+            if (v > short.MaxValue) v = short.MaxValue; else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
+        private short? AddSynthesizedDamper(short? force)
+        {
+            if (!force.HasValue) return force;
+            // When the tap is decoding the game's own damper off the wire,
+            // the decoded one is authoritative; adding the CSP-synthesized
+            // term on top would double the damping. The CSP synthesis stays
+            // for the tap-free AC path, which sees no downloads to decode.
+            var decodingTap = _ffbTap;
+            if (_dicondEnabled && decodingTap != null
+                && decodingTap.AnyHidppDamperPlayingNow)
+                return force;
+            var wheel = _wheelMotion;
+            if (wheel == null || !wheel.IsRunning) return force;
+            double coef = _damperCoefOverride;
+            if (double.IsNaN(coef))
+            {
+                var ac = _telemetrySource as AcSharedMemoryTelemetrySource;
+                coef = ac?.CspDamperCoefficientNow ?? 0f;
+            }
+            if (coef <= 0) return force;
+            // Same convention as the decoded HID++ damper (positive velocity
+            // = rightward, positive force pulls left = opposes): +coef, so
+            // one DAMPSIGN flips both paths together. The two used to carry
+            // opposite base signs, meaning one of them was an anti-damper
+            // (verify workflow 2026-09-01); the rig flick test settles which
+            // frame is right for good.
+            double term = coef * wheel.Velocity * _damperGain * _damperSign;
+            if (term > 0.5) term = 0.5; else if (term < -0.5) term = -0.5;
+            int v = force.Value + (int)Math.Round(term * 32767.0);
+            if (v > short.MaxValue) v = short.MaxValue; else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
+        private IntPtr MainWindowHandle()
+        {
+            try
+            {
+                var app = System.Windows.Application.Current;
+                if (app == null) return IntPtr.Zero;
+                return app.Dispatcher.Invoke(() =>
+                    app.MainWindow == null ? IntPtr.Zero
+                    : new System.Windows.Interop.WindowInteropHelper(app.MainWindow).Handle);
+            }
+            catch { return IntPtr.Zero; }
+        }
+
+        /// <summary>Start (or restart in the requested mode) the DirectInput
+        /// wheel reader. Shared mode for in-game synthesis; exclusive for the
+        /// wizard and the spike, which also need force effects.</summary>
+        private DirectInputWheel EnsureWheelMotion(bool exclusive)
+        {
+            var cur = _wheelMotion;
+            if (cur != null && cur.IsRunning && cur.IsExclusive == exclusive) return cur;
+            StopWheelMotion();
+            int pid = _hidWheelPid;
+            if (pid == 0) return null;
+            var w = new DirectInputWheel(m => SimHub.Logging.Current.Info("[TF4ALL] " + m));
+            try
+            {
+                if (!w.Start(0x046D, pid, MainWindowHandle(), exclusive)) { w.Dispose(); return null; }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] DirectInput wheel reader failed: " + ex.Message);
+                w.Dispose();
+                return null;
+            }
+            _wheelMotion = w;
+            return w;
+        }
+
+        private void StopWheelMotion()
+        {
+            var w = _wheelMotion;
+            _wheelMotion = null;
+            try { w?.Dispose(); } catch { }
+        }
+
+        // ---- DAMPCAL: the damper calibration wizard, no game required ----
+        // Three conditions of three hand flicks each, measured on the wheel's
+        // own DirectInput position: native (the plugin stands aside in
+        // keepalive and the wheel's damper effect, created by us, is the
+        // reference), friction (stream in raw-torque mode at zero, no
+        // synthesis), synthesized (same, synthesis at the current gain with a
+        // probe coefficient). CspDamperCalibration cancels friction and
+        // inertia and hands back the gain that matches the native damper.
+        private volatile bool _dampCalHold, _dampCalActiveZero;
+        private CspDamperCalibration _dampCal;
+        private const int DampCalProbePercent = 75;
+
+        public string StartDamperCalibration(Action<string> uiStatus)
+        {
+            if (_autoTuner != null) return "auto-tune is running; Stop it first";
+            if (_diSpikeHold) return "DIDAMP is running; DIDAMP OFF first";
+            CancelDamperCalibration();
+            if (_hidWheelPid == 0) return "no wheel detected";
+            var wheel = EnsureWheelMotion(exclusive: true);
+            if (wheel == null) return "could not acquire the wheel through DirectInput exclusively (is a game holding it?); see the log";
+
+            Action<string> status = msg =>
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] " + msg);
+                try { uiStatus?.Invoke(msg); } catch { }
+            };
+            Action<string> screen = brief => { try { DashReadout("DAMPCAL", brief); } catch { } };
+
+            CspDamperCalibration cal = null;
+            cal = new CspDamperCalibration(_damperGain, phase =>
+            {
+                switch (phase)
+                {
+                    case CspDamperCalibration.Phase.Native:
+                        _dampCalActiveZero = false;
+                        _damperCoefOverride = 0;
+                        _dampCalHold = true;
+                        // The native reference must be the wheel WITHOUT the
+                        // plugin: stream stopped outright, not keepalive.
+                        SuspendStreamForNativeTest("DAMPCAL native phase");
+                        if (!wheel.StartDamper(DampCalProbePercent))
+                            status("DAMPCAL: the wheel's damper effect could not be started; the native condition will read as friction.");
+                        break;
+                    case CspDamperCalibration.Phase.Friction:
+                        wheel.StopDamper();
+                        ResumeStreamAfterNativeTest("DAMPCAL");
+                        _dampCalHold = false;
+                        _damperCoefOverride = 0;
+                        _dampCalActiveZero = true;
+                        break;
+                    case CspDamperCalibration.Phase.Synth:
+                        _damperCoefOverride = DampCalProbePercent / 100.0;
+                        _dampCalActiveZero = true;
+                        break;
+                    default:
+                        wheel.StopDamper();
+                        ResumeStreamAfterNativeTest("DAMPCAL");
+                        _dampCalHold = false;
+                        _dampCalActiveZero = false;
+                        _damperCoefOverride = double.NaN;
+                        if (cal != null && cal.ResultGain > 0)
+                            _damperGain = (float)Math.Max(0, Math.Min(2, cal.ResultGain));
+                        // Hand the wheel back: shared reader for a running
+                        // AC session, nothing otherwise.
+                        wheel.OnSample = null;
+                        if (string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                            EnsureWheelMotion(exclusive: false);
+                        else
+                            StopWheelMotion();
+                        break;
+                }
+            }, status, screen);
+            _dampCal = cal;
+            wheel.OnSample = (vel, t) => cal.Sample(vel, t);
+            cal.Start(0);
+            return null;
+        }
+
+        public void CancelDamperCalibration()
+        {
+            var c = _dampCal;
+            _dampCal = null;
+            if (c != null && c.Running) c.Cancel("cancelled");
+            ResumeStreamAfterNativeTest("DAMPCAL");
+            _dampCalHold = false;
+            _dampCalActiveZero = false;
+            _damperCoefOverride = double.NaN;
+        }
+
+        // ---- DIDAMP: DAMPCAL feasibility spike ----
+        private volatile bool _diSpikeHold;
+
+        /// <summary>Drive the wheel's native DirectInput damper ourselves at
+        /// pct (0..100) with the Trueforce stream held in keepalive, logging
+        /// the position read rate for 60 s. Returns null or a reason.</summary>
+        public string StartDiDamperSpike(int pct, IntPtr hwnd)
+        {
+            if (_autoTuner != null) return "auto-tune is running; Stop it first";
+            if (_dampCal != null) return "DAMPCAL is running; finish or cancel it first";
+            StopDiDamperSpike();
+            if (_hidWheelPid == 0) return "no wheel detected";
+            var wheel = EnsureWheelMotion(exclusive: true);
+            if (wheel == null) return "could not acquire the wheel through DirectInput exclusively (see the log)";
+            wheel.LogRate = true;
+            wheel.AutoStopMs = 60000;
+            wheel.OnAutoStop = () => StopDiDamperSpike();
+            try
+            {
+                if (!wheel.StartDamper(pct)) { StopWheelMotion(); return "the DirectInput damper could not start (see the log)"; }
+            }
+            catch (Exception ex) { StopWheelMotion(); return "DirectInput error: " + ex.Message; }
+            _diSpikeHold = true;
+            SuspendStreamForNativeTest("DIDAMP");
+            return null;
+        }
+
+        public void StopDiDamperSpike()
+        {
+            if (!_diSpikeHold && (_wheelMotion == null || !_wheelMotion.IsExclusive)) return;
+            _diSpikeHold = false;
+            ResumeStreamAfterNativeTest("DIDAMP");
+            StopWheelMotion();
+            SimHub.Logging.Current.Info("[TF4ALL] DI spike: damper released, stream back to normal.");
+        }
+
+        // ---- FXTEST: native-vs-engine effect A/B, no game required ----
+        // FXTEST NATIVE <kind> plays the wheel's OWN DirectInput effect with
+        // the stream held in keepalive, so the firmware renders it: the
+        // reference feel. FXTEST ENGINE <kind> injects identical parameters
+        // as a synthetic 0x8123 download through the real decode-and-render
+        // path (FxTestPayloads -> HidppEffectEngine) and streams it as cur.
+        // Alternate the two on the same effect and tune (CSPFFB DAMPK for
+        // damper/inertia strength, CSPFFB DAMPSIGN for direction) until they
+        // feel identical: that IS the calibration, per effect, on the rig.
+        private readonly HidppEffectEngine _fxTestEngine = new HidppEffectEngine();
+        private volatile int _fxTestMode;          // 0 off, 1 native, 2 engine
+        private bool _fxTestNoMotionLogged;
+        private volatile bool _fxTestNativeHold;   // keepalive hold for native
+        private volatile bool _fxTestRenderNoted;
+        private long _fxTestEndTicks;
+        // 30 s, not 120. A bench effect is judged in a few seconds, and a
+        // forgotten one left holding the wheel (and the output chain) for two
+        // minutes is long enough to be mistaken for how the plugin behaves
+        // (owner, 2026-09-03).
+        private const int FxTestAutoOffMs = 30000;
+
+        /// <summary>Starts an FXTEST side. Returns null, or the reason it
+        /// could not start.</summary>
+        public string StartFxTest(string mode, string kind, int strengthPct, int periodMs)
+        {
+            CancelAutoTune(silent: true);
+            StopFxTest(silent: true);
+            _fxTestNoMotionLogged = false;
+            _fxTestRenderNoted = false;
+            if (_dampCal != null || _diSpikeHold) return "DAMPCAL / DIDAMP is running; finish or cancel it first";
+            bool native = string.Equals(mode, "NATIVE", StringComparison.OrdinalIgnoreCase);
+            if (!native && !string.Equals(mode, "ENGINE", StringComparison.OrdinalIgnoreCase))
+                return "the mode must be NATIVE or ENGINE";
+            if (FxTestPayloads.TypeForKind(kind) == 0)
+                return "unknown effect; kinds: DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP";
+            if (_hidWheelPid == 0) return "no wheel detected";
+            // With the plugin off there is no stream and no device, so an
+            // ENGINE effect renders into nothing while the wheel sits on its
+            // own centring spring. That reads as "the effect feels like a
+            // spring" rather than as "nothing happened", and it cost an
+            // evening of chasing a damper that was never playing. Say so.
+            if (Settings?.PluginEnabled == false || _device == null)
+                return "the plugin is off, so there is no stream to render into; turn it on first";
+
+            if (native)
+            {
+                var wheel = EnsureWheelMotion(exclusive: true);
+                if (wheel == null) return "could not acquire the wheel exclusively through DirectInput (is a game holding it?)";
+                wheel.AutoStopMs = FxTestAutoOffMs;
+                wheel.OnAutoStop = () => StopFxTest();
+                if (!wheel.StartNativeEffect(kind, strengthPct, periodMs))
+                {
+                    StopWheelMotion();
+                    return "the wheel refused the effect (see the log)";
+                }
+                _fxTestNativeHold = true;          // belt: provider null through the transition
+                SuspendStreamForNativeTest("FXTEST NATIVE");
+                _fxTestMode = 1;
+            }
+            else
+            {
+                EnsureWheelMotion(exclusive: false);   // game-agnostic velocity source
+                // The engine side renders THROUGH the stream, so make sure
+                // there is one. StopFxTest above returns early when no bench
+                // test was running, which means a stream suspended by anything
+                // else (an auto-tune that ended badly, DAMPCAL, DIDAMP) is
+                // still suspended here, and the effect would render into
+                // nothing.
+                ResumeStreamAfterNativeTest("FXTEST ENGINE");
+                // Neutralize the output chain for the comparison, exactly as
+                // auto-tune does for a measurement, but ONLY on a quiet wheel.
+                //
+                // In a live session the chain is shaping the game's own force,
+                // and borrowing it for a side-by-side would change how the car
+                // feels mid-drive: not a fair comparison, just a different
+                // wheel. The A/B argument only applies to a bench with nothing
+                // else running.
+                //
+                // The NATIVE side of this bench is rendered inside the wheel
+                // and touches none of our processing. The ENGINE side goes
+                // through the slew limiter, the smoothing pole and the
+                // transient ceiling, and every one of those delays force
+                // relative to position. A delayed spring is not just a late
+                // spring, it is a spring plus a damper: F = -k*x(t-tau) is
+                // -k*x + k*tau*x', and that second term is viscous damping
+                // whose size grows with the spring's own stiffness. Comparing
+                // the two sides with the chain in the way therefore judges our
+                // renderer for something the chain did (owner: "engine spring
+                // feels like it has a damper built in").
+                NeutralizeChainForBench(!(_telemetrySource?.IsSessionActive ?? false));
+                var payload = FxTestPayloads.Build(kind, strengthPct, periodMs);
+                _fxTestEngine.ResetAll();
+                _fxTestEngine.HandleDownload(payload, 0, payload.Length, Stopwatch.GetTimestamp());
+                System.Threading.Interlocked.Exchange(ref _fxTestEndTicks,
+                    Stopwatch.GetTimestamp() + Stopwatch.Frequency * (FxTestAutoOffMs / 1000));
+                _fxTestMode = 2;
+            }
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] FXTEST {(native ? "NATIVE" : "ENGINE")} {kind.ToUpperInvariant()} at {strengthPct}%"
+                + (native ? "." : $" ({FxGainFamilyLabel(kind).TrimEnd(':')} {FxKindGainNow(kind):F2}; a low gain reads as a weak effect until tuned)."));
+            return null;
+        }
+
+        // Saved output-chain settings while the bench borrows them.
+        private bool  _benchChainNeutralized;
+        private bool  _benchSavedTaming;
+        private float _benchSavedSmoothMs;
+
+        /// <summary>Restores the output chain if the bench still holds it.
+        /// Called from teardown as well as from Stop, because a bench left
+        /// running when the plugin closes must not leave the user's spike
+        /// taming and smoothing switched off for the next session.</summary>
+        internal void RestoreChainAfterBench() => NeutralizeChainForBench(false);
+
+        // Borrowed from the UI thread (Play / Stop) and given back from the
+        // pump thread (the auto-off timer), so the save/restore pair has to be
+        // atomic between them: a torn hand-over here leaves the user's spike
+        // taming and smoothing in whatever half-state the race produced.
+        private readonly object _benchChainLock = new object();
+
+        private void NeutralizeChainForBench(bool on)
+        {
+            var dev = _device;
+            if (dev == null) return;
+            lock (_benchChainLock)
+            {
+            if (on)
+            {
+                if (_benchChainNeutralized) return;
+                _benchSavedTaming   = dev.FfbSpikeTamingEnabled;
+                _benchSavedSmoothMs = dev.FfbSmoothTimeConstantMs;
+                dev.FfbSpikeTamingEnabled = false;
+                dev.FfbSmoothTimeConstantMs = 0;
+                _benchChainNeutralized = true;
+            }
+            else if (_benchChainNeutralized)
+            {
+                dev.FfbSpikeTamingEnabled = _benchSavedTaming;
+                dev.FfbSmoothTimeConstantMs = _benchSavedSmoothMs;
+                _benchChainNeutralized = false;
+            }
+            }
+        }
+
+        public void StopFxTest(bool silent = false)
+        {
+            NeutralizeChainForBench(false);
+            if (_fxTestMode == 0 && !_fxTestNativeHold) return;
+            _fxTestMode = 0;
+            _fxTestNativeHold = false;
+            ResumeStreamAfterNativeTest("FXTEST");
+            _fxTestEngine.ResetAll();
+            // Drop what the bench's own native effects put into the decoded
+            // table on their way past the tap, so the next test starts from
+            // nothing. Safe here: the bench refuses to run with a live
+            // session, so there are no game effects to lose.
+            try { _ffbTap?.HidppEffects.ResetAll(); } catch { }
+            var w = _wheelMotion;
+            if (w != null && w.IsExclusive)
+            {
+                w.StopDamper();
+                if (string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                    EnsureWheelMotion(exclusive: false);
+                else
+                    StopWheelMotion();
+            }
+            if (!silent) SimHub.Logging.Current.Info("[TF4ALL] FXTEST off; stream back to normal.");
+        }
+
+        // Shared by the decoded-effect renderer and FXTEST: pick the best
+        // live wheel-position source and feed the motion estimator. False =
+        // no live source; render nothing rather than wrong.
+        // Which motion source the condition renderer is running on, logged
+        // when it changes. A damper's stability depends on how fresh this is,
+        // and the difference between the fastest and slowest option here is
+        // more than an order of magnitude, so "which one is it right now" is
+        // the first question worth answering when a rendered damper rings.
+        private string _motionSourceNoted;
+
+        private void NoteMotionSource(string what)
+        {
+            if (string.Equals(_motionSourceNoted, what, StringComparison.Ordinal)) return;
+            _motionSourceNoted = what;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Condition renderer motion source: {what}."
+                + (what.StartsWith("the DirectInput") ? "" :
+                   " This is slower than the DirectInput reader; a rendered damper may ring on it."));
+        }
+
+        private bool TryUpdateWheelMotion(long now)
+        {
+            var wheel = _wheelMotion;
+            var sr = _steeringReader;
+            if (wheel != null && wheel.IsRunning && (!wheel.IsExclusive || _autoTuner != null))
+            {
+                // The reader already differenced and smoothed its velocity;
+                // re-deriving it from quantized position was the slow-turn
+                // damper shake on the rig (2026-09-01). One derivation.
+                _hidppMotion.UpdateWithVelocity(wheel.Position, wheel.Velocity, now, Stopwatch.Frequency);
+                NoteMotionSource("the DirectInput reader");
+                return true;
+            }
+            double pos;
+            if (sr != null && sr.LastUpdateTicks != 0
+                     && (now - sr.LastUpdateTicks) <= SteerMaxAgeTicks)
+            {
+                pos = sr.SteerNorm;
+                NoteMotionSource("HID steering reader");
+            }
+            else if ((now - System.Threading.Interlocked.Read(ref _lastSteerTicks)) <= SteerMaxAgeTicks)
+            {
+                pos = _lastSteerNorm;
+                NoteMotionSource("the game's own steering telemetry");
+            }
+            else return false;
+            _hidppMotion.Update(pos, now, Stopwatch.Frequency);
+            return true;
+        }
+
+        // Pump thread: render the FXTEST ENGINE effect (base 0 with no game,
+        // so the stream enters the active shape and carries it).
+        private short? ApplyFxTestEngine(short? force)
+        {
+            if (_fxTestMode != 2) return force;
+            // Say, once per test, that the renderer actually got here and what
+            // it produced. A bench run whose ENGINE effect reached the wheel
+            // and one that silently never ran feel like different bugs and
+            // read the same in the log otherwise: on 2026-09-03 an engine
+            // damper "felt like a spring" while neither of this method's two
+            // status lines ever printed, so the effect under judgement was
+            // never rendered at all and something else was driving the wheel.
+            if (!_fxTestRenderNoted)
+            {
+                _fxTestRenderNoted = true;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] FXTEST ENGINE rendering: stream shape carries the provider, "
+                    + $"base force {(force.HasValue ? force.Value.ToString() : "null")}.");
+            }
+            long now = Stopwatch.GetTimestamp();
+            if (System.Threading.Interlocked.Read(ref _fxTestEndTicks) < now)
+            {
+                _fxTestMode = 0;
+                _fxTestEngine.ResetAll();
+                try { _ffbTap?.HidppEffects.ResetAll(); } catch { }
+                // Give the output chain back. This path expires the test on
+                // its own clock and used to skip the restore that Stop does,
+                // so a bench effect left to time out permanently disabled the
+                // user's spike taming and smoothing: every force after it,
+                // game force included, came through unattenuated and read as
+                // a step up in strength that persisted until the plugin was
+                // toggled (owner, 2026-09-02: "it doubles the strength and
+                // stays doubled").
+                NeutralizeChainForBench(false);
+                return force;
+            }
+            // No live position source must not silence the whole test:
+            // waveform effects (sine and friends) need no position, and a
+            // condition evaluated at zeros outputs zero anyway (rig
+            // 2026-09-01: engine effects read as doing nothing).
+            float mp = 0f, mv = 0f, ma = 0f;
+            if (TryUpdateWheelMotion(now))
+            {
+                mp = (float)_hidppMotion.Position;
+                mv = (float)_hidppMotion.Velocity;
+                ma = (float)_hidppMotion.Acceleration;
+            }
+            else if (!_fxTestNoMotionLogged)
+            {
+                _fxTestNoMotionLogged = true;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] FXTEST: no wheel position source is live; motion-based effects (damper/spring/friction) will output zero, waveforms still play.");
+            }
+            float f = _fxTestEngine.Evaluate(
+                mp, mv, ma, _damperGain, _inertiaGain,
+                now, Stopwatch.Frequency, out bool anyPlaying, _damperSign,
+                _springGain, _frictionGain, _periodicGain, _rampGain);
+            if (!anyPlaying && !_fxTestEngine.AnyPlaying) return force;
+            int t = (int)(f * 32767f);
+            // Same authority cap as the decoded path, so the A/B compares
+            // the same ceiling the game effects get.
+            if (t > 16384) t = 16384; else if (t < -16384) t = -16384;
+            int v = (force ?? 0) + t;
+            if (v > short.MaxValue) v = short.MaxValue; else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
+        // A native-effect test (FXTEST NATIVE, DAMPCAL's native phase, the
+        // DIDAMP spike) must measure the wheel EXACTLY as it is with the
+        // plugin inactive. Whether the keepalive packet shape truly restores
+        // the firmware's ep0 effect rendering is an UNPROVEN protocol
+        // question (the "which field gates the ep0 fallback" note in
+        // TrueforceDevice), so the honest reference LEAVES Trueforce mode
+        // outright: a real Stop on the wire, pump paused, endpoint silent -
+        // the master-toggle-off sequence (owner's correction, 2026-09-01).
+        private volatile bool _nativeTestStreamSuspended;
+
+        /// <summary>Puts the stream back if it is suspended and nobody owns
+        /// the wheel any more.
+        ///
+        /// Suspension is a latch, and every tool that sets it is responsible
+        /// for clearing it. That is one failure away from a silently dead
+        /// wheel: with the stream stopped the renderer reaches nothing, and
+        /// the wheel falls back to its own centring spring, so the plugin
+        /// looks alive and every effect reads as "feels like a spring" (rig,
+        /// 2026-09-03). It cost an evening to find, and the log said it only
+        /// by the ABSENCE of a line.
+        ///
+        /// Written after misreading exactly that absence: the stream was not
+        /// stranded at all, the plugin had simply been switched off, and a
+        /// null device suspends and logs nothing. The guard is kept because
+        /// the latch really is one missed cleanup away from a silently dead
+        /// wheel, but no such leak has been observed. Resume checks
+        /// PluginEnabled, so this never fights the off switch.</summary>
+        private void MaintainStreamNotStuckSuspended()
+        {
+            if (!_nativeTestStreamSuspended) return;
+            if (_autoTuner != null || _dampCal != null || _dampCalHold
+                || _diSpikeHold || _fxTestMode == 1 || _fxTestNativeHold) return;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] The Trueforce stream was left suspended with no test holding it; resuming.");
+            ResumeStreamAfterNativeTest("stream watchdog");
+        }
+
+        private void SuspendStreamForNativeTest(string context)
+        {
+            var dev = _device;
+            if (dev == null || _nativeTestStreamSuspended) return;
+            lock (_enableDeviceLock)
+            {
+                dev.SendStopCommand();
+                dev.Pause();
+            }
+            _nativeTestStreamSuspended = true;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] {context}: left Trueforce mode (stream stopped); the wheel is exactly as it is without the plugin.");
+        }
+
+        private void ResumeStreamAfterNativeTest(string context)
+        {
+            if (!_nativeTestStreamSuspended) return;
+            _nativeTestStreamSuspended = false;
+            var dev = _device;
+            if (dev == null) return;
+            lock (_enableDeviceLock)
+            {
+                // Mirror the toggle-on path; if the user disabled the plugin
+                // mid-test, the master reconciler owns the device state.
+                if (Settings?.PluginEnabled != false)
+                {
+                    dev.Resume();
+                    dev.SendStartCommand();
+                }
+            }
+            SimHub.Logging.Current.Info($"[TF4ALL] {context}: back in Trueforce mode.");
+        }
+
+        // ---- AUTO-TUNE: hands-free calibration on the bench ----
+        // WheelAutoTuner self-excites the wheel with bounded torque pulses
+        // and matches decay rates / oscillation frequencies / decelerations
+        // between the firmware-rendered effects (stream stopped) and our
+        // renderer, per effect. Results land in the live gains for the owner
+        // to verify by feel on the bench, then Save.
+        private volatile WheelAutoTuner _autoTuner;
+        private long _autoTuneLastSampleTicks;
+        private bool _autoTuneChainNeutralized;
+        private System.Threading.Timer _autoTuneWatchdog;
+
+        /// <summary>Starts the hands-free calibration. Returns null, or the
+        /// reason it could not start.</summary>
+        public string StartAutoTune(Action<string> uiStatus, int repeats = 1)
+        {
+            StopFxTest(silent: true);
+            CancelAutoTune(silent: true);
+            if (_dampCal != null || _diSpikeHold) return "DAMPCAL / DIDAMP is running; finish or cancel it first";
+            if (_hidWheelPid == 0) return "no wheel detected";
+            var wheel = EnsureWheelMotion(exclusive: true);
+            if (wheel == null) return "could not acquire the wheel exclusively through DirectInput (is a game holding it?)";
+            wheel.QuietEffects = true;
+            // Dedicated pulse slot: probe pulses must never evict the
+            // condition effect under test (audit AT-02).
+            if (!wheel.PrepareConstantPulse())
+            {
+                StopWheelMotion();
+                return "could not create the probe pulse effect (see the log)";
+            }
+            // Watchdogs (audit AT-01): a hard cap on the whole run, and the
+            // poll loop's exit callback (fires on abnormal death too) both
+            // funnel into CancelAutoTune, which zeroes outputs and resumes
+            // the stream.
+            // 7 minutes: the run grew (direction probes, hand-centering,
+            // per-trial centering); a healthy run must never be timeout-
+            // killed at 96% (audit AT2-06). The deadman covers hangs.
+            // x N: the cap covers the whole sequence, not one run.
+            if (repeats < 1) repeats = 1; else if (repeats > 5) repeats = 5;
+            wheel.AutoStopMs = Math.Min(1_800_000, 420000 * repeats);
+            wheel.OnAutoStop = () => CancelAutoTune();
+            // Neutralize the nonlinear chain stages for the run: the
+            // transient soft-knee compresses pulses and would be measured as
+            // 'force scale' (audit F6). FfbScale stays (linear, absorbed by
+            // the equalization and reported back out).
+            var devAt = _device;
+            if (devAt != null)
+            {
+                devAt.FfbSpikeTamingEnabled = false;
+                devAt.FfbSmoothTimeConstantMs = 0;
+                _autoTuneChainNeutralized = true;
+            }
+            System.Threading.Interlocked.Exchange(ref _autoTuneLastSampleTicks, Stopwatch.GetTimestamp());
+            // Independent watchdog thread: the pump-side deadman is blind
+            // through the native phases (the pump is paused there); this one
+            // is not (audit F7).
+            _autoTuneWatchdog?.Dispose();
+            _autoTuneWatchdog = new System.Threading.Timer(_ =>
+            {
+                var atW = _autoTuner;
+                if (atW == null) return;
+                long lastW = System.Threading.Interlocked.Read(ref _autoTuneLastSampleTicks);
+                if (lastW != 0 && Stopwatch.GetTimestamp() - lastW > Stopwatch.Frequency * 2)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] AUTO-TUNE watchdog: wheel samples stopped; cancelling.");
+                    try { CancelAutoTune(); } catch { }
+                }
+            }, null, 2000, 2000);
+
+            Action<string> status = msg =>
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] " + msg);
+                try { uiStatus?.Invoke(msg); } catch { }
+            };
+            // Repeatability mode. Successive auto-tunes are NOT independent
+            // samples: each measures a correction relative to the gains it
+            // starts from, so applying run 1 makes run 2 a feedback step
+            // (rig 2026-09-02: damper 0.25 -> 0.73 -> 0.40). To measure the
+            // SPREAD, every run starts from the same baseline and nothing is
+            // applied until the sequence ends, when the median lands.
+            _autoTuneRunsTotal = repeats;
+            _autoTuneRunIndex  = 1;
+            _autoTuneSamples.Clear();
+            _atBaseDamper   = _damperGain;
+            _atBaseSpring   = _springGain;
+            _atBaseFriction = _frictionGain;
+            _autoTuneStatus = status;
+            _autoTuneWheel  = wheel;
+            _autoTuner = NewAutoTuner(wheel, status);
+            wheel.OnSample = (vel, t) =>
+            {
+                System.Threading.Interlocked.Exchange(ref _autoTuneLastSampleTicks, Stopwatch.GetTimestamp());
+                var at = _autoTuner;
+                if (at != null) at.Sample(wheel.Position, vel, t);
+            };
+            return null;
+        }
+
+        // ---- Auto-tune repeat sequence ----
+        private int _autoTuneRunsTotal = 1;
+        private int _autoTuneRunIndex;
+        private readonly List<AutoTuneSample> _autoTuneSamples = new List<AutoTuneSample>();
+        private float _atBaseDamper, _atBaseSpring, _atBaseFriction;
+        private Action<string> _autoTuneStatus;
+        private DirectInputWheel _autoTuneWheel;
+
+        private struct AutoTuneSample
+        {
+            public double Damper, Spring, Friction, ForceRatio;
+            public double DragNative, DragEngine;
+            public bool   SignMeasured, SignCorrect, Suspect;
+        }
+
+        private WheelAutoTuner NewAutoTuner(DirectInputWheel wheel, Action<string> status)
+            => new WheelAutoTuner(_atBaseDamper, _atBaseSpring, _atBaseFriction,
+                                  cfg => AutoTuneEnterPhase(cfg, wheel, status),
+                                  cmd => AutoTuneDriveNative(wheel, cmd),
+                                  status,
+                                  on => AutoTuneSetEffectActive(wheel, on),
+                                  (pct, damp, at) => AutoTuneCenterSpring(wheel, pct, damp, at));
+
+        // Median of the finite samples, NaN when there are none. Median, not
+        // mean: one bad trial should not drag the shipped gain with it.
+        private static double MedianOf(List<double> xs)
+        {
+            var v = xs.Where(x => !double.IsNaN(x)).OrderBy(x => x).ToList();
+            if (v.Count == 0) return double.NaN;
+            return v.Count % 2 == 1 ? v[v.Count / 2] : (v[v.Count / 2 - 1] + v[v.Count / 2]) / 2;
+        }
+
+        private static string SpreadOf(List<double> xs, string name)
+        {
+            var v = xs.Where(x => !double.IsNaN(x)).ToList();
+            if (v.Count < 2) return "";
+            double lo = v.Min(), hi = v.Max(), med = MedianOf(xs);
+            double spread = med > 0 ? (hi - lo) / med : 0;
+            return $"{name} {lo:F2}..{hi:F2} (spread {spread:P0})";
+        }
+
+        // Silence or restore the effect under test for one trial. The
+        // ENGINE side needs nothing here: its renderer already consults the
+        // tuner's EffectEngaged every tick. The NATIVE side is a firmware
+        // effect, so it has to be stopped and started on the device, without
+        // destroying it (a re-creation between trials would change what is
+        // being measured, and can be refused outright).
+        private void AutoTuneSetEffectActive(DirectInputWheel wheel, bool active)
+        {
+            if (!_autoTuneNativePhase) return;
+            wheel.SetEffectActive(active);
+        }
+
+        private bool _autoTuneNativePhase;
+        private string _autoTuneEffectKind;
+        private int    _autoTuneEffectPct;
+
+        /// <summary>Loads a centring SPRING in place of the phase's effect, or
+        /// restores the phase's effect when pct is 0. Returns false when no
+        /// spring can be held, which tells the tuner to fall back to waiting
+        /// on the wheel's own friction.
+        ///
+        /// A firmware spring centres the wheel in the WHEEL's own frame, so it
+        /// needs nothing from us about which way our commands push, and it has
+        /// the wheel's full authority rather than the capped output a
+        /// hand-driven controller has to limit itself to. That cap was what
+        /// made the old walk overshoot and hunt.
+        ///
+        /// Native phases only. While an ep3 stream is live the firmware drops
+        /// its whole slot engine, so a DirectInput spring would do nothing at
+        /// all on the engine side; those phases keep the driven centring.</summary>
+        private bool AutoTuneCenterSpring(DirectInputWheel wheel, int pct, int dampPct, double centreAt)
+        {
+            if (!_autoTuneNativePhase || wheel == null) return false;
+            try
+            {
+                if (pct <= 0)
+                {
+                    wheel.SetCenteringDamper(0);
+                    if (_autoTuneEffectKind != null)
+                        wheel.StartNativeEffect(_autoTuneEffectKind, _autoTuneEffectPct, 0);
+                    else
+                        wheel.StopDamper();
+                    return true;
+                }
+                if (!wheel.StartNativeEffect("SPRING", pct, 0, centreAt)) return false;
+                // The damper is a bonus: without it the spring still centres,
+                // just with more ringing, so a device that will not hold a
+                // second condition is not a failure.
+                wheel.SetCenteringDamper(dampPct);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static void AutoTuneDriveNative(DirectInputWheel wheel, double cmd)
+        {
+            // The dedicated pulse slot: fast parameter update, and the
+            // condition effect under test in _fx stays untouched.
+            wheel.SetConstantPulse(cmd);
+        }
+
+        // Land the sequence: median across runs, so one bad trial cannot
+        // drag the shipped gain, and report the spread so a metric that is
+        // not repeatable stays visible instead of being averaged into
+        // looking solid.
+        private void ApplyAutoTuneResults(Action<string> status)
+        {
+            var runs = _autoTuneSamples;
+            if (runs.Count == 0) return;
+            var damper   = runs.Select(r => r.Damper).ToList();
+            var spring   = runs.Select(r => r.Spring).ToList();
+            var friction = runs.Select(r => r.Friction).ToList();
+            var ratios   = runs.Select(r => r.ForceRatio).ToList();
+
+            double mD = MedianOf(damper), mS = MedianOf(spring), mF = MedianOf(friction);
+            // Inertia is deliberately NOT carried over from the damper:
+            // different units (per acceleration, not per velocity), so the
+            // damper's number oversaturates it. It has no measurement phase
+            // yet and keeps its own value until one exists. Gains clamp to
+            // the same range the bench slider and SetFxKindGain use, so a
+            // measured value can never be one number in settings and another
+            // on screen.
+            if (!double.IsNaN(mD)) _damperGain   = (float)ClampFxGain(mD);
+            if (!double.IsNaN(mS)) _springGain   = (float)ClampFxGain(mS);
+            if (!double.IsNaN(mF)) _frictionGain = (float)ClampFxGain(mF);
+
+            // The engine probe measures the sign of the loop the renderer
+            // closes, so apply it rather than leaving it as advice:
+            // velTermSign +1 when a positive stream command drives the
+            // measured velocity negative.
+            var signed = runs.Where(r => r.SignMeasured).ToList();
+            if (signed.Count > 0)
+            {
+                bool correct = signed.Count(r => r.SignCorrect) * 2 >= signed.Count;
+                int want = correct ? 1 : -1;
+                if (want != _damperSign)
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] AUTO-TUNE: velocity-term direction set to {(want < 0 ? "FLIPPED" : "normal")} from the measured loop sign.");
+                _damperSign = want;
+            }
+
+            double mRatio = MedianOf(ratios);
+            double scaleNow = Settings?.FfbScale ?? 0.8;
+            double fwRatio = (!double.IsNaN(mRatio) && mRatio > 0 && scaleNow > 0)
+                ? 1.0 / (mRatio * scaleNow) : double.NaN;
+            bool anySuspect = runs.Any(r => r.Suspect);
+            bool signOk = signed.Count > 0 && signed.All(r => r.SignCorrect);
+
+            string spread = string.Join(", ", new[]
+            {
+                SpreadOf(damper, "damper"), SpreadOf(spring, "spring"),
+                SpreadOf(friction, "friction"),
+            }.Where(x => x.Length > 0));
+
+            status($"AUTO-TUNE done ({runs.Count} run{(runs.Count == 1 ? "" : "s")}). "
+                 + $"Wheel's stream-vs-native torque ratio ~{fwRatio:F2} "
+                 + $"(an FfbScale of {(double.IsNaN(fwRatio) || fwRatio <= 0 ? double.NaN : 1.0 / fwRatio):F2} would match native exactly, "
+                 + "but changing it rescales these gains by the same amount, so re-run afterwards); "
+                 + $"gains now damper {_damperGain:F2}, spring {_springGain:F2}, friction {_frictionGain:F2}"
+                 + (runs.Count > 1 ? $" (median of {runs.Count}; {spread})" : "")
+                 + (double.IsNaN(mD)
+                     ? $"; NOTE: the damper did not measure (drag native "
+                       + $"{MedianOf(runs.Select(r => r.DragNative).ToList()):F2}, engine "
+                       + $"{MedianOf(runs.Select(r => r.DragEngine).ToList()):F2})" : "")
+                 + (signOk ? "; render direction CHECKS OUT (the rendered effects resist motion)" : "")
+                 + (anySuspect ? " (SOME VALUES SUSPECT: verify on the bench before saving)" : "")
+                 + ". Verify by feel, then Save tuning.");
+        }
+
+        private void AutoTuneEnterPhase(WheelAutoTuner.PhaseConfig cfg, DirectInputWheel wheel, Action<string> status)
+        {
+            // A cancel that lands mid-callback must not let this phase entry
+            // re-suspend the stream after the cancel resumed it (audit
+            // AT2-03).
+            if (_autoTuner == null && cfg.Phase != WheelAutoTuner.Phase.Done
+                && cfg.Phase != WheelAutoTuner.Phase.Aborted) return;
+            _autoTuneNativePhase = cfg.Native;
+            _autoTuneEffectKind  = cfg.EffectKind;
+            _autoTuneEffectPct   = cfg.EffectPct;
+            switch (cfg.Phase)
+            {
+                case WheelAutoTuner.Phase.Done:
+                {
+                    var at = _autoTuner;
+                    if (at != null)
+                    {
+                        _autoTuneSamples.Add(new AutoTuneSample
+                        {
+                            Damper       = at.DamperGain,
+            DragNative   = at.MeasuredDragNative,
+            DragEngine   = at.MeasuredDragEngine,
+                            Spring       = at.SpringGain,
+                            Friction     = at.FrictionGain,
+                            ForceRatio   = at.MeasuredForceRatio,
+                            SignMeasured = at.RenderSignMeasured,
+                            SignCorrect  = at.RenderSignCorrect,
+                            Suspect      = at.ResultsSuspect,
+                        });
+                        if (_autoTuneRunIndex < _autoTuneRunsTotal)
+                        {
+                            // Another run from the SAME baseline: nothing is
+                            // applied yet, so each run is an independent
+                            // sample of the same quantity rather than a step
+                            // in a feedback sequence.
+                            _autoTuneRunIndex++;
+                            status($"AUTO-TUNE run {_autoTuneRunIndex - 1} of {_autoTuneRunsTotal}: "
+                                 + $"damper {at.DamperGain:F2}, spring {at.SpringGain:F2}, friction {at.FrictionGain:F2}. "
+                                 + $"Starting run {_autoTuneRunIndex}; hands OFF.");
+                            _autoTuner = NewAutoTuner(wheel, status);
+                            break;
+                        }
+                        ApplyAutoTuneResults(status);
+                    }
+                    AutoTuneCleanup(wheel);
+                    break;
+                }
+                case WheelAutoTuner.Phase.Aborted:
+                    AutoTuneCleanup(wheel);
+                    break;
+                default:
+                    wheel.SetConstantPulse(0);
+                    if (cfg.Native)
+                    {
+                        SuspendStreamForNativeTest("AUTO-TUNE");
+                        wheel.StopDamper();
+                        _fxTestEngine.ResetAll();
+                        if (cfg.EffectKind != null) wheel.StartNativeEffect(cfg.EffectKind, cfg.EffectPct, 0);
+                    }
+                    else
+                    {
+                        wheel.StopDamper();
+                        ResumeStreamAfterNativeTest("AUTO-TUNE");
+                        _fxTestEngine.ResetAll();
+                        if (cfg.EffectKind != null)
+                        {
+                            var payload = FxTestPayloads.Build(cfg.EffectKind, cfg.EffectPct, 0);
+                            if (payload != null)
+                                _fxTestEngine.HandleDownload(payload, 0, payload.Length, Stopwatch.GetTimestamp());
+                        }
+                    }
+                    break;
+            }
+        }
+
+        private void AutoTuneCleanup(DirectInputWheel wheel)
+        {
+            _autoTuner = null;
+            RestoreChainAfterAutoTune();
+            System.Threading.Interlocked.Exchange(ref _autoTuneLastSampleTicks, 0);
+            _autoTuneWatchdog?.Dispose();
+            _autoTuneWatchdog = null;
+            try
+            {
+                wheel.OnSample = null;
+                wheel.SetConstantPulse(0);
+                wheel.StopDamper();
+                wheel.QuietEffects = false;
+                wheel.AutoStopMs = 0;
+                wheel.OnAutoStop = null;
+            }
+            catch { }
+            ResumeStreamAfterNativeTest("AUTO-TUNE");
+            _fxTestEngine.ResetAll();
+            if (string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                EnsureWheelMotion(exclusive: false);
+            else
+                StopWheelMotion();
+        }
+
+        public void CancelAutoTune(bool silent = false)
+        {
+            var at = _autoTuner;
+            if (at == null) return;
+            _autoTuner = null;           // the Sample closure no-ops from here
+            _autoTuneRunsTotal = 1;      // a cancel ends the whole sequence
+            _autoTuneRunIndex = 0;
+            _autoTuneSamples.Clear();
+            at.Cancel("cancelled");
+            RestoreChainAfterAutoTune();
+            System.Threading.Interlocked.Exchange(ref _autoTuneLastSampleTicks, 0);
+            _autoTuneWatchdog?.Dispose();
+            _autoTuneWatchdog = null;
+            var w = _wheelMotion;
+            if (w != null)
+            {
+                try { w.OnSample = null; w.SetConstantPulse(0); w.StopDamper(); w.QuietEffects = false; w.AutoStopMs = 0; w.OnAutoStop = null; } catch { }
+            }
+            // Dispose FIRST (it joins the poll thread), THEN resume: an
+            // in-flight native phase entry can no longer re-suspend after
+            // our resume (audit AT2-03).
+            StopWheelMotion();
+            ResumeStreamAfterNativeTest("AUTO-TUNE");
+            _fxTestEngine.ResetAll();
+            // A live AC session keeps its shared velocity reader (the CSP
+            // damper needs it; audit AT2-07).
+            if (string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                EnsureWheelMotion(exclusive: false);
+            if (!silent) SimHub.Logging.Current.Info("[TF4ALL] AUTO-TUNE cancelled; stream back to normal.");
+        }
+
+        private void RestoreChainAfterAutoTune()
+        {
+            if (!_autoTuneChainNeutralized) return;
+            _autoTuneChainNeutralized = false;
+            var dev = _device;
+            var st = Settings;
+            if (dev == null || st == null) return;
+            dev.FfbSpikeTamingEnabled   = st.FfbSpikeTamingEnabled;
+            dev.FfbSmoothTimeConstantMs = st.FfbSmoothTimeConstantMs;
+        }
+
+        // Pump thread: the auto-tune engine phases' output = scripted probe
+        // pulse + the effect under test at the CURRENT gains, nothing else.
+        private short? AutoTuneTick(WheelAutoTuner at)
+        {
+            long now = Stopwatch.GetTimestamp();
+            // Deadman (audit AT-01): if wheel samples stop arriving (poll
+            // thread dead, wheel unplugged) the runaway guard inside Sample
+            // is dead too, and a latched pulse command must not stream. Zero
+            // now, clean up off the pump thread.
+            long lastSample = System.Threading.Interlocked.Read(ref _autoTuneLastSampleTicks);
+            if (lastSample != 0 && now - lastSample > Stopwatch.Frequency * 3 / 4)
+            {
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] AUTO-TUNE: wheel samples stopped; aborting and cleaning up.");
+                    try { CancelAutoTune(); } catch { }
+                });
+                return (short)0;
+            }
+            float term = 0f;
+            if (TryUpdateWheelMotion(now))
+                term = _fxTestEngine.Evaluate(
+                    (float)_hidppMotion.Position, (float)_hidppMotion.Velocity,
+                    (float)_hidppMotion.Acceleration, _damperGain, _inertiaGain,
+                    now, Stopwatch.Frequency, out _, _damperSign, _springGain, _frictionGain,
+                    _periodicGain, _rampGain);
+            // The effect under test acts during the pulse and the
+            // measurement, never while re-centering: there it is not being
+            // measured, only resisting, and it was strong enough to stop the
+            // engine friction phase getting the wheel home. Evaluate it
+            // regardless so the renderer's filters and the friction lock
+            // point keep tracking the wheel, then discard the output.
+            if (!at.EffectEngaged) term = 0f;
+            int v = (int)((at.EngineCommand + term) * 32767.0);
+            if (v > 20000) v = 20000; else if (v < -20000) v = -20000;
+            return (short)v;
+        }
+
+        // ---- Condition-render tuning surface (FXTEST UI + persistence) ----
+        private double _conditionLpfHz = 200;
+
+        public double DamperGainNow => _damperGain;
+        public bool   DamperSignInvertedNow => _damperSign < 0;
+        public double ConditionLpfHzNow => _conditionLpfHz;
+
+        /// <summary>The render gain that belongs to one bench effect kind.
+        /// The bench tunes one effect at a time, so its slider has to follow
+        /// the effect picker instead of always editing the damper (rig
+        /// 2026-09-01: "the values all show the same as i switch effects").
+        /// The five periodics share one gain (one waveform scale), as do the
+        /// two saw directions.</summary>
+        public double FxKindGainNow(string kind)
+        {
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   return _springGain;
+                case "FRICTION": return _frictionGain;
+                case "INERTIA":  return _inertiaGain;
+                case "PERIODIC": return _periodicGain;
+                case "RAMP":     return _rampGain;
+                default:         return _damperGain;
+            }
+        }
+
+        /// <summary>Sets the render gain for one bench effect kind. Live:
+        /// takes effect on the next pump tick, so it can be tuned while the
+        /// effect plays. Returns the clamped value.</summary>
+        /// <summary>The tunable range every gain path shares (slider,
+        /// setter, auto-tune result, DAMPCAL), so a measured value can never
+        /// be one number in settings and another on screen. 5 covers the
+        /// measured spring correction with headroom.</summary>
+        public const double FxGainMax = 5.0;
+
+        public static double ClampFxGain(double v)
+            => double.IsNaN(v) || v < 0 ? 0 : (v > FxGainMax ? FxGainMax : v);
+
+        public double SetFxKindGain(string kind, double v)
+        {
+            v = ClampFxGain(v);
+            float g = (float)v;
+            // No log line here: a slider drag calls this every tick, and the
+            // FXTEST start line already prints the gain in force.
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   _springGain   = g; break;
+                case "FRICTION": _frictionGain = g; break;
+                case "INERTIA":  _inertiaGain  = g; break;
+                case "PERIODIC": _periodicGain = g; break;
+                case "RAMP":     _rampGain     = g; break;
+                default:         _damperGain   = g; break;
+            }
+            return v;
+        }
+
+        /// <summary>The gain family a bench effect name belongs to.</summary>
+        public static string FxGainFamily(string kind)
+        {
+            switch ((kind ?? "").Trim().ToUpperInvariant())
+            {
+                case "SPRING":   return "SPRING";
+                case "FRICTION": return "FRICTION";
+                case "INERTIA":  return "INERTIA";
+                case "RAMP":     return "RAMP";
+                case "SINE":
+                case "SQUARE":
+                case "TRIANGLE":
+                case "SAWUP":
+                case "SAWDOWN":  return "PERIODIC";
+                default:         return "DAMPER";
+            }
+        }
+
+        /// <summary>The shipped default gain for one effect family, read
+        /// from the settings model so there is one source of truth.</summary>
+        public static double FxKindGainDefault(string kind)
+        {
+            var d = new TrueforceSettings();
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   return d.FfbConditionSpringGain;
+                case "FRICTION": return d.FfbConditionFrictionGain;
+                case "INERTIA":  return d.FfbConditionInertiaGain;
+                case "PERIODIC": return d.FfbConditionPeriodicGain;
+                case "RAMP":     return d.FfbConditionRampGain;
+                default:         return d.FfbConditionDamperGain;
+            }
+        }
+
+        /// <summary>Puts one effect family's gain back to its shipped
+        /// default (live; Save persists it). Returns the value.</summary>
+        public double ResetFxKindGain(string kind)
+        {
+            double v = FxKindGainDefault(kind);
+            SetFxKindGain(kind, v);
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Render gain {FxGainFamily(kind)} reset to {v:F2}.");
+            return v;
+        }
+
+        /// <summary>Puts every bench tunable (all six gains, the velocity
+        /// direction and the condition filter) back to shipped defaults.
+        /// Live only: Save persists, so a reset can be undone by reopening
+        /// SimHub without saving.</summary>
+        public void ResetAllFxTuning()
+        {
+            var d = new TrueforceSettings();
+            _damperGain   = (float)d.FfbConditionDamperGain;
+            _springGain   = (float)d.FfbConditionSpringGain;
+            _frictionGain = (float)d.FfbConditionFrictionGain;
+            _inertiaGain  = (float)d.FfbConditionInertiaGain;
+            _periodicGain = (float)d.FfbConditionPeriodicGain;
+            _rampGain     = (float)d.FfbConditionRampGain;
+            _damperSign   = d.FfbConditionSignInverted ? -1 : 1;
+            _conditionLpfHz = d.FfbConditionLpfHz;
+            _inertiaCoasts  = d.FfbConditionInertiaCoasts;
+            _inertiaAsDamping = d.FfbConditionInertiaAsDamping;
+            ApplyConditionLpf();
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] All condition-render tuning reset to defaults (not saved yet).");
+        }
+
+        /// <summary>Label for the bench's gain row, so the slider says which
+        /// effect it is editing.</summary>
+        public static string FxGainFamilyLabel(string kind)
+        {
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   return "Spring gain:";
+                case "FRICTION": return "Friction gain:";
+                case "INERTIA":  return "Inertia gain:";
+                case "PERIODIC": return "Waveform gain:";
+                case "RAMP":     return "Ramp gain:";
+                default:         return "Damper gain:";
+            }
+        }
+
+        /// <summary>Sets the per-condition output low-pass (Hz; 0 = off) on
+        /// both renderers (the tap's decoded effects and the FXTEST engine).</summary>
+        public double SetConditionLpfHz(double hz)
+        {
+            if (hz < 0) hz = 0; else if (hz > 1000) hz = 1000;
+            _conditionLpfHz = hz;
+            ApplyConditionLpf();
+            return hz;
+        }
+
+        private void ApplyConditionLpf()
+        {
+            var t = _ffbTap;
+            if (t != null)
+            {
+                t.HidppEffects.ConditionOutputCutoffHz = (float)_conditionLpfHz;
+                t.HidppEffects.InertiaCoasts = _inertiaCoasts;
+                t.HidppEffects.InertiaAsDamping = _inertiaAsDamping;
+            }
+            _fxTestEngine.ConditionOutputCutoffHz = (float)_conditionLpfHz;
+            _fxTestEngine.InertiaCoasts = _inertiaCoasts;
+            _fxTestEngine.InertiaAsDamping = _inertiaAsDamping;
+        }
+
+        public bool InertiaCoastsNow => _inertiaCoasts;
+
+        /// <summary>The condition gains describe how much force the render
+        /// path delivers, and FfbScale multiplies that force, so the two are
+        /// only meaningful together: FfbScale x gain is the invariant. A
+        /// calibration taken at one scale is wrong at another, by the ratio
+        /// between them. FfbScale is preset-carried while the gains are
+        /// global, so ordinary preset switching can move it without anyone
+        /// touching the calibration.</summary>
+        private void WarnIfConditionScaleChanged()
+        {
+            var s = Settings;
+            if (s == null) return;
+            double at = s.FfbConditionMeasuredAtScale;
+            if (at <= 0) return;                      // never calibrated
+            double now = s.FfbScale;
+            if (now <= 0) return;
+            double ratio = now / at;
+            if (ratio > 0.98 && ratio < 1.02) return;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Condition gains were calibrated at FfbScale {at:F2} but it is now {now:F2}: "
+                + $"the rendered damper, spring and friction are {ratio:P0} of what was measured. "
+                + "Re-run auto-tune, or set FfbScale back, to keep them matched to the wheel.");
+        }
+
+        /// <summary>Whether rendered inertia coasts like a flywheel (the
+        /// DirectInput reading) or only ever resists, which is what the
+        /// wheel's own firmware does.</summary>
+        public void SetInertiaCoasts(bool coasts)
+        {
+            _inertiaCoasts = coasts;
+            ApplyConditionLpf();
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Rendered inertia {(coasts ? "COASTS (lossless flywheel)" : "only resists (matches the wheel's firmware)")}.");
+        }
+
+        /// <summary>Sets the velocity-term direction explicitly (the UI
+        /// checkbox form of CSPFFB DAMPSIGN).</summary>
+        public void SetDamperSignInverted(bool inverted)
+        {
+            _damperSign = inverted ? -1 : 1;
+            SimHub.Logging.Current.Info($"[TF4ALL] Velocity-term direction {(inverted ? "FLIPPED" : "normal")}.");
+        }
+
+        /// <summary>Persists the current condition-render tuning (gain,
+        /// direction, filter) as the every-session defaults.</summary>
+        public void SaveFxTuning()
+        {
+            var s = Settings;
+            if (s == null) return;
+            s.FfbConditionDamperGain   = _damperGain;
+            s.FfbConditionSignInverted = _damperSign < 0;
+            s.FfbConditionLpfHz        = _conditionLpfHz;
+            s.FfbConditionSpringGain   = _springGain;
+            s.FfbConditionFrictionGain = _frictionGain;
+            s.FfbConditionInertiaGain  = _inertiaGain;
+            s.FfbConditionPeriodicGain = _periodicGain;
+            s.FfbConditionRampGain     = _rampGain;
+            s.FfbConditionInertiaCoasts = _inertiaCoasts;
+            s.FfbConditionInertiaAsDamping = _inertiaAsDamping;
+            // Stamp the scale these gains are valid at: see the note on the
+            // setting. Without it a preset that carries a different FfbScale
+            // silently rescales every calibrated condition.
+            s.FfbConditionMeasuredAtScale = s.FfbScale;
+            PersistSettings();
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Condition tuning saved: damper {_damperGain:F2}, spring {_springGain:F2}, "
+                + $"friction {_frictionGain:F2}, inertia {_inertiaGain:F2}, waveform {_periodicGain:F2}, "
+                + $"ramp {_rampGain:F2}, inertia {(_inertiaAsDamping ? "as damping" : _inertiaCoasts ? "coasts" : "resists")}, "
+                + $"direction {(_damperSign < 0 ? "flipped" : "normal")}, "
+                + $"filter {_conditionLpfHz:F0} Hz.");
+        }
+
+        /// <summary>Starts the CSPFFB DAMPTEST damper wiggle. True when AC is
+        /// the active source and the test is running.</summary>
+        public bool StartCspDamperTest()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return false;
+            src.StartCspDamperTest();
+            return true;
+        }
+
         private bool CspFieldIsFinalFf =>
             string.Equals(Settings?.CspBridgeFfbField, "finalff", StringComparison.OrdinalIgnoreCase);
 
@@ -31197,6 +33037,10 @@ namespace TrueforceForAll.Plugin
             // mode on a dying stream (2026-08-08 review). End() owns the
             // device from here on.
             if (_shuttingDown) return;
+            // A bench run (auto-tune, FXTEST native, DAMPCAL/DIDAMP native
+            // hold) owns the stream state; the pause gate must neither stop
+            // nor resume it mid-run (audit F7).
+            if (_autoTuner != null || _nativeTestStreamSuspended || _fxTestMode != 0) return;
 
             // We may only actively hold the stream stopped while the toggle is
             // on AND we have a live game/source to judge pause state against.

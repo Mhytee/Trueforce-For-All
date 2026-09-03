@@ -48,11 +48,13 @@ local LAYOUT = [[
   float mz[4];
   float fx[4];
   float fy[4];
+  float ffbDamper;
+  float steerInputSpeed;
 ]]
 
 local mmf = ac.writeMemoryMappedFile('TF4All.ACBridge.v1', LAYOUT)
 mmf.magic   = 0x54463441   -- "TF4A" little-endian ("A4FT" as bytes)
-mmf.version = 1
+mmf.version = 2                  -- v2: ffbDamper + steerInputSpeed at the tail
 mmf.seq     = 0
 
 -- Physics-rate per-wheel data needs a CSP new enough to expose
@@ -80,7 +82,8 @@ local ctrl = nil
 local ctrlRetry = 0
 local ctrlPrevSeq = -1
 local ctrlSinceChange = 1e9        -- seconds since seq last advanced
-local ctrlSuppress = false         -- last decoded suppress flag
+local ctrlSuppress = false
+local ctrlDampScale = 1         -- last decoded suppress flag
 
 local function readControl(dt)
   if ctrl == nil then
@@ -91,11 +94,13 @@ local function readControl(dt)
     if ctrl == nil then return false end
   end
   local ok = false
+  local scale = 1
   pcall(function()
     if ctrl.magic ~= CONTROL_MAGIC or ctrl.version ~= 1 then return end
     local seq = ctrl.seq
     if seq % 2 ~= 0 then                -- writer mid-write: keep the last decision
       ok = ctrlSuppress
+      scale = ctrlDampScale
       return
     end
     if seq ~= ctrlPrevSeq then
@@ -106,19 +111,34 @@ local function readControl(dt)
     end
     -- Stale writes = SimHub gone: revert to pass-through.
     if ctrlSinceChange > 0.5 then ok = false
-    else ok = (ctrl.flags ~= 0) end
+    else
+      -- tonumber: ctrl.flags is FFI cdata, and math.floor on cdata throws
+      -- (silently, inside this pcall), which ate the damper bits entirely.
+      local flags = tonumber(ctrl.flags) or 0
+      ok = (flags % 2) == 1                          -- bit 0: take the wheel over
+      if (math.floor(flags / 4) % 2) == 1 then       -- bit 2: scale override active,
+        scale = (math.floor(flags / 256) % 256) / 255 -- bits 8..15 carry the scale
+      elseif (math.floor(flags / 2) % 2) == 1 then   -- bit 1: A/B, damper off
+        scale = 0
+      else
+        scale = 1
+      end
+    end
   end)
   ctrlSuppress = ok
-  return ok
+  ctrlDampScale = scale
+  return ok, scale
 end
 
 function script.update(ffbValue, ffbDamper, steerInput, steerInputSpeed, dt)
   local s = mmf.seq + 1
   mmf.seq = s                      -- odd: writer busy
 
-  mmf.ffbValue   = ffbValue
-  mmf.steerInput = steerInput
-  mmf.dt         = dt
+  mmf.ffbValue        = ffbValue
+  mmf.ffbDamper       = ffbDamper
+  mmf.steerInput      = steerInput
+  mmf.steerInputSpeed = steerInputSpeed
+  mmf.dt              = dt
 
   local car = ac.getCar(0)
   if car ~= nil then
@@ -154,11 +174,18 @@ function script.update(ffbValue, ffbDamper, steerInput, steerInputSpeed, dt)
 
   mmf.seq = s + 1                  -- even: stable
 
-  -- If TF4ALL is taking the wheel over, hand it silence so the game stops
-  -- driving the wheel; TF4ALL renders the exported ffbValue. Otherwise pass
-  -- the game's own force through untouched.
-  if readControl(dt) then
-    return 0, 0
+  -- If TF4ALL is taking the wheel over, zero the FORCE so the game stops
+  -- driving the wheel (TF4ALL renders the exported ffbValue) but keep the
+  -- game's DAMPER: AC holds it at a constant level (the player's damper
+  -- gain), the wheel firmware runs it locally off its own encoder, and
+  -- without it a released wheel oscillates and full lock arrives hard.
+  -- Otherwise pass everything through untouched.
+  local takeover, dampScale = readControl(dt)
+  if takeover then
+    -- dampScale is the CSPFFB DAMP / DAMPTEST lever: 1 = pass the game's
+    -- damper through (normal), 0 = the pre-fix feel, in between = the
+    -- DAMPTEST ramps, proving on the wheel what the channel does.
+    return 0, ffbDamper * dampScale
   end
   return ffbValue, ffbDamper
 end

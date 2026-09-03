@@ -20,6 +20,8 @@ namespace TrueforceForAll.Core
         public float SteerTorque;   // Nm at the steering column, per CSP
         public float SteerInput;
         public float Dt;
+        public float FfbDamper;        // damper coefficient CSP handed the script (0 from a v1 script)
+        public float SteerInputSpeed;  // steering input speed at physics rate (0 from a v1 script)
     }
 
     public enum AcCspBridgeParse { Ok, TooShort, BadMagic, BadVersion, WriterBusy }
@@ -38,12 +40,17 @@ namespace TrueforceForAll.Core
     {
         public const string MapName = "TF4All.ACBridge.v1";
         public const uint   Magic   = 0x54463441;   // "TF4A"
-        public const uint   Version = 1;
-        public const int    Size    = 152;
+        // v2 appends ffbDamper + steerInputSpeed at the tail; every v1
+        // offset is unchanged, so the reader accepts both versions and reads
+        // the tail only from a v2 writer (a v1 map's tail bytes read as 0).
+        public const uint   Version    = 2;
+        public const uint   VersionMin = 1;
+        public const int    Size       = 160;
 
         public const int OffMagic = 0, OffVersion = 4, OffSeq = 8,
                          OffFfbValue = 12, OffFfbPure = 16, OffFfbFinal = 20, OffFfbMultiplier = 24,
-                         OffSteerTorque = 28, OffSteerInput = 32, OffDt = 36;
+                         OffSteerTorque = 28, OffSteerInput = 32, OffDt = 36,
+                         OffFfbDamper = 152, OffSteerInputSpeed = 156;
 
         /// <summary>Decodes one copy of the block. WriterBusy means the seqlock
         /// was odd (the script was mid-update when the copy was taken): the
@@ -54,7 +61,8 @@ namespace TrueforceForAll.Core
             s = default(AcCspBridgeSample);
             if (buf == null || buf.Length < Size) return AcCspBridgeParse.TooShort;
             if (BitConverter.ToUInt32(buf, OffMagic)   != Magic)   return AcCspBridgeParse.BadMagic;
-            if (BitConverter.ToUInt32(buf, OffVersion) != Version) return AcCspBridgeParse.BadVersion;
+            uint ver = BitConverter.ToUInt32(buf, OffVersion);
+            if (ver < VersionMin || ver > Version) return AcCspBridgeParse.BadVersion;
             uint seq = BitConverter.ToUInt32(buf, OffSeq);
             if ((seq & 1) != 0) return AcCspBridgeParse.WriterBusy;
             s.Seq           = seq;
@@ -65,6 +73,11 @@ namespace TrueforceForAll.Core
             s.SteerTorque   = BitConverter.ToSingle(buf, OffSteerTorque);
             s.SteerInput    = BitConverter.ToSingle(buf, OffSteerInput);
             s.Dt            = BitConverter.ToSingle(buf, OffDt);
+            if (ver >= 2)
+            {
+                s.FfbDamper       = BitConverter.ToSingle(buf, OffFfbDamper);
+                s.SteerInputSpeed = BitConverter.ToSingle(buf, OffSteerInputSpeed);
+            }
             return AcCspBridgeParse.Ok;
         }
     }
@@ -108,10 +121,11 @@ namespace TrueforceForAll.Core
             catch { _mmf = null; _view = null; return false; }
         }
 
-        /// <summary>One control write. suppress = tell the script to return 0
-        /// to the wheel. Call it steadily (each poll tick) so the script's
-        /// liveness check keeps seeing fresh writes.</summary>
-        public void Write(bool suppress)
+        /// <summary>One control write. suppress (bit 0) = tell the script to
+        /// zero the FORCE to the wheel; zeroDamper (bit 1) = zero the DAMPER
+        /// too, the CSPFFB DAMP A/B switch. Call it steadily (each poll tick)
+        /// so the script's liveness check keeps seeing fresh writes.</summary>
+        public void Write(bool suppress, bool zeroDamper = false, int damperScale255 = -1)
         {
             if (!EnsureOpen()) return;
             try
@@ -126,7 +140,13 @@ namespace TrueforceForAll.Core
                 uint odd  = _writes * 2u - 1u;
                 uint even = _writes * 2u;
                 _view.Write(OffSeq, odd);          // odd: writing
-                _view.Write(OffFlags, suppress ? 1u : 0u);
+                uint flags = (suppress ? 1u : 0u) | (zeroDamper ? 2u : 0u);
+                // bit 2 arms a damper SCALE override, carried in bits 8..15
+                // (0..255 = 0..1). The DAMPTEST wiggle rides this; a script
+                // without the feature ignores the upper bits.
+                if (damperScale255 >= 0)
+                    flags |= 4u | ((uint)Math.Min(damperScale255, 255) << 8);
+                _view.Write(OffFlags, flags);
                 _view.Write(OffSeq, even);         // even: stable, and advanced = alive
             }
             catch { Close(); }

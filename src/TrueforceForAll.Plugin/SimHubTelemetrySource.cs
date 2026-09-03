@@ -7,6 +7,7 @@
 // when they can deliver physics-rate data; otherwise this stays active.
 
 using System;
+using System.Diagnostics;
 using GameReaderCommon;
 using TrueforceForAll.Core;
 
@@ -18,6 +19,38 @@ namespace TrueforceForAll.Plugin
         public override bool   IsEnhanced => false;
         public override bool   IsRunning  => _running;
         private bool _running;
+
+        // Pause handling. A paused game must stop producing frames, the
+        // same way the enhanced sources go quiet on a frozen packetId, so
+        // the plugin's 500 ms stall watchdog settles sustained effects
+        // (they latch amplitude per frame and would hum the pre-pause
+        // engine forever otherwise; RaceRoom pause report, 2026-08-31).
+        // Two detectors, because SimHub's readers split two ways:
+        //   - GamePaused: authoritative where the reader implements
+        //     IsGamePaused() (R3E maps its shared memory's own GamePaused
+        //     field). While it is set, SimHub re-delivers the previous
+        //     snapshot every tick (GameNewData = GameOldData), which is
+        //     exactly the frozen replay we must not dispatch.
+        //   - The frozen-feed detector: readers that stub the flag keep
+        //     building fresh frames from the game's frozen memory, so the
+        //     values themselves are the only tell. See the class comment.
+        private readonly FrozenTelemetryDetector _frozen = new FrozenTelemetryDetector();
+        private bool _withheldLogged;
+
+        private void MarkWithheld(string why)
+        {
+            if (_withheldLogged) return;
+            _withheldLogged = true;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] SimHub frames withheld (" + why + "); sustained effects settle until live data resumes.");
+        }
+
+        private void MarkEmitting()
+        {
+            if (!_withheldLogged) return;
+            _withheldLogged = false;
+            SimHub.Logging.Current.Info("[TF4ALL] SimHub telemetry is live again; frames resumed.");
+        }
 
         public override void Start() { _running = true; }
         public override void Stop()  { _running = false; }
@@ -36,6 +69,17 @@ namespace TrueforceForAll.Plugin
             if (data?.GameRunning != true) return;
             var d = data?.NewData;
             if (d == null) return;
+
+            // Flagged pause: withhold frames for the whole pause. A one-shot
+            // settle would not work here, because SimHub keeps re-delivering
+            // the frozen snapshot at full tick rate and the very next one
+            // would re-latch the amplitudes; frames stopping is what lets
+            // the existing stall path own the silence and the resume.
+            if (data.GamePaused)
+            {
+                MarkWithheld("the reader reports the game paused");
+                return;
+            }
 
             // Rev-bar fill for the rim LEDs. iRacing's own rev lights use the
             // car's SHIFT-LIGHT band (first-light RPM -> shift RPM), a narrow
@@ -131,6 +175,21 @@ namespace TrueforceForAll.Plugin
                 RedlineRpmPerGear = redlinePerGear,
             };
             LastRedlineRpm = realRedline;
+
+            // Flagless pause backstop: a live sim never repeats these floats
+            // exactly; a reader with no pause flag replaying one frozen
+            // snapshot does nothing else. Channels the game never populates
+            // reach the detector as a constant 0 and carry no signal.
+            if (_frozen.Note(frame.Rpms, frame.SpeedKmh,
+                             frame.AccelerationHeave ?? 0, frame.AccelerationSway ?? 0,
+                             frame.AccelerationSurge ?? 0, frame.YawRateDegPerSec ?? 0,
+                             Stopwatch.GetTimestamp(), Stopwatch.Frequency))
+            {
+                MarkWithheld("the data is repeating one frozen snapshot");
+                return;
+            }
+
+            MarkEmitting();
             EmitFrame(frame);
         }
 

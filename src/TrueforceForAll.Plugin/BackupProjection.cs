@@ -53,6 +53,9 @@ namespace TrueforceForAll.Plugin
             // sim's own max force, so it carries no wheel-specific meaning.
             "IRacingForceGain", "IRacingUse360Hz",
             "IRacingForceMode", "IRacingPredictGain",
+            // RaceRoom shared-memory FFB route (dev). Travels: it is a
+            // preference about which force source to trust, not a machine fact.
+            "R3ESharedMemoryFfb",
             // Wheel full-scale in Nm. Travels with the other feel settings: it
             // describes the WHEEL, and the wheel goes to the second PC with the
             // driver, same reasoning as the rev-light and OLED preferences.
@@ -111,6 +114,13 @@ namespace TrueforceForAll.Plugin
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb",
+            // Condition-render tuning (FXTEST bench): describes the wheel's
+            // feel and travels with it, same category as FfbScale.
+            "FfbConditionDamperGain", "FfbConditionSignInverted", "FfbConditionLpfHz",
+            "FfbConditionSpringGain", "FfbConditionFrictionGain",
+            "FfbConditionInertiaGain", "FfbConditionPeriodicGain", "FfbConditionRampGain",
+            "FfbConditionInertiaCoasts", "FfbConditionMeasuredAtScale",
+            "FfbConditionInertiaAsDamping",
             "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
             "ClassicSpringEmulationEnabled",
             "SpringModeTerrainEnabled", "SpringModeTerrainGain",

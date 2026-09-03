@@ -98,6 +98,16 @@
       <HintPath>$(SimHubPath)\SimHub.Logging.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!-- DirectInput, for the DAMPCAL spike (driving the wheel's native damper
+         ourselves). SimHub ships SharpDX for its own controller support. -->
+    <Reference Include="SharpDX">
+      <HintPath>$(SimHubPath)\SharpDX.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="SharpDX.DirectInput">
+      <HintPath>$(SimHubPath)\SharpDX.DirectInput.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <!-- SimHub.Logging.Current returns an ILog from log4net. -->
     <Reference Include="log4net">
       <HintPath>$(SimHubPath)\log4net.dll</HintPath>
