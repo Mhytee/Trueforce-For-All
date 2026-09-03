@@ -161,6 +161,9 @@ namespace TrueforceForAll.Plugin
         /// full strip as a half-full one.</summary>
         public int MirrorSteps => _channel.StripLength;
         public byte RevFeatureIndex => _channel.RevFeatureIndex;
+        /// <summary>Level writes WE have put on the wire, for telling our own
+        /// traffic apart from a game's when reading the tap's count.</summary>
+        public long LevelWritesIssued => _channel.LevelWritesIssued;
 
         public void OnFrame(double rpmPercent, double rpms, double maxRpm, bool redline, bool gateOpen)
         {
@@ -568,14 +571,14 @@ namespace TrueforceForAll.Plugin
                         return;
                     }
 
+                    // Fill and stop. The preview used to rise, fall all the
+                    // way back to dark, and only then settle on the finished
+                    // pattern: three animations to say one thing, and long
+                    // enough to sit through (owner, 2026-09-03). The rise
+                    // shows the fill direction, which is the only reason to
+                    // animate it, and the hold after it shows the colours.
                     int steps = _channel.StripLength;
                     for (int lvl = 0; lvl <= steps && _channel.IsReady && _previewGen == gen; lvl++)
-                    {
-                        _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
-                        _channel.SetLevel(lvl);
-                        Thread.Sleep(stepMs);
-                    }
-                    for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady && _previewGen == gen; lvl--)
                     {
                         _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
                         _channel.SetLevel(lvl);
@@ -614,7 +617,10 @@ namespace TrueforceForAll.Plugin
             });
 
             int stepsGuess = _channel.IsReady ? _channel.StripLength : WheelLedChannel.LedCount;
-            return (2 * stepsGuess + 1) * stepMs + 300;
+            // One rise, not a rise and a fall: the reported duration has to
+            // match what the strip actually does or the caller's status text
+            // and hold timing describe an animation that already finished.
+            return (stepsGuess + 1) * stepMs + 300;
         }
 
         /// <summary>Light the strip for a deliberate action and start the clock on

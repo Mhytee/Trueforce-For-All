@@ -50,11 +50,17 @@ local LAYOUT = [[
   float fy[4];
   float ffbDamper;
   float steerInputSpeed;
+  uint32_t acLeds;
+  uint32_t acLedCount;
+  float acLedRpm[12];
+  float acLedBlinkRpm;
+  float acLedBlinkHz;
+  float acLedRgb[36];
 ]]
 
 local mmf = ac.writeMemoryMappedFile('TF4All.ACBridge.v1', LAYOUT)
 mmf.magic   = 0x54463441   -- "TF4A" little-endian ("A4FT" as bytes)
-mmf.version = 2                  -- v2: ffbDamper + steerInputSpeed at the tail
+mmf.version = 5                  -- v5: the car's shift-light COLOURS after v4's thresholds
 mmf.seq     = 0
 
 -- Physics-rate per-wheel data needs a CSP new enough to expose
@@ -66,6 +72,103 @@ pcall(function()
   local pr = ac.getCarPhysicsRate()
   if pr ~= nil and pr.wheels ~= nil then physRate = pr end
 end)
+
+-- Who owns the wheel's rev lights. In AC that is CSP's g27_lights module,
+-- and TF4ALL needs to know because both of them writing to the same HID++
+-- pipe is what makes the bar stick and lag. CSP exposes no way to suppress
+-- the module's output at runtime, so this is strictly a REPORT: TF4ALL uses
+-- it to decide whether to stay off the bar and what to tell the user.
+--
+-- Packed into one word so the layout grows by a single field: byte 0 is
+-- whether the module is active at all, byte 1 is its MODE (the config value
+-- that decides whether it writes, DISABLED being the one that frees the bar
+-- for a "specialized tool" per CSP's own description of the setting).
+local LED_MODES = { DI_BASED = 1, PERCENTAGE = 2, AI_BASED = 3, DISABLED = 4 }
+local acLedsWord = 0
+
+local function refreshLedState()
+  local active, mode = false, 0
+  -- pcall throughout: ac.isModuleActive and ac.INIConfig.cspModule are both
+  -- newer than the oldest CSP this script runs on, and an older patch must
+  -- fall back to "unknown" (0) rather than take the FFB bridge down with it.
+  pcall(function() active = ac.isModuleActive(ac.CSPModuleID.G27Lights) == true end)
+  pcall(function()
+    local cfg = ac.INIConfig.cspModule(ac.CSPModuleID.G27Lights)
+    if cfg ~= nil then
+      mode = LED_MODES[tostring(cfg:get('BASIC', 'MODE', 'DI_BASED'))] or 0
+    end
+  end)
+  acLedsWord = (active and 1 or 0) + mode * 256
+end
+
+refreshLedState()
+-- Re-read when the user changes it, so turning AC's lights off mid-session
+-- reaches TF4ALL without a restart.
+pcall(function() ac.onCSPConfigChanged(ac.CSPModuleID.G27Lights, refreshLedState) end)
+
+-- The CAR's own shift lights, so the wheel's bar can light where the car's
+-- dash lights instead of at a generic percentage of the rev range.
+--
+-- AC cars describe their dash LEDs in data/digital_instruments.ini as
+-- [LED_0], [LED_1], ... each with the RPM it switches on at, plus the RPM the
+-- set starts flashing at and how fast. Optional data: plenty of cars model no
+-- shift lights at all, and those report a count of zero so TF4ALL keeps
+-- whatever it would have done anyway.
+--
+-- ac.INIConfig.carData reads this straight out of data.acd, so it works for
+-- the packed cars that are almost all of them. Doing the same from outside the
+-- game would mean implementing AC's own container format.
+--
+-- Read once: CSP loads this script per session, and the car does not change
+-- under it within one.
+local LED_MAX = 12
+local acLedCount, acLedBlinkRpm, acLedBlinkHz = 0, 0, 0
+local acLedRpm = {}
+-- EMISSIVE per LED, raw. AC treats these as emissive intensities rather than
+-- 0-255 colours (values above 255 are normal, e.g. COLOR=450,70,10 elsewhere
+-- in the same file), so they are published UNSCALED and normalised on the
+-- TF4ALL side where the rule can be tested.
+local acLedRgb = {}
+
+local function readCarShiftLights()
+  pcall(function()
+    local cfg = ac.INIConfig.carData(0, 'digital_instruments.ini')
+    if cfg == nil then return end
+    for i = 0, LED_MAX - 1 do
+      -- The default's TYPE is what INIConfig:get returns on a miss, so -1
+      -- keeps this numeric and makes "absent" unambiguous.
+      local rpm = cfg:get('LED_' .. i, 'RPM_SWITCH', -1)
+      if type(rpm) ~= 'number' or rpm <= 0 then break end   -- LEDs are contiguous from 0
+      acLedCount = acLedCount + 1
+      acLedRpm[acLedCount] = rpm
+
+      -- Its own pcall, and its own default: rgb is a CSP type rather than a
+      -- plain table, so probing it defensively here would be guesswork, and an
+      -- error raised inside the shared pcall above would lose every LED after
+      -- this one. An all-zero triple reads as "no colour" downstream, which is
+      -- the right answer for a car that does not give one.
+      local base = (acLedCount - 1) * 3
+      acLedRgb[base + 1], acLedRgb[base + 2], acLedRgb[base + 3] = 0, 0, 0
+      pcall(function()
+        local col = cfg:get('LED_' .. i, 'EMISSIVE', rgb(0, 0, 0))
+        acLedRgb[base + 1] = col.r or 0
+        acLedRgb[base + 2] = col.g or 0
+        acLedRgb[base + 3] = col.b or 0
+      end)
+      -- Every LED repeats the same blink pair; take the first that has it.
+      if acLedBlinkRpm <= 0 then
+        local b = cfg:get('LED_' .. i, 'BLINK_SWITCH', -1)
+        if type(b) == 'number' and b > 0 then acLedBlinkRpm = b end
+      end
+      if acLedBlinkHz <= 0 then
+        local h = cfg:get('LED_' .. i, 'BLINK_HZ', -1)
+        if type(h) == 'number' and h > 0 then acLedBlinkHz = h end
+      end
+    end
+  end)
+end
+
+readCarShiftLights()
 
 -- TF4ALL -> script control channel. TF4ALL creates and writes this; we only
 -- read it. seq advances by two per write and doubles as a liveness heartbeat.
@@ -139,6 +242,18 @@ function script.update(ffbValue, ffbDamper, steerInput, steerInputSpeed, dt)
   mmf.steerInput      = steerInput
   mmf.steerInputSpeed = steerInputSpeed
   mmf.dt              = dt
+  mmf.acLeds          = acLedsWord
+  -- Constant for the session, but written inside the seqlock with everything
+  -- else so a reader that attaches late still gets them without a handshake.
+  mmf.acLedCount      = acLedCount
+  mmf.acLedBlinkRpm   = acLedBlinkRpm
+  mmf.acLedBlinkHz    = acLedBlinkHz
+  for i = 0, LED_MAX - 1 do
+    mmf.acLedRpm[i] = acLedRpm[i + 1] or 0
+    mmf.acLedRgb[i * 3 + 0] = acLedRgb[i * 3 + 1] or 0
+    mmf.acLedRgb[i * 3 + 1] = acLedRgb[i * 3 + 2] or 0
+    mmf.acLedRgb[i * 3 + 2] = acLedRgb[i * 3 + 3] or 0
+  end
 
   local car = ac.getCar(0)
   if car ~= nil then

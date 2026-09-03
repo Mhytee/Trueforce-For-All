@@ -22,7 +22,34 @@ namespace TrueforceForAll.Core
         public float Dt;
         public float FfbDamper;        // damper coefficient CSP handed the script (0 from a v1 script)
         public float SteerInputSpeed;  // steering input speed at physics rate (0 from a v1 script)
+        /// <summary>Whether CSP's g27_lights module (the thing that drives the
+        /// wheel's rev lights in AC) is active. False from a pre-v3 script,
+        /// which is indistinguishable from "not active": read it with
+        /// AcLedsKnown.</summary>
+        public bool AcLedsModuleActive;
+        /// <summary>That module's MODE, i.e. whether and how it writes the
+        /// bar. Unknown from a pre-v3 script or a CSP too old for the query.</summary>
+        public AcLedMode AcLedsMode;
+        /// <summary>True once a v3 script has reported the LED state at all.</summary>
+        public bool AcLedsKnown;
+
+        /// <summary>How many shift lights the CAR itself defines (v4+), or 0
+        /// when it models none. The RPMs themselves are on the reader, not
+        /// here: they are constant for a session and copying twelve floats into
+        /// every physics-rate sample to carry a value that never changes is
+        /// waste on the hot path.</summary>
+        public int   AcLedCount;
+        /// <summary>RPM at which the car's own shift lights start flashing, 0
+        /// if it does not say.</summary>
+        public float AcLedBlinkRpm;
+        /// <summary>How fast they flash, in Hz. 0 if the car does not say.</summary>
+        public float AcLedBlinkHz;
     }
+
+    /// <summary>CSP g27_lights MODE values. Disabled is the one that stops AC
+    /// writing the wheel's rev lights, which CSP documents as the way to hand
+    /// them to an external tool.</summary>
+    public enum AcLedMode { Unknown = 0, DiBased = 1, Percentage = 2, AiBased = 3, Disabled = 4 }
 
     public enum AcCspBridgeParse { Ok, TooShort, BadMagic, BadVersion, WriterBusy }
 
@@ -43,14 +70,55 @@ namespace TrueforceForAll.Core
         // v2 appends ffbDamper + steerInputSpeed at the tail; every v1
         // offset is unchanged, so the reader accepts both versions and reads
         // the tail only from a v2 writer (a v1 map's tail bytes read as 0).
-        public const uint   Version    = 2;
+        // v3 appends acLeds (who owns the wheel's rev lights) after v2's pair;
+        // v4 appends the car's own shift-light thresholds after that. Same rule
+        // throughout: every earlier offset is unchanged and the reader takes
+        // the tail only from a writer new enough to have written it.
+        public const uint   Version    = 5;
         public const uint   VersionMin = 1;
-        public const int    Size       = 160;
+        public const int    Size       = 368;
+        /// <summary>Room the wire reserves for per-LED switch-on RPMs. Cars
+        /// run to about ten; the wheel's own bar is ten steps on a G PRO.</summary>
+        public const int    AcLedMax   = 12;
 
         public const int OffMagic = 0, OffVersion = 4, OffSeq = 8,
                          OffFfbValue = 12, OffFfbPure = 16, OffFfbFinal = 20, OffFfbMultiplier = 24,
                          OffSteerTorque = 28, OffSteerInput = 32, OffDt = 36,
-                         OffFfbDamper = 152, OffSteerInputSpeed = 156;
+                         OffFfbDamper = 152, OffSteerInputSpeed = 156, OffAcLeds = 160,
+                         OffAcLedCount = 164, OffAcLedRpm = 168,
+                         OffAcLedBlinkRpm = 216, OffAcLedBlinkHz = 220,
+                         OffAcLedRgb = 224;
+
+        /// <summary>One AC dash LED's EMISSIVE turned into an sRGB triple.
+        ///
+        /// AC stores these as emissive INTENSITIES, not 0-255 colours: values
+        /// above 255 are ordinary in these files. So the hue is what carries
+        /// meaning and the magnitude does not, and each LED is scaled so its
+        /// brightest channel reaches full. That keeps a car's amber amber and
+        /// its red red, and leaves overall brightness where it belongs, with
+        /// the user's own wheel setting.
+        ///
+        /// An all-zero triple means the car gave no colour; the caller decides
+        /// what to do about that rather than being handed black.</summary>
+        public static bool TryNormalizeEmissive(float r, float g, float b,
+                                                out byte or_, out byte og, out byte ob)
+        {
+            or_ = og = ob = 0;
+            if (float.IsNaN(r) || float.IsNaN(g) || float.IsNaN(b)) return false;
+            if (r < 0f) r = 0f;
+            if (g < 0f) g = 0f;
+            if (b < 0f) b = 0f;
+            float max = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            if (max <= 0f) return false;
+            float k = 255f / max;
+            or_ = Scale(r * k);
+            og  = Scale(g * k);
+            ob  = Scale(b * k);
+            return true;
+        }
+
+        private static byte Scale(float v)
+            => v <= 0f ? (byte)0 : v >= 255f ? (byte)255 : (byte)(v + 0.5f);
 
         /// <summary>Decodes one copy of the block. WriterBusy means the seqlock
         /// was odd (the script was mid-update when the copy was taken): the
@@ -77,6 +145,21 @@ namespace TrueforceForAll.Core
             {
                 s.FfbDamper       = BitConverter.ToSingle(buf, OffFfbDamper);
                 s.SteerInputSpeed = BitConverter.ToSingle(buf, OffSteerInputSpeed);
+            }
+            if (ver >= 3)
+            {
+                uint leds = BitConverter.ToUInt32(buf, OffAcLeds);
+                s.AcLedsModuleActive = (leds & 0xFF) != 0;
+                byte mode = (byte)((leds >> 8) & 0xFF);
+                s.AcLedsMode  = mode <= (byte)AcLedMode.Disabled ? (AcLedMode)mode : AcLedMode.Unknown;
+                s.AcLedsKnown = true;
+            }
+            if (ver >= 4)
+            {
+                int cnt = (int)BitConverter.ToUInt32(buf, OffAcLedCount);
+                s.AcLedCount    = cnt < 0 ? 0 : cnt > AcLedMax ? AcLedMax : cnt;
+                s.AcLedBlinkRpm = BitConverter.ToSingle(buf, OffAcLedBlinkRpm);
+                s.AcLedBlinkHz  = BitConverter.ToSingle(buf, OffAcLedBlinkHz);
             }
             return AcCspBridgeParse.Ok;
         }
@@ -183,6 +266,66 @@ namespace TrueforceForAll.Core
 
         public AcCspBridgeReader(string mapName = AcCspBridgeLayout.MapName) { _mapName = mapName; }
 
+        /// <summary>The active car's own shift-light switch-on RPMs, ascending,
+        /// or null when the car models none (or the script predates v4).
+        ///
+        /// Lives here rather than on the sample because it is constant for a
+        /// session: the array is rebuilt only when the values actually change,
+        /// so the physics-rate read path allocates nothing.</summary>
+        public float[] AcLedStepRpms { get; private set; }
+
+        /// <summary>The car's own shift-light COLOURS, three bytes per LED in
+        /// the same order as AcLedStepRpms, or null when the car gives none.
+        /// Rebuilt alongside the RPMs and on the same terms: constant for a
+        /// session, so nothing allocates per read.</summary>
+        public byte[] AcLedStepColors { get; private set; }
+
+        private void RefreshLedSteps(int count)
+        {
+            if (count <= 0)
+            {
+                AcLedStepRpms = null;
+                return;
+            }
+            var cur = AcLedStepRpms;
+            bool same = cur != null && cur.Length == count;
+            if (same)
+            {
+                for (int i = 0; i < count; i++)
+                    if (cur[i] != BitConverter.ToSingle(_buf, AcCspBridgeLayout.OffAcLedRpm + i * 4))
+                    { same = false; break; }
+            }
+            if (same) return;
+            var next = new float[count];
+            for (int i = 0; i < count; i++)
+                next[i] = BitConverter.ToSingle(_buf, AcCspBridgeLayout.OffAcLedRpm + i * 4);
+            AcLedStepRpms = next;
+            AcLedStepColors = ReadLedColors(count);
+        }
+
+        /// <summary>Normalised colours for the LEDs, or null when the car gave
+        /// none. All-or-nothing: a car that colours only some of its LEDs would
+        /// otherwise paint the rest black, which reads as a broken strip rather
+        /// than as missing data.</summary>
+        private byte[] ReadLedColors(int count)
+        {
+            var rgb = new byte[count * 3];
+            bool any = false;
+            for (int i = 0; i < count; i++)
+            {
+                int o = AcCspBridgeLayout.OffAcLedRgb + i * 12;
+                if (!AcCspBridgeLayout.TryNormalizeEmissive(
+                        BitConverter.ToSingle(_buf, o),
+                        BitConverter.ToSingle(_buf, o + 4),
+                        BitConverter.ToSingle(_buf, o + 8),
+                        out byte r, out byte g, out byte b))
+                    return null;
+                rgb[i * 3] = r; rgb[i * 3 + 1] = g; rgb[i * 3 + 2] = b;
+                any = true;
+            }
+            return any ? rgb : null;
+        }
+
         public bool IsOpen => _view != null;
         /// <summary>True when the open map fails the magic/version check.</summary>
         public bool BadHeader { get; private set; }
@@ -215,6 +358,7 @@ namespace TrueforceForAll.Core
                     // moved while we copied means the fields may be mixed.
                     if (_view.ReadUInt32(AcCspBridgeLayout.OffSeq) != s.Seq) continue;
                     BadHeader = false;
+                    RefreshLedSteps(s.AcLedCount);
                     if (_haveSeq && s.Seq == _lastSeq) return false;
                     _haveSeq = true;
                     _lastSeq = s.Seq;

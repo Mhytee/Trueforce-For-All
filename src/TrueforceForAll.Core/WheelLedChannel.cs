@@ -1253,6 +1253,14 @@ namespace TrueforceForAll.Core
             _lastWriteMs = NowMs();
         }
 
+        /// <summary>How many fn6 level writes this channel has put on the wire.
+        /// The FFB tap counts the same writes from the OTHER side, where it
+        /// cannot tell ours from a game's, so subtracting this is what lets the
+        /// plugin recognise a FOREIGN writer on the rev bar. Without it our own
+        /// driving reads as contention and we would yield against ourselves.</summary>
+        public long LevelWritesIssued => Interlocked.Read(ref _levelWritesIssued);
+        private long _levelWritesIssued;
+
         private void SendFn6(int level)
         {
             int len = _stripLen;
@@ -1262,6 +1270,7 @@ namespace TrueforceForAll.Core
             f6[4] = 0x00; f6[5] = 0x01; f6[6] = 0x00; f6[7] = (byte)len; f6[8] = 0x00;
             f6[9] = lvl;   // 0..len = steps lit
             WriteLong(f6);
+            Interlocked.Increment(ref _levelWritesIssued);
         }
 
         // Switch a DISPLAYING wheel to another effect. A bare fn3 only STAGES

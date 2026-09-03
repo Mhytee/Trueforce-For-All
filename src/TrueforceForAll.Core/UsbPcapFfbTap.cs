@@ -351,11 +351,63 @@ namespace TrueforceForAll.Core
         private readonly int[]  _lastLevelByFeature      = new int[256];
         private readonly long[] _lastLevelTicksByFeature = new long[256];
 
+        // Rev-light write ACTIVITY per feature index, for the contention
+        // diagnostic: how many level writes landed since the last sample and
+        // the longest gap between two consecutive ones. Windowed and reset by
+        // the sampler, because the question is whether the writer is being
+        // starved RIGHT NOW and a running total cannot answer that. A game
+        // whose light writes are stalled by other traffic on the same HID++
+        // pipe shows up as a long GAP, not as a wrong level, so the level
+        // alone (all _lastLevelByFeature carries) cannot see it.
+        private readonly long[] _levelWritesByFeature = new long[256];
+        private readonly long[] _levelMaxGapByFeature = new long[256];
+
         private void NoteLevelWrite(byte featIdx, int level)
         {
             _lastLevelByFeature[featIdx] = level;
-            Interlocked.Exchange(ref _lastLevelTicksByFeature[featIdx], _sw.ElapsedTicks & TimestampMask);
+            long now  = _sw.ElapsedTicks & TimestampMask;
+            long prev = Interlocked.Exchange(ref _lastLevelTicksByFeature[featIdx], now);
+            // The first write of a session has no predecessor to measure from.
+            if (prev != 0)
+            {
+                long gap = (now - prev) & TimestampMask;
+                if (gap > Interlocked.Read(ref _levelMaxGapByFeature[featIdx]))
+                    Interlocked.Exchange(ref _levelMaxGapByFeature[featIdx], gap);
+            }
+            Interlocked.Increment(ref _levelWritesByFeature[featIdx]);
         }
+
+        /// <summary>Rev-light write activity on one feature index: the RUNNING
+        /// total of level writes any host writer has landed there, the level
+        /// the newest one left, and how long ago it landed. False when nothing
+        /// has ever written to this index, which is the "nobody is driving the
+        /// bar" answer rather than a failure.
+        ///
+        /// Cumulative and non-destructive on purpose. Two callers read this
+        /// (the ownership detector and the ACLEDS diagnostic) on different
+        /// cadences, and a read that reset the count would have them stealing
+        /// each other's writes: whoever sampled first would see the traffic and
+        /// the other would see silence, which is exactly the wrong answer to
+        /// "is anybody driving the bar". Each caller keeps its own baseline
+        /// and subtracts.</summary>
+        public bool GetLevelWriteTotals(byte featIdx, out long writes, out int lastLevel,
+                                        out double sinceLastMs)
+        {
+            writes    = Interlocked.Read(ref _levelWritesByFeature[featIdx]);
+            lastLevel = _lastLevelByFeature[featIdx];
+            long t = Interlocked.Read(ref _lastLevelTicksByFeature[featIdx]);
+            sinceLastMs = t == 0 ? -1.0
+                        : (((_sw.ElapsedTicks & TimestampMask) - t) & TimestampMask)
+                          / (Stopwatch.Frequency / 1000.0);
+            return t != 0;
+        }
+
+        /// <summary>Take and reset the longest gap seen between two consecutive
+        /// level writes on this feature index. Destructive because a max is
+        /// only meaningful over a window; the diagnostic is its only caller.</summary>
+        public double TakeLevelWriteMaxGapMs(byte featIdx)
+            => Interlocked.Exchange(ref _levelMaxGapByFeature[featIdx], 0)
+               / (Stopwatch.Frequency / 1000.0);
 
         /// <summary>The strip level most recently written to
         /// <paramref name="featIdx"/> by anyone, if that write is no older than

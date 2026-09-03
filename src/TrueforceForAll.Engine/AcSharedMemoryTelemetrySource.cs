@@ -230,6 +230,15 @@ namespace TrueforceForAll.Core
         public bool CspBridgeBadHeader => _cspBridge.BadHeader;
         public AcCspBridgeSample CspLastSample => _cspLast;
 
+        /// <summary>The active car's own shift-light switch-on RPMs, ascending,
+        /// or null when the car models none. Constant for a session, so the
+        /// reader hands back the same array until the values change.</summary>
+        public float[] CspAcLedStepRpms => _cspBridge.AcLedStepRpms;
+
+        /// <summary>The active car's own shift-light colours, three bytes per
+        /// LED, or null when the car gives none.</summary>
+        public byte[] CspAcLedStepColors => _cspBridge.AcLedStepColors;
+
         /// <summary>Which bridge field the force comes from. Live-settable from
         /// any thread; the poll thread reads it next tick.</summary>
         public AcCspField CspField

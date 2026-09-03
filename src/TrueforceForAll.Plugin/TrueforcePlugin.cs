@@ -7354,35 +7354,49 @@ namespace TrueforceForAll.Plugin
                 // own rev lights, and we leave them to it.
                 bool hidppFree = MasterMode == TrueforceMasterMode.Normal
                               && _forceMode != ForceModeOff && ffbQuietProven && sessionActive;
-                bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
+                // Is somebody else driving the rev bar right now? Measured off
+                // the wire (see ForeignRevBarWriterActive), not assumed from a
+                // list of games. Both HID++ surfaces below defer to it: one
+                // writer at a time on this pipe, and the game's rev lights
+                // outrank our screen, because the bar is a stock wheel feature
+                // the game owns and the screen is an opt-in extra of ours.
+                bool foreignBar = ForeignRevBarWriterActive();
                 // The CSP bridge frees the wheel's HID++ pipe (the game writes
-                // nothing to it), so the SCREEN and one-shot pattern changes
-                // become safe even in AC's pass-through mode, where the base
-                // rule above is false. We do NOT extend this to the rev lights:
-                // AC owns those, and two writers on the bar would fight. So the
-                // CSP win in AC is exactly the screen plus drop-free pattern
-                // cycling, nothing more.
+                // nothing to it), so the SCREEN, the rev lights and one-shot
+                // pattern changes all become reachable even in AC's
+                // pass-through mode, where the base rule above is false.
+                //
+                // This used to stop at the screen, on the reasoning that AC
+                // owns the bar and two writers would fight. That reasoning was
+                // right; it just did not need to be a permanent assumption now
+                // that the wire can answer it. Where AC still drives the bar
+                // foreignBar is true and nothing changes. Where the user has
+                // told AC to stop (CSP's g27_lights MODE=DISABLED, which that
+                // module documents as the way to hand the lights to an external
+                // tool) the bar is genuinely free and we may take it.
                 bool cspSupplying = CspBridgeSupplying();
-                bool hidppFreeForScreen = hidppFree || (MasterMode == TrueforceMasterMode.Normal
-                              && cspSupplying && ffbQuietProven && sessionActive);
+                bool cspPipeFree = MasterMode == TrueforceMasterMode.Normal
+                              && cspSupplying && ffbQuietProven && sessionActive;
+                bool hidppFreeForLeds   = hidppFree || (cspPipeFree && !foreignBar);
+                bool hidppFreeForScreen = (hidppFree || cspPipeFree) && !foreignBar;
+                bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFreeForLeds;
                 // EXPERIMENTAL wheel-base OLED, its own opt-in (default off).
-                // The 2026-08-29 finalFF revert (screen stalled the game's own
-                // rev-light writes) was with the game still driving the wheel;
-                // under the CSP bridge the game writes nothing, so the pipe is
-                // genuinely ours for the screen.
+                // The 2026-08-28 finding (the screen stalls the game's own
+                // rev-light writes) is why hidppFreeForScreen carries the
+                // foreignBar term: the CSP bridge frees the pipe of the game's
+                // FORCE, which is what the 2026-08-29 re-enable measured, but
+                // its LIGHTS are a separate writer and the screen starves them.
                 bool modeBOled = MasterMode == TrueforceMasterMode.Normal
                             && (Settings?.ModeBOledEnabled ?? false)
                             && hidppFreeForScreen;
                 // Latched for the settings panel, which runs on another
-                // thread. TWO gates, because they answer different questions:
-                // the screen rule opens under the CSP bridge (the game writes
-                // nothing to the pipe), but the preview sweep writes rev-light
-                // LEVELS, and in AC the game still owns the bar and re-zeroes
-                // it constantly, so a preview there flickers against the
-                // game's writer (tester, 2026-08-31). Previews take the base
-                // lights rule; only the screen takes the extended one.
+                // thread. TWO gates, because they answer different questions.
+                // A preview sweep writes rev-light LEVELS, so it rides the
+                // lights rule: where a game still owns the bar and re-zeroes it
+                // constantly, a preview flickers against that writer (tester,
+                // 2026-08-31), and foreignBar is exactly that condition.
                 _oledHidppFree = hidppFreeForScreen;
-                _ledsHidppFree = hidppFree;
+                _ledsHidppFree = hidppFreeForLeds;
                 // The quiet term alone, for one-shot user actions (the rev
                 // pattern picker). hidppFree bundles "force mode armed" and
                 // "session live", which gate CONTINUOUS driving of the
@@ -7390,6 +7404,13 @@ namespace TrueforceForAll.Plugin
                 // itself force-free, and demanding the rest made picks look
                 // dead from the garage and the menus.
                 _ffbQuietNow = ffbQuietProven;
+                // Ownership is logged on change whatever the diagnostic is
+                // doing: it is one line per config edit, and it answers "who
+                // is driving my lights" without asking for a code first.
+                NoteAcLedOwnershipChanges();
+                NoteAcCarShiftLights();
+                MaintainAcRevLightModule();
+                MaybeLogRevLightContention(modeBLeds, modeBOled);
 
                 double pct     = frame.RpmPercent;
                 bool   redline = frame.RedlineReached;
@@ -7460,7 +7481,16 @@ namespace TrueforceForAll.Plugin
                         // and we hold some for this car. Null curve = today's
                         // behaviour, unchanged.
                         string gearNow = frame.Gear;
-                        _rpmLeds.LevelCurve = _lovelyCar != null && LovelyLightingEnabled
+                        // The CAR's own shift lights win where the game hands
+                        // them over (AC publishes each dash LED's switch-on RPM
+                        // through the CSP bridge). Nothing beats the data of
+                        // the car being driven. Then the published dataset,
+                        // then the plain ramp, exactly as before.
+                        var acSteps = (_telemetrySource as AcSharedMemoryTelemetrySource)?.CspAcLedStepRpms;
+                        _rpmLeds.LevelCurve =
+                              acSteps != null && acSteps.Length > 0
+                            ? (Func<double, int, int?>)((r, steps) => AcCarLevel(acSteps, r, steps))
+                            : _lovelyCar != null && LovelyLightingEnabled
                             ? (Func<double, int, int?>)((r, steps) => LovelyLevel(gearNow, r, steps))
                             : null;
 
@@ -8914,9 +8944,53 @@ namespace TrueforceForAll.Plugin
             if (rl != null)
                 rl.PublishedGearRedlines = have ? _lovelyCar.ForwardGearRedlines() : null;
 
+            // The car's OWN dash outranks the published dataset where the game
+            // hands it to us: BLINK_HZ comes out of the very car being driven,
+            // where the dataset is somebody's reading of that car.
+            int? acBlink = AcCarBlinkIntervalMs();
+
             // null means we know nothing about this car, which is NOT the same
             // as the car publishing zero. Zero is an answer: it does not blink.
-            PublishCarBlinkRate(have ? (int?)_lovelyCar.RedlineBlinkIntervalMs : null);
+            PublishCarBlinkRate(acBlink ?? (have ? (int?)_lovelyCar.RedlineBlinkIntervalMs : null));
+        }
+
+        /// <summary>Half-period of the active AC car's own shift-light flash,
+        /// from its data, or null when we are not in AC, the script is older
+        /// than v4, or the car models no shift lights.
+        ///
+        /// BLINK_HZ counts full flashes per second; PublishCarBlinkRate wants
+        /// how long one STATE lasts, so a 12 Hz car is 500/12 = 42 ms lit and
+        /// 42 ms dark.</summary>
+        private int? AcCarBlinkIntervalMs()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return null;
+            var s = src.CspLastSample;
+            if (s.AcLedCount <= 0) return null;
+            // A car with shift lights but no blink figure is saying it does not
+            // flash, which is an answer, not a gap: zero reaches
+            // PublishCarBlinkRate as "holds the bar solid".
+            if (s.AcLedBlinkHz <= 0f) return 0;
+            return Math.Max(1, (int)Math.Round(500.0 / s.AcLedBlinkHz));
+        }
+
+        /// <summary>Level for the active AC car's OWN shift lights: how many of
+        /// its dash LEDs are lit at these revs, scaled onto the wheel's bar.
+        ///
+        /// Scaled rather than mapped one-to-one because the two rarely match: a
+        /// car with five dash LEDs on a ten-step rim lights two steps per LED,
+        /// which keeps the wheel's bar full exactly when the car's dash is full.
+        /// The thresholds are the car's, so the ONSET matches the dash in front
+        /// of the driver instead of a percentage of the rev range.</summary>
+        private static int AcCarLevel(float[] stepRpms, double rpms, int steps)
+        {
+            int lit = 0;
+            for (int i = 0; i < stepRpms.Length; i++)
+                if (rpms >= stepRpms[i]) lit++;
+            if (lit <= 0) return 0;
+            if (lit >= stepRpms.Length) return steps;
+            int level = (int)Math.Round((double)steps * lit / stepRpms.Length);
+            return level < 1 ? 1 : level > steps ? steps : level;
         }
 
         /// <summary>Hand the active car's own blink rate to the two things that
@@ -12638,7 +12712,20 @@ namespace TrueforceForAll.Plugin
             // bar shows the new colours at once, which is the feedback the user
             // wanted. That is what "driving: the preview self-suppresses and the
             // live bar is the feedback" was always meant to mean.
-            if (!PreviewSweepAllowed) return;
+            if (!PreviewSweepAllowed)
+            {
+                SimHub.Logging.Current.Info(
+                    "[RPM-LED] preview sweep suppressed: a game is driving the bar.");
+                return;
+            }
+            // Says WHY a sweep ran, because the alternative is guessing. The
+            // rule is that a game driving the rim lights owns them and a sweep
+            // would flicker against its writes, so a sweep during a game means
+            // one of these two reads let it through and the pattern preview
+            // flickered as a result (owner, in Assetto Corsa, 2026-09-03).
+            SimHub.Logging.Current.Info(
+                $"[RPM-LED] preview sweep allowed: noTelemetry={NoTelemetryArriving()}, "
+                + $"ledsHidppFree={_ledsHidppFree}, liveBarLit={_rpmLeds.LiveBarIsLit}.");
             // Only skip when the live bar is actually LIT, not merely when a
             // game is loaded. In the pits at idle the strip is dark, the live
             // feed is showing nothing to fight, and skipping here left a pattern
@@ -12906,7 +12993,17 @@ namespace TrueforceForAll.Plugin
             // A pattern the user pinned to THIS car is applied by the car-load
             // edge, which runs before this. Nothing to do here but stand down;
             // applying the sticky pattern as well would fight it for the slot.
-            if (HasExplicitCarLightChoice()) { _autoAppliedColors = false; return; }
+            if (HasExplicitCarLightChoice())
+            {
+                _autoAppliedColors = false;
+                // Said out loud. This returned silently, and a pinned pattern
+                // then looks exactly like the feature being broken: the car's
+                // data is read and logged, and nothing reaches the wheel.
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] car colors stood down for {carId}: a pattern is pinned to this car. "
+                    + "Pick \"Auto (this car's own colors)\" to hand it back.");
+                return;
+            }
 
             // ONE switch. There used to be a second flag here that only the
             // checkbox's change handler ever set, so a settings file where the two
@@ -12914,7 +13011,12 @@ namespace TrueforceForAll.Plugin
             // handler slaved them) gave a ticked box that did nothing until it was
             // toggled off and on. Reading the flag the control actually drives
             // makes that state impossible rather than merely unlikely.
-            bool haveData = LovelyLightingEnabled && _lovelyCar != null;
+            // The car's OWN dash colours first, where the game hands them to
+            // us. Same ranking as the fill thresholds and for the same reason:
+            // this is the car being driven, not a reading of it.
+            byte[] acCarColors = AcCarColorsForLighting();
+            bool haveAcColors = acCarColors != null;
+            bool haveData = haveAcColors || (LovelyLightingEnabled && _lovelyCar != null);
 
             if (!haveData)
             {
@@ -12944,6 +13046,12 @@ namespace TrueforceForAll.Plugin
                     // colors onto the wheel.
                     if (!string.Equals(_activeGame, game, StringComparison.Ordinal)
                         || !string.Equals(_activeCarId, carId, StringComparison.Ordinal)) return;
+
+                    if (haveAcColors)
+                    {
+                        ApplyAcCarColors(acCarColors, carId);
+                        return;
+                    }
 
                     var car = _lovelyCar;
                     if (car == null) return;
@@ -13005,6 +13113,62 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info("[TF4ALL] car-color apply failed: " + ex.Message);
                 }
             });
+        }
+
+        /// <summary>Paint the wheel with the car's OWN dash-LED colours.
+        ///
+        /// Cars carry fewer LEDs than the rim has steps (five is common against
+        /// ten here), so each car LED covers a run of rim LEDs. The same
+        /// proportional mapping the fill uses, so a colour change and the step
+        /// that lights it land on the same LED rather than a step apart.</summary>
+        private void ApplyAcCarColors(byte[] carRgb, string carId)
+        {
+            int strip = WheelLedChannel.LedCount;
+            var rgb = AcCarStripColors(carRgb, strip);
+
+            string msg;
+            // Trimmed, not raw: these describe a car on screen, so they need
+            // the same correction as any other upstream sRGB colour. Same
+            // reasoning as the published-dataset path above.
+            bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
+            {
+                Slot = (byte)StageSlot(),
+                DirectionWire = 3,          // left to right, the order cars number LED_0..n in
+                Rgb = rgb,
+            }, out msg,
+               displayLevel: -1,            // keep the live rev level
+               slotName: carId);
+
+            if (ok)
+            {
+                _autoAppliedColors = true;
+                LightPatterns.CurrentId = null;
+                LibraryPatternShowing = false;
+            }
+
+            PublishDashLightProfile(rgb, LightDirection.LeftToRight, carId);
+            SimHub.Logging.Current.Info(ok
+                ? $"[TF4ALL] car colors applied for {carId}: the car's own dash LED colors."
+                : "[TF4ALL] car colors not applied: " + msg);
+        }
+
+        /// <summary>Spread the car's LED colours across the rim's steps. Strip
+        /// LED i takes car LED floor(i * n / strip), so five car LEDs on a
+        /// ten-step rim colour two steps each.</summary>
+        private static byte[] AcCarStripColors(byte[] carRgb, int strip)
+        {
+            int n = carRgb.Length / 3;
+            var rgb = new byte[strip * 3];
+            if (n <= 0) return rgb;
+            for (int i = 0; i < strip; i++)
+            {
+                int src = (int)((long)i * n / strip);
+                if (src >= n) src = n - 1;
+                rgb[i * 3 + 0] = carRgb[src * 3 + 0];
+                rgb[i * 3 + 1] = carRgb[src * 3 + 1];
+                rgb[i * 3 + 2] = carRgb[src * 3 + 2];
+            }
+            return rgb;
         }
 
         // ---- LIGHTSYNC slot borrow / restore ----
@@ -13386,10 +13550,30 @@ namespace TrueforceForAll.Plugin
             return false;
         }
 
-        /// <summary>Whether the active car would be driven by its published data
-        /// if nothing were pinned. Drives the "Auto" entry in the pickers.</summary>
+        /// <summary>Whether the active car would light itself if nothing were
+        /// pinned. Drives the "Auto" entry in the pickers.
+        ///
+        /// TWO sources now: the published dataset, and the car's OWN dash data
+        /// where the game hands it over. Auto is one idea to the user ("let this
+        /// car pick"), so both feed the same entry rather than growing a second
+        /// one that means almost the same thing.</summary>
         public bool AutoCarColorsAvailable()
-            => LovelyLightingEnabled && _lovelyCar != null;
+            => (LovelyLightingEnabled && _lovelyCar != null) || AcCarColorsForLighting() != null;
+
+        /// <summary>The active car's own dash-LED colours, if it gave any and the
+        /// user has allowed per-car data to drive the lights.
+        ///
+        /// Deliberately NOT behind the community switch that gates the published
+        /// dataset: this is the game's own file for the car being driven, nothing
+        /// to do with the backend. It IS behind the lights opt-in, because that
+        /// switch exists to ask before we borrow one of the user's five wheel
+        /// slots, and this borrows one exactly the same way.</summary>
+        private byte[] AcCarColorsForLighting()
+        {
+            if (Settings?.LovelyCarDataEnabled != true) return null;
+            var c = (_telemetrySource as AcSharedMemoryTelemetrySource)?.CspAcLedStepColors;
+            return c != null && c.Length >= 3 ? c : null;
+        }
 
         /// <summary>Hand this car back to its own data by clearing any pinned
         /// choice, then apply it now so the change is visible immediately rather
@@ -32959,6 +33143,281 @@ namespace TrueforceForAll.Plugin
 
         private bool CspFieldIsFinalFf =>
             string.Equals(Settings?.CspBridgeFfbField, "finalff", StringComparison.OrdinalIgnoreCase);
+
+        // ---- Who owns the wheel's rev-light bar --------------------------
+        //
+        // One writer at a time on the wheel's HID++ pipe. Measured on the rig
+        // 2026-09-03: with our wheel-base screen streaming in Assetto Corsa,
+        // 60% of two-second windows saw AC's own light writes stall and 23%
+        // saw them stop dead, gaps of five seconds with the bar frozen where
+        // it last landed. With the screen off, 3% and 1%. The force is fine
+        // either way, which is why the 2026-08-29 CSP re-enable (validated on
+        // the force alone) missed it.
+        //
+        // So the rule is not a per-game table of which titles do rev lights.
+        // It is evidence: the tap sees every level write on the wire, we
+        // subtract the ones WE issued, and whatever is left is somebody else
+        // driving the bar. While somebody else is driving it, our screen stays
+        // off the pipe and we do not drive the bar either.
+        //
+        // Subtracting our own writes is load-bearing. The tap cannot tell our
+        // fn6 writes from a game's, so without the subtraction our own driving
+        // would read as contention and we would yield against ourselves, on
+        // and off, forever.
+        private long _foreignBarSampleMs;      // when the window last closed
+        private long _foreignBarOurWrites;     // our write counter at that moment
+        private long _foreignBarWireWrites;    // the tap's total at that moment
+        private long _foreignBarLastSeenMs;    // last window carrying foreign evidence
+        private bool _foreignBarActive;
+
+        // A game's light writes come in bursts around gear changes and idle in
+        // menus, so one quiet window is not proof it has stopped. Hold the
+        // verdict for a few seconds past the last evidence rather than flapping
+        // the screen and the bar on every pit stop.
+        private const int  ForeignBarWindowMs = 1000;
+        private const int  ForeignBarHoldMs   = 4000;
+        // The tap drops packets under load, so demand more than a stray write
+        // before calling it contention. A game actually driving the bar writes
+        // an order of magnitude above this (AC: ~6.5/s).
+        private const long ForeignBarMinWrites = 3;
+
+        /// <summary>True while a writer that is not us is driving the wheel's
+        /// rev-light bar. Fails CLOSED to "no foreign writer" only when we
+        /// genuinely cannot see the wire, so a missing tap never silently
+        /// disables anything; the caller decides what to do with that.</summary>
+        private bool ForeignRevBarWriterActive()
+        {
+            var tap  = _ffbTap;
+            var leds = _rpmLeds;
+            if (tap == null || leds == null) return false;
+            byte idx = leds.RevFeatureIndex;
+            if (idx == 0) return false;      // channel never resolved: nothing to read
+
+            long nowMs = Environment.TickCount;
+            tap.GetLevelWriteTotals(idx, out long wireTotal, out _, out _);
+            if (_foreignBarSampleMs == 0)
+            {
+                _foreignBarSampleMs   = nowMs;
+                _foreignBarOurWrites  = leds.LevelWritesIssued;
+                _foreignBarWireWrites = wireTotal;
+                return false;
+            }
+            if (nowMs - _foreignBarSampleMs >= ForeignBarWindowMs)
+            {
+                _foreignBarSampleMs = nowMs;
+                long ours  = leds.LevelWritesIssued;
+                long oursD = ours - _foreignBarOurWrites;
+                long wireD = wireTotal - _foreignBarWireWrites;
+                _foreignBarOurWrites  = ours;
+                _foreignBarWireWrites = wireTotal;
+                // The tap missing some of OUR writes must not read as a foreign
+                // writer, so a negative remainder is simply none. Erring this
+                // way costs nothing: the other direction (missing a game's
+                // writes) is what the threshold and the hold below absorb.
+                long foreign = wireD - oursD;
+                if (foreign >= ForeignBarMinWrites) _foreignBarLastSeenMs = nowMs;
+            }
+            _foreignBarActive = _foreignBarLastSeenMs != 0
+                             && (nowMs - _foreignBarLastSeenMs) < ForeignBarHoldMs;
+            return _foreignBarActive;
+        }
+
+        // ---- Rev-light contention diagnostic (ACLEDS) ---------------------
+        //
+        // Answers one question with measurements instead of inference: while a
+        // game drives the wheel's rev lights, are ITS writes getting through?
+        // The tap already decodes every level write on the wire from any host
+        // writer, so this reports the writes that landed in each window, the
+        // longest gap between two of them, and the level they left, alongside
+        // what our own two HID++ surfaces were allowed to do at the time.
+        //
+        // A stalled writer shows up as a long GAP with a stale level, which is
+        // what "the lights stick, then go dark, then catch up seconds later"
+        // looks like from the wire. Session-only and off by default: it is a
+        // steady 2 s log line, which is diagnosis material, not shipping noise.
+        private bool _revLightDiag;
+        private long _nextRevLightDiagMs;
+        private long _revLightDiagWire;   // the diagnostic's own baselines, so it
+        private long _revLightDiagOurs;   // and the detector never consume each other
+        // BOTH halves, because either one changing changes the answer: the
+        // module has to be active AND set to Disabled before AC stops writing
+        // the bar. Keyed on the mode alone, flipping the module active left the
+        // standing log line reading "inactive" while the bar was in fact free.
+        private AcLedMode _lastLoggedAcLedMode = (AcLedMode)(-1);
+        private bool _lastLoggedAcLedActive;
+        private int  _lastLoggedAcLedCount = -1;
+
+        /// <summary>Toggle the rev-light contention diagnostic. Returns the new
+        /// state.</summary>
+        public bool ToggleRevLightDiagnostic()
+        {
+            _revLightDiag = !_revLightDiag;
+            _nextRevLightDiagMs = 0;
+            _lastLoggedAcLedMode = (AcLedMode)(-1);
+            return _revLightDiag;
+        }
+
+        private void MaybeLogRevLightContention(bool weDriveLeds, bool weDriveScreen)
+        {
+            if (!_revLightDiag) return;
+            long nowMs = Environment.TickCount;
+            if (nowMs < _nextRevLightDiagMs) return;
+            _nextRevLightDiagMs = nowMs + 2000;
+
+            var tap  = _ffbTap;
+            var leds = _rpmLeds;
+            if (tap == null || leds == null) return;
+            // Feature index 0 means the LED channel never resolved, so there is
+            // no index on which to have seen anyone's writes.
+            byte idx = leds.RevFeatureIndex;
+            if (idx == 0) return;
+
+            if (!tap.GetLevelWriteTotals(idx, out long wireTotal, out int level, out double sinceMs))
+            {
+                SimHub.Logging.Current.Info(
+                    $"[REVLIGHT] feat=0x{idx:X2} nobody has written the bar this session "
+                    + $"(ours: leds={(weDriveLeds ? "driving" : "off")} screen={(weDriveScreen ? "streaming" : "off")}).");
+                return;
+            }
+
+            long ourTotal = leds.LevelWritesIssued;
+            long writes   = wireTotal - _revLightDiagWire;
+            long ourWrite = ourTotal  - _revLightDiagOurs;
+            _revLightDiagWire = wireTotal;
+            _revLightDiagOurs = ourTotal;
+            double maxGapMs = tap.TakeLevelWriteMaxGapMs(idx);
+            SimHub.Logging.Current.Info(
+                $"[REVLIGHT] feat=0x{idx:X2} writes={writes}/2s (ours={ourWrite}) level={level} "
+                + $"maxGap={maxGapMs:F0}ms sinceLast={sinceMs:F0}ms "
+                + $"ours=[leds={(weDriveLeds ? "driving" : "off")} "
+                + $"screen={(weDriveScreen ? "streaming" : "off")}] "
+                + $"foreignBar={(_foreignBarActive ? "yes" : "no")}"
+                + AcLedOwnerSuffix());
+        }
+
+        // ---- Handing AC's rev lights to us, and giving them back ----------
+        //
+        // The wheel's HID++ pipe carries one writer at a time. Where the user
+        // wants OUR rev lights in Assetto Corsa, the game has to stop writing
+        // the bar, and the only lever CSP offers is its g27_lights config (see
+        // AcRevLightModuleConfig). So we set it, rather than asking the user to
+        // find two coupled options in Content Manager and get the pairing right.
+        //
+        // Deliberately keyed on the REV-LIGHT opt-in, not the screen one. The
+        // screen also loses this contention, but the fix there is for the
+        // screen to yield, which it now does. Taking AC's lights away to keep
+        // the screen would leave the bar dark, since nothing else would drive
+        // it: strictly worse than the problem.
+        //
+        // And it needs the CSP bridge, because the bridge is what frees the
+        // pipe enough for hidppFreeForLeds to open at all. Without it we would
+        // silence AC's lights and then not drive them either.
+        private long _nextAcLedManageMs;
+        private const int AcLedManageIntervalMs = 3000;
+
+        private void MaintainAcRevLightModule()
+        {
+            long nowMs = Environment.TickCount;
+            if (nowMs < _nextAcLedManageMs) return;
+            _nextAcLedManageMs = nowMs + AcLedManageIntervalMs;
+
+            bool want = string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
+                     && (Settings?.ModeBRevLightsEnabled ?? true)
+                     && (Settings?.CspBridgeFfbEnabled ?? true);
+
+            if (!want)
+            {
+                // Give it back the moment the user stops wanting our lights, so
+                // nobody is left with a dead bar because of a checkbox they
+                // turned off weeks ago. Cheap no-op when we never took it.
+                if (AcRevLightModuleConfig.TakenOver())
+                    AcRevLightModuleConfig.Revert(SimHub.Logging.Current.Info);
+                return;
+            }
+
+            // The bridge reports the module's live state, so only touch the
+            // disk when it is actually wrong. That also self-heals the case
+            // where Content Manager rewrites the file back under us.
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return;
+            var s = src.CspLastSample;
+            if (!s.AcLedsKnown) return;          // pre-v3 script: no evidence, no edit
+            if (s.AcLedsModuleActive && s.AcLedsMode == AcLedMode.Disabled) return;
+
+            AcRevLightModuleConfig.Apply(SimHub.Logging.Current.Info);
+        }
+
+        /// <summary>What CSP says about AC's own rev-light module, when the
+        /// bridge script is new enough to report it. This is the other half of
+        /// the contention question: whether the game intends to drive the bar
+        /// at all.</summary>
+        private string AcLedOwnerSuffix()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return "";
+            var s = src.CspLastSample;
+            if (!s.AcLedsKnown) return " acLeds=unreported";
+            return $" acLeds=[module={(s.AcLedsModuleActive ? "active" : "inactive")} mode={s.AcLedsMode}]";
+        }
+
+        /// <summary>Say once per car whether it carries its own shift-light
+        /// data, because "the bar lights at the same revs the dash does" is
+        /// otherwise invisible: it looks like the bar simply working.</summary>
+        private void NoteAcCarShiftLights()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return;
+            var s = src.CspLastSample;
+            if (!s.AcLedsKnown || s.AcLedCount == _lastLoggedAcLedCount) return;
+            _lastLoggedAcLedCount = s.AcLedCount;
+            if (s.AcLedCount <= 0)
+            {
+                SimHub.Logging.Current.Info(
+                    "[REVLIGHT] this car models no shift lights of its own; "
+                    + "the bar keeps whatever fill it would have used.");
+                return;
+            }
+            var steps = src.CspAcLedStepRpms;
+            string at = steps == null ? "" : " at " + string.Join("/", Array.ConvertAll(steps, r => ((int)r).ToString())) + " rpm";
+            bool colored = src.CspAcLedStepColors != null;
+            SimHub.Logging.Current.Info(
+                $"[REVLIGHT] using this car's own shift lights: {s.AcLedCount} LED(s){at}"
+                + (s.AcLedBlinkHz > 0 ? $", flashing at {s.AcLedBlinkHz:0.#} Hz from {(int)s.AcLedBlinkRpm} rpm" : ", no flash")
+                + (colored ? ", in the car's own colors." : ", no colors given."));
+
+            // The car-load edge usually runs BEFORE the bridge has read the
+            // car's data, so the colours it looked for were not there yet.
+            // Arriving is the event worth acting on, and this fires exactly
+            // once per car; ApplyCarColorsOnLoad re-checks every guard,
+            // including a pattern the user pinned to this car.
+            if (colored) ApplyCarColorsOnLoad(_activeGame, _activeCarId);
+        }
+
+        /// <summary>Log AC's rev-light ownership once, and again whenever the
+        /// user changes it, so a config edit made mid-session is visible in the
+        /// log without the 2 s diagnostic running.</summary>
+        private void NoteAcLedOwnershipChanges()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return;
+            var s = src.CspLastSample;
+            if (!s.AcLedsKnown
+                || (s.AcLedsMode == _lastLoggedAcLedMode
+                    && s.AcLedsModuleActive == _lastLoggedAcLedActive)) return;
+            _lastLoggedAcLedMode   = s.AcLedsMode;
+            _lastLoggedAcLedActive = s.AcLedsModuleActive;
+            // Only an ACTIVE module set to Disabled actually silences AC. An
+            // inactive module leaves AC's own behaviour in place whatever its
+            // mode says, which is the trap that made this look configured when
+            // it was not.
+            bool acSilenced = s.AcLedsModuleActive && s.AcLedsMode == AcLedMode.Disabled;
+            SimHub.Logging.Current.Info(
+                $"[REVLIGHT] Assetto Corsa's own rev-light module is "
+                + $"{(s.AcLedsModuleActive ? "active" : "inactive")}, mode={s.AcLedsMode}. "
+                + (acSilenced
+                    ? "AC is not writing the bar, so it is free for us."
+                    : "AC drives the bar; we stay off it unless the wire says otherwise."));
+        }
 
         private bool CspBridgeSupplying()
         {
