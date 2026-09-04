@@ -4,7 +4,9 @@
 //   Init: load settings → discover wheel → open + init + start stream →
 //         create AudioCaptureSource (per-process loopback, retargeted on
 //         game start/stop) and add it to the Mixer.
-//   DataUpdate: track current game name / process for the capture timer.
+//   DataUpdate: the per-tick hot path. Feeds the SimHub telemetry source and
+//         tracks the game name / process for the capture timer, and polls the
+//         watchdogs (device recovery, G HUB, port discovery, community facts).
 //   End: save settings, stop producer + capture, clean up the device.
 //
 // The producer thread runs independently of the SimHub data tick because
@@ -31,11 +33,10 @@ using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
 {
-    // Description deliberately omits the version: PluginDescription requires a
-    // compile-time-constant string, and the assembly version (driven by
-    // <Version> in TrueforceForAll.Plugin.csproj) is already surfaced at
-    // runtime by UpdateChecker, the settings panel header, and the changelog
-    // dialog. Adding it here too just creates a stale-copy hazard on bumps.
+    // Description deliberately omits the version: PluginDescription takes a
+    // compile-time-constant string, and the assembly version (<Version> in
+    // src\Directory.Build.props, shared by Core, Engine and Plugin) is already
+    // surfaced at runtime by UpdateChecker. A copy here just goes stale on bumps.
     [PluginDescription("Everything your Logitech wheel can do, in games that never supported it. Trueforce, rev lights, the screen. For G PRO, RS50 and G923.")]
     [PluginAuthor("Mhytee")]
     [PluginName("Trueforce For All")]
@@ -54,17 +55,15 @@ namespace TrueforceForAll.Plugin
 
         private readonly Mixer _mixer = new Mixer();
 
-        // Extracted engine homes (phase 0c): the sidechain ducker and the
-        // render tick live in the Engine assembly so the replay harness runs
-        // the exact production code. The plugin wires effect refs at Init and
-        // forwards its per-tick loop into EngineLoop.RunOneTick.
+        // The ducker and render tick live in the Engine assembly so the replay
+        // harness runs the exact production code; the plugin wires effect refs
+        // at Init and forwards its per-tick loop into EngineLoop.RunOneTick.
         private readonly DuckingController _ducking = new DuckingController();
         private EngineLoop _engineLoop;
 
-        // Per-car preset files, one .tfcar.json per car, the canonical
-        // home for car-specific tuning post-Model G refactor. Game presets
-        // no longer carry CarOverrides; switching presets doesn't touch
-        // per-car values.
+        // Per-car preset files, one .tfcar.json per car: the canonical home for
+        // car-specific tuning. Game presets no longer carry CarOverrides, so
+        // switching presets doesn't touch per-car values.
         private CarPresetStore _carStore;
 
         // Sidecar registry of imported community packs (installed-packs.json at
@@ -80,9 +79,8 @@ namespace TrueforceForAll.Plugin
         // per-car facts to the community DB.
         private CommunityClient _community;
 
-        // Preset-sharing HTTP client (companion to _community). Distinct
-        // file + class so per-car fact ops and whole-preset upload/browse
-        // stay readable. Same gating contract via Settings.CommunityEnabled.
+        // Preset-sharing HTTP client (companion to _community): whole-preset
+        // upload/browse. Same gating via Settings.CommunityEnabled.
         private PresetSharingClient _presetSharing;
         // Offline-first cache of community BROWSE lists (per active local-user slot,
         // so cached MyVote/ownership never leaks across accounts). Constructed in Init.
@@ -95,11 +93,13 @@ namespace TrueforceForAll.Plugin
         private CommunityAuth _auth;
 
         // In-memory community-consensus injection for the active car. Set by
-        // NotifyCommunityConsensus when SettingsControl's per-car fetch
-        // returns, cleared when the active car changes. TryResolveActiveVariant
-        // synthesizes a CarFactSource.Community variant from this at the top
-        // of the resolver cascade so Auto-detect prefers community over
-        // Baked/Scanner/Telemetry. Not persisted - re-fetched each session.
+        // NotifyCommunityConsensus whenever a per-car fetch returns (the
+        // settings panel's, the headless refresh, or a ReplayCommunityCache of
+        // the persisted CommunityFactCache), cleared when the active car
+        // changes. TryResolveActiveVariant synthesizes a CarFactSource.Community
+        // variant from this at the top of the resolver cascade so Auto-detect
+        // prefers community over Baked/Scanner/Telemetry. The field itself is
+        // never persisted.
         private string _activeCarCommunityKey;
         private EngineLayoutConsensus _activeCarCommunityConsensus;
 
@@ -110,17 +110,16 @@ namespace TrueforceForAll.Plugin
         private bool _initWelcomePromptOffered;
 
         // Sibling community-name cache. Same shape + same lifecycle as the
-        // engine-layout cache: populated by SettingsControl after a per-car
-        // fetch, consumed by the resolver to seat the community CarName at
-        // the top of the display-name cascade. Cleared on car change.
+        // engine-layout cache: populated by NotifyCarNameConsensus (panel
+        // fetch, headless refresh, or cache replay), consumed by the resolver
+        // to seat the community CarName at the top of the display-name
+        // cascade. Cleared on car change.
         private string _activeCarCommunityNameKey;
         private CarNameConsensus _activeCarCommunityNameConsensus;
 
-        // Sibling community-redline cache. Variant-aware - the key includes
-        // the variant_signature so a Forza swap with a different rev
-        // ceiling doesn't read the stock variant's consensus row. The
-        // synthesized community variant in TrySynthesizeCommunityVariant
-        // picks RedlineRpm up from here.
+        // Sibling community-redline cache, variant-aware: the key includes the
+        // variant_signature so a Forza engine swap doesn't read the stock
+        // variant's row. TrySynthesizeCommunityVariant reads RedlineRpm here.
         private string _activeCarCommunityRedlineKey;
         private RedlineConsensus _activeCarCommunityRedlineConsensus;
 
@@ -136,28 +135,24 @@ namespace TrueforceForAll.Plugin
         // every time the user toggles back to the same car.
         private readonly HashSet<string> _gameNameBackfillDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Same dedup set, but for DisplayName backfill — renames legacy presets
-        // whose PresetName was just the carId (e.g. "Car_424") to the resolver's
-        // DisplayName ("1997 Mazda RX-7") so the UI shows real car names instead
-        // of opaque ordinals. Only rewrites presets where the user clearly never
-        // customized the name; user-renamed presets are left alone.
+        // Same dedup set, for DisplayName backfill: renames legacy presets whose
+        // PresetName was just the carId ("Car_424") to the resolver's DisplayName
+        // ("1997 Mazda RX-7"). Only where the user never customized the name;
+        // user-renamed presets are left alone.
         private readonly HashSet<string> _displayNameBackfillDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Serializes access to Settings.CarFacts / EngineVariants. Reinstated
-        // because the per-variant-redline UI (Save / Adopt / Decline / Delete /
-        // Rename) mutates CarFacts from the WPF UI thread while the SimHub data
-        // thread adds/upgrades variants and the off-thread flush serializes the
-        // same lists. Without it, a UI foreach throws "Collection was modified"
-        // mid-enumeration and a serialize can collide with an Add. Held only
-        // around list enumeration/mutation + the flush serialize (never across a
-        // re-resolve), and is re-entrant (Monitor) so nested calls are safe.
+        // Serializes access to Settings.CarFacts / EngineVariants: the WPF UI
+        // thread mutates them (Save / Adopt / Decline / Delete / Rename) while
+        // the SimHub data thread adds/upgrades variants and the off-thread flush
+        // serializes the same lists. Hold ONLY around list enumeration/mutation
+        // and the flush serialize, never across a re-resolve; re-entrant
+        // (Monitor), so nested calls are safe.
         private readonly object _carFactsLock = new object();
 
         // Last engine-variant Id resolved for a (game/carId) while a real
-        // telemetry discriminator was present. Used as the "last used variant"
-        // fallback when editing during the empty-signature window (engine off /
-        // pre-telemetry) so a save targets the variant the user was last on
-        // instead of an arbitrary first row.
+        // telemetry discriminator was present: the fallback during the
+        // empty-signature window (engine off, pre-telemetry) so a save targets
+        // the last variant used, not an arbitrary first row.
         private readonly Dictionary<string, string> _lastActiveVariantIdByCar =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -165,14 +160,12 @@ namespace TrueforceForAll.Plugin
         private AudioCaptureSource _audio;
         private HelperHost _helperHost;
         private UsbPcapFfbTap _ffbTap;
-        // Aligned telemetry + game-FFB capture log, the v2 golden-fixture
-        // format (full frame incl. per-tire quads), replayable by the engine
-        // harness AND usable for offline FFB remodeling. Null when capture is
-        // off; armed/disarmed by the CAPTURE access code via ToggleFfbCapture().
-        // Written from DispatchFrame (telemetry thread); toggled from the UI
-        // thread. GoldenCaptureLog is internally locked and a disposed instance
-        // no-ops, so DispatchFrame only needs a local snapshot of the field
-        // before calling it.
+        // Aligned telemetry + game-FFB capture log in the v2 golden-fixture
+        // format (full frame incl. per-tire quads): replayable by the engine
+        // harness, usable for offline FFB remodeling. Null when off; armed by
+        // the CAPTURE code via ToggleFfbCapture(). Written from DispatchFrame
+        // (telemetry thread), toggled from the UI thread; GoldenCaptureLog is
+        // internally locked and no-ops once disposed, so a local snapshot serves.
         private GoldenCaptureLog _captureLog;
 
         // High-rate FFB signal-chain trace (TRACE access code). Null when off.
@@ -192,16 +185,17 @@ namespace TrueforceForAll.Plugin
         // alive for the session, torn down on leaving FS.
         private FarmingSimulatorTelemetrySource _fsPipeSource;
 
-        // Snapshot of the HID-side wheel match (Vid/Pid/Model) we found in Init.
-        // Held so the manual USB-device picker can highlight the row that
-        // matches the wheel HID has already enumerated.
+        // Snapshot of the HID-side wheel match (Vid/Pid/Model) from DiscoverWheel
+        // (Init and the recovery watchdog, so it can fill in mid-session). Picks
+        // the LED family, seeds the FFB tap, and drives the manual USB picker row.
         private ushort _hidWheelVid;
         private ushort _hidWheelPid;
         // USB product string of the matched wheel (null if unreadable). Kept
         // alongside VID/PID because it can outrank the PID: an RS50 in G PRO
         // compatibility mode spoofs the G PRO PID but keeps its own product
-        // string (mescon, 2026-07). Feeds the tap's per-wheel index seed and
-        // RS50 report-0x12 gate in WireFfbTapCallbacks.
+        // string (mescon, 2026-07). Feeds the tap's per-wheel feature-index
+        // seed and its RS50 identity flag in WireFfbTapCallbacks (0x11-vs-0x12
+        // report arbitration lives in FfbReportArbiter, not in that flag).
         private string _hidWheelProductString;
         public ushort HidWheelVid => _hidWheelVid;
         public ushort HidWheelPid => _hidWheelPid;
@@ -239,15 +233,17 @@ namespace TrueforceForAll.Plugin
         public ImplementThudEffect ImplementThud { get; private set; }
         private TelemetryEffect[] _effects;
 
-        // Rim rev/shift LEDs over HID++ (iRacing-scoped, separate from the
-        // Trueforce stream). Lazily opens its own HID handle on first gated
-        // frame; never touches the ep3 audio-haptic device.
+        // Rim rev/shift LEDs over HID++, separate from the Trueforce stream.
+        // Driven in any game whose HID++ pipe is proven force-free (Mode B,
+        // iRacing, AC via the CSP bridge). Lazily opens its own HID handle on
+        // first gated frame; never touches the ep3 audio-haptic device.
         private RpmLedController _rpmLeds;
 
         // EXPERIMENTAL: the Dynamic OLED on the base of a G PRO / RS50. Shares
-        // the rev lights' HID++ pipe and therefore their Mode B + quiet-FFB
-        // gate exactly (see OledDashController). Lazily opens its own HID
-        // handle on the first gated frame; never touches the ep3 stream.
+        // the rev lights' HID++ pipe and their Mode B + quiet-FFB gate, plus a
+        // term of its own: the screen stands down whenever another writer owns
+        // the rev bar (hidppFreeForScreen vs hidppFreeForLeds). Lazily opens
+        // its own HID handle on the first gated frame; never touches ep3.
         private OledDashController _oledDash;
 
         // EXPERIMENTAL: kernel-driver IOCTL channel for the wheel-ownership
@@ -259,45 +255,42 @@ namespace TrueforceForAll.Plugin
         private long _ffbDiagTick;
         // Plugin-owned HID++ channel used (while we own the wheel via the
         // filter driver and are the only authorised writer) to drive LEDs
-        // without contending with game FFB writes. Kept separate from
-        // _rpmLeds because RpmLedController is iRacing-scoped.
+        // without contending with game FFB writes. Separate from _rpmLeds,
+        // which drives the same LEDs on the ordinary (no-driver) path.
         private WheelLedChannel _driverLedChannel;
 
-        // F8SWEEP test code: the experimental legacy "F8 12" rev-LED path on the
-        // wheel's gamepad collection (off the HID++ FFB pipe). Lazily created the
-        // first time the code is typed; off by default. See LegacyLedF8Channel.
+        // Legacy "F8 12" rev-LED path on the wheel's gamepad collection (off the
+        // HID++ FFB pipe): the production channel for the G923 PS (C266) via
+        // DriveG923Leds, shared with the F8SWEEP test code. Lazily created.
         private TrueforceForAll.Core.LegacyLedF8Channel _f8Leds;
 
-        // Active telemetry source. The plugin currently always uses
-        // SimHubTelemetrySource (universal, ~60 Hz from the SimHub data
-        // pipeline). Per-game enhanced sources (AC native MMF, etc.) will
-        // be hot-swapped here on game change. _simHubSource is held as a
-        // typed field because we feed it from DataUpdate; _telemetrySource
-        // is what the rest of the plugin treats as "the current source"
-        // for status / UI / future polymorphic dispatch.
+        // Active telemetry source. _simHubSource is the universal fallback
+        // (~60 Hz from the SimHub data pipeline), held as a typed field
+        // because we feed it from DataUpdate. _telemetrySource is what the
+        // rest of the plugin treats as "the current source" for status / UI /
+        // dispatch: SwapTelemetrySource points it at the per-game enhanced
+        // source (AC shared memory, Forza UDP, the FS mod pipe) on game
+        // change, or back at _simHubSource.
         private SimHubTelemetrySource _simHubSource;
         private ITelemetrySource      _telemetrySource;
         public  ITelemetrySource      TelemetrySource => _telemetrySource;
 
-        // The Forza UDP listener stays alive for the whole time a Forza title
-        // is the active game, even while we're temporarily reading from the
-        // SimHub fallback (see _forzaOnSimHubFallback). Keeping it bound lets
-        // us upgrade back to the enhanced source the instant Forza packets
-        // start arriving on our port. Null outside a Forza session. Owned by
-        // SwapTelemetrySource / ApplyForzaSettings; the active source feeding
-        // effects (_telemetrySource) points at this OR _simHubSource.
+        // The Forza UDP listener stays bound for the whole Forza session, even
+        // while we read the SimHub fallback (_forzaOnSimHubFallback), so we can
+        // upgrade back the instant packets arrive on our port. Null outside
+        // Forza; owned by SwapTelemetrySource / ApplyForzaSettings, with
+        // _telemetrySource pointing at this OR _simHubSource.
         private ForzaUdpTelemetrySource _forzaUdp;
         public  ForzaUdpTelemetrySource ForzaUdpSource => _forzaUdp;
 
         // Serializes every create/dispose of _forzaUdp (and source swaps in
-        // general). SwapTelemetrySource normally runs on the SimHub data
-        // thread, but ApplyForzaSettings is a UI hook that tears the listener
-        // down and rebuilds it; without this lock the data thread's 1/sec
-        // enhanced-source retry can race through the "_forzaUdp == null"
-        // create window and bind a SECOND listener to the same port. Both
-        // binds succeed (ReuseAddress), only one of them receives datagrams,
-        // and if the orphaned one wins, the active source starves forever
-        // (observed as sign-out killing car-change detection).
+        // general): SwapTelemetrySource usually runs on the SimHub data thread,
+        // but ApplyForzaSettings is a UI hook that tears the listener down and
+        // rebuilds it. Unlocked, the data thread's 1/sec retry races through that
+        // "_forzaUdp == null" window and binds a SECOND listener to the same
+        // port. Both binds succeed (ReuseAddress), only one receives, and if the
+        // orphan wins the active source starves forever (seen as sign-out
+        // killing car-change detection).
         private readonly object _sourceSwapLock = new object();
 
         // Config fingerprint of the live _forzaUdp (set at create time) so
@@ -305,28 +298,22 @@ namespace TrueforceForAll.Plugin
         // in place when the effective port/bind/forward config is identical.
         private string _forzaUdpConfigKey = "";
 
-        // True when a Forza title is active and our Forza UDP listener is bound
-        // but silent (Forza's Data Out is pointed at SimHub, not us), while
-        // SimHub IS receiving the telemetry, so we run on the SimHub fallback.
-        // Everything still works; the effects that lean on Forza's richer feed
-        // (road texture detail, airborne feel, per-tire / cylinder data) are
-        // just less precise than when Forza talks to the plugin directly.
-        // Drives the "config isn't optimal" UI badge. Cleared the moment Forza
-        // packets reach our port (we upgrade back to the enhanced source).
+        // True when a Forza title is active and our UDP listener is bound but
+        // silent (Data Out points at SimHub, not us) while SimHub IS receiving,
+        // so we run the SimHub fallback: everything works, but road texture,
+        // airborne and per-tire/cylinder detail are coarser. Drives the "config
+        // isn't optimal" badge; cleared the moment packets reach our port.
         private volatile bool _forzaOnSimHubFallback;
         public  bool ForzaOnSimHubFallback => _forzaOnSimHubFallback;
 
         // ---- Port discovery ----
-        // When a UDP source (Forza) has been running without
-        // receiving anything, kick off a scan across known alternate
-        // ports to find where the game is actually sending. UI subscribes
-        // to DiscoveredAlternatePort to surface a "switch to port X?"
-        // banner. The first scan fires DiscoveryNoPacketsTriggerMs after
-        // the source starts; if it doesn't find anything (or finds
-        // nothing the user adopts) we retry every DiscoveryRetryIntervalMs
-        // while the source keeps receiving zero packets, covers the case
-        // where the user enables UDP in the game minutes after Trueforce
-        // started.
+        // When a UDP source (Forza) runs without receiving anything, scan the
+        // known alternate ports for where the game is actually sending. The
+        // settings panel polls DiscoveredAlternatePort to surface a "switch to
+        // port X?" banner; AlternatePortDiscovered fires for anything that
+        // prefers an event. Timing rules live on MaybeStartPortDiscovery; the
+        // retry exists because a user can enable UDP in the game minutes after
+        // Trueforce started.
         private const int DiscoveryNoPacketsTriggerMs = 10_000;
         private const int DiscoveryScanTimeoutMs      = 8_000;
         private const int DiscoveryRetryIntervalMs    = 60_000;
@@ -341,13 +328,10 @@ namespace TrueforceForAll.Plugin
         /// Args: (gameKind "forza", discoveredPort).</summary>
         public event Action<string, int> AlternatePortDiscovered;
 
-        /// <summary>True when the active game is one SimHub has a telemetry
-        /// reader for, i.e. anything with a non-Custom GameName. SimHub's
-        /// "Custom_*" code is a definitive marker that the user added the
-        /// game manually and SimHub has no built-in way to source telemetry,
-        /// so engine/RPM/speed-driven effects can't fire. Built-in games
-        /// keep this true even at the main menu / paused, we don't grey
-        /// out the panel just because telemetry isn't flowing right now.</summary>
+        /// <summary>True when the active game has a non-Custom GameName.
+        /// SimHub's "Custom_*" prefix means a user-added game with no built-in
+        /// telemetry reader, so RPM/speed-driven effects can't fire. Stays true
+        /// at the menu / paused: we don't grey the panel on an idle feed.</summary>
         public bool HasUsefulTelemetry =>
             !string.IsNullOrEmpty(_activeGame)
             && !_activeGame.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase);
@@ -368,14 +352,12 @@ namespace TrueforceForAll.Plugin
         private int?   _lastSimHubPitLimiterActive;
         private int?   _lastSimHubDrsActive;
 
-        // Motion state latched for the stationary-spring FFB floor, written on
+        // Motion state latched for the stationary-spring FFB floor: written on
         // the telemetry thread (DispatchFrame), read on the Trueforce stream
-        // thread (the FfbTargetProvider lambda, 1 kHz). float fields: 32-bit
-        // access is atomic even on 32-bit SimHub, so the stream thread can
-        // never observe a torn value that would jolt the wheel. _lastSteerTicks
-        // is a freshness stamp (Stopwatch ticks); when steering goes stale
-        // (game closed, or a source that doesn't report steering took over)
-        // the spring self-disengages without needing an explicit reset hook.
+        // thread (FfbTargetProvider, 1 kHz). float because 32-bit access is
+        // atomic even on 32-bit SimHub, so no torn value can jolt the wheel.
+        // _lastSteerTicks is a freshness stamp (Stopwatch ticks): stale steering
+        // self-disengages the spring, no explicit reset hook needed.
         private volatile float _lastSteerNorm;
         private volatile float _lastSpeedKmh;
         private long _lastSteerTicks;
@@ -385,13 +367,11 @@ namespace TrueforceForAll.Plugin
         // briefly, but tight enough to close the game-exit pull window.
         private static readonly long SpringTelemetryMaxAgeTicks = Stopwatch.Frequency * 3 / 2; // 1.5 s
 
-        // Telemetry-freshness stamp for the stall watchdog. Set (Stopwatch
-        // ticks) every time DispatchFrame receives a real frame; read from the
-        // continuous DataUpdate tick. When the active source stops emitting
-        // (game closed, crashed, paused with the physics page frozen, alt-tab),
-        // sustained effects keep playing their last amplitude because they only
-        // settle on a received frame. The watchdog notices the gap and tells
-        // those effects to fall silent. 0 = no frame seen yet (nothing to age).
+        // Telemetry-freshness stamp (Stopwatch ticks) for the stall watchdog:
+        // written by DispatchFrame on every real frame, read from the DataUpdate
+        // tick. Sustained effects only settle on a received frame, so a source
+        // that stops emitting (game closed, paused, alt-tab) leaves them ringing
+        // until the watchdog silences them. 0 = no frame seen yet.
         private long _lastFrameTicks;
         // Latch so we settle the effects once per stall episode instead of
         // every DataUpdate tick. Cleared the moment a real frame arrives again.
@@ -410,103 +390,85 @@ namespace TrueforceForAll.Plugin
         private long  _prevSteerVelTicks;
 
         // Physical-wheel velocity for the damper, derived on the FFB thread from
-        // the HID steering reader (SteerNorm / LastUpdateTicks). The let-go
-        // oscillation is a fast PHYSICAL wheel swing; Forza's 60 Hz EMA-smoothed
-        // telemetry _steerVel is too lagged (and 8-bit-quantized) to catch it,
-        // so the damper rode the wrong phase. The wheel's own position axis is
-        // higher-resolution and updates at the HID report rate, giving a fresher,
-        // cleaner velocity. Physical steer shares the game-steer sign (hot-lap
-        // trace corr 0.999), so the proven +Kd damper convention is unchanged.
-        // FFB-thread-only (read in MaybeReshapeFfb); no sync needed.
+        // the HID steering reader (SteerNorm / LastUpdateTicks): the let-go swing
+        // is too fast for Forza's _steerVel (60 Hz, EMA-smoothed, 8-bit-quantized)
+        // to catch, so the damper rode the wrong phase. The wheel's own axis is
+        // higher-resolution and updates at the HID report rate. Physical steer
+        // shares the game-steer sign (trace corr 0.999), so the +Kd damper
+        // convention is unchanged. FFB-thread-only (read in MaybeReshapeFfb);
+        // no sync needed.
         private float _physWheelVel;
         private float _physVelPrevSteer;
         private long  _physVelPrevTicks;
 
         // Smoothed steering used by the spring. Eased toward _lastSteerNorm on
-        // each provider call (~250 Hz) so a low-resolution source (Forza's
-        // 8-bit Steer, ~254 steps lock-to-lock) doesn't translate its quantized
-        // steps into perceptible force notches in the centering spring, and so
-        // the spring interpolates smoothly between a source's slower telemetry
-        // updates. Stream-thread-only (the provider lambda); no sync needed.
-        // High-resolution sources (AC's float) are already smooth; the tiny
-        // added lag is harmless for a parked-car comfort force.
+        // each provider call (1 kHz, the stream tick) so a low-resolution
+        // source (Forza's 8-bit Steer, ~254 steps lock-to-lock) doesn't turn
+        // its quantized steps into force notches in the centering spring, and
+        // so the spring interpolates between slower telemetry updates.
+        // Stream-thread-only (the provider lambda); no sync needed. High-
+        // resolution sources (AC's float) are already smooth; the tiny added
+        // lag is harmless for a parked-car comfort force.
         private float _springSteerEma;
-        // ~50 ms time constant at the 250 Hz provider rate. Fast enough to
+        // ~12 ms time constant at the 1 kHz provider rate. Fast enough to
         // track parking maneuvers, slow enough to dissolve 8-bit quantization.
         private const float SpringSteerEmaAlpha = 0.08f;
 
-        // Stationary-spring desk self-test (SPRING code). When the deadline is
-        // in the future, ApplyStationarySpring drives a synthetic centering
-        // force whose direction alternates every ~1.5 s at zero speed,
-        // bypassing the enabled / freshness / null-target gates, so the
-        // spring's strength and force direction can be felt on the desk with
-        // no game running. Stream-thread reads via Interlocked (long isn't
-        // atomic on 32-bit SimHub). NOTE: verifies the spring's own
-        // force-vs-steer-sign mapping, not whether a given game reports
-        // steering with the sign we expect.
+        // Stationary-spring desk self-test (SPRING code). While the deadline is
+        // in the future, ApplyStationarySpring drives a centering force that
+        // flips direction every ~1.5 s at zero speed, bypassing the enabled /
+        // freshness / null-target gates. Stream-thread reads via Interlocked
+        // (long isn't atomic on 32-bit SimHub). Verifies the spring's own
+        // force-vs-steer-sign mapping, not any game's steering sign.
         private long _springTestEndTicks;
         private const double SpringTestDurationSec = 6.0;
 
-        // Throttle for retrying enhanced-source acquisition. AC's shared memory
-        // page only appears once the game loads into a session, but SimHub
+        // Throttle for retrying enhanced-source acquisition: AC's shared-memory
+        // page appears only once the game loads into a session, but SimHub
         // reports GameName as soon as the AC process starts (often a minute
-        // before the MMF exists). Without a retry, that first-attempt failure
-        // would strand us on SimHub fallback for the whole session.
+        // earlier), so a one-shot attempt strands us on fallback.
         private long _lastEnhancedRetryTicks;
 
         // Logitech G HUB process detection. G HUB claims the wheel's HID
-        // interface and blocks our HidSharp open call, so when it's running
-        // the plugin can't talk to the wheel. We poll the process list once
-        // every ~5 s (cheap; one allocation) and surface the result both as
-        // a dedicated status banner in the settings UI and as the most-
-        // blocking item in WheelQuietDiagnostic so users land on the real
-        // root cause instead of "wheel not detected." _gHubLastLoggedState
-        // ensures we only log on transitions, not every poll.
+        // interface and blocks our HidSharp open, so the plugin can't reach the
+        // wheel while it runs. Polled every ~5 s; surfaced as a settings banner
+        // and as the top item in WheelQuietDiagnostic. _gHubLastLoggedState
+        // keeps the log to transitions, not every poll.
         private long _lastGHubCheckTicks;
         private volatile bool _isGHubRunning;
 
-        // Device recovery watchdog. The whole bring-up (discover -> open ->
-        // init -> FFB tap -> stream) used to run once in Init; if the wheel
-        // was absent, G HUB was holding the HID, or the stream later faulted
-        // (hot-unplug, USB stall), the plugin stayed dead until SimHub was
-        // restarted. The watchdog (MaybeRecoverDevice, polled from DataUpdate)
-        // re-attaches transparently: it fires when _device is null or the
-        // stream has faulted, is gated off while G HUB is running (can't open
-        // the HID then, so it self-heals the instant G HUB closes), throttled
-        // so a permanently-absent wheel doesn't churn, and runs the blocking
-        // bring-up on a thread-pool thread so it never stalls SimHub's tick.
-        // _recoveryInProgress is the single-flight guard and also drives the
-        // StreamStatus "Reconnecting..." text.
-        // 0 = idle, 1 = a recovery/bring-up is running. Int (not bool) so the
-        // two trigger paths (the data-tick watchdog MaybeRecoverDevice and the
-        // UI-thread RunActiveDeviceProbe) can claim it atomically with
+        // Device recovery watchdog: MaybeRecoverDevice, polled from DataUpdate,
+        // re-runs the full bring-up (discover -> open -> init -> FFB tap ->
+        // stream) when _device is null or the stream faulted (hot-unplug, USB
+        // stall, or a wheel absent at startup). The G HUB gate and its self-heal
+        // are documented at MaybeRecoverDevice; the retry throttle is
+        // RecoveryIntervalTicks below, so a permanently absent wheel does not
+        // churn. The bring-up blocks, so it runs on a thread-pool thread and
+        // never stalls SimHub's data tick.
+        // _recoveryInProgress: 0 = idle, 1 = a bring-up is running; also drives
+        // the StreamStatus "Reconnecting..." text. Int (not bool) so the
+        // data-tick watchdog and the settings self-test's RunActiveDeviceProbe
+        // (itself run off the UI thread) can claim it atomically via
         // Interlocked.CompareExchange and never both bring the device up at once.
         private int _recoveryInProgress;
         private long _lastRecoveryAttemptTicks;
         private static readonly long RecoveryIntervalTicks = Stopwatch.Frequency * 3; // 3 s
-        // Throttle for the verbose "wheel not found" discovery diagnostic: the
-        // recovery watchdog retries discovery every few seconds, so without this
-        // a persistent not-detected state would log the full HID landscape on
-        // every tick. Logs at most once per minute (and always on the first miss).
+        // Throttle for the verbose "wheel not found" discovery diagnostic; the
+        // once-a-minute rule and its reason live on LogDiscoveryDiagnostic.
         private long _lastDiscoveryDiagTicks;
         private bool _gHubLastLoggedState;
-        // Only the G HUB *UI* process (lghub.exe) gates wheel access. We
-        // intentionally do NOT gate on lghub_agent.exe (Logitech's always-on
-        // background agent): it keeps running after the user quits G HUB and
-        // does not hold the wheel's MI_02 Trueforce interface, so gating on it
-        // latched _isGHubRunning true for the whole session and permanently
-        // blocked the recovery watchdog. See the detection block below.
+        // Only the G HUB *UI* process (lghub.exe) gates wheel access. Do NOT
+        // gate on lghub_agent.exe: it is always-on and does not hold the wheel's
+        // MI_02 Trueforce interface, so gating on it latched _isGHubRunning true
+        // all session and blocked the recovery watchdog. See the G HUB poll in
+        // DataUpdate.
         private const string GHubProcessName = "lghub";
         private static readonly long GHubCheckIntervalTicks = Stopwatch.Frequency * 5;
 
-        // Snapshot every Logitech-related process running right now (G HUB,
-        // its agent + updater, older Gaming Software, etc.) as a single log
-        // line. Lets a support bundle answer "what was running when the user
-        // hit this state" without us guessing from a partial diag. Matches
-        // are case-insensitive substring on ProcessName (no .exe), so we
-        // catch lghub, lghub_agent, lghub_updater, lghub_system_tray, LCore,
-        // LGS, Logi*, etc. Cheap: one Process.GetProcesses() + a string
-        // contains per process. Returns "(none)" when nothing matches.
+        // One log line naming every Logitech-related process running now, for
+        // support bundles. Case-insensitive substring on ProcessName (no .exe),
+        // so it catches lghub, lghub_agent, lghub_updater, lghub_system_tray,
+        // LCore, LGS, Logi*. Returns "(none)" when nothing matches.
         private static string SnapshotLogitechProcesses()
         {
             try
@@ -541,82 +503,69 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>True when Logitech G HUB (or its agent) is detected
-        /// running. UI binds to this to show a warning banner. Updated on a
-        /// 5-second poll from DataUpdate; first-detection logs to SimHub log.</summary>
+        /// <summary>True when the Logitech G HUB UI (lghub.exe) is detected
+        /// running. The always-on lghub_agent deliberately does NOT count (see
+        /// GHubProcessName). UI binds to this to show a warning banner. Updated
+        /// on a 5-second poll from DataUpdate; transitions log to SimHub log.</summary>
         public bool IsLogitechGHubRunning => _isGHubRunning;
 
         // Auto-ratchet state. Snapshots the underrun/glitch counters once per
         // second; when delta crosses RatchetThreshold, the corresponding ring
-        // is bumped one notch (UP). The "survived" capacity is persisted to
-        // Settings so reinstalls don't re-glitch sessions; manual reset is
-        // available from the Performance tab.
+        // is bumped one notch (UP). The survived capacity is persisted to
+        // Settings so a proven size warm-starts the next session; manual reset
+        // is "Reset to lowest" in the Performance section.
         //
-        // Ratchet-DOWN is asymmetric (UP fast, DOWN gated) but tuned for FAST,
-        // self-healing recovery rather than the old multi-minute caution. The
-        // big oscillation worry that justified the old 5-minute cooldown was
-        // the audio ring swinging 8<->16: 8 is below the WASAPI engine-period
-        // burst floor, so descending to it re-glitched and bounced straight
-        // back. That is now removed structurally (AudioCaptureSource floors at
-        // 16), so the remaining DOWN risk is small and we can recover quickly.
-        // Sim users pause / alt-tab constantly (Forza especially), and each of
-        // those can bump a ring; locking them at elevated latency for minutes
-        // afterward is the failure we care about most. So: after an UP, a short
-        // ~20s cooldown, then ~12s of quiet steps one notch DOWN; subsequent
-        // steps every ~10s. A transient bump fully drains in ~20-35s instead of
-        // 5+ minutes. UP still requires 2 consecutive noisy windows (filters
-        // one-off blips), and Forza ratchet-UP is suppressed while !IsRaceOn
-        // (paused / menu / loading), so most pause/alt-tab spikes never bump at
-        // all. If noise returns mid-descent, UP re-arms the post-UP cooldown.
-        // We deliberately do NOT latch a high floor for the session: a wrong
-        // guess must always self-heal.
+        // UP is fast, DOWN is gated but still quick: after an UP a ~20s
+        // cooldown, then ~12s of quiet steps one notch DOWN, subsequent steps
+        // every ~10s, so a transient bump drains in ~20-35s. Sim users pause /
+        // alt-tab constantly (Forza especially) and each of those can bump a
+        // ring; leaving them at elevated latency for minutes is the failure we
+        // care about most. DOWN is safe to run this fast because
+        // AudioCaptureSource floors the audio ring at 16: 8 is below the WASAPI
+        // engine-period burst floor, so descending to it used to re-glitch and
+        // bounce straight back. UP still requires 2 consecutive noisy windows,
+        // and Forza ratchet-UP is suppressed while !IsRaceOn (paused / menu /
+        // loading), so most pause/alt-tab spikes never bump at all. If noise
+        // returns mid-descent, UP re-arms the post-UP cooldown. We deliberately
+        // do NOT latch a high floor for the session: a wrong guess must always
+        // self-heal.
         private const int  RatchetWindowMs           = 1000;
-        // UP trigger: a single noisy window isn't enough. One-off CPU
-        // stalls, USB hiccups, and brief game stutters don't reflect
-        // sustained pressure on the ring, so we require BOTH the current
-        // and previous 1-second windows to cross the threshold before UP
-        // fires.
-        //
-        // Units note: underrun/glitch counters are duration-quantized at
-        // ~20 ms per count (see UnderrunQuantumTicks in TrueforceDevice
-        // and GlitchQuantumTicks in AudioCaptureSource). Sub-quantum
-        // scheduling blips contribute 0, so a threshold of 5/s means
-        // ~100 ms of cumulative real dropout per second. Combined with
-        // the 2-window gate, UP fires only after ~200 ms of cumulative
-        // dropout sustained across 2 consecutive seconds, which is a
-        // genuine "ring is undersized" signal rather than tick noise.
-        private const long RatchetThreshold          = 5;     // quantized events/s, REQUIRED IN 2 CONSECUTIVE WINDOWS
+        // UP trigger: BOTH the current and previous 1-second windows must cross
+        // the threshold, so one-off CPU stalls and USB hiccups don't bump the
+        // ring. Units: the counters are duration-quantized at ~20 ms per count
+        // (UnderrunQuantumTicks in TrueforceDevice, GlitchQuantumTicks in
+        // AudioCaptureSource), so 5/s is ~100 ms of real dropout per second and
+        // the 2-window gate means ~200 ms sustained across 2 consecutive
+        // seconds.
+        private const long RatchetThreshold          = 5;     // quantized events/s (2-window gate)
         private const int  RatchetDownQuietMs        = 12_000;   // 12 s of zero deltas → eligible for a DOWN step
         private const int  RatchetDownCooldownMs     = 20_000;   // 20 s after an UP before the FIRST DOWN allowed
         private const int  RatchetDownFastCooldownMs = 10_000;   // 10 s between subsequent DOWN steps once descent has started
         private long _autoRatchetLastCheckTicks;
         private long _autoRatchetLastTfCount;
         private long _autoRatchetLastAudioCount;
-        // Previous window's deltas, for the "2 consecutive windows" UP gate.
-        // Both _prevTfOverThreshold and the current tfDelta must cross
-        // RatchetThreshold before UP fires.
+        // Previous window's over-threshold flags, for the 2-window UP gate.
         private bool _prevTfOverThreshold;
         private bool _prevAudioOverThreshold;
         // Stopwatch ticks of the most recent non-zero delta. Reset to "now"
-        // any time we see ANY underrun/glitch in the 1s window. The 60s
-        // quiet test compares (now - lastSeen) against RatchetDownQuietMs.
+        // any time we see ANY underrun/glitch in the 1s window. The DOWN gate
+        // compares (now - lastSeen) against RatchetDownQuietMs.
         private long _tfLastUnderrunSeenTicks;
         private long _audioLastUnderrunSeenTicks;
         // Stopwatch ticks of the most recent ratchet action (up OR down).
         // The post-UP DOWN cooldown (RatchetDownCooldownMs) gates against this.
         private long _tfLastRatchetActionTicks;
         private long _audioLastRatchetActionTicks;
-        // True iff the last action on this ring was a DOWN step. Lets the
-        // DOWN cooldown switch to the faster RatchetDownFastCooldownMs value
-        // once descent has begun; UP re-arms the post-UP cooldown by clearing
-        // this.
+        // True iff the last action was a DOWN step: switches the cooldown to
+        // RatchetDownFastCooldownMs. UP clears it, re-arming the slow cooldown.
         private bool _tfLastActionWasDown;
         private bool _audioLastActionWasDown;
 
-        // Fired on the producer thread when auto-ratchet bumps a ring size.
-        // Args: isTfRing (true = Trueforce stream ring, false = audio ring),
-        // oldCapacity, newCapacity. SettingsControl subscribes to show the
-        // dismissable Revert/OK modal, must marshal to the UI thread.
+        // Fired on the producer thread when auto-ratchet resizes a ring (UP or
+        // DOWN). Args: isTfRing (true = Trueforce stream ring, false = audio
+        // ring), oldCapacity, newCapacity. SettingsControl subscribes only to
+        // refresh the Performance readout; there is no per-bump banner. Must
+        // marshal to the UI thread.
         public event Action<bool, int, int> AutoRatchetBumped;
 
         // Per-car override tracking. Updated on each DataUpdate; if the CarId
@@ -624,28 +573,25 @@ namespace TrueforceForAll.Plugin
         private string _activeCarId;
         public string ActiveCarId => _activeCarId;
 
-        /// <summary>True when a car is actually being driven right now (live
-        /// telemetry / on track), as opposed to merely having a game profile
-        /// selected at a menu or while paused. Backed by the telemetry source's
-        /// IsSessionActive, which Forza reports authoritatively. Lets the car
-        /// picker distinguish a real in-car pin (keep it) from a parked manual
-        /// pin (releasable when the user picks "None").</summary>
+        /// <summary>True when a car is being driven right now, not merely
+        /// selected at a menu or paused; backed by the source's IsSessionActive
+        /// (authoritative on Forza). Lets the car picker keep a real in-car pin
+        /// and release a parked manual one when the user picks "None".</summary>
         public bool IsLiveCarPresent => _telemetrySource?.IsSessionActive ?? false;
 
-        // Human-readable name of the active car (e.g. "2017 Acura NSX"), set
-        // by the car-change handler from CarCylinderResolver.Result.DisplayName
-        // when a catalog hit provides one. Cleared on car change. Used to
-        // auto-name per-car presets so the user sees the actual car name
-        // instead of an opaque ordinal ("3445"). Null when no catalog hit.
+        // Human-readable name of the active car (e.g. "2017 Acura NSX"), set by
+        // the car-change handler from the CarName cascade: local rename, then
+        // telemetry's official name, then community consensus, then a catalog
+        // name last. Cleared on car change. Used to auto-name per-car presets so
+        // the user sees the actual car name instead of an opaque ordinal
+        // ("3445"). Null when nothing in the cascade names the car.
         private string _activeCarDisplayName;
         public string ActiveCarDisplayName => _activeCarDisplayName;
 
-        // Alternate name to surface alongside ActiveCarDisplayName when the
-        // community consensus has a name that differs from the user's
-        // local rename. Null when there's no divergence (community matches
-        // local, or the user hasn't renamed and is already seeing the
-        // community name as ActiveCarDisplayName). Drives the
-        // disambiguation suffix in the header + preset manager.
+        // Community-consensus name, surfaced alongside ActiveCarDisplayName
+        // only when the user renamed locally and the two differ; null
+        // otherwise (no local rename, or the names match). Drives the
+        // disambiguation suffix in the header and the preset manager.
         private string _activeCarCommunityDisplayName;
         public string ActiveCarCommunityDisplayName => _activeCarCommunityDisplayName;
 
@@ -659,27 +605,22 @@ namespace TrueforceForAll.Plugin
         public string ActiveGame        => _activeGame;
         public string ActivePresetName  => _activePresetName;
 
-        // Cached variant signature from the last CarFacts apply. Compared
-        // against the live signature inside DispatchFrame so a mid-session
-        // change (Forza in-game engine swap; telemetry warming up enough
-        // to add the maxrpm component) triggers a re-resolve + silent
-        // auto-create on the very next telemetry frame, not just on
-        // car-change. Null = no apply has happened yet for the active car;
-        // reset to null in the car-change handler.
+        // Cached variant signature from the last CarFacts apply, compared
+        // against the live one in DispatchFrame so a mid-session change (Forza
+        // engine swap; maxrpm arriving as telemetry warms) re-resolves and
+        // auto-creates on the next frame, not just on car change. Null = no
+        // apply yet for this car; reset to null in the car-change handler.
         private string _lastAppliedVariantSignature;
 
         public IEnumerable<string> PresetNames =>
             Settings?.Presets != null ? (IEnumerable<string>)Settings.Presets.Keys : Array.Empty<string>();
 
         // ---- Offline preset editing ----
-        //
-        // When the user picks Edit on a preset row in the Manage dialog, the
-        // SettingsControl flips the live state to that preset and shows a
-        // banner so users can author/edit without the matching game running.
-        // While the flag is set, the DataUpdate-driven "auto-apply this
-        // game's default" path is suppressed so a backgrounded game change
-        // doesn't quietly clobber the user's in-progress edits. Exit happens
-        // via Save / Save as new / Discard on the banner.
+        // Edit on a preset row flips the live state to that preset and shows a
+        // banner, so a preset can be authored without its game running. While
+        // the flag is set, DataUpdate's "auto-apply this game's default" path
+        // is suppressed so a background game change can't clobber the edits.
+        // Exit via Save / Save as new / Discard on the banner.
         private string _offlineEditPresetName;
         private GameSettingsSnapshot _preEditSnapshot;
         private string _preEditActivePresetName;
@@ -687,12 +628,10 @@ namespace TrueforceForAll.Plugin
         public string OfflineEditingPresetName => _offlineEditPresetName;
         public bool   IsOfflineEditing         => !string.IsNullOrEmpty(_offlineEditPresetName);
 
-        // Car-preset offline edit. Mirrors the game-preset flow above but for a
-        // single car's override: loads the matching game default as the baseline
-        // (so the override doesn't read as spuriously dirty against the wrong
-        // game preset), pins the car, freezes it against live telemetry (see
-        // DataUpdate), and restores the pre-edit state on exit. Save / Save as
-        // new / Discard via the same banner.
+        // Car-preset offline edit. Mirrors the flow above for one car's
+        // override: loads the matching game default as baseline (else the
+        // override reads dirty against the wrong preset), pins the car, freezes
+        // it against live telemetry (see DataUpdate), restores state on exit.
         private string _offlineEditCarId;
         private string _offlineEditCarPresetName;
         private GameSettingsSnapshot _preEditCarSnapshot;
@@ -716,14 +655,12 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>True when the active game has been observed to report a
-        /// usable redline (learned + persisted in Settings.GamesWithRedline).
-        /// The rev limiter fires AT the redline for these, so the engage-%
-        /// control is irrelevant and the UI hides it. Reading the learned flag
-        /// (not live telemetry) keeps the UI stable: it's correct immediately on
-        /// settings open, before any data flows, for games seen before. Forza
-        /// never qualifies (its redline reads out of range), so it keeps the
-        /// engage-% control.</summary>
+        /// <summary>True when the active game was observed to report a usable
+        /// redline (learned + persisted in Settings.GamesWithRedline). The rev
+        /// limiter fires AT the redline for these, so the UI hides engage-%.
+        /// Reads the learned flag, not live telemetry, so it is already right
+        /// for a previously seen game before any data flows. Forza never
+        /// qualifies: its redline reads out of range.</summary>
         public bool ActiveSourceUsesRedline =>
             !string.IsNullOrEmpty(_activeGame)
             && !IsForzaGameName(_activeGame)
@@ -735,10 +672,9 @@ namespace TrueforceForAll.Plugin
         private volatile string _currentGameName;
 
         // Last non-empty GameName SimHub reported this session. Latched across
-        // the telemetry-quiet gaps (pause / menu) that null out _activeGame and
-        // _currentGameName, so the process-table rescue still knows which game
-        // to look for. Never cleared: once a game has been seen it's the anchor
-        // for "is that title still up while SimHub thinks it quit?".
+        // the telemetry-quiet gaps (pause / menu) that null _activeGame and
+        // _currentGameName, so the process-table rescue still knows what to
+        // look for. NEVER cleared: it anchors "is that title still up?".
         private volatile string _lastNamedGame;
         private Thread _capturePollThread;
         private string _captureStatus = "Idle (no game running)";
@@ -772,11 +708,10 @@ namespace TrueforceForAll.Plugin
             + (_noFfbCaptureNotice != null ? "  -  " + _noFfbCaptureNotice : "");
         public int    ActiveVoiceCount => _mixer.SourceCount;
 
-        // The wire shape that produced the first captured FFB sample this
-        // session (transport / report ID / feature index / encoding, and which
-        // HID++ report the arbiter settled on). Null until capture is
-        // confirmed. Surfaced in the Export-logs manifest and the
-        // compatibility report.
+        // Wire shape that produced the first captured FFB sample this session
+        // (transport / report ID / feature index / encoding, and which HID++
+        // report the arbiter settled on). Null until capture is confirmed.
+        // Documented at UsbPcapFfbTap.CaptureFingerprint.
         public string CaptureFingerprint => _ffbTap?.CaptureFingerprint;
 
         // True when a manual override pins a device whose identity we know and
@@ -802,10 +737,11 @@ namespace TrueforceForAll.Plugin
         // Surfaced through FfbTapStatus. Cleared when FFB is captured again.
         private volatile string _noFfbCaptureNotice;
 
-        // Non-null when the detected wheel is a supported-by-inference PID
-        // (Xbox G923) we haven't hardware-verified. Surfaced as an info
-        // banner so the user knows to report the one divergence we can't
-        // rule out. Null for hardware-confirmed wheels.
+        // Non-null when the detected wheel is a supported-by-inference PID we
+        // haven't hardware-verified. WheelDiscovery.UnverifiedPids is EMPTY
+        // today (every supported PID is owner-confirmed), so this is dormant
+        // until a wheel is added on inference alone. Surfaced as an info banner
+        // so the user knows to report the one divergence we can't rule out.
         private string _unverifiedWheelNotice;
         public string UnverifiedWheelNotice => _unverifiedWheelNotice;
 
@@ -815,12 +751,10 @@ namespace TrueforceForAll.Plugin
         public bool IsUsbPcapAvailable =>
             UsbPcapFfbTap.LocateUsbPcapCmd(Settings?.UsbPcapCmdPathOverride) != null;
 
-        // Whether the SimHub process is running elevated (administrator).
-        // Cached: elevation can't change without a process restart. USBPcap's
-        // FFB capture is far more reliable elevated, and some games/setups
-        // only pass force feedback through when SimHub is admin (e.g. a user's
-        // RaceRoom FFB worked only as admin), so the UI prompts for it when
-        // false. Treated as effectively required.
+        // Whether SimHub is running elevated. Cached: elevation can't change
+        // without a process restart. USBPcap FFB capture is far more reliable
+        // elevated and some setups pass no FFB at all without it (RaceRoom),
+        // so the UI prompts when false. Treated as effectively required.
         private bool? _isElevatedCache;
         public bool IsRunningElevated
         {
@@ -841,17 +775,11 @@ namespace TrueforceForAll.Plugin
         }
 
         // True when HID enumeration found a supported wheel (so Trueforce
-        // effects play) but USBPcap discovery couldn't find it on the bus
-        // (so FFB pass-through is broken, the game's own force feedback
-        // gets clobbered). This is the smoking-gun divergence pattern that
-        // motivates surfacing the manual-picker call to action prominently
-        // rather than burying it in Diagnostics.
-        //
-        // Suppressed when:
-        //   - HID hasn't found a wheel yet (nothing to diverge from)
-        //   - User already has a manual override set (they've fixed it)
-        //   - FFB tap is actually tapping (status starts with "Tapping")
-        //   - USBPcap isn't installed (separate Browse/Reinstall UX handles it)
+        // effects play) but USBPcap discovery couldn't find it on the bus (so
+        // FFB pass-through is broken and the game's own force feedback gets
+        // clobbered). Drives the prominent manual-picker call to action.
+        // Suppressed when USBPcap isn't installed: the Browse / Reinstall UX
+        // covers that case.
         public bool ShouldShowFfbTapPickerBanner
         {
             get
@@ -862,54 +790,41 @@ namespace TrueforceForAll.Plugin
                 if (!IsUsbPcapAvailable) return false;
                 string status = _ffbTap?.Status ?? "";
                 if (status.StartsWith("Tapping", StringComparison.OrdinalIgnoreCase)) return false;
-                // Only the "no supported wheel found" outcome warrants the
-                // picker prompt. Other failure modes (USBPcap missing,
-                // permission denied with explicit text, etc.) are surfaced
-                // through Diagnostics; the picker won't help.
+                // Only "no supported wheel found" warrants the picker; other
+                // failures (USBPcap missing, permission denied) go to Diagnostics.
                 return status.IndexOf("No supported wheel found", StringComparison.OrdinalIgnoreCase) >= 0;
             }
         }
 
         /// <summary>The wheel-quiet diagnostic line for "G HUB is running".
-        /// Shared so the settings card can recognize when its quiet diagnostic
-        /// is merely restating the dedicated G HUB banner (in the same coalesced
-        /// group) and drop the duplicate, instead of surfacing G HUB as two
-        /// separate warnings.</summary>
+        /// Shared so the settings card can spot when its quiet diagnostic just
+        /// restates the dedicated G HUB banner and drop the duplicate.</summary>
         public const string GHubQuietDiagnosticMessage =
             "Logitech G HUB is running. It claims the wheel and blocks force feedback. Close G HUB, then restart SimHub.";
 
-        /// <summary>Why-is-my-wheel-quiet diagnostic. Walks a decision tree
-        /// of plausible "no haptic output" causes and returns the most-
-        /// blocking one as a single actionable line, or null when the
-        /// plugin looks healthy. Surfaced in the settings UI as a warning
-        /// hint below the status pill so users see the actual root cause
-        /// instead of mentally combining five separate status fields.</summary>
+        /// <summary>Why-is-my-wheel-quiet diagnostic. Walks the "no haptic
+        /// output" causes in blocking order and returns the first as one
+        /// actionable line, or null when healthy. Rendered as a warning hint
+        /// below the status pill.</summary>
         public string WheelQuietDiagnostic
         {
             get
             {
                 if (Settings == null) return "Settings not loaded yet.";
 
-                // 0. Lights only. A quiet wheel is the whole point of this mode, so
-                //    there is no fault to report. Returning null rather than an
-                //    explanation on purpose: the caller renders any non-empty string
-                //    in a solid amber panel with a warning triangle, so describing
-                //    the mode here would show a permanent fault for behaviour the
-                //    user chose. The status pill and the line under the mode
-                //    selector already say what is happening.
+                // 0. Lights only. Must return null, not an explanation: the caller
+                //    renders any non-empty string as an amber warning panel, which
+                //    would show a permanent fault for behaviour the user chose.
                 if (MasterMode == TrueforceMasterMode.LightsyncOnly)
                 {
-                    // Unless we put ourselves here. That one the user did not
-                    // choose, so it gets the line: what happened, and the one
-                    // thing that changes it.
+                    // Unless we demoted ourselves: that one the user did not
+                    // choose, so it gets a line.
                     if (_nativeStreamDemoted) return NativeStreamStandDownText(0);
                     return null;
                 }
 
-                // A chosen GLOBAL off is the same case: the user set the switch and
-                // the wheel being quiet is the result they asked for, so it must not
-                // render as a fault either. Only the per-game demotion below is
-                // worth surfacing, because that one they may not remember choosing.
+                // A chosen GLOBAL off is the same case: not a fault. Only the
+                // per-game off below is surfaced, since users forget setting it.
                 if (StoredMasterMode == TrueforceMasterMode.Off) return null;
 
                 // 1. Hard master switch
@@ -921,15 +836,12 @@ namespace TrueforceForAll.Plugin
                         && gm == TrueforceMasterMode.Off)
                     {
                         // Only reachable when the USER chose off for this game:
-                        // nothing else writes that map any more.
-                        // No game id in the text: ActiveGame is SimHub's raw name and
-                        // the header card names the game right above this.
-                        // The Lightsync only suggestion is dropped on a wheel whose
-                        // strip is one fixed look: the selector does not offer that
-                        // row there (it does nothing on that wheel), so naming it
-                        // would send the reader looking for a choice they do not
-                        // have. Fails OPEN on an undetected wheel, matching the
-                        // selector's own rule.
+                        // nothing else writes that map any more. No game id in the
+                        // text: ActiveGame is SimHub's raw name and the header card
+                        // names the game right above. The Lightsync only suggestion
+                        // is dropped on fixed-strip wheels, where the selector does
+                        // not offer that row; fails OPEN on an undetected wheel, as
+                        // the selector does.
                         bool canLightsync = !WheelDetected || WheelHasSelectableLightPattern;
                         return IsNativeTrueforceGame(_activeGame) && canLightsync
                             ? "You switched the plugin off for this game. Set the mode back to Normal at the top, "
@@ -944,9 +856,8 @@ namespace TrueforceForAll.Plugin
                 if (Settings.MasterGain <= 0.005f)
                     return "Master gain is at 0. Slide it up in the Master section.";
 
-                // 3. G HUB blocking wheel access. Ranks higher than "wheel not
-                //    detected" because G HUB is the actual cause; surfacing the
-                //    real fix saves the user a debugging detour.
+                // 3. G HUB blocking wheel access. Ranks above "wheel not
+                //    detected" because G HUB is the actual cause.
                 if (_isGHubRunning)
                     return GHubQuietDiagnosticMessage;
 
@@ -965,19 +876,16 @@ namespace TrueforceForAll.Plugin
                     return $"Wheel stream is '{stream}'. The plugin is opened but not actively driving the wheel. Check the Diagnostics panel.";
 
                 // 6. No game actually running. _activeGame can be a selected-
-                //    but-closed profile, so gate on _currentGameName, which is
-                //    only set while the process is up (data.GameRunning). Avoids
-                //    falsely reporting a closed game as "detected but no telemetry".
+                //    but-closed profile, so gate on _currentGameName, only set
+                //    while the process is up (data.GameRunning). Otherwise a
+                //    closed game reads as "detected but no telemetry".
                 if (string.IsNullOrEmpty(_currentGameName))
                 {
-                    // SimHub follows the telemetry stream, and Forza Horizon
-                    // cuts its Data Out the instant the pause menu opens, so a
-                    // live pause is indistinguishable from a quit here. Check
-                    // the real process table before claiming the game is gone:
-                    // if a known racing game is still up, the user is just
-                    // paused / in a menu, the quiet wheel is expected, and
-                    // there's nothing to warn about (the status pill shows
-                    // "In menu / paused" for this state).
+                    // SimHub's game-running flag follows the telemetry stream, and
+                    // Forza Horizon cuts its Data Out the instant the pause menu
+                    // opens, so a live pause is indistinguishable from a quit. A
+                    // known game still in the process table means paused / in a
+                    // menu: no fault, and the status pill says "In menu / paused".
                     if (IsKnownGameProcessRunning(out _))
                         return null;
                     return "No game running. Start a supported game and load into a session.";
@@ -993,10 +901,8 @@ namespace TrueforceForAll.Plugin
                     // line (which would just duplicate the UDP setup banner).
                     long udpPackets = -1;
                     if (src is TrueforceForAll.Core.ForzaUdpTelemetrySource fz) udpPackets = fz.PacketsReceived;
-                    // Nothing has ever arrived: this is a UDP-setup case, owned
-                    // by the dedicated setup banner (with its "Set up..." button).
-                    // Stay silent here so we don't duplicate that with a text
-                    // instruction; the button is the action.
+                    // Owned by the setup banner and its "Set up..." button, so
+                    // stay silent rather than duplicate it in text.
                     if (udpPackets == 0)
                         return null;
                     return $"'{_currentGameName}' is detected but no telemetry is arriving. You may be in a menu or paused.";
@@ -1005,13 +911,11 @@ namespace TrueforceForAll.Plugin
                 // 7. All telemetry-driven effects disabled: nothing can produce
                 //    output, so say so.
                 //
-                //    EVERY voice belongs in this list. It used to name seven of
-                //    them and claimed "every effect channel is disabled" while
-                //    axle slip, kerb thump, lockup judder, collision, rev limiter
-                //    and the implement thud were happily running (owner, Wreckfest
-                //    2026-08-16). Airborne is deliberately absent: it ducks the
-                //    others and is not a voice of its own, so a config with only
-                //    Airborne on really does produce nothing.
+                //    EVERY voice belongs in this list, or the wheel is reported
+                //    silent while one of them is playing. Airborne is
+                //    deliberately absent: it ducks the others and is not a voice
+                //    of its own, so a config with only Airborne on really does
+                //    produce nothing.
                 bool anyEffectOn =
                        (EnginePulse   != null && EnginePulse.Enabled)
                     || (RoadBumps     != null && RoadBumps.Enabled)
@@ -1030,9 +934,8 @@ namespace TrueforceForAll.Plugin
                 if (!anyEffectOn)
                     return "Every effect channel is disabled. Enable at least one effect or turn on audio capture.";
 
-                // 8. Audio capture configured-on but not actually attached
-                //    to a game process. Common when the user enabled audio
-                //    capture but didn't pick the game's process.
+                // 8. Audio capture enabled but not attached to a game process,
+                //    usually because no process was picked.
                 if (_audio != null && _audio.Enabled && _audio.IsActive == false
                     && _audio.CapturedProcessId == 0
                     && !string.IsNullOrEmpty(_activeGame))
@@ -1040,19 +943,17 @@ namespace TrueforceForAll.Plugin
                     return $"Audio capture is enabled but not attached to '{_activeGame}'. Pick the game process in the Audio section.";
                 }
 
-                // 9. Sidechain ducker over-aggressive (engine pulse muted
-                //    near to silence). Detects misconfigured ducker depth
-                //    that swallows everything.
+                // 9. Sidechain ducker so deep it mutes nearly everything
+                //    (engine pulse ducked to near silence).
                 if (EnginePulse != null && EnginePulse.DuckMultiplier < 0.05f
                     && Settings.DuckingEnabled && Settings.DuckDepth > 0.95f)
                 {
                     return "Sidechain ducker is muting nearly all output. Try lowering Depth in the Sidechain ducking section.";
                 }
 
-                // 10. Working, but degraded: MAIRA's force on the capture path
-                //     keeps the rev lights and the screen locked. Last, because
-                //     everything above is a wheel that does nothing, and this
-                //     one drives fine.
+                // 10. Working but degraded: MAIRA's force on the capture path
+                //     keeps the rev lights and screen locked. Last because
+                //     everything above is a wheel that does nothing.
                 if (_mairaTapDegraded) return MairaTapDegradedText();
 
                 return null;   // healthy
@@ -1061,8 +962,8 @@ namespace TrueforceForAll.Plugin
 
         public AudioCaptureSource AudioCapture => _audio;
 
-        // Live counters surfaced to the Performance tab for the underrun
-        // readout. Pull these on the UI's polling timer.
+        // Live counters surfaced in the Settings tab's Performance section for
+        // the underrun readout. Pull these on the UI's polling timer.
         public long TfRingUnderruns      => _device?.UnderrunCount ?? 0;
         public long AudioRingGlitches    => _audio?.GlitchCount ?? 0;
         public int  CurrentTfRingSize    => _device?.RingCapacity ?? 0;
@@ -1098,13 +999,6 @@ namespace TrueforceForAll.Plugin
             set { if (Settings != null) Settings.MasterGainStep = value; }
         }
 
-        /// <summary>Nudge master gain by <paramref name="delta"/>, clamped to the
-        /// slider's [0, 2] range. Applies live (mixer + Settings), persists, and
-        /// raises MasterGainChangedExternally. Backs the bindable Controls-tab
-        /// "master gain +/-" actions.</summary>
-        /// <summary>Step the Telemetry Based FFB strength from a bound control.
-        /// Same slider the Mode B tab shows, same range, and it applies live so
-        /// it can be trimmed a corner at a time without leaving the car.</summary>
         /// <summary>The bound "auto force" action: it runs the active game's own
         /// auto-calibration, not an on/off. In iRacing it SETS the max force from
         /// the learned peak (the settings Auto button's job); in Forza / Mode B
@@ -1125,6 +1019,9 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info("[TF4ALL] Auto force (bound): " + status);
         }
 
+        /// <summary>Step the Telemetry Based FFB strength from a bound control.
+        /// Same slider the Mode B tab shows, same range, and it applies live so
+        /// it can be trimmed a corner at a time without leaving the car.</summary>
         public void NudgeModeBStrength(float delta)
         {
             if (Settings == null) return;
@@ -1132,9 +1029,8 @@ namespace TrueforceForAll.Plugin
             // slider, the one that actually shapes force there; nudging the
             // hidden Forza strength would be a silent no-op on the wheel.
             if (_forceMode == ForceModeSpring) { NudgeSpringStrength(delta); return; }
-            // iRacing reshape: same reasoning as spring mode. IRacingForceGain
-            // is the knob that shapes force there, so nudging the synthesis
-            // strength would be a silent no-op on the wheel.
+            // iRacing reshape: same reasoning as spring mode; IRacingForceGain is
+            // the knob that shapes force there.
             if (_forceMode == ForceModeIRacing)
             {
                 const float irLo = 0.05f, irHi = 3.0f;
@@ -1187,17 +1083,11 @@ namespace TrueforceForAll.Plugin
             RaiseDashRemoteChanged();
         }
 
-        /// <summary>Step the wheel screen through the ready-made arrangements
-        /// and the custom one, wrapping at the end. Bound to a button this is
-        /// the only way to change screens without leaving the car.</summary>
-        // Readout names for effects 1-9, indexed by effect number. The 1-4
-        // direction names mirror the settings picker's labels; the strip
-        // itself is the primary feedback, this is for the dash bar and the
-        // wheel screen.
-        //
-        // 5-9 are the wheel's five slots, and these are only the FACTORY labels
-        // for them. Anything that shows one to the user goes through
-        // RevPatternLabel, which names the pattern actually in the slot.
+        // Readout names for effects 1-9 (dash bar and wheel screen; the strip
+        // itself is the primary feedback), indexed by effect number. 1-4 mirror
+        // the settings picker's direction labels; 5-9 are the wheel's five slots
+        // and only the FACTORY labels for them. Anything shown to the user goes
+        // through RevPatternLabel, which names the pattern actually in the slot.
         private static readonly string[] RevPatternNames =
         {
             "", "INSIDE-OUT", "OUTSIDE-IN", "LEFT TO RIGHT", "RIGHT TO LEFT",
@@ -1217,12 +1107,10 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>What to CALL effect 1-9 when showing it to the user.
         ///
-        /// For the four built-in sweeps that is the fixed direction name. For the
-        /// five slots it is the name of the pattern in the slot, because "CUSTOM
-        /// 3" says nothing: the user named these, and cycling past them on the
-        /// rim read as five anonymous stops even though the plugin knew exactly
-        /// what each one was. The factory label is the fallback for a slot we
-        /// hold no pattern for.</summary>
+        /// The four built-in sweeps get their fixed direction name. The five
+        /// slots get the name of the pattern in the slot, because "CUSTOM 3"
+        /// says nothing to the user who named it. The factory label is the
+        /// fallback for a slot we hold no pattern for.</summary>
         private string RevPatternLabel(int effect)
         {
             if (effect >= 5 && effect <= 9)
@@ -1233,24 +1121,14 @@ namespace TrueforceForAll.Plugin
             return effect >= 0 && effect < RevPatternNames.Length ? RevPatternNames[effect] : "";
         }
 
-        /// <summary>Step the wheel's rev-light pattern from a bound control,
-        /// so a rim button switches patterns without leaving the wheel. Same
-        /// semantics as the dropdown pick: sets the wheelbase's selection,
-        /// exactly like the base's own menu. Mirrors CycleOledScreen.</summary>
-        /// <summary>One stop on the unified cycle: either one of the wheel's own
-        /// effects, or one pattern from the library showing through the lent
-        /// slot.</summary>
         /// <summary>Where the cycle last landed, so it can find itself again
         /// when the wheel cannot be read. Not persisted: a session that starts
         /// cold asks the wheel, which is the right answer when it works.</summary>
         private string _lastCycleKey;
 
-        /// <summary>What is physically lit on the wheel, as ONE answer.
-        ///
-        /// Three flags used to answer this between them and nothing owned the
-        /// result, which is how a car with no published data came to keep the
-        /// previous car's colors. Derived in one place now so every reader
-        /// agrees.</summary>
+        /// <summary>What is physically lit on the wheel, as ONE answer, derived
+        /// in one place so every reader agrees. Why three flags could not:
+        /// see LightShowing in LightCycle.cs.</summary>
         private LightShowing WhatIsShowing
             => LightCycle.Showing(AutoColorsShowing, HasExplicitCarLightChoice(),
                                   LibraryPatternShowing);
@@ -1263,9 +1141,9 @@ namespace TrueforceForAll.Plugin
                                 LightPatterns.Patterns, WheelLedChannel.CustomSlotCount,
                                 RevPatternLabel);
 
-        /// <summary>Step one place along the unified cycle. Returns false if it
-        /// could not work out where we are, so the caller falls back to the plain
-        /// effect cycle rather than jumping somewhere arbitrary.</summary>
+        /// <summary>Step one place along the unified cycle. Returns false whenever
+        /// it cannot step (no stops, position unknown, apply failed), so the caller
+        /// falls back to the plain effect cycle rather than jumping arbitrarily.</summary>
         private bool CycleThroughEverything(int direction)
         {
             // Reading the slots and writing one both need the channel, and parked
@@ -1306,11 +1184,9 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                // Leaving the library section for something that genuinely lives
-                // on the wheel, so the stage has done its job and goes back
-                // before we switch away from it. Conditional: a backup also
-                // exists while the user edits one of their OWN slots, and
-                // releasing that would undo the edit they just made.
+                // Leaving the library for something that lives on the wheel, so
+                // the lent slot goes back. Conditional: a backup also exists
+                // while the user edits their OWN slot, and releasing undoes it.
                 if (LibraryPatternShowing) ReleaseBorrowedSlot();
                 // idle: show the pick, same as the dropdown
                 PickRevLightPattern(next.Effect, previewAfter: true);
@@ -1323,6 +1199,10 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        /// <summary>Step the wheel's rev-light pattern from a bound control,
+        /// so a rim button switches patterns without leaving the wheel. Same
+        /// semantics as the dropdown pick: sets the wheelbase's selection,
+        /// exactly like the base's own menu. Mirrors CycleOledScreen.</summary>
         public void CycleRevLightPattern(int direction)
         {
             if (_rpmLeds == null) return;
@@ -1333,13 +1213,11 @@ namespace TrueforceForAll.Plugin
             if (MasterMode == TrueforceMasterMode.Off) return;
 
             // One continuous walk through everything the wheel can show, in the
-            // order the wheel itself lists them: the four built-in sweeps, then
-            // the five custom slots. The difference is that the LENT slot expands
-            // into the whole library instead of being one stop, so cycling runs
-            // built-ins, CUSTOM 1, CUSTOM 2, then every pattern in the folder,
-            // then CUSTOM 4, CUSTOM 5, and round again. The wheel's five slots
-            // stop being a limit without the user having to think about where
-            // one list ends and another begins.
+            // order LightCycle.Build lays out: the car's own colors when it has
+            // them, the four built-in sweeps, the custom slots that actually
+            // hold something, then the whole library through the lent slot
+            // (whichever StageSlot picked). The wheel's five slots stop being a
+            // limit without the user having to think about it.
             // The unlock check MUST come first, and not only for the obvious
             // reason. Reading LightPatterns builds the library on first touch and
             // writes light-patterns.json, so even asking whether it has any
@@ -1377,6 +1255,9 @@ namespace TrueforceForAll.Plugin
                 $"[TF4ALL] rev-light pattern -> {next} ({label})");
         }
 
+        /// <summary>Step the wheel screen through the ready-made arrangements
+        /// and the custom one, wrapping at the end. Bound to a button this is
+        /// the only way to change screens without leaving the car.</summary>
         public void CycleOledScreen(int direction)
         {
             if (Settings == null) return;
@@ -1396,16 +1277,18 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info($"[TF4ALL] OLED screen -> {next}");
         }
 
+        /// <summary>Nudge master gain by <paramref name="delta"/>, clamped to the
+        /// slider's [0, 2] range. Applies live (mixer + Settings), persists, and
+        /// raises MasterGainChangedExternally. Backs the bindable Controls-tab
+        /// "master gain +/-" actions.</summary>
         public void NudgeMasterGain(float delta)
         {
             float cur = MasterGain;
             float next = cur + delta;
             if (next < MasterGainMin) next = MasterGainMin;
             if (next > MasterGainMax) next = MasterGainMax;
-            // Log even when the value is already at the rail so the
-            // user can confirm the bound action actually fired - the
-            // silent no-op when next==cur was indistinguishable from
-            // "the binding never reached us."
+            // Log even at the rail: a silent no-op is indistinguishable from a
+            // binding that never reached us.
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] NudgeMasterGain delta={delta:+0.00;-0.00;0.00} "
                 + $"cur={cur:F2} -> next={next:F2}"
@@ -1416,14 +1299,12 @@ namespace TrueforceForAll.Plugin
             try { MasterGainChangedExternally?.Invoke(); } catch { }
         }
 
-        // Current effective audio-capture gain (active car override if any, else
-        // the global setting). Read by the home Feedback tile to mirror the
-        // settings panel's Audio "Gain" slider.
+        // Current effective audio-capture gain: active car override if any, else
+        // the global setting. Mirrors the settings panel's Audio "Gain" slider.
         public float ActiveAudioGain => ActiveAudio?.Gain ?? 0f;
 
-        // Apply an audio-capture gain live (settings object + running _audio
-        // source) without persisting; the caller debounces the disk write. Mirrors
-        // the settings panel's AudioGainSlider path (ActiveAudio + apply).
+        // Apply an audio-capture gain live without persisting; the caller
+        // debounces the disk write. Mirrors the panel's AudioGainSlider path.
         public void SetActiveAudioGainLive(float v)
         {
             var a = ActiveAudio;
@@ -1433,7 +1314,7 @@ namespace TrueforceForAll.Plugin
         }
 
         // Whether audio haptics (the loopback-capture layer) are enabled for the
-        // active settings. Read + toggled by the home Feedback tile's audio button.
+        // active settings. Read + toggled by the Feedback tile and the dash remote.
         public bool ActiveAudioEnabled => ActiveAudio?.Enabled ?? false;
 
         public void SetActiveAudioEnabledLive(bool on)
@@ -1444,9 +1325,9 @@ namespace TrueforceForAll.Plugin
             ApplyAudioCaptureSettings(a);
         }
 
-        // Persisted opt-in for the home-screen Feedback gain tile. Applies live
-        // to the injector so the tile appears / disappears without a SimHub
-        // restart.
+        // Persisted show/hide for the home-screen Feedback gain tile: ON by
+        // default, so opt-out. Applies live to the injector so the tile appears
+        // / disappears without a SimHub restart.
         public void SetShowFeedbackBox(bool on)
         {
             if (Settings != null) Settings.ShowFeedbackBox = on;
@@ -1456,47 +1337,45 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>The master switch as the USER set it. This never moves on a
         /// game change: the per-game memory demotes what we do, not what they
-        /// chose. Defaults to Full before settings load, which is what the bool
+        /// chose. Defaults to Normal before settings load, which is what the bool
         /// this replaced defaulted to.</summary>
         public TrueforceMasterMode StoredMasterMode
             => Settings?.MasterMode ?? TrueforceMasterMode.Normal;
 
         /// <summary>What we may actually do right now: the stored choice, demoted
-        /// to Off when the user has switched us off for the game that is running.
-        /// Latched in a volatile rather than computed on demand, because the 1 kHz
-        /// producer reads it every pass and walking the per-game dictionary there
-        /// would both cost and race a settings write.</summary>
+        /// by the per-game memory (to Off) and by this session's native-stream watch
+        /// (to Lightsync only). Latched in a volatile rather than computed on demand,
+        /// because the 1 kHz producer reads it every pass and walking the per-game
+        /// dictionary there would both cost and race a settings write.</summary>
         public TrueforceMasterMode MasterMode => (TrueforceMasterMode)_effectiveMode;
         private volatile int _effectiveMode = (int)TrueforceMasterMode.Normal;
 
-        /// <summary>True only in the mode that runs the force layer. Kept under the
-        /// name every existing consumer already reads, and kept meaning exactly what
-        /// it meant before a third state existed: Lightsync-only and Off both read
-        /// as "not running", which is the safe answer for all of them.</summary>
+        /// <summary>True only in the mode that runs the force layer, and it still
+        /// means what it meant before a third state existed: Lightsync only and Off
+        /// both read as "not running", the safe answer for every consumer.</summary>
         public bool PluginEnabled => MasterMode == TrueforceMasterMode.Normal;
 
-        /// <summary>Resolve the stored mode against the per-game memory.
+        /// <summary>Resolve the stored mode against the per-game memory, then
+        /// against this session's native-stream demotion.
         ///
-        /// The per-game switch can only DEMOTE. It has only ever answered one
-        /// question, whether the force layer runs in this game, so it can turn Full
-        /// into Off for a game and nothing else. Off and lights-only are global
-        /// stances the user typed in, and letting a stored map promote either of
-        /// them back to Full would mean the master switch moved on its own: pick
-        /// Off at the desk, start a game you had once enabled, and the whole force
-        /// path comes back up with no action from you.
+        /// A global Off is a hard stop no per-game entry may lift: pick Off at
+        /// the desk, start a game you had once enabled, and the force path must
+        /// stay down. A global Lightsync only is a stance rather than a stop, so
+        /// a per-game entry IS allowed to name Normal for that one game
+        /// (ResolveChosenMode owns that resolution).
         ///
-        /// The old bool could not express a global Off (it WAS the per-game state,
-        /// pushed from this map on every game change), which is why the migration
-        /// starts everyone on Full and lets the map keep doing the demoting.</summary>
+        /// The old bool could not express a global Off (it WAS the per-game
+        /// state, pushed from this map on every game change), which is why the
+        /// migration starts everyone on Normal and lets the map keep
+        /// demoting.</summary>
         private TrueforceMasterMode ResolveEffectiveMode()
         {
             var chosen = ResolveChosenMode();
-            // A game found streaming its own Trueforce beside ours demotes Normal
-            // to Lightsync only for the rest of that game session (see
+            // A game streaming its own Trueforce beside ours demotes Normal to
+            // Lightsync only for the rest of that game session (see
             // UpdateNativeTrueforceStreamWatch). Applied here, over the choice, so
-            // every path that lands on the effective mode (the combo, the pill,
-            // the pipeline reconcile) agrees; never written into the per-game
-            // map, which records the user's choices only.
+            // every reader of the effective mode agrees; never written into the
+            // per-game map, which records the user's choices only.
             if (chosen == TrueforceMasterMode.Normal && _nativeStreamDemoted)
                 return TrueforceMasterMode.LightsyncOnly;
             return chosen;
@@ -1511,22 +1390,21 @@ namespace TrueforceForAll.Plugin
             // choice that means "not anywhere", and a per-game entry left over
             // from before must not quietly bring the plugin back up.
             if (stored == TrueforceMasterMode.Off) return TrueforceMasterMode.Off;
-            // A global LIGHTSYNC ONLY is a stance, not a stop, so a per-game
-            // choice is allowed to be more specific than it. Returning it here
-            // unconditionally is what made the two impossible to hold at once:
-            // any in-game choice had to promote the global to Normal first, which
+            // A global LIGHTSYNC ONLY is a stance, not a stop, so a per-game choice
+            // is allowed to be more specific than it: it is honoured below, after
+            // the per-game map has had its say, never here. Returning it here
+            // unconditionally is what made the two impossible to hold at once: any
+            // in-game choice had to promote the global to Normal first, which
             // silently switched the force layer on in every other title.
 
-            // Offline CAR editing pins _activeGame to the car being edited, which is
-            // not a game that is running. Without this, opening an ACC or iRacing car
-            // in the editor at the desk makes the next resolve (a wheel re-attach, a
-            // sync pull) read that game's stored "off" and tear the whole force
-            // pipeline down while nobody is driving.
-            //
-            // Deliberately NOT IsOfflineEditing, which is preset editing: that one
-            // does not pin _activeGame and does not stop the game-change block, so
-            // exempting it would let a real game change resolve to Full and stream
-            // into a native-Trueforce title that had just auto-disabled itself.
+            // Offline CAR editing pins _activeGame to the car being edited, which
+            // is not a running game: without this, the next resolve (a wheel
+            // re-attach, a sync pull) reads that game's stored "off" and tears the
+            // force pipeline down while nobody is driving. NOT IsOfflineEditing
+            // (preset editing): that one does not pin _activeGame or stop the
+            // game-change block, so exempting it would let a real game change
+            // resolve to Full and stream into a native-Trueforce title that had
+            // just auto-disabled itself.
             if (IsOfflineEditingCar)
                 return stored == TrueforceMasterMode.LightsyncOnly ? stored : TrueforceMasterMode.Normal;
 
@@ -1545,8 +1423,7 @@ namespace TrueforceForAll.Plugin
             // There we land on LIGHTSYNC ONLY rather than off: our ep3 stream would
             // fight the game's Trueforce, but the wheel's patterns are ours to set
             // either way, so standing all the way back gave up the one thing that
-            // costs the game nothing. An explicit choice still wins, because it
-            // writes the per-game map and the branch above reads that first.
+            // costs the game nothing.
             return IsNativeTrueforceGame(g)
                 ? TrueforceMasterMode.LightsyncOnly
                 : TrueforceMasterMode.Normal;
@@ -1556,7 +1433,8 @@ namespace TrueforceForAll.Plugin
         /// resolve to: latch it, mirror it into the retired bool, put the ep3 device
         /// where the new mode says it belongs, and hand the wheel's lights back if we
         /// are leaving. Every path that changes the stored mode, the per-game memory
-        /// or the active game ends here, so one place decides what the wheel does.</summary>
+        /// or the active game ends here, except the ones that replace Settings
+        /// wholesale, which reconcile through SyncDeviceToPluginEnabled.</summary>
         private void ApplyEffectiveMode(string context)
         {
             if (Settings == null) return;
@@ -1573,12 +1451,12 @@ namespace TrueforceForAll.Plugin
             bool effective;
             lock (_enableDeviceLock)
             {
-                // Act on the CURRENT flag, not the captured argument: two
-                // opposite toggles racing (UI click vs the per-game auto
-                // toggle on the data thread) both reach here, and acting on
-                // the re-read value makes them converge on whichever settings
-                // write landed last instead of leaving the device matching
-                // the loser.
+                // Re-read the flag inside the lock rather than trusting the
+                // value resolved above: two opposite toggles racing (UI click
+                // vs the per-game auto toggle on the data thread) both reach
+                // here, and acting on the re-read value makes them converge on
+                // whichever settings write landed last instead of leaving the
+                // device matching the loser.
                 effective = Settings.PluginEnabled;
                 if (!effective)
                 {
@@ -1598,14 +1476,13 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            // Bring the rest of the force pipeline (capture, telemetry, the helper
-            // child, the device itself) up or down to match, so a mode switch takes
-            // effect now rather than at the next SimHub restart.
+            // Capture, telemetry, the helper child and the device follow the mode,
+            // live, so a switch takes effect now and not at the next restart.
             ReconcileFullPipeline(mode);
 
             // Lights are a separate pipe on a separate endpoint, so they need their
-            // own reconcile: leaving Off has to give borrowed slots back, and the
-            // device transition above says nothing about them.
+            // own reconcile: arriving at Off is what gives borrowed slots back, and
+            // the device transition above says nothing about them.
             ReconcileLightSubsystems(was, mode, context);
 
             SimHub.Logging.Current.Info(
@@ -1615,17 +1492,13 @@ namespace TrueforceForAll.Plugin
         }
 
         // ---- iRacing setup notice -------------------------------------------
-        // Lives on the PLUGIN, not the settings panel, because it has to fire the
-        // moment iRacing is seen. Owned by the panel it would only appear once
-        // someone opened the panel, which is exactly the wrong order: the point is
-        // to tell them how to get the full experience before they conclude the
-        // wheel is dead. Shows again on each iRacing session until dismissed.
-        /// <summary>The iRacing first-launch notice.
-        ///
-        /// A property rather than a const because one clause depends on the wheel:
-        /// "sets the wheel's pattern to match the car you are in" is true of a wheel
-        /// with selectable patterns and false of one whose strip is a fixed look,
-        /// and this notice is shown to both. Fails OPEN on an undetected wheel.</summary>
+        // Lives on the PLUGIN, not the settings panel: it has to fire the moment
+        // iRacing is seen, not the next time someone opens the panel. Shows again
+        // on each iRacing session until dismissed.
+        /// <summary>The iRacing first-launch notice. A property, not a const,
+        /// because the "sets the wheel's pattern to match the car you are in"
+        /// clause is true only of a wheel with selectable patterns, and the notice
+        /// is shown to both kinds. Fails OPEN on an undetected wheel.</summary>
         private string IracingNoticeBody =>
             "Set up once, this turns on the plugin's effects, rev lights and wheel screen in iRacing. The force stays iRacing's own: the sim keeps computing it, and the plugin delivers it to the wheel.\n\n" +
             (!WheelDetected || WheelHasSelectableLightPattern
@@ -1713,20 +1586,16 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Rebuild the per-game MODE map from the per-game BOOL map,
-        /// for an envelope or profile written before GameModes existed.
+        /// for an envelope or profile written before GameModes existed (every
+        /// backup that exists today, and every auto-sync pull from an old build).
         ///
-        /// Every backup that exists today is such an envelope, and so is every
-        /// auto-sync pull from a PC still on the old build. ApplySettings only
-        /// writes the keys the envelope carries, so without this the restored
-        /// per-game choices land in GameEnabled while THIS PC's GameModes stays
-        /// untouched and keeps governing, because the resolver reads it first. The
-        /// restore reports success and changes nothing the user asked it to change,
-        /// and the two maps disagree from then on.
-        ///
-        /// Replaces the map wholesale rather than merging: a restore means "make
-        /// this PC look like that backup", so a per-game choice that is not in the
-        /// backup is not a choice this PC should keep. Uses the same reading as the
-        /// upgrade migration, so a stored false becomes Lightsync only.</summary>
+        /// ApplySettings writes only the keys the envelope carries, so without
+        /// this the restored choices land in GameEnabled while THIS PC's
+        /// GameModes stays untouched and keeps governing, because the resolver
+        /// reads it first: the restore reports success and changes nothing.
+        /// Replaces the map wholesale rather than merging (a restore means "make
+        /// this PC look like that backup"), reading a stored false as Lightsync
+        /// only, the same as the upgrade migration.</summary>
         private void RebuildGameModesFromEnabled(string context)
         {
             if (Settings == null) return;
@@ -1749,16 +1618,13 @@ namespace TrueforceForAll.Plugin
         public void SetMasterMode(TrueforceMasterMode mode, bool persistForActiveGame = true)
         {
             if (Settings == null) return;
-            // Remember what they were on before going full, so a two-state control
-            // (the home Feedback tile, a wheel button) can put them back where they
-            // were instead of dropping them to Off.
-            //
-            // The EFFECTIVE mode, not the stored one. Since the per-game map holds
-            // the real answer while the stored choice sits on Normal, reading the
-            // stored value left this latch unarmed for exactly the users it exists
-            // for: someone on lights-only in THIS game, and anyone in a native
-            // Trueforce title that resolves to lights-only by default. Both were
-            // then dropped to Off by a tile that offers no way back.
+            // Remember what they were on before going full, so a two-state
+            // control (the home Feedback tile, a wheel button) can put them back
+            // instead of dropping them to Off. The EFFECTIVE mode, not the stored
+            // one: while the per-game map holds the real answer the stored choice
+            // sits on Normal, which left this latch unarmed for exactly the users
+            // it exists for (lights-only in this game, or a native Trueforce title
+            // that defaults there).
             var effectiveBefore = ResolveEffectiveMode();
             if (mode == TrueforceMasterMode.Normal && effectiveBefore != TrueforceMasterMode.Normal)
                 _preFullMode = effectiveBefore;
@@ -1767,51 +1633,37 @@ namespace TrueforceForAll.Plugin
             // Trueforce stream: Normal means "try again" (the watch re-runs and
             // demotes again if the game still streams), and either other mode is
             // now the user's own. A fresh try is a fresh episode for the notice
-            // too: picking Normal and being dropped again deserves the popup
-            // again (owner, 2026-08-30; it stayed silent because the latch only
-            // reset on game change). The per-game "don't show" still wins.
+            // too: picking Normal and being dropped again deserves the popup again
+            // (owner, 2026-08-30). The per-game "don't show" still wins.
             _nativeStreamDemoted = false;
             _standDownNoticeShownThisDemotion = false;
 
             bool inGame = persistForActiveGame && !string.IsNullOrEmpty(_activeGame);
 
-            // Choosing OFF while a game is running means "not in this game", which is
-            // what the old on/off switch meant and what people expect: they are
-            // sitting in a title, they switch us off, they do not intend to lose the
-            // plugin in every other title too. So it stamps the per-game memory and
-            // leaves the stored choice on Full, which the resolver then demotes for
-            // this game alone. A global off is still available, by choosing Off with
-            // no game running, and is rarely what anyone wants.
+            // A mode chosen while a game is running is about THAT game only: it
+            // stamps the per-game memory below and leaves the stored global
+            // stance exactly as it was. That is what the old on/off switch meant
+            // (switch us off in this title, keep us in every other), and it now
+            // holds for Lightsync only too: wanting the lights without the force
+            // in one title should not cost the force everywhere else. A GLOBAL
+            // stance is set by choosing it with no game running.
             //
-            // Only from Full, though. Coming from Lightsync-only there is no force
-            // layer for the per-game switch to talk about, so Off has to mean off.
-            // In a game, a mode choice is about THAT game, and the global stance is
-            // left exactly as it was. It was already true of Off ("not in this
-            // title"), and now that the per-game memory can hold a mode it is true
-            // of Lightsync only as well: wanting the lights without the force in one
-            // title should not cost the force everywhere else.
-            //
-            // Crucially the global is NOT promoted to Normal on the way. Doing that
-            // turned "lights only everywhere" into "normal everywhere, except this
-            // one game" the first time somebody tapped a two-state control inside a
-            // title, and nothing ever put it back. A global stance is still set the
-            // way it always was: choose it with no game running.
+            // Crucially the global is NOT promoted to Normal on the way. Doing
+            // that turned "lights only everywhere" into "normal everywhere,
+            // except this one game" the first time somebody tapped a two-state
+            // control inside a title, and nothing ever put it back.
             if (!inGame) Settings.MasterMode = mode;
 
-            // The per-game memory answers one question only: does the force layer
-            // run in THIS game. Lightsync-only is not an answer to it, so choosing
-            // it leaves the map alone. Stamping every game the user visited with
-            // "false" would silently switch the force layer off everywhere the
-            // moment they went back to full.
+            // The per-game map takes the choice exactly as made, Lightsync only
+            // included: in a game, the answer is about THIS game.
             if (inGame)
             {
                 if (Settings.GameModes == null)
                     Settings.GameModes = new Dictionary<string, TrueforceMasterMode>();
                 Settings.GameModes[_activeGame] = mode;
-                // Kept in step so the bool map stays a truthful answer to the only
-                // question it can answer, and so an older build reads something
-                // sane. Lightsync only lands as false there, which is what that
-                // build would have done with it anyway.
+                // Kept in step so an older build reads something sane: Lightsync
+                // only lands as false there, which is what that build would have
+                // done with it anyway.
                 Settings.GameEnabled[_activeGame] = mode == TrueforceMasterMode.Normal;
             }
 
@@ -1826,13 +1678,12 @@ namespace TrueforceForAll.Plugin
             PersistSettingsCore();
         }
 
-        /// <summary>Toggle the master enable. When disabled, sends the protocol
-        /// Stop command so the wheel returns to its native FFB / Trueforce
-        /// path (e.g. iRacing's own Trueforce takes over) and the producer
-        /// loop skips rendering. When re-enabled, sends Start and resumes.
-        /// Kept for the callers that predate the third state; on means Full and
-        /// off means Off, so neither can land a user in Lightsync-only by
-        /// accident.</summary>
+        /// <summary>Toggle the master enable. Kept for the callers that predate
+        /// the third state; on means Full and off means Off, so neither can land
+        /// a user in Lightsync-only by accident. The device work happens in
+        /// ApplyEffectiveMode: Stop/Pause hands the wheel back to its native FFB
+        /// path (except while demoted for the game's own stream), Start/Resume
+        /// brings it back.</summary>
         public void SetPluginEnabled(bool enabled, bool persistForActiveGame = true)
             => SetMasterMode(enabled ? TrueforceMasterMode.Normal : TrueforceMasterMode.Off,
                              persistForActiveGame);
@@ -1843,27 +1694,21 @@ namespace TrueforceForAll.Plugin
         private TrueforceMasterMode _preFullMode = TrueforceMasterMode.Off;
 
         /// <summary>The on/off answer for a two-state control (SimHub's home
-        /// Feedback tile, a bound wheel button). Off returns the user to whatever
-        /// they were on BEFORE they switched to full, so a lights-only user who
-        /// flicks this tile twice ends up back on lights only rather than being
-        /// quietly dropped to off with no way back from that tile.</summary>
+        /// Feedback tile, a bound wheel button). Off goes to ToggleOffMode, which
+        /// puts a lights-only user back on lights only rather than quietly
+        /// dropping them to off with no way back from that tile.</summary>
         public void SetMasterEnabledFromToggle(bool on)
             => SetMasterMode(on ? TrueforceMasterMode.Normal : ToggleOffMode());
 
         /// <summary>Where a two-state control lands when it is switched off.
         ///
-        /// _preFullMode alone was not enough, and failed in exactly the case it
-        /// was written for. It arms only on a transition TO Normal within this
-        /// session, so someone sitting in a native Trueforce title that resolved
-        /// to Lightsync only ON ITS OWN never armed it: the latch still held its
-        /// compile-time default of Off, and one tap of the tile wrote Off into
-        /// that game's entry, permanently, from a tile with no way back.
-        ///
-        /// The rule now is that this control never puts a game BELOW where it was
-        /// already sitting. Already non-Normal means the switch is a no-op. In a
+        /// The rule is that this control never puts a game BELOW where it was
+        /// already sitting: already non-Normal leaves the mode where it is. In a
         /// native Trueforce title, off means Lightsync only, which is that
         /// title's own resting mode and what the user had. Everywhere else off
-        /// still means Off.</summary>
+        /// still means Off. _preFullMode alone cannot carry this: it arms only on
+        /// a transition TO Normal in this session, so a title that resolved to
+        /// Lightsync only on its own leaves it at its compile-time Off.</summary>
         private TrueforceMasterMode ToggleOffMode()
         {
             var now = ResolveEffectiveMode();
@@ -1876,19 +1721,20 @@ namespace TrueforceForAll.Plugin
         }
 
 
-        // Serializes the device Stop/Pause vs Resume/Start decision between the
-        // live toggle (SetPluginEnabled) and the transitionless reconciler
-        // below, so an enable racing a bring-up/restore reconcile can't be
-        // swallowed by a stale read of the flag (both sides re-read or act on
-        // the latest Settings.PluginEnabled inside the lock, and the loser of
-        // the race runs second and wins). Only ever wraps non-blocking flag
-        // flips; never taken with another lock held.
+        // Serializes the device Stop/Pause vs Resume/Start decision across every
+        // holder (ApplyEffectiveMode, the transitionless reconciler below, the
+        // StopStreamOnPause gate, the native-test suspend/resume and the
+        // stand-down), so an enable racing a bring-up/restore reconcile can't be
+        // swallowed by a stale read of the flag (both sides re-read or act on the
+        // latest Settings.PluginEnabled inside the lock, and the loser of the race
+        // runs second and wins). Only ever wraps non-blocking flag flips; never
+        // taken with another lock held.
         private readonly object _enableDeviceLock = new object();
 
-        /// <summary>Push Settings.PluginEnabled to the device without
-        /// requiring a transition. SetPluginEnabled covers live toggles but
-        /// early-returns when the value did not change, so every path that
-        /// lands PluginEnabled without going through it must call this:
+        /// <summary>Push the resolved mode to the device without requiring a
+        /// transition. ApplyEffectiveMode covers live changes but early-returns
+        /// when the mode did not change, so every path that lands a new mode or
+        /// replaces Settings wholesale must call this:
         /// device bring-up with the toggle already off (issue #37), backup
         /// restore / auto-sync pull, settings import, and account switch.
         /// Otherwise the device keeps its previous pause state: streaming

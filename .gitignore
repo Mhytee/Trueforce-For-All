@@ -42,6 +42,7 @@ __*
 # distilled open-bug backlog. Local maintainer reference only, not public docs.
 /docs/archive/
 /docs/open-backlog.md
+/docs/comment-audit/
 # per-release test plans: working checklists, not repo material.
 /docs/testplan-*.md
 # in-progress design note for a later cycle; local until it lands as work.
