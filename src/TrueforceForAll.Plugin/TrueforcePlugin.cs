@@ -1787,10 +1787,8 @@ namespace TrueforceForAll.Plugin
             if (outcome != null)
                 SimHub.Logging.Current.Info($"[TF4ALL] {context}: {outcome}.");
 
-            // The rest of the mode, for the same reason the device half exists: an
-            // imported or restored file can move the master switch without anyone
-            // calling SetMasterMode, and the pipeline and the lights have to follow
-            // it. Deliberately outside the dev != null guard above, because a null
+            // The mode's other half: the pipeline and the lights follow it too.
+            // Deliberately outside the dev != null guard above, because a null
             // device is the STEADY STATE of both non-full modes.
             ReconcileFullPipeline(mode);
             if (was != mode) ReconcileLightSubsystems(was, mode, context);
@@ -1855,12 +1853,13 @@ namespace TrueforceForAll.Plugin
         // free: rev-light/OLED gating, GameFfbExpected suppression, and the
         // StopStreamOnPause exemption.
         //
-        // Armed DYNAMICALLY, not per game: toggle on + the tap shows a
-        // playing spring + no scalar game force for a sustained window. A
-        // scalar force appearing disarms instantly (that game streams real
-        // values; pass-through must own the wheel again), which also keeps
-        // the Mode B contention warning unreachable in spring mode. Real
-        // Mode B (value 1) always wins; spring mode only arms from 0.
+        // Armed from bus dynamics: toggle on + the tap shows a playing
+        // spring + no scalar game force for a sustained window. Farming
+        // Simulator instead arms by GAME name and never disarms on a
+        // scalar (see UpdateSpringModeArming). Elsewhere a scalar disarms
+        // instantly (that game streams real values; pass-through must own
+        // the wheel again), which also keeps the Mode B contention warning
+        // unreachable. Real Mode B (value 1) wins; spring only arms from 0.
         private long _springArmCandidateSinceTicks;   // 0 = no candidate window open
 
         private void UpdateSpringModeArming()
@@ -1962,11 +1961,11 @@ namespace TrueforceForAll.Plugin
         // per-generation zips travel EMBEDDED in this assembly so a plain
         // DLL deploy carries them. Offer model (owner spec 2026-08-07): a
         // one-time dialog on the first FS session; declining only silences
-        // the DIALOG, the offer itself never goes away, it lives on as the
-        // Telemetry FFB tab banner with an Install button for as long as a
-        // spring game is active without the mod. After one accepted install,
-        // newer plugin versions refresh the file silently (the consent was
-        // to the file, not to one version of it).
+        // the DIALOG. The offer never goes away: the Telemetry FFB tab
+        // banner carries it while a spring game runs without the mod, and
+        // the Settings tab's Game Mods card carries it always. After one
+        // accepted install, newer plugin versions refresh the file silently
+        // (the consent was to the file, not to one version of it).
         private const string FsModVersion = "0.2.24";
         private bool _fsModPromptShown;   // once per SimHub session
 
@@ -2037,13 +2036,11 @@ namespace TrueforceForAll.Plugin
             var fs = _fsPipeSource;
             if (fs != null && fs.MsSinceLastFrame < 3000)
             {
-                // 4 = feeding, but from an OLDER mod than the plugin has
-                // refreshed onto disk. The refresh runs on game detection,
-                // which is always after the game already scanned its mods
-                // folder, so an update trails by one game restart, and a
-                // user who skips it silently misses new mod features (cost
-                // a slip-test cycle, 2026-08-08). Pre-0.2.11 mods don't
-                // report a version; they read as current (undetectable).
+                // The refresh runs on game detection, always after the game
+                // scanned its mods folder, so an update trails by one game
+                // restart, and a user who skips it silently misses new mod
+                // features. Pre-0.2.11 mods don't report a version; they read
+                // as current.
                 string rep = fs.ReportedModVersion;
                 if (!string.IsNullOrEmpty(rep)
                     && !string.Equals(rep, FsModVersion, StringComparison.Ordinal))
@@ -2058,20 +2055,17 @@ namespace TrueforceForAll.Plugin
         /// <summary>Take the mod back out for a NAMED game. Returns null on
         /// success, else a short human-readable reason.
         ///
-        /// The counterpart to InstallFsMod, and the reason it exists: we write a
-        /// file into somebody else's game folder, so we should be able to remove
-        /// it without asking them to go find it. Leaving that as the only route
-        /// out is what makes people wary of letting a tool touch a game directory
-        /// at all.
+        /// The counterpart to InstallFsMod: we write a file into somebody else's
+        /// game folder, so we should be able to take it back out without asking
+        /// them to go find it.
         ///
-        /// Two pieces of bookkeeping travel with the delete, and without them the
-        /// mod comes back by itself. The version stamp has to go, because a
-        /// stamp that disagrees with the shipped version is what triggers the
-        /// silent refresh in MaybeOfferFsModInstall. And the install offer is
-        /// marked declined, because the dialog fires whenever the file is absent:
-        /// re-offering on the next session would be arguing with someone who has
-        /// just told us what they want. The tab banner still carries the offer,
-        /// so nothing is lost, it just stops interrupting.</summary>
+        /// Two pieces of bookkeeping travel with the delete. The install offer is
+        /// marked declined, because MaybeOfferFsModInstall fires the dialog
+        /// whenever the file is absent: re-offering next session would be arguing
+        /// with someone who has just told us what they want. The version stamp
+        /// goes with the file it describes, so no later install is read against
+        /// a stamp for a mod that is not there. The tab banner still carries the
+        /// offer, so nothing is lost, it just stops interrupting.</summary>
         public string UninstallFsMod(string game)
         {
             if (!TryGetFsModInfo(game, out string modsDir, out _))
@@ -2158,15 +2152,13 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Install (or refresh) the mod for the active game. Returns
-        /// null on success, else a short human-readable reason. Called from
-        /// the tab banner's Install button and the first-session dialog.</summary>
+        /// null on success, else a short human-readable reason. Called from the
+        /// banner's Install button, the first-session dialog and the silent refresh.</summary>
         public string InstallFsModForActiveGame() => InstallFsMod(_activeGame);
 
         /// <summary>Install (or refresh) the mod for a NAMED game, so the settings
-        /// UI can offer it for a title that is not running. The mods folder is a
-        /// folder on disk whether or not the game is open, and every route we had
-        /// to this needed Farming Simulator running WITHOUT the mod: the one state
-        /// a user preparing, reinstalling, or checking is never in.</summary>
+        /// UI can offer it for a title that is not running (the mods folder is on
+        /// disk whether or not the game is open).</summary>
         public string InstallFsMod(string game)
         {
             if (!TryGetFsModInfo(game, out string modsDir, out string resource))
@@ -2249,13 +2241,10 @@ namespace TrueforceForAll.Plugin
                         if (st == null) return;
                         if (ok == true)
                         {
-                            // A failed install must not end in a closed dialog
-                            // and silence: say why, and point at the standing
-                            // retry (the Telemetry FFB tab banner). Success
-                            // needs a word too: the game only reads its mods
-                            // folder at startup, and this prompt only appears
-                            // while the game is running, so a restart is
-                            // always the missing step.
+                            // Both outcomes need a word: a failure must say
+                            // why and point at the standing retry (the
+                            // Telemetry FFB tab banner), and a success must
+                            // say the game reads its mods only at startup.
                             string err = InstallFsModForActiveGame();
                             if (err != null)
                                 TrueforceDialog.Show(null, "Install failed",
@@ -2288,17 +2277,16 @@ namespace TrueforceForAll.Plugin
 
         // Our own centering for FS wheels the game gives no spring commands
         // to (the G PRO gets a constant heartbeat, trace-proven 2026-08-07).
-        // Quadratic: light at center, firmer with lock, matching the feel the
-        // game's own static spring produces natively. Full lock = this
-        // fraction of full scale; the shared Damping slider provides the
-        // stability half.
+        // Curve shape is the Center firmness slider's job (soft quadratic to
+        // near-linear); this constant only sets full lock = this fraction of
+        // full scale. The shared Damping slider provides the stability half.
         private const float SyntheticFsSpringStrength = 0.6f;
 
-        // Evaluate the steering spring at the wheel's physical position:
-        // the game's own captured spring when one is playing, else (in FS)
-        // the synthetic fallback. Null when the position is stale or the tap
-        // is gone: rendering a spring against a frozen position would hold a
-        // constant torque.
+        // Evaluate the steering spring at the wheel's physical position: in
+        // Farming Simulator always the plugin's own model, everywhere else
+        // the game's own captured spring. Null when the position is stale
+        // (or, outside FS, the tap is gone): rendering a spring against a
+        // frozen position would hold a constant torque.
         private short? EvaluateClassicSpringForce()
         {
             var s = Settings;
@@ -2320,14 +2308,12 @@ namespace TrueforceForAll.Plugin
             if (_activeGame != null
                 && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
             {
-                // Telemetry-freshness gate. Both close-the-game pulls
-                // (2026-08-08) developed in the window AFTER frames stopped
-                // but BEFORE the game-changed disarm: a spring rendered
-                // through that window pushes the wheel around with no game
-                // attached. No frames for 1.5 s = no synthetic spring; menus
-                // keep it alive (the SimHub fallback still emits frames
-                // there), and the 100 ms spring ramp turns the cut into a
-                // fade.
+                // Telemetry-freshness gate: between frames stopping and the
+                // game-changed disarm a rendered spring pushes the wheel with
+                // no game attached (both close-the-game pulls). No frames for
+                // 1.5 s = no synthetic spring; menus keep it alive (the SimHub
+                // fallback still emits frames there), and the 100 ms spring
+                // ramp turns the cut into a fade.
                 long lastFrame = System.Threading.Interlocked.Read(ref _lastFrameTicks);
                 if (lastFrame == 0
                     || Stopwatch.GetTimestamp() - lastFrame > SpringTelemetryMaxAgeTicks)
@@ -2363,16 +2349,16 @@ namespace TrueforceForAll.Plugin
                 if (spd < 0f) spd = 0f;
                 float ramp01 = Math.Min(spd / 30f, 1f);
                 // Speed effect slider: 0 = constant centering at all speeds,
-                // 1 = fully speed-scaled (limp standstill). Default 0.65
-                // reproduces the shipped 0.35 floor.
+                // 1 = fully speed-scaled (limp standstill). The standstill
+                // floor is (1 - this), so the 0.70 default holds 30%.
                 float speedFx = (float)s.SpringModeSpeedEffect;
                 if (speedFx < 0f) speedFx = 0f; else if (speedFx > 1f) speedFx = 1f;
                 float speedScale = (1f - speedFx) + speedFx * ramp01;
                 // Center firmness slider: the curve's linear fraction near
-                // straight-ahead (0 = soft quadratic, 1 = crisp). Default
-                // 0.5 reproduces the shipped 35%-at-rest / 80%-at-speed
-                // morph. Separate from strength: this shapes WHERE the
-                // force lives, not how much of it there is.
+                // straight-ahead (0 = soft quadratic, 1 = crisp). At rest
+                // that fraction is 0.7 x this (59.5% on the 0.85 default),
+                // morphing to 80% at speed. Separate from strength: this
+                // shapes WHERE the force lives, not how much there is.
                 float firm = (float)s.SpringModeCenterFirmness;
                 if (firm < 0f) firm = 0f; else if (firm > 1f) firm = 1f;
                 float mag = Math.Abs(steer);
@@ -2385,14 +2371,12 @@ namespace TrueforceForAll.Plugin
                 float f01 = steer * shape * SyntheticFsSpringStrength * centerGain * speedScale;
 
                 // Min force on the spring, deflection- and speed-gated (owner
-                // ask 2026-08-09): beyond slight deflection, light centering
-                // forces lift above a belt wheel's internal friction so the
-                // center region doesn't read dead on a G923. The gates keep
-                // the chatter case out: straight-ahead (|steer| <= 0.03) the
-                // force dwells near zero and stays unremapped, and the floor
-                // scales with the speed ramp so a parked wheel stays limp
-                // (the Speed effect contract). Drag and cornering weight
-                // multiply AFTER this, inheriting the floored value.
+                // ask): light centering lifts above a belt wheel's internal
+                // friction so the center doesn't read dead on a G923.
+                // Straight-ahead (|steer| <= 0.03) stays unremapped (chatter),
+                // and the floor scales with the speed ramp so a parked wheel
+                // stays limp (the Speed effect contract). Drag and cornering
+                // weight multiply AFTER this, inheriting the floored value.
                 float minSpring = s != null ? (float)s.SpringModeMinForce : 0f;
                 if (minSpring > 0f && mag > 0.03f && f01 != 0f)
                 {
@@ -2403,32 +2387,26 @@ namespace TrueforceForAll.Plugin
                 }
 
                 // Feedback-sanity guard (the game-close pull, 2026-08-08,
-                // trace-proven). A centering spring is negative feedback:
-                // push toward center, position responds, force shrinks. When
-                // the game tears down, the wheel's state changes under us and
-                // the loop can turn positive: our own force drives the wheel
-                // INTO lock and holds it at full push for seconds. Detect the
-                // physically impossible state instead of guessing at causes:
-                // a large sustained push with the wheel parked at full lock
-                // means we are fighting something, so let go until the wheel
-                // comes off the lock.
+                // trace-proven). A centering spring is negative feedback; at
+                // teardown the loop can turn positive and drive the wheel INTO
+                // lock at full push for seconds. Detect the impossible state
+                // (large sustained push with the wheel parked at full lock)
+                // and let go until it comes off the lock.
                 //
                 // Gated on mod-pipe liveness (stuck-at-lock report,
-                // 2026-08-09): by force and position alone a hand holding
-                // full lock through a slow turn is identical to the teardown
-                // pull, and with default sliders the force threshold is
-                // crossed from ~12 km/h, so the latch fired mid-drive and
-                // the wheel stayed parked at the stop, no centering, until
-                // pulled off by hand. A pipe frame within the last 500 ms
-                // proves the game is running (the mod goes silent within a
-                // frame of process death), so the external force is the
-                // driver's hand: never latch, and release any latch already
-                // held (a pipe hiccup can latch legitimately; recovery must
-                // not wait for the hand). Fallback sessions keep the ungated
-                // guard: SimHub re-emits the dead game's frozen frames for
-                // seconds after a close, so frame freshness proves nothing
-                // there and this guard is that population's only defense
-                // against the pull.
+                // 2026-08-09): force and position alone cannot tell that pull
+                // from a hand holding full lock, and with default sliders the
+                // force threshold is crossed from ~12 km/h, so the ungated
+                // latch fired mid-drive and parked the wheel at the stop. A
+                // pipe frame within the last 500 ms proves the game is running
+                // (the mod goes silent within a frame of process death), so
+                // the force is the driver's hand: never latch, and release any
+                // latch already held (a pipe hiccup can latch legitimately;
+                // recovery must not wait for the hand). Fallback sessions keep
+                // the ungated guard: SimHub re-emits the dead game's frozen
+                // frames for seconds after a close, so freshness proves
+                // nothing there and this guard is that population's only
+                // defense against the pull.
                 bool pipeLive = fsPipe != null && _fsPipeFedThisGame
                     && fsPipe.MsSinceLastFrame < 500;
                 long nowLs = Stopwatch.GetTimestamp();
@@ -2482,14 +2460,13 @@ namespace TrueforceForAll.Plugin
         private long  _springLockStallStartTicks;
         private bool  _springLockStallLatched;
 
-        // Hybrid drag weighting (owner call 2026-08-08): full engine-load
-        // weight while something is actually WORKING (implement lowered or
-        // powered on, per the mod's impl flag), a user-tunable fraction
-        // (Engine strain slider) under plain strain so acceleration still
-        // adds a touch of weight without impersonating a plow.
-        // Pre-0.2.6 mods don't report the flag (ImplementActive == null);
-        // they keep the ungated full weight. Both drag consumers (spring
-        // scale + damper thickening) read through this.
+        // Hybrid drag weighting (owner call): full engine-load weight while
+        // something is actually WORKING (implement lowered or powered on, per
+        // the mod's impl flag), a user-tunable fraction (Engine strain slider)
+        // under plain strain so acceleration still adds a touch of weight.
+        // Pre-0.2.6 mods don't report the flag (ImplementActive == null) and
+        // keep the ungated full weight. Both drag consumers (spring scale +
+        // damper thickening) read through this.
         private float EffectiveDragLoad01()
         {
             var fs = _fsPipeSource;
@@ -2497,14 +2474,12 @@ namespace TrueforceForAll.Plugin
             if (load <= 0f) return -1f;
             if (fs.ImplementActive.HasValue)
             {
-                // Loadedness blend (owner design 2026-08-08): working
-                // implements count in full, otherwise the best attached
-                // fill fraction raises the strain floor continuously, so a
-                // filling grain trailer grows into full drag weight with no
-                // threshold cliff. The Engine strain slider is the floor.
-                // Magnitude stays engine load's job: a full-but-light load
-                // opens the gate yet barely strains the engine, so it
-                // stays light, which is the accurate outcome.
+                // Loadedness blend (owner design): a working implement counts
+                // in full, otherwise the best attached fill fraction raises
+                // the strain floor continuously, so a filling grain trailer
+                // grows into full drag weight with no threshold cliff. The
+                // Engine strain slider is the floor; magnitude stays engine
+                // load's job (a full-but-light load stays light).
                 float loadedness = fs.ImplementActive == true ? 1f : fs.AttachedFill01;
                 if (loadedness < 0f) loadedness = 0f; else if (loadedness > 1f) loadedness = 1f;
                 float frac = (float)(Settings?.SpringModeDragStrainFraction ?? 0.35);
@@ -2537,12 +2512,10 @@ namespace TrueforceForAll.Plugin
             var s = Settings;
             float spring = f.Value;
 
-            // Enhancement scaling on the SPRING component (terrain and the
-            // ramp stay unscaled). Implement drag: engine load weights the
-            // wheel, so working soil steers heavier than an empty run.
-            // Cornering weight: yaw-derived lateral G loads the wheel through
-            // turns (v * yawRate via the mod's chassis rates). Both are
-            // multiplicative and additive-safe: no data means scale 1.0.
+            // Enhancement scaling on the SPRING component only (terrain and
+            // the ramp stay unscaled). Implement drag rides engine load;
+            // cornering weight rides yaw-derived lateral G (v * yawRate via
+            // the mod's chassis rates). No data means scale 1.0.
             if (s != null)
             {
                 float scale = 1f;
@@ -2569,8 +2542,7 @@ namespace TrueforceForAll.Plugin
             float terrainLsb = 0f;
             if (s != null && s.SpringModeTerrainEnabled)
             {
-                // Stale cache (frames stopped: pause, game closing) decays to
-                // zero instead of holding its last value against the wheel.
+                // Stale cache (pause, game closing) decays to zero.
                 long kStamp = System.Threading.Interlocked.Read(ref _fsKickStampTicks);
                 float kickTarget = (kStamp != 0 && now - kStamp < Stopwatch.Frequency / 4)
                     ? _mbKickCached : 0f;
@@ -2578,12 +2550,11 @@ namespace TrueforceForAll.Plugin
                 _springKickEma += (kickTarget - _springKickEma) * kickAlpha;
                 terrainLsb = _springKickEma * (float)s.SpringModeTerrainGain * 0.5f * 32767f;
 
-                // Min force on the kick channel: faint terrain transients
-                // lift above a belt wheel's internal friction. FS's OWN
-                // floor (SpringModeMinForce), per-game by owner call: the
-                // games' force characters differ. The spring gets its own
-                // deflection/speed-gated floor in EvaluateClassicSpring-
-                // Force; damping stays unremapped (chatter).
+                // Min force on the kick channel: faint terrain transients lift
+                // above a belt wheel's internal friction. FS's own floor
+                // (SpringModeMinForce, per-game by owner call); the spring's
+                // gated floor is in EvaluateClassicSpringForce, damping stays
+                // unremapped (chatter).
                 float minF = (float)s.SpringModeMinForce;
                 if (minF > 0f && terrainLsb != 0f)
                 {
@@ -2607,8 +2578,8 @@ namespace TrueforceForAll.Plugin
         }
 
         // Stationary-spring setters. Settings-only: the FfbTargetProvider
-        // lambda reads them every tick so changes apply live. The UI persists
-        // via PersistSettings() after calling these.
+        // lambda reads them every tick so changes apply live. Persistence is
+        // the caller's: the UI marks the section dirty, Save commits it.
         public void SetStationarySpringEnabled(bool v)
         { if (Settings != null) Settings.StationarySpringEnabled = v; }
         public void SetStationarySpringStrength(double v)
@@ -2618,8 +2589,8 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Clear the "shown once / dismissed forever" latches so the
         /// one-time notices can appear again (networked welcome, what's new,
-        /// iRacing Trueforce, Telemetry Based FFB intro, share CTA,
-        /// experimental-success report). Persists.</summary>
+        /// iRacing Trueforce, stepped-aside, MAIRA tap, AC CSP setup offer,
+        /// Telemetry Based FFB intro, share CTA). Persists.</summary>
         public void ResetOneTimeNotices()
         {
             if (Settings == null) return;
@@ -2648,11 +2619,10 @@ namespace TrueforceForAll.Plugin
 
         // Fast gate on the baseline FFB path: when the spring is off AND no
         // desk self-test is armed, return the game's FFB target untouched
-        // WITHOUT entering the spring logic at all. Keeps the stationary
-        // spring entirely out of the FFB regression surface for the common
-        // (feature-off) case. One atomic read + a bool when off. ApplyStationary
-        // Spring keeps its own equivalent guards too, so it's still correct if
-        // called directly.
+        // WITHOUT entering the spring logic at all (one atomic read + a bool),
+        // keeping the stationary spring out of the FFB regression surface for
+        // the common feature-off case. ApplyStationarySpring keeps its own
+        // equivalent guards too, so it's still correct if called directly.
         private short? ApplyStationarySpringIfActive(short? gameTarget)
         {
             // FXTEST owns the wheel while it runs: the parked-car spring
@@ -2676,18 +2646,18 @@ namespace TrueforceForAll.Plugin
         // Returns the (possibly augmented) target in the GAME's FFB sign space
         // (FfbInvertSign / FfbScale / spike taming are applied downstream in
         // TrueforceDevice, so the spring rides through the same chain).
-        // No-ops, returning the input unchanged, when: disabled; iRacing
-        // (the sim already produces real standstill weight); the tap is
-        // stale (null, keepalive,
-        // stay out of native FFB's way); steering is stale or unavailable
-        // (any non-AC source); or already above the cutoff speed.
+        // No-ops, returning the input unchanged, when: disabled; the game
+        // sends no target; iRacing (the sim already produces real standstill
+        // weight); any Forza session (see the exclusion below); steering is
+        // stale from both the game and the physical reader; or already at or
+        // above the cutoff speed.
         private short? ApplyStationarySpring(short? gameTarget)
         {
             // SPRING desk self-test: while the deadline is in the future,
             // synthesize a centering force with a simulated wheel position
             // that flips direction every ~1.5 s, so the user feels the spring
             // push one way then the other without a game. Bypasses every
-            // normal gate (enabled / speed / steering freshness / null tap).
+            // normal gate (enabled / game / speed / steering freshness).
             long springTestEnd = System.Threading.Interlocked.Read(ref _springTestEndTicks);
             if (springTestEnd != 0)
             {
@@ -2721,33 +2691,28 @@ namespace TrueforceForAll.Plugin
             if (!gameTarget.HasValue) return gameTarget;
             if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
                 return gameTarget;
-            // Forza exclusion. The spring conflicted with Forza's force
-            // feedback during the matchmaking-found transition and could
-            // pull the wheel to the rotational stop, sometimes with violent
-            // back-and-forth FFB against the stop. The precise interaction
-            // wasn't isolated (direction is correct in normal use, and
-            // several narrower gates were tried without reliably catching
-            // the case), so the spring is bypassed for the whole Forza
-            // session (user's call, 2026-05-28). Gate on the SESSION, not the
-            // active source: when a Forza session is running on the SimHub
-            // fallback (Data Out pointed at SimHub, not us) the active source
-            // is SimHub, yet the spring must still stay excluded.
+            // Forza exclusion (user's call, 2026-05-28). The spring conflicted
+            // with Forza's FFB during the matchmaking-found transition and
+            // could pull the wheel to the rotational stop, sometimes with
+            // violent back-and-forth against it. The interaction was never
+            // isolated (direction is correct in normal use, and several
+            // narrower gates failed to catch the case), so the whole Forza
+            // session is bypassed. Gate on the SESSION, not the active source:
+            // a Forza session running on the SimHub fallback (Data Out pointed
+            // at SimHub) reports source SimHub, yet must still stay excluded.
             if (InForzaSession)
                 return gameTarget;
 
-            // Steering source. While the game is reporting steering, use ITS
-            // value: it shares the game's own FFB reference frame, so the spring
-            // and the game's forces agree and the feel stays smooth (AC reports
-            // a high-rate steering angle whenever the sim is running, stationary
-            // or moving, engine on or off). Switch to the wheel's PHYSICAL
-            // position ONLY when the game has genuinely stopped reporting it:
-            //   - game steering stale (sim paused / telemetry stopped), or
-            //   - an authoritative-session source says we're paused even though
-            //     frames keep coming (Forza zeros steering through the pre-race
-            //     countdown / pause).
-            // In those states there's no live game FFB to fight, so the physical
-            // wheel position is safe. Using physical WHILE driving made it fight
-            // the game's own FFB near center (different reference frames) -> jerky.
+            // Steering source. Prefer the GAME's value: it shares the game's
+            // own FFB reference frame, so the spring and the game's forces
+            // agree (AC reports a high-rate angle whenever the sim runs,
+            // stationary or moving, engine on or off). Switch to the wheel's
+            // PHYSICAL position only when game steering is stale (sim paused
+            // / telemetry stopped) or an authoritative-session source reports
+            // paused while frames keep coming (Forza zeros steering through
+            // the pre-race countdown / pause): no live game FFB to fight
+            // there. Physical WHILE driving fought the game's own FFB near
+            // center (different reference frames) -> jerky.
             long now = Stopwatch.GetTimestamp();
             long gameAge = now - System.Threading.Interlocked.Read(ref _lastSteerTicks);
             var src2 = _telemetrySource;
@@ -2797,14 +2762,12 @@ namespace TrueforceForAll.Plugin
                              * Math.Abs(steer) * fade * MaxLsb;
             if (desiredMag < 1f) return gameTarget;
 
-            // Pre-compensate the downstream FfbScale. Everything we return is
-            // multiplied by FfbScale in TrueforceDevice, so without this the
-            // user's FFB-strength trim (default 0.80) silently caps the spring
-            // well below "full scale" and the strength slider can't reach a
-            // meaningful ceiling. Dividing here makes strength=1.0 land at
-            // true full motor torque regardless of FfbScale. Floor the divisor
-            // so a tiny FfbScale can't explode the value (the ±32767 clamp
-            // below is the real safety net either way).
+            // Pre-compensate the downstream FfbScale: TrueforceDevice
+            // multiplies everything we return by it, so without this the
+            // user's FFB-strength trim (default 0.80) silently caps the
+            // spring below full scale. Dividing makes strength=1.0 land at
+            // true full motor torque. Floor the divisor so a tiny FfbScale
+            // can't explode it (the ±32767 clamp below is the real net).
             float ffbScale = _device != null ? _device.FfbScale : 1f;
             if (ffbScale < 0.05f) ffbScale = 0.05f;
             desiredMag /= ffbScale;
@@ -2812,10 +2775,8 @@ namespace TrueforceForAll.Plugin
             // Re-centering direction in the game's FFB sign space. The
             // steer->FFB sign relationship is wheel/protocol AND source
             // dependent: confirmed correct on AC + G PRO (the un-inverted form
-            // pushed away from center). Forza's Steer sign convention is
-            // assumed to match AC's here but is a hardware-verify item; if it
-            // re-centers the wrong way in Forza, the source should flip its
-            // SteeringAngle sign rather than special-casing here.
+            // pushed away from center). A source that re-centers the wrong way
+            // should flip its own SteeringAngle sign, not special-case here.
             float dir = (steer > 0f) ? 1f : -1f;
 
             int g = gameTarget.Value;
@@ -2877,8 +2838,8 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Trigger an effect's test playback. Forces the device into
-        /// active ep3 mode for the duration so the test is audible even when
-        /// AC isn't running (no FFB tap data → would otherwise be keepalive).
+        /// active ep3 mode for the duration so the test is audible with no game
+        /// running (no FFB tap data, so the stream would otherwise be keepalive).
         /// Drives effect.TestUpdate(phase) at ~60 Hz over the test window so
         /// effects can simulate dynamic behavior (RPM ramps, slip pulses, etc).</summary>
         public void TestEffect(TelemetryEffect effect)
@@ -2919,12 +2880,9 @@ namespace TrueforceForAll.Plugin
                 finally
                 {
                     // Clear any state TestPlay/TestUpdate latched (amplitudes,
-                    // envelopes, hold timers) so it doesn't bleed into other
-                    // effects on subsequent renders. Without this, e.g. ABS
-                    // Pulse mode leaves _amp = ActiveAmp*Gain set after the
-                    // test ends; with no telemetry to zero it back out (user
-                    // is in the settings panel, no game running), the pulse
-                    // keeps rendering and contaminates every later test.
+                    // envelopes, hold timers). Without this, ABS Pulse leaves
+                    // _amp = ActiveAmp*Gain set and, with no telemetry to zero
+                    // it (no game running), it keeps rendering into later tests.
                     try { effect.Reset(); } catch { }
                     System.Threading.Interlocked.Decrement(ref _activeTestTasks);
                 }
@@ -2949,14 +2907,13 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>FAULT access-code test: force the live device into the
         /// stream-fault state so the recovery watchdog (MaybeRecoverDevice)
-        /// re-attaches it, exercising the "Stream lost - auto-reconnecting"
+        /// re-attaches it, exercising the "Stream lost, auto-reconnecting"
         /// status + transparent recovery without physically unplugging.</summary>
         public void DebugForceStreamFault() => _device?.DebugForceStreamFault();
 
         /// <summary>WHATSNEW access-code test: clear the changelog/seen state
-        /// so the "What's new" banner and every per-effect NEW badge reappear.
-        /// Resets to "0.0.0" so the banner shows the full history (enough to
-        /// confirm the banner + the newest entry/badge render). The UI layer
+        /// so the "What's new" banner and every per-effect NEW badge reappear
+        /// (LastSeenVersion "0.0.0" shows the full history). The UI layer
         /// refreshes the banner + badges after calling this.</summary>
         public void DebugResetChangelogSeen()
         {
@@ -2968,13 +2925,11 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>"Plugin X, Core Y, Engine Z" with a mismatch flag. The three
         /// assemblies must be deployed as a matched set; a stale Core or Engine
-        /// DLL copied alongside a newer Plugin fails silently (dead wheel /
-        /// missing effects) with no obvious cause. Directory.Build.props stamps
-        /// all three from one version. EngineLoop lives in the Engine assembly,
-        /// TrueforceDevice in Core, so typeof(...).Assembly resolves each despite
-        /// the shared namespace. Shared by the startup log cross-check, the
-        /// Export-logs manifest, and the pre-filled issue body so the top known
-        /// dead-wheel cause is visible in all three.</summary>
+        /// DLL beside a newer Plugin fails silently (dead wheel / missing
+        /// effects). Directory.Build.props stamps all three from one version.
+        /// EngineLoop lives in Engine, TrueforceDevice in Core, so
+        /// typeof(...).Assembly resolves each despite the shared namespace. Used
+        /// by the startup cross-check, Export-logs manifest and issue body.</summary>
         internal static string GetAssemblyVersionLine(out bool mismatch)
         {
             mismatch = false;
@@ -2986,10 +2941,8 @@ namespace TrueforceForAll.Plugin
                 mismatch = !(plugin == core && core == engine);
                 // The build stamp: every dev build of a version shares the
                 // same number, so a log alone could not say WHICH build a
-                // tester ran (2026-08-29: three 0.2.7 builds in one night,
-                // and a report that turned out to be against the previous
-                // one). The DLL's own write time is set by the build and
-                // survives the installer, so it names the build exactly.
+                // tester ran. The DLL's own write time is set by the build
+                // and survives the installer, so it names the build exactly.
                 string stamp = "";
                 try
                 {
@@ -3006,11 +2959,10 @@ namespace TrueforceForAll.Plugin
         /// <summary>SimHub's own version ("9.11.22"), or null when it can't be
         /// read. Not from the host exe: SimHubWPF.exe ships no version resource
         /// (FileVersion and ProductVersion read 1.0.0.0 on every build, as do
-        /// SimHub.Plugins.dll and GameReaderCommon.dll), so the real number
-        /// lives only in SimHub's own parsed version, the one its startup log
-        /// banner prints. Null rather than a placeholder string: a wrong-looking
-        /// version in a bug report is worse than none, because it stops anyone
-        /// asking, so callers fall back to prompting the reporter.</summary>
+        /// SimHub.Plugins.dll and GameReaderCommon.dll), so the real number lives
+        /// only in SimHub's own parsed version, the one its startup log banner
+        /// prints. Null rather than a placeholder so callers fall back to
+        /// prompting the reporter.</summary>
         internal static string GetSimHubVersion()
         {
             // The property access sits in its own non-inlined method so that on
@@ -3072,73 +3024,59 @@ namespace TrueforceForAll.Plugin
         public void Init(PluginManager pluginManager)
         {
             // SimHub injects this property too, but assign it explicitly so it's
-            // guaranteed set for code that reads it (e.g. SettingsControl's
-            // licence check for the nag-strip clearance).
+            // guaranteed set for code that reads the property rather than the
+            // parameter (e.g. TryGetLiveLapDelta, called from DispatchFrame).
             PluginManager = pluginManager;
-            // Ensure TLS 1.2 is enabled process-wide before any network client
-            // (auth / community / backup) is used. net48 on older Windows can
-            // default to a protocol Supabase rejects, and otherwise this only
-            // gets set as a side effect of the update check running first.
-            // No-op if already enabled.
+            // TLS 1.2 process-wide before any network client (auth / community /
+            // backup): net48 on older Windows can default to a protocol Supabase
+            // rejects. Otherwise it is only set as a side effect of the update check.
             try { System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12; } catch { }
             SimHub.Logging.Current.Info("[TF4ALL] Init: loading settings...");
             LogAssemblyVersionCrossCheck();
             SimHub.Logging.Current.Info(
                 "[TF4ALL] Logitech processes at startup: " + SnapshotLogitechProcesses());
-            // If the installer just opened SimHub visibly after an install/update,
-            // it flipped SimHub's "Start minimized" off for that one launch. Put
-            // the user's real preference back in SimHub's in-memory model so it
-            // isn't silently persisted off on exit. One-shot, gated by a marker
-            // file; a no-op on every normal launch. See StartMinimizedRestore.
+            // The installer flips SimHub's "Start minimized" off to open it visibly
+            // after an install/update, so put the user's real preference back in
+            // SimHub's in-memory model before exit persists the off. One-shot,
+            // marker-file gated. See StartMinimizedRestore.
             StartMinimizedRestore.ConsumeMarkerAndRestore();
-            // wasFreshInstall flips iff the factory ran, which only happens
-            // when SimHub had no prior settings file for us, the cleanest
-            // signal for "this is a first-run install" that the SimHub
-            // ReadCommonSettings API gives us.
+            // wasFreshInstall flips iff the factory ran (no prior settings file
+            // for us), the cleanest first-run signal ReadCommonSettings gives.
             bool wasFreshInstall = false;
             Settings = this.ReadCommonSettings("GeneralSettings", () => { wasFreshInstall = true; return new TrueforceSettings(); });
-            // Defensive nulls in case a pre-2.x settings file was deserialized
-            // without the new dictionaries.
+            // Defensive nulls in case an older settings file was deserialized
+            // without one of these dictionaries.
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
             if (Settings.GameModes    == null) Settings.GameModes    = new Dictionary<string, TrueforceMasterMode>();
-            // The spring/FFB-recreation toggle left the UI (owner call
-            // 2026-08-08: it is HOW Farming Simulator works, not an option;
-            // FS is one of the games that require telemetry-based FFB). A
-            // false persisted by an older build would leave FS silently dead
-            // with nothing visible to re-enable, so normalize to on at load.
+            // The spring/FFB-recreation toggle left the UI (owner call: it is HOW
+            // Farming Simulator works, not an option; FS requires telemetry-based
+            // FFB). A false from an older build would leave FS silently dead.
             Settings.ClassicSpringEmulationEnabled = true;
             // Max force is per car, always (see the setting's own note). The
             // choice is retired rather than removed so the resolution order
             // keeps honouring a shared number set before this release.
             Settings.IRacingMaxForcePerCar = true;
-            // Hand-the-wheel-back-on-pause default repair (owner call
-            // 2026-08-15). Stable shipped StopStreamOnPause DEFAULT-ON in
-            // v0.1.24; the 0.2.x line left it opt-in by oversight, so
-            // beta-era settings files carry a stored false nobody chose.
-            // One-time flip so every install matches the shipped default;
-            // the user's checkbox choice sticks from then on.
+            // StopStreamOnPause is DEFAULT-ON (owner call, shipped so in v0.1.24)
+            // but the 0.2.x line left it opt-in, so beta-era files carry a stored
+            // false nobody chose. Flip once; the checkbox choice then sticks.
             if (!Settings.StopStreamOnPauseMigrated)
             {
                 Settings.StopStreamOnPauseMigrated = true;
                 Settings.StopStreamOnPause = true;
             }
-            // Provision the official community backend. The plugin ships no backend baked into its
-            // code, so without this a fresh install has empty settings and can't reach sign-in /
-            // community / backup ("could not reach the sign-in server"). Seed the public URL +
-            // publishable key every launch (authoritative, so a key rotation propagates on the next
-            // release). Safe to ship: the publishable key only grants what RLS allows the
-            // anon/authenticated roles; data is protected by row-level security, never by hiding
-            // this key. See CommunityBackend (NOT the service_role key / any Edge Function secret).
+            // Provision the official community backend: nothing is baked into the code, so a
+            // fresh install can't reach sign-in / community / backup ("could not reach the
+            // sign-in server"). Seeded every launch and authoritative, so a key rotation
+            // propagates on the next release. Safe to ship: the publishable key only grants what
+            // RLS allows anon/authenticated (NOT the service_role key or an Edge Function secret).
             Settings.CommunityBackendUrl     = CommunityBackend.Url;
             Settings.CommunityBackendAnonKey = CommunityBackend.AnonKey;
-            // Dev-only backup-classification safety net. A new TOP-LEVEL TrueforceSettings
-            // property that nobody classified in BackupProjection would silently miss cloud
-            // backups. Warn loudly (dev mode only, so normal users never see it) so it gets
-            // its one-line classification. New fields INSIDE an existing effect object are
-            // auto-covered and never trip this. See the "classify new settings for backup"
-            // process note + BackupProjection.cs.
+            // Dev-only safety net: a new TOP-LEVEL TrueforceSettings property nobody
+            // classified in BackupProjection.cs would silently miss cloud backups, so warn
+            // until it gets its one-line classification. New fields INSIDE an existing
+            // effect object are auto-covered and never trip this.
             if (Settings.DevModeUnlocked)
             {
                 try
@@ -3161,15 +3099,8 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup classification audit failed: " + ex.Message);
                 }
             }
-            // One-time folder restructure: move the three legacy sibling
-            // folders (TrueforceForAll-Presets / -Library / -Imports) into the
-            // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\import}
-            // layout. Idempotent; skipped once stamped. Runs BEFORE the stores
-            // load so they read from the new location on the first new launch.
-            // The lighting tab shipped. An install from before that has
-            // LightsyncTabUnlocked stored false, and a new default cannot reach
-            // a value already written, so flip it once and stamp it. Latched, so
-            // a user who then turns it off again is left alone.
+            // The lighting tab shipped, but a new default cannot reach a stored
+            // LightsyncTabUnlocked=false. Flip once, latched (opt-out sticks).
             if (!Settings.LightsyncReleasedMigrated)
             {
                 Settings.LightsyncTabUnlocked = true;
@@ -3177,28 +3108,22 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
-            // The master switch became three-state. Everyone lands on Full, and that
-            // is the honest translation rather than a shortcut: the old bool was
-            // never a global choice, it was the LIVE state pushed from the per-game
-            // map on every game change, and that map travels forward untouched and
-            // keeps demoting exactly the games it always did. Reading a stored
-            // "false" as a global Off would take whichever game happened to be
-            // selected when the file was last written and switch the plugin off
-            // everywhere, which nobody asked for. Latched, so a user who then picks
-            // lights-only or off is left alone on the next launch.
+            // The master switch became three-state. Everyone lands on Full: the old
+            // bool was never a global choice, it was the LIVE state pushed from the
+            // per-game map on every game change, so a stored "false" is just the
+            // last game selected and reading it as a global Off would switch the
+            // plugin off everywhere. The map still demotes the games it always did.
+            // Latched, so a user who then picks lights-only or off is left alone.
             if (!Settings.MasterModeMigratedV1)
             {
                 Settings.MasterMode = TrueforceMasterMode.Normal;
 
                 // Drop the per-game "off" entries WE wrote for native-Trueforce
-                // games. Older builds stamped one on first sight of each of them, so
-                // an existing install carries a map that pins iRacing, ACC and the
-                // rest to off, and the new default (Lightsync only) could never
-                // apply because the map is read first. A deliberate off for one of
-                // those games is indistinguishable from our own stamp, so this does
-                // reset that choice, to a mode that is strictly less intrusive: the
-                // game keeps its force feedback either way and the only difference
-                // is whether we set the car's pattern.
+                // games. Older builds stamped one on first sight of each, so an
+                // existing install pins iRacing, ACC and the rest to off and the new
+                // default (Lightsync only) can never apply (the map is read first).
+                // A deliberate off is indistinguishable from ours, so this resets it
+                // too, to a less intrusive mode (the game keeps its FFB either way).
                 if (Settings.GameEnabled != null)
                 {
                     var ours = new List<string>();
@@ -3212,14 +3137,9 @@ namespace TrueforceForAll.Plugin
             }
 
             // The per-game choice became a MODE. Every stored "off" becomes Lightsync
-            // only, not Off.
-            //
-            // Off is close to unnecessary now: it was the only way to say "not the
-            // force layer here" back when the alternative was everything, and
-            // Lightsync only says the same thing while still lighting the wheel for
-            // the car you are in. Someone who genuinely wants a title silent can set
-            // Off again in one click, and that choice then sticks, whereas nobody
-            // can choose a mode that was never offered to them.
+            // only, not Off: it says the same "not the force layer here" while still
+            // lighting the wheel for the car you are in, and anyone who wants a title
+            // silent can pick Off again in one click, which then sticks.
             if (!Settings.GameModeMapMigratedV1)
             {
                 if (Settings.GameEnabled != null && Settings.GameModes != null)
@@ -3239,14 +3159,17 @@ namespace TrueforceForAll.Plugin
             // the field's compile-time default before the first game arrives.
             ApplyEffectiveMode("settings loaded");
 
+            // One-time folder restructure: move the three legacy sibling
+            // folders (TrueforceForAll-Presets / -Library / -Imports) into the
+            // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\import}
+            // layout. Idempotent; skipped once stamped. Runs BEFORE the stores
+            // load so they read from the new location on the first new launch.
             if (!Settings.FoldersRestructuredV3)
             {
                 RestructureFoldersIfNeeded();
                 Settings.FoldersRestructuredV3 = true;
-                // Persist the latch immediately. The later conditional
-                // SaveCommonSettings at the "fresh install" gate doesn't
-                // fire on routine upgrades, so without this the
-                // restructure would re-run every startup.
+                // Persist now: the later SaveCommonSettings only fires on a fresh
+                // install, so otherwise the restructure re-runs every startup.
                 try { PersistSettingsCore(); } catch { }
             }
             // Load the file-based built-in presets (folder override -> shipped
@@ -3257,22 +3180,16 @@ namespace TrueforceForAll.Plugin
             // PluginsData/Common, user-writable.
             UserPresets.Initialize(Settings.UserLibraryFolder);
             // Fold the OLDEST-format Settings.GamePresets dict into
-            // Settings.Presets/GameDefaults BEFORE the file migration below.
-            // Ordering matters: MigrateLegacyUserPresetsToFolder reads only
-            // Settings.Presets and early-returns (no backup, no files) when it
-            // is empty, then latches PresetsMigratedV2. If GamePresets were
-            // folded in afterwards (as it historically was), those presets
-            // would land only in the in-memory cache and be wiped by the
-            // folder rebuild, with no backup. Running it first means real
-            // GamePresets content is migrated to files and backed up. No-op on
-            // every v0.1.0+ install (GamePresets is already empty there).
+            // Settings.Presets/GameDefaults BEFORE the file migration below:
+            // MigrateLegacyUserPresetsToFolder reads only those two dicts,
+            // early-returns (no backup, no files) when both are empty, then
+            // latches PresetsMigratedV2, so folding in later loses those presets
+            // to the folder rebuild, unbacked. No-op on v0.1.0+ (GamePresets empty).
             MigrateLegacyGamePresets();
-            // One-time migration: legacy in-dict user presets -> user-library
-            // files. Backs the settings file up first. The migration's
-            // skip-factory-name rule (IsFactoryBuiltinName, currently-shipped
-            // OR RetiredBuiltinNames) drops factory entries on the floor so
-            // they never land in the library; the user library carries only
-            // genuinely-user content from here on. Skipped once stamped.
+            // One-time migration: legacy in-dict user presets -> user-library files,
+            // settings file backed up first. IsFactoryBuiltinName (currently-shipped
+            // OR RetiredBuiltinNames) drops factory entries so the library carries
+            // only user content. Skipped once stamped.
             if (!Settings.PresetsMigratedV2)
             {
                 // Latch only when the migration completed with a downgrade
@@ -3295,10 +3212,8 @@ namespace TrueforceForAll.Plugin
                 Settings.CarsMigratedV2 = true;
                 try { PersistSettingsCore(); } catch { }
             }
-            // Housekeeping: an earlier build of the car migration named its
-            // backup folder "TrueforceCars.bak-...". Rename any leftover to the
-            // on-brand name so users don't see a bare "Trueforce" folder. Idem-
-            // potent; runs every Init and no-ops once everything's renamed.
+            // Housekeeping: rename leftover "TrueforceCars.bak-..." backup
+            // folders to the on-brand name. Idempotent; runs every Init.
             RebrandLegacyCarsBackup();
             if (Settings.Performance  == null) Settings.Performance  = new PerformanceSettings();
             if (Settings.Forza        == null) Settings.Forza        = new ForzaSettings();
@@ -3309,16 +3224,13 @@ namespace TrueforceForAll.Plugin
                 Settings.GamesWithRedline = new HashSet<string>();
             // Scrub any Forza title an earlier build wrongly learned as a
             // redline game (its per-car redline can pass the sanity gate, but
-            // Forza has no precise rev limit). Self-heals affected settings so
-            // the engage-% control comes back without the user resetting.
+            // Forza has no precise rev limit), so the engage-% control comes back.
             Settings.GamesWithRedline.RemoveWhere(IsForzaGameName);
 
-            // One-time re-validation: builds before the realRedline split faked
-            // a redline from MaxRpm, so the learning gate accepted EVERY
-            // non-Forza game the user drove (MaxRpm always passes the
-            // 0.5..1.02x gate against itself). Those stale entries would now
-            // hide the engage-% control for games that actually take the
-            // percentage path. Clear the set once so it re-learns under the new
+            // One-time re-validation: builds before the realRedline split faked a
+            // redline from MaxRpm, so the gate accepted EVERY non-Forza game
+            // (MaxRpm always passes the 0.5..1.02x gate against itself), which
+            // hides the engage-% control. Clear once so it re-learns under the new
             // rule (only games reporting a real CarSettings_RedLineRPM qualify).
             if (!Settings.GamesWithRedlineRevalidated)
             {
@@ -3339,15 +3251,12 @@ namespace TrueforceForAll.Plugin
             }
 
             // One-shot v0.1.21 -> v0.1.22 migration: clear any saved manual
-            // USBPcap override. Stale pins (the wheel later moved to a
-            // different address / USBPcap interface) caused users to report
-            // FFB stopped working after an update when in fact the override
-            // was pointing at thin air (issue #17). Auto-discovery +
-            // identity-based self-heal handle the realistic failure modes
-            // for almost every user, so we lean on those by default. A user
-            // who genuinely needs to pin can flip the UI back with the
-            // MANUALPIN access code and re-pick. The latch prevents this
-            // from re-clearing a deliberate post-migration pin.
+            // USBPcap override. A stale pin (wheel moved to a different address
+            // / USBPcap interface) reads as "FFB stopped working after an
+            // update" (issue #17); auto-discovery + identity-based self-heal
+            // cover the realistic cases; the MANUALPIN access code re-reveals
+            // the picker so a user who needs one can pin again. The latch
+            // stops this re-clearing a deliberate post-migration pin.
             if (!Settings.ManualOverrideClearedV0_1_22)
             {
                 bool hadOverride = !string.IsNullOrEmpty(Settings.ManualUsbPcapInterface)
@@ -3367,14 +3276,11 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
-            // Fresh install (factory ran) or first run on a settings file
-            // written before the badge feature existed (LastSeenVersion never
-            // stamped): pre-seed every known effect as already-seen and
-            // stamp LastSeenVersion to the running build. Without this, an
-            // existing user upgrading from a pre-feature version would get
-            // badges on every effect they've already been using, useless
-            // noise. After this seed, badges only ever fire for effects
-            // introduced in versions strictly newer than this one.
+            // Fresh install (factory ran) or a settings file predating the badge
+            // feature (LastSeenVersion never stamped): seed every known effect as
+            // already-seen and stamp LastSeenVersion to the running build, so an
+            // upgrader isn't badged on effects they already use. After the seed,
+            // badges fire only for effects introduced in strictly newer versions.
             if (wasFreshInstall || string.IsNullOrEmpty(Settings.LastSeenVersion))
             {
                 foreach (var id in EffectChangelog.KnownEffectIds)
@@ -3385,9 +3291,8 @@ namespace TrueforceForAll.Plugin
                 PersistSettingsCore();
             }
 
-            // Hand the resolver a reference to the persisted cache. New heuristic
-            // hits get written through and flushed to disk on the next settings
-            // save. Version mismatch (heuristic improvement) clears the cache.
+            // Hand the resolver the persisted cache (write-through; a version
+            // bump clears it). See AttachPersistentCache.
             int cacheVer = Settings.CarCylinderCacheVersion;
             CarCylinderResolver.AttachPersistentCache(Settings.CarCylinderCache, ref cacheVer);
             Settings.CarCylinderCacheVersion = cacheVer;
@@ -3401,23 +3306,16 @@ namespace TrueforceForAll.Plugin
                 Settings.CarFactsMigratedV1 = true;
                 try { PersistSettingsCore(); } catch { }
             }
-            // Note: the ordinal-name rename migration used to run here but
-            // tripped its `_carStore == null` guard because _carStore is
-            // only constructed below. Moved to after LoadAndMigrateCarPresets
-            // (V2 flag re-runs it for users whose V1 latch flipped on the
-            // no-op pass). MigrateLegacyGamePresets also used to run here; it
-            // now runs before the PresetsMigratedV2 file migration above so
-            // its content is written to files and backed up, not wiped.
+            // (MigrateCarPresetOrdinalNames and MigrateLegacyGamePresets both
+            // moved out of here; the ordering reasons live at their call sites.)
             InstallBuiltinPresetsIfMissing();
 
-            // Per-car file store: load files into Settings.CarOverrides
-            // (file wins on conflict), then migrate any existing
-            // Settings.CarOverrides / preset.CarOverrides into files for
-            // cars that don't already have one. Files become the canonical
-            // store; Settings.CarOverrides is now an in-memory cache only.
-            // Car preset store points at the user library folder (the cars/
-            // subfolder under TrueforceForAll-Library). Built-in cars live in
-            // BuiltinPresets and merge in via LoadAndMigrateCarPresets.
+            // Per-car file store, rooted at the cars/ subfolder of the user
+            // library (TrueforceForAll-Library). LoadAndMigrateCarPresets loads
+            // files into Settings.CarOverrides (file wins on conflict) then
+            // writes any Settings.CarOverrides / preset.CarOverrides lacking a
+            // file. Files are canonical; Settings.CarOverrides is an in-memory
+            // cache only. Built-in cars live in BuiltinPresets and merge in there.
             _carStore = new CarPresetStore(
                 () => UserPresets.CurrentFolder,
                 msg => SimHub.Logging.Current.Info(msg));
@@ -3429,7 +3327,7 @@ namespace TrueforceForAll.Plugin
             // Normalize legacy "Forza_<n>" car ids to "Car_<n>" exactly once.
             // Released builds stored Forza car tunings under "Forza_<ordinal>";
             // this branch looks them up as "Car_<ordinal>" (see the runtime
-            // alias in CurrentCarId), so without this an upgrading user's
+            // alias in DataUpdate), so without this an upgrading user's
             // per-car Forza Horizon tuning silently stops applying. Runs after
             // the car files are in the new layout and BEFORE the ordinal-name
             // pass below, so a normalized "Car_<n>" still gets its human name.
@@ -3446,14 +3344,12 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
-            // One-time engine-choice relocation (2026-07 centralization): the
-            // per-car engine picks that used to live on CarOverride.EnginePulse
-            // (Layout / CustomEngineId) move into the matching CarFacts
-            // variants' UserEngineLayout pin. Runs after the car files are
-            // loaded into Settings.CarOverrides and after id normalization so
-            // carIds line up with CarFacts keys. Global/game-preset picks are
-            // dropped deliberately (they aren't car-bound). Idempotent;
-            // flag-gated.
+            // One-time engine-choice relocation: per-car picks on
+            // CarOverride.EnginePulse (Layout / CustomEngineId) move into the
+            // matching CarFacts variants' UserEngineLayout pin. Runs after the
+            // car files load into Settings.CarOverrides and after id
+            // normalization so carIds line up with CarFacts keys. Global and
+            // game-preset picks are dropped deliberately (they aren't car-bound).
             if (!Settings.EngineChoiceMovedToCarFactsV1)
             {
                 try
@@ -3506,15 +3402,12 @@ namespace TrueforceForAll.Plugin
                 EnsureCarFactsAnonId();
             }
 
-            // Default-on re-pitch: CommunityEnabled's default flipped to ON,
-            // but existing settings files carry an explicit false from the
-            // old opt-in default. Re-show the networked welcome once for
-            // those installs; any dismissal of it enables community +
-            // sharing (the old pitch required an account, the new one
-            // doesn't, so one more look is fair). Community-on users are NOT
-            // re-pitched: they accepted a stricter pitch already, and if
-            // their stored AutoSubmitCarFacts is false the consent gate asks
-            // once at their next fact-worthy save instead.
+            // Default-on re-pitch: CommunityEnabled's default flipped to ON, but
+            // existing settings files carry an explicit false from the old opt-in
+            // default, so re-show the networked welcome once for those installs
+            // (any dismissal enables community + sharing). Community-on users are
+            // NOT re-pitched; if their stored AutoSubmitCarFacts is false the
+            // consent gate asks once at their next fact-worthy save instead.
             if (!Settings.CommunityDefaultOnRepitchedV1)
             {
                 if (!Settings.CommunityEnabled)
@@ -3527,12 +3420,10 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
-            // Rename Car_NNN-style car-preset names to their human-readable
-            // car names (per game). Runs here, not earlier, because _carStore
-            // must be initialised + LoadAndMigrateCarPresets must have moved
-            // the files into the new folder layout first. V2 flag re-runs
-            // the pass for users whose V1 ran in the wrong order and was a
-            // silent no-op.
+            // Rename Car_NNN-style car-preset names to human car names (per
+            // game). Must run after _carStore is initialised and after
+            // LoadAndMigrateCarPresets moved the files into the new layout; the
+            // V2 flag re-runs the pass for users whose V1 ran early and no-opped.
             if (!Settings.CarPresetOrdinalNamesMigratedV2)
             {
                 MigrateCarPresetOrdinalNames();
@@ -3543,9 +3434,9 @@ namespace TrueforceForAll.Plugin
 
             // Community backend HTTP client. Inert until
             // Settings.CommunityEnabled is true and a URL + anon key are
-            // configured (see supabase/README.md). Identity (submitter_id)
-            // is derived server-side from the client IP + a rotating salt,
-            // so the plugin holds no persistent submitter id.
+            // configured (see supabase/README.md). Identity (submitter_id) is
+            // the signed-in auth.uid(), else 'anon:' + Settings.CarFactsAnonId
+            // (0100); the hashed client IP is only a rate-limit / ban key.
             _auth = new CommunityAuth(
                 () => Settings,
                 () => PersistSettingsCore(),
@@ -3582,7 +3473,7 @@ namespace TrueforceForAll.Plugin
                 msg => SimHub.Logging.Current.Info(msg));
 
             // Cloud backup/sync transport (Phase 2). Same auth wiring as the other
-            // clients; gated by a signed-in session (and later supporter status).
+            // clients; a signed-in session, plus supporter status for uploads (0034).
             _backupClient = new BackupClient(
                 () => Settings,
                 msg => SimHub.Logging.Current.Info(msg),
@@ -3664,15 +3555,10 @@ namespace TrueforceForAll.Plugin
                 });
             }
 
-            // One-time cleanup: walk user/games + user/cars looking for
-            // files that are leftovers from before the file-based factory
-            // (commit c89c3f7 era). Game match = IsFactoryBuiltinName
-            // (current built-in OR retired-name list); car match =
-            // (carId, presetName) tuple exists in factory's CarPresetJsons,
-            // OR the file's own IsBuiltin tag is true, OR presetName
-            // matches IsFactoryBuiltinName. Archives matches to a backup
-            // folder + drops the matching entries from user/game-defaults
-            // and user/car-defaults so the factory seed takes over.
+            // One-time cleanup: archives user/games + user/cars files that are
+            // leftovers from before the file-based factory (commit c89c3f7 era),
+            // and drops their user/game-defaults + user/car-defaults entries so
+            // the factory seed takes over. The match rules live on the method.
             //
             // Runs AFTER LoadAndMigrateCarPresets so user/cars reflects
             // the full set of user-tier car files (step 1 of that method
@@ -3689,14 +3575,9 @@ namespace TrueforceForAll.Plugin
                 LoadAndMigrateCarPresets();
             }
             MigrateEngineHighRpmHelpersDefaults();
-            // (The 0.97 -> 0.85 rev-limiter Threshold migration was removed
-            // along with the Threshold field itself, 2026-07-17: the redline
-            // comes from the Car facts cascade now. Its latch field
-            // RevLimiterThresholdDefaultMigrated was retired with it.)
+            // (No rev-limiter Threshold migration: the field is gone and the
+            // redline comes from the Car facts cascade. See RevLimiterSettings.)
 
-            // Make sure all three folders exist with their READMEs, then auto-
-            // import anything the user dropped into the imports folder. All
-            // best-effort: folder access errors degrade gracefully.
             // One-time: the imports inbox was renamed from "drop" to "import";
             // move a leftover default "drop" folder to the new name.
             try
@@ -3707,6 +3588,10 @@ namespace TrueforceForAll.Plugin
                     Directory.Move(legacyDropFolder, newImportFolder);
             }
             catch { /* best-effort rename */ }
+
+            // Make sure all three folders exist with their READMEs, then auto-
+            // import anything the user dropped into the imports folder. All
+            // best-effort: folder access errors degrade gracefully.
             WriteReadmeIfMissing(BuiltinPresets.CurrentFolder, BuiltinReadmeText);
             WriteReadmeIfMissing(UserPresets.CurrentFolder, UserLibraryReadmeText);
             WriteReadmeIfMissing(UserImportsFolderPath, ImportsReadmeText);
@@ -3714,12 +3599,12 @@ namespace TrueforceForAll.Plugin
 
             _mixer.MasterGain = Settings.MasterGain;
 
-            // Start the GitHub update poller BEFORE the wheel-discovery early
-            // exit so a user whose wheel is unplugged (or whose G HUB is
-            // holding the HID) can still discover that a fix shipped. Without
-            // this, the plugin returns out of Init below and _updateChecker
-            // stays null, so the in-panel banner + Check-for-updates button
-            // are dead. The check itself doesn't touch wheel state.
+            // Start the GitHub update poller BEFORE the wheel bring-up below,
+            // so a user whose wheel is unplugged (or whose G HUB is holding
+            // the HID) still learns that a fix shipped without waiting on
+            // discovery. A null _updateChecker would leave the in-panel banner
+            // and the Check-for-updates button dead. The check itself doesn't
+            // touch wheel state.
             _updateCheckerCts = new System.Threading.CancellationTokenSource();
             _updateChecker = new UpdateChecker
             {
@@ -3735,9 +3620,8 @@ namespace TrueforceForAll.Plugin
                     // on the very first check. No-op for Stable on stable.
                     RefreshUpdateChannel();
                     // Downloaded-preset auto-update rides the same startup
-                    // check. Short delay: the community/preset-sharing
-                    // clients finish constructing later in Init, and startup
-                    // has better things to do first.
+                    // check. Short delay so the sweep doesn't compete with
+                    // the rest of startup.
                     await System.Threading.Tasks.Task.Delay(15000);
                     await MaybeAutoUpdateCommunityPresetsHeadless();
                 }
@@ -3746,14 +3630,12 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info($"[TF4ALL] Update check task crashed: {ex.Message}");
                 }
             });
-            // Arm the background re-check. The startup poll above is one-shot;
-            // this re-runs CheckAsync on the user-configured cadence
-            // (Settings.UpdateCheckIntervalHours) so a session left running for
-            // hours still discovers a release that shipped after launch. Lives
-            // on the plugin (always running) rather than the settings panel
-            // timer (which only ticks while the panel is open). The wakeup is a
-            // fixed cheap cadence; the tick itself decides whether enough time
-            // has elapsed, so a runtime cadence change needs no re-arm.
+            // Arm the background re-check: the startup poll above is one-shot.
+            // Re-runs CheckAsync on the user-configured cadence
+            // (Settings.UpdateCheckIntervalHours). Lives on the plugin, not the
+            // settings-panel timer, which only ticks while the panel is open.
+            // The wakeup is a fixed cheap cadence and the tick decides whether
+            // enough time has elapsed, so a runtime cadence change needs no re-arm.
             MarkUpdateChecked();
             _updateCheckTimer = new System.Threading.Timer(
                 UpdateCheckTimerTick, null, UpdateCheckPollMs, UpdateCheckPollMs);
@@ -3767,12 +3649,10 @@ namespace TrueforceForAll.Plugin
             // the device, not reconstruct the whole pipeline.
             if (MasterMode != TrueforceMasterMode.Normal)
             {
-                // Off and lights-only never open the Trueforce endpoint, so there
-                // is nothing to bring up: no HID handle, no init sequence, no
-                // USBPcap capture, no 1 kHz stream. Discovery still runs, because
-                // the wheel's identity is what the LED path and every lighting
-                // control read. This is also what makes lights-only true to its
-                // name rather than a paused version of the full plugin.
+                // Off and lights-only never open the Trueforce endpoint: no HID
+                // handle, no init sequence, no USBPcap capture, no 1 kHz stream.
+                // Discovery still runs because the wheel's identity is what the
+                // LED path and every lighting control read.
                 WheelMatch found;
                 if (!DiscoverWheel(out found))
                 {
@@ -3791,17 +3671,15 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                // G923 audio-path wedge workaround (2026-07-06). A cold
-                // bring-up on a wheel left in a stale streaming state (any
-                // SimHub restart while a game holds the wheel) makes the
-                // wheel honor cur but silently DISCARD the audio window —
-                // force feels fine, every audio effect is dead, and nothing
-                // in software can tell. Empirically one close→reopen→re-init
-                // cycle heals it (the FAULT access code proved it on
-                // hardware; G HUB is NOT needed). So after a successful cold
-                // bring-up, force one fault so the recovery watchdog runs
-                // that exact proven cycle ~3 s in. Costs one reconnect blip
-                // at startup, before anyone is driving.
+                // G923 audio-path wedge (2026-07-06): a cold bring-up on a
+                // wheel left in a stale streaming state (any SimHub restart
+                // while a game holds the wheel) makes the wheel honor cur but
+                // silently DISCARD the audio window. Force feels fine, every
+                // audio effect is dead, and nothing in software can tell. One
+                // close/reopen/re-init cycle heals it (proved on hardware with
+                // the FAULT access code; G HUB is NOT needed), so force one
+                // fault and let the recovery watchdog run that cycle ~3 s in.
+                // Costs one reconnect blip at startup, before anyone is driving.
                 var d = _device;
                 System.Threading.Tasks.Task.Run(async () =>
                 {
@@ -3833,12 +3711,12 @@ namespace TrueforceForAll.Plugin
 
             // Bindable input mappings for SimHub's Controls system.
             // IMPORTANT: AddInputMapping (NOT AddAction). AddAction
-            // AddAction registers a macro/event-callable entry that shows
-            // up in the Actions list but is NOT bindable - it sets
-            // IsInput=false, so the Controls binder skips it and pressing
-            // a bound button produces nothing. AddInputMapping flips
-            // IsInput=true so the entry surfaces in the Controls binder
-            // and fires on hardware input.
+            // registers a macro/event-callable entry that shows up in the
+            // Actions list but is NOT bindable - it sets IsInput=false, so
+            // the Controls binder skips it and pressing a bound button
+            // produces nothing. AddInputMapping flips IsInput=true so the
+            // entry surfaces in the Controls binder and fires on hardware
+            // input.
             //
             // Name MUST be just the bare action name (no plugin prefix):
             // PluginManager.GetName prepends "TrueforcePlugin." itself,
@@ -3846,16 +3724,15 @@ namespace TrueforceForAll.Plugin
             // The ControlsEditor in XAML must bind to that exact string
             // or the dispatch lookup misses and the action never fires.
             //
-            // Each press nudges master gain by the slider's small-step
-            // (0.05), clamped to [0, 2]. Wrapped so a SimHub API hiccup
-            // can't abort Init.
+            // Each press nudges master gain by MasterGainStep (persisted,
+            // default 0.05, clamped to [0.01, 0.5]), and the result is
+            // clamped to [0, 2]. Wrapped so a SimHub API hiccup can't
+            // abort Init.
             try
             {
-                // The readout goes on BOTH paths. A wheel button bound here
-                // and the dash's own stepper are different entry points to
-                // the same setting, and the button is the one you press
-                // without looking at a screen, so it is the one that most
-                // needs to say where it got to.
+                // The readout rides the bound button: you press it without
+                // looking at a screen, so it is the entry point that has to
+                // say where the gain got to.
                 pluginManager.AddInputMapping("MasterGainUp", GetType(),
                     (pm, a) => { NudgeMasterGain(+MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); },
                     (pm, a) => { });
@@ -3863,30 +3740,23 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => { NudgeMasterGain(-MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); },
                     (pm, a) => { });
 
-                // Telemetry Based FFB strength, and the wheel screen, from the
-                // rim. These are the two things worth changing mid-stint: one
-                // is how hard the wheel pushes, the other is what you can see
-                // while it does. Each reports through the same readout channel
-                // as the gain controls, so the dash bar and the wheel's screen
-                // both answer without either needing to know about these.
+                // Telemetry Based FFB strength and the wheel screen, from the
+                // rim. Both report through the same readout channel as the gain
+                // controls, so the dash bar and the wheel screen both answer.
                 pluginManager.AddInputMapping("ModeBStrengthUp", GetType(),
                     (pm, a) => NudgeModeBStrength(+0.05f), (pm, a) => { });
                 pluginManager.AddInputMapping("ModeBStrengthDown", GetType(),
                     (pm, a) => NudgeModeBStrength(-0.05f), (pm, a) => { });
-                // Auto force from the rim: runs the active game's auto-calibrate,
-                // so a car that comes up weak or heavy can be levelled without
-                // opening the UI. iRacing sets the max force; Forza resets the
-                // auto-strength learner.
+                // Auto force from the rim: runs the active game's own
+                // auto-calibration (per-game behaviour on TriggerAutoForce).
                 pluginManager.AddInputMapping("AutoForce", GetType(),
                     (pm, a) => TriggerAutoForce(), (pm, a) => { });
                 pluginManager.AddInputMapping("OledScreenNext", GetType(),
                     (pm, a) => CycleOledScreen(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("OledScreenPrev", GetType(),
                     (pm, a) => CycleOledScreen(-1), (pm, a) => { });
-                // Rev-light pattern from the rim, so switching does not mean
-                // reaching for a screen mid-drive. Same pick semantics as the
-                // settings dropdown: the wheelbase's selection changes and
-                // stays, exactly like using the base's own menu.
+                // Rev-light pattern from the rim. Same pick semantics as the
+                // settings dropdown: the wheelbase's selection changes and stays.
                 pluginManager.AddInputMapping("RevLightPatternNext", GetType(),
                     (pm, a) => CycleRevLightPattern(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("RevLightPatternPrev", GetType(),
