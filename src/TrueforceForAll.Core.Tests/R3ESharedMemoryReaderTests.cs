@@ -29,6 +29,7 @@ namespace TrueforceForAll.Core.Tests
             F64(R3ESharedMemoryReader.OFF_STEERING_FORCE, -3.25);
             F64(R3ESharedMemoryReader.OFF_STEERING_PCT, -0.41);
             I32(R3ESharedMemoryReader.OFF_MODEL_ID, 4523);
+            I32(R3ESharedMemoryReader.OFF_ENGINE_TYPE, 1);   // ELECTRIC
             I32(R3ESharedMemoryReader.OFF_CONTROL_TYPE, 0);
             F32(R3ESharedMemoryReader.OFF_CAR_SPEED, 31.5f);
             I32(R3ESharedMemoryReader.OFF_GEAR, 4);
@@ -54,6 +55,7 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0.32f, s.SteerInputRaw, 4);
             Assert.Equal(4, s.Gear);
             Assert.Equal(4523, s.ModelId);
+            Assert.Equal(1, s.EngineType);
         }
 
         [Fact]
@@ -66,6 +68,11 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(44, R3ESharedMemoryReader.OFF_SIM_TICKS);
             Assert.Equal(320, R3ESharedMemoryReader.OFF_STEERING_FORCE);
             Assert.Equal(328, R3ESharedMemoryReader.OFF_STEERING_PCT);
+            Assert.Equal(1268, R3ESharedMemoryReader.OFF_MODEL_ID);
+            // VehicleInfo (1196) + DriverInfo.EngineType (100). Both halves come
+            // from marshaling the struct the shipped SimHub reader uses, the
+            // same way ModelId's 1268 was established.
+            Assert.Equal(1296, R3ESharedMemoryReader.OFF_ENGINE_TYPE);
             Assert.Equal(1388, R3ESharedMemoryReader.OFF_CONTROL_TYPE);
             Assert.Equal(1524, R3ESharedMemoryReader.OFF_STEER_INPUT_RAW);
             Assert.True(R3ESharedMemoryReader.BlockBytes

@@ -74,6 +74,28 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0, frame.MaxRpm);
         }
 
+        // An arcade cabinet publishes force and no physics, so its frames are
+        // empty by design. The overlay must not run on them: the ABS flag is
+        // copied unconditionally, and one left set by a sim that has since
+        // closed would buzz for the whole cabinet session with no speed
+        // anywhere to clear it. The frame here is deliberately identical to
+        // EnhancedSourceWithoutMaxRpm_TakesOverlay's, which is the point: only
+        // the source tells the two apart.
+        [Fact]
+        public void ArcadeSource_IgnoresOverlayEntirely()
+        {
+            var frame = new TelemetryFrame { MaxRpm = 0 };
+            var overlay = new SimHubOverlay { MaxRpm = 7600, AbsActive = 1, DrsActive = 1 };
+
+            FrameEnricher.Enrich(ref frame, sourceIsEnhanced: true, overlay,
+                                 suppressRedlineOverlay: false,
+                                 sourcePublishesPhysics: false);
+
+            Assert.Equal(0, frame.MaxRpm);
+            Assert.Equal(0, frame.AbsActive);
+            Assert.Null(frame.DrsActive);
+        }
+
         // SimHub-fallback frames are already complete; the overlay must not run
         // at all, so a stale cached MaxRpm can't overwrite the real one.
         [Fact]
