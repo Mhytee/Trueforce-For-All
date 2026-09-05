@@ -49,13 +49,21 @@ namespace TrueforceForAll.Plugin
             // together and must never land on PC2 disagreeing about whether the
             // plugin is on.
             "PluginEnabled", "MasterMode", "ModeBRevLightsEnabled", "CarRevLightEffect", "CarLightPattern", "ShowFeedbackBox",
+            // What the rim LEDs do when the revs cannot drive them. Travels
+            // with the rev-light toggle for the same reason: it is a preference
+            // about how the wheel presents, and the wheel goes to the second PC
+            // with the driver. The sensitivity is in dB below full scale, which
+            // is a property of the material being played rather than of one
+            // machine's sound card.
+            "IdleLedMode", "NoRevLedMode", "LedSweepPeriodMs",
             // iRacing reshape strength. Travels: it is normalized against the
             // sim's own max force, so it carries no wheel-specific meaning.
             "IRacingForceGain", "IRacingUse360Hz",
             "IRacingForceMode", "IRacingPredictGain",
             // RaceRoom shared-memory FFB route (dev). Travels: it is a
             // preference about which force source to trust, not a machine fact.
-            "R3ESharedMemoryFfb",
+            "R3ESharedMemoryFfb", "R3EAutoStrength", "R3EStrengthByCar",
+            "R3EStationaryDamper", "R3EStationaryDamperStrength", "R3EStationaryDamperFadeKmh",
             // Wheel full-scale in Nm. Travels with the other feel settings: it
             // describes the WHEEL, and the wheel goes to the second PC with the
             // driver, same reasoning as the rev-light and OLED preferences.
@@ -114,7 +122,7 @@ namespace TrueforceForAll.Plugin
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
-            "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb",
+            "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb", "FfbSpikeTransientThresholdLsb",
             // Condition-render tuning (FXTEST bench): describes the wheel's
             // feel and travels with it, same category as FfbScale.
             "FfbConditionDamperGain", "FfbConditionSignInverted", "FfbConditionLpfHz",
@@ -170,6 +178,9 @@ namespace TrueforceForAll.Plugin
             "BuiltinPresetsFolder", "UserImportsFolder", "UserLibraryFolder",
             // Ring sizes are a property of this machine's CPU/scheduler.
             "Performance",
+            // Which arcade dumps are installed, and what their executables are
+            // called, is a property of this machine's setup.
+            "Arcade",
             // Identity / security: the auth session and the install-local slot keying.
             "AuthSession", "UserSlots", "ActiveSlotKey", "LegacyDataOwnerEmail",
             // "Remember my email" prefill: a per-PC sign-in convenience, not a portable choice.

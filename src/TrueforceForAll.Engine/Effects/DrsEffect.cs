@@ -164,6 +164,13 @@ namespace TrueforceForAll.Plugin.Effects
         {
             if (IsTesting) return;
             int v = f.DrsActive ?? 0;
+            // A parked car cannot be reducing drag, so a flag set at a standstill
+            // is never real. It can be a flag held from a game that has closed,
+            // which the enricher then paints onto whatever runs next: on an arcade
+            // cabinet, which publishes force and no physics, every frame reads as
+            // parked and the sustained hum would have nothing to end it. Same
+            // threshold and reasoning as PitLimiterEffect.
+            if (v > 0 && f.SpeedKmh < StandstillKmh) v = 0;
             // Rising edge → fire activation chirp.
             if (v > 0 && _lastDrsValue == 0) TriggerActivation();
             _lastDrsValue = v;
@@ -179,6 +186,10 @@ namespace TrueforceForAll.Plugin.Effects
             _drsHeld = false;
             _lastDrsValue = 0;
         }
+
+        /// <summary>Standstill suppression threshold (km/h), shared with the pit
+        /// limiter and ABS.</summary>
+        private const float StandstillKmh = 1.0f;
 
         private void TriggerActivation()
         {

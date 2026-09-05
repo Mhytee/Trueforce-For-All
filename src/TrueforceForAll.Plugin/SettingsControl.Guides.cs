@@ -416,6 +416,35 @@ namespace TrueforceForAll.Plugin
                     inst ? (Action)(() => UninstallFsModFor(target)) : null));
             }
 
+            // Arcade cabinets under TeknoParrot: one card per configured game.
+            // The list comes from TeknoParrot's own profiles, so it reflects what
+            // this PC actually has rather than a fixed catalogue.
+            foreach (var a in _plugin.ArcadeModTargets())
+            {
+                var target = a;
+                bool ready = a.GameFound && a.IniFound && !string.IsNullOrEmpty(a.WrapperName);
+                bool arcIn = ready && a.Installed;
+                string arcStatus = !a.GameFound
+                    ? "Game folder not found on this PC."
+                    : string.IsNullOrEmpty(a.WrapperName)
+                    ? "Set FFBArcadePlugin up for this game first, then this can take it over."
+                    : !a.IniFound
+                        ? "Run this game once in TeknoParrot first, so its FFB settings file exists."
+                        : a.Installed
+                            ? "Installed. Restart the game so it loads."
+                            : a.HasStamp && !a.PublishModeOn
+                                ? "Installed, but this game is no longer set to send us its force. Install again to fix it."
+                                : "Not installed.";
+                Add(arcIn, ready, BuildModCard(
+                    a.DisplayName,
+                    "Brings the cabinet's own force feedback through the plugin, so you feel the real "
+                    + "arcade forces as Trueforce and the wheel's lights and screen stay free.",
+                    "v" + _plugin.ArcadeModVersionString,
+                    ready, a.Installed, arcStatus,
+                    ready ? (Action)(() => InstallArcadeModFor(target)) : null,
+                    arcIn ? (Action)(() => UninstallArcadeModFor(target)) : null));
+            }
+
             // Assetto Corsa: the TF4ALL CSP Bridge. Greyed when Assetto Corsa
             // with Custom Shaders Patch is not on this PC.
             bool avail = _plugin.AcCspAvailable();
@@ -629,6 +658,45 @@ namespace TrueforceForAll.Plugin
             string err = _plugin.UninstallFsMod(t.Game);
             string outcome = err == null
                 ? t.DisplayName + ": removed. It stops loading the next time the game starts."
+                : t.DisplayName + ": could not remove it. " + err + ".";
+            RefreshModsList();
+            if (FsModTargetsStatus == null) return;
+            FsModTargetsStatus.Text = outcome;
+            FsModTargetsStatus.Visibility = Visibility.Visible;
+        }
+
+        private void InstallArcadeModFor(TrueforcePlugin.ArcadeModTarget t)
+        {
+            if (_plugin == null) return;
+            string err = _plugin.InstallArcadeMod(t);
+            string outcome = err == null
+                ? t.DisplayName + ": installed. Restart the game so it loads, and leave "
+                  + "SimHub running while you play so the force has somewhere to go."
+                : t.DisplayName + ": install failed. " + err + ".";
+            // Rebuild first, THEN write the outcome: the rebuild owns that line.
+            RefreshModsList();
+            if (FsModTargetsStatus == null) return;
+            FsModTargetsStatus.Text = outcome;
+            FsModTargetsStatus.Visibility = Visibility.Visible;
+        }
+
+        private void UninstallArcadeModFor(TrueforcePlugin.ArcadeModTarget t)
+        {
+            if (_plugin == null) return;
+            bool? go = TrueforceDialog.Show(Window.GetWindow(this),
+                "Remove the arcade plugin?",
+                "This puts " + t.DisplayName + " back the way it was. Whatever force feedback "
+                + "file was in the game's folder before we installed ours is restored, and the "
+                + "game goes back to driving your wheel directly.\n\n"
+                + "You lose the arcade effects through Trueforce, and the wheel's lights and "
+                + "screen go back to cutting out while force is playing.\n\n"
+                + "It takes effect the next time the game starts.",
+                DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Keep it");
+            if (go != true) return;
+
+            string err = _plugin.UninstallArcadeMod(t);
+            string outcome = err == null
+                ? t.DisplayName + ": removed. It takes effect the next time the game starts."
                 : t.DisplayName + ": could not remove it. " + err + ".";
             RefreshModsList();
             if (FsModTargetsStatus == null) return;

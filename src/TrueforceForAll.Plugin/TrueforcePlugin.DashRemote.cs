@@ -817,7 +817,30 @@ namespace TrueforceForAll.Plugin
             // buttons the hide pass leaves live, being an overlay's own, and
             // a user part way through typing a redline is plainly still here.
             if (!string.IsNullOrEmpty(_dashOverlay)) return false;
+            bool elapsed = DashIdleElapsed();
+            if (_dashIdleDismissed) return false;
+            return elapsed;
+        }
 
+        /// <summary>The timing question on its own: no game at all, or a game
+        /// running with the car parked longer than the chosen delay.
+        ///
+        /// Split out of DashIdleActive so the rim-LED audio meter can ask the
+        /// same question the idle card asks and the two cannot drift apart. It
+        /// deliberately leaves out the card's OWN conditions (whether the card
+        /// is switched on, whether an overlay is open, whether this stop was
+        /// waved away on the phone): none of those are about whether the driver
+        /// is driving, which is the only part anything else wants.
+        ///
+        /// Stateful, and it has to be: the delay is measured from the moment
+        /// the car stopped. Callers now reach it from more than one thread (the
+        /// dashboard's property poll, DataUpdate, and the telemetry path when
+        /// the LED meter's idle option is on). That is deliberately unlocked:
+        /// every caller is computing the same answer from the same clock, the
+        /// fields are word-sized, and the worst a race can do is start or reset
+        /// the stop-watch one tick early on a timer measured in minutes.</summary>
+        private bool DashIdleElapsed()
+        {
             bool gameOn = !string.IsNullOrEmpty(_currentGameName);
             if (gameOn != _dashIdleGameWasOn)
             {
@@ -825,11 +848,19 @@ namespace TrueforceForAll.Plugin
                 _dashIdleSinceTick = 0;
                 if (gameOn) _dashIdleDismissed = false;
             }
-            if (!gameOn) return !_dashIdleDismissed;
+            if (!gameOn) return true;
 
+            // An arcade cabinet publishes force and no telemetry, so its speed
+            // is zero for the whole session and the speed test would call a
+            // driver mid-race parked. Ten minutes into a run the idle card would
+            // take the phone dashboard over. The cabinet still answers the
+            // question, just not with a number: it emits frames while it runs,
+            // so _telemetryStalled going false IS the cabinet being alive, and
+            // that is what stands in for speed here.
+            bool arcadeLive = _teknoSource != null && ActiveGameIsArcade;
             bool driving = !_telemetryStalled
                 && (_telemetrySource?.IsSessionActive ?? true)
-                && _dashLiveSpeedKmh > 3f;
+                && (_dashLiveSpeedKmh > 3f || arcadeLive);
             int now = Environment.TickCount;
             if (driving)
             {
@@ -838,8 +869,7 @@ namespace TrueforceForAll.Plugin
                 return false;
             }
             if (_dashIdleSinceTick == 0) _dashIdleSinceTick = now == 0 ? 1 : now;
-            if (_dashIdleDismissed) return false;
-            int delayMs = Math.Max(0, Settings.DashIdleDelaySeconds) * 1000;
+            int delayMs = Math.Max(0, Settings?.DashIdleDelaySeconds ?? 600) * 1000;
             return unchecked(now - _dashIdleSinceTick) >= delayMs;
         }
 
@@ -2051,8 +2081,11 @@ namespace TrueforceForAll.Plugin
             // (owner rig, 2026-08-15); after a stint it stays up, because the
             // garage is exactly where the tap gets used.
             this.AttachDelegate("Dash.IRacingAutoShow",
-                () => IsIRacingReshapeGame(_activeGame) && ModeBEnabledForActiveGame
-                      && (_irFrame != null || IRacingPeakSettled || IRacingPeakConfidence > 0.001)
+                () => ModeBEnabledForActiveGame
+                      && ((IsIRacingReshapeGame(_activeGame)
+                              && (_irFrame != null || IRacingPeakSettled || IRacingPeakConfidence > 0.001))
+                          || (IsR3EGame(_activeGame)
+                              && (_irFrame != null || R3EPeakSettled || R3EPeakConfidence > 0.001)))
                       ? 1 : 0);
             // The synthesis side's equivalent row. Its learner is continuous, so
             // unlike the iRacing one there is nothing to time and nothing to grey:
@@ -2065,15 +2098,27 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.ModeBStrengthScale",  () => ModeBAutoStrengthScale);
             this.AttachDelegate("Dash.ModeBAutoStrengthOn", () => Settings?.ModeBAutoStrength == true ? 1 : 0);
             this.AttachDelegate("Dash.IRacingAutoReady",
-                () => IsIRacingReshapeGame(_activeGame) && IRacingPeakSettled ? 1 : 0);
+                () => (IsIRacingReshapeGame(_activeGame) && IRacingPeakSettled)
+                      || (IsR3EGame(_activeGame) && R3EPeakSettled) ? 1 : 0);
             this.AttachDelegate("Dash.IRacingAutoConfidence",
-                () => IsIRacingReshapeGame(_activeGame) ? IRacingPeakConfidence : 0.0);
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingPeakConfidence
+                    : IsR3EGame(_activeGame) ? R3EPeakConfidence : 0.0);
             // What pressing it would set, so the button can show the number
-            // rather than asking the driver to trust it blind.
+            // rather than asking the driver to trust it blind. RaceRoom's R3EFFB
+            // route shares these delegates so the shipped dash lights up unchanged;
+            // its value is a 0..1 normalized peak, not Nm, so the dash's "NM"
+            // suffix reads cosmetically there.
             this.AttachDelegate("Dash.IRacingAutoNm",
-                () => IsIRacingReshapeGame(_activeGame) ? IRacingLearnedMaxNm : 0.0);
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingLearnedMaxNm
+                    : IsR3EGame(_activeGame) ? (double)R3EObservedPeak : 0.0);
             this.AttachDelegate("Dash.IRacingMaxForceNm",
-                () => IsIRacingReshapeGame(_activeGame) ? IRacingEffectiveMaxForceNm : 0.0);
+                () => IsIRacingReshapeGame(_activeGame) ? IRacingEffectiveMaxForceNm
+                    : IsR3EGame(_activeGame) ? (double)R3EEffectivePeak : 0.0);
+            // Unit for the two numbers above. iRacing's are Nm; RaceRoom's R3EFFB
+            // value is a 0..1 normalized peak with no unit, so the dash drops the
+            // suffix there instead of mislabeling it "NM".
+            this.AttachDelegate("Dash.IRacingAutoUnit",
+                () => IsIRacingReshapeGame(_activeGame) ? "NM" : "");
 
             // Live clip state (+1/-1/0, 150 ms hold): drives the rail
             // marker strips on the visualizer.
@@ -2499,6 +2544,23 @@ namespace TrueforceForAll.Plugin
                     double applied = ApplyIRacingAutoMaxForce();
                     DashToast(applied > 0.5
                         ? "PEAK FORCE SET TO " + applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " NM"
+                        : "NOTHING LEARNED YET");
+                    RaiseDashRemoteChanged();
+                    return;
+                }
+                // RaceRoom R3EFFB adopts its learned peak the same way iRacing does.
+                if (IsR3EGame(_activeGame) && ModeBEnabledForActiveGame)
+                {
+                    if (!R3EPeakSettled)
+                    {
+                        DashToast(R3EObservedPeak <= 0.02f
+                            ? "DRIVE A LAP FIRST"
+                            : "STILL LEARNING THIS CAR - KEEP DRIVING");
+                        return;
+                    }
+                    float appliedR3e = ApplyR3EAutoStrength();
+                    DashToast(appliedR3e > 0.01f
+                        ? "CAR MAX SET TO " + appliedR3e.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
                         : "NOTHING LEARNED YET");
                     RaiseDashRemoteChanged();
                     return;

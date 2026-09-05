@@ -41,6 +41,12 @@ namespace TrueforceForAll.Core
         public int Gear;
         /// <summary>VehicleInfo.ModelId, the sim's car identity.</summary>
         public int ModelId;
+        /// <summary>VehicleInfo.EngineType: 0 combustion, 1 electric, 2 hybrid
+        /// (-1 when the sim has not filled the block yet). The only engine
+        /// CONFIGURATION the sim publishes: there is no cylinder count anywhere
+        /// in the block, so this says whether a firing pattern applies at all,
+        /// not what it is. See R3EEngineSeed for the count and the crank.</summary>
+        public int EngineType;
 
         /// <summary>Stopwatch timestamp at the read, for freshness checks.</summary>
         public long Ticks;
@@ -79,6 +85,8 @@ namespace TrueforceForAll.Core
         internal const int OFF_STEERING_FORCE   = 320;   // Player.SteeringForce (double)
         internal const int OFF_STEERING_PCT     = 328;   // Player.SteeringForcePercentage (double)
         internal const int OFF_MODEL_ID         = 1268;  // VehicleInfo.ModelId
+        // VehicleInfo sits at 1196 and DriverInfo.EngineType 100 bytes into it.
+        internal const int OFF_ENGINE_TYPE      = 1296;  // VehicleInfo.EngineType
         internal const int OFF_CONTROL_TYPE     = 1388;
         internal const int OFF_CAR_SPEED        = 1392;  // m/s (float)
         internal const int OFF_GEAR             = 1408;
@@ -284,6 +292,7 @@ namespace TrueforceForAll.Core
                 SteerInputRaw    = BitConverter.ToSingle(b, OFF_STEER_INPUT_RAW),
                 Gear             = BitConverter.ToInt32(b, OFF_GEAR),
                 ModelId          = BitConverter.ToInt32(b, OFF_MODEL_ID),
+                EngineType       = BitConverter.ToInt32(b, OFF_ENGINE_TYPE),
             };
         }
 

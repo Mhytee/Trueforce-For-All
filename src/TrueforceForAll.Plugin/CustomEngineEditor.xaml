@@ -78,7 +78,7 @@
             <Slider Grid.Column="1" x:Name="CountSlider" Minimum="1" Maximum="16" SmallChange="1" LargeChange="2"
                     TickFrequency="1" IsSnapToTickEnabled="True"
                     ValueChanged="Count_ValueChanged" VerticalAlignment="Center"/>
-            <TextBlock Grid.Column="2" x:Name="CountText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="4"/>
+            <TextBox Grid.Column="2" x:Name="CountText" VerticalAlignment="Center" HorizontalAlignment="Right" Text="4"/>
         </Grid>
 
         <!-- Pattern textbox -->

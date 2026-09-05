@@ -170,6 +170,14 @@ namespace TrueforceForAll.Plugin
             return resolved != null;
         }
 
+        /// <summary>SimHub's two names for RaceRoom. Mirrored here rather than
+        /// reached for on the plugin so the resolver stays free of it.</summary>
+        private static bool IsR3EGameName(string gameName)
+        {
+            return string.Equals(gameName, "RRRE", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(gameName, "RaceRoomRacingExperience", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static Result ResolveInternal(string gameName, string carId)
         {
             // iRacing: shipped firing-pattern seed, keyed by the sim's own
@@ -196,6 +204,25 @@ namespace TrueforceForAll.Plugin
                     EngineConfig       = seed.Config,
                     EngineConfigSource = "baked",
                     DisplayName        = seed.DisplayName,
+                };
+            }
+
+            // RaceRoom: shipped seed keyed by the sim's own ModelId, which
+            // SimHub hands us as the "<modelId>,<name>" carId. Same shape as
+            // the iRacing seed above, with one difference that matters: the
+            // sim publishes no cylinder count either, so this table is the
+            // whole answer rather than just the crank. The roster is closed
+            // and every car in it is covered, so a miss here means new DLC.
+            if (IsR3EGameName(gameName) && R3EEngineSeed.TryGet(carId, out var r3eSeed))
+            {
+                return new Result
+                {
+                    Cylinders          = r3eSeed.Cylinders,
+                    IsElectric         = r3eSeed.IsElectric,
+                    Source             = "baked",
+                    EngineConfig       = r3eSeed.Config,
+                    EngineConfigSource = "baked",
+                    DisplayName        = r3eSeed.DisplayName,
                 };
             }
 

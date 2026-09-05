@@ -274,6 +274,10 @@ namespace TrueforceForAll.Plugin
             // any visibility pass runs over the controls inside it.
             ApplyFxBenchVisibility();
             ApplyLightsyncTabVisibility();
+            // Session-only unlock, so this always starts hidden. Called anyway
+            // so the tab and its handlers are in a known state before the first
+            // RefreshFromPlugin.
+            ApplyMemoryMapTabVisibility();
 
             // Header version readout. Read once at construction; doesn't change
             // at runtime within a session. ToString(3) drops the build/revision
@@ -361,6 +365,15 @@ namespace TrueforceForAll.Plugin
                 _meterTimer.Stop();
                 try { DismissToast(); } catch { }
                 try { _discordLinkCts?.Cancel(); } catch { }
+                // The memory scanner is a child process reading a game. Leaving
+                // the plugin's panel is the last surface that could stop it, so
+                // it goes with the panel rather than running on unseen.
+                try { _plugin?.StopMemoryScan(); } catch { }
+                try { DetachScanHandlers(); } catch { }
+                try { StopMemMapTimer(); } catch { }
+                // SimHub's binding list is not panel-scoped, so a handler left
+                // on it keeps this whole control alive after it is gone.
+                try { AttachBindingWatch(false); } catch { }
                 if (_plugin != null)
                 {
                     _plugin.AuthIdentityChanged -= OnAuthIdentityChanged;
@@ -470,6 +483,15 @@ namespace TrueforceForAll.Plugin
         public void RefreshFromPlugin()
         {
             if (_plugin == null) return;
+            // A refresh rewrites every readout, and it can arrive while the user
+            // is part way through typing into one (a cloud sync, a library
+            // reload, a bound controller nudging master gain). Their text would
+            // vanish under them and the commit would then read our formatted
+            // value back. Remembering just the focused box is enough: it is the
+            // only one an edit can be in progress in.
+            var editing = Keyboard.FocusedElement as TextBox;
+            if (!EditableReadout.IsEditing(editing)) editing = null;
+            string editingText = editing?.Text;
             _suppressEvents = true;
             try
             {
@@ -726,13 +748,14 @@ namespace TrueforceForAll.Plugin
                 SpikeModeTransientRadio.IsChecked = !spikeSlewMode;
                 UpdateSpikeModeUi();
                 FfbSpikeLimitSlider.Value = _plugin.Settings?.FfbSpikeMaxLsbPerMs ?? 0.0;
-                FfbSpikeLimitText.Text    = FfbSpikeLimitSlider.Value <= 0
-                    ? "off"
-                    : ((int)FfbSpikeLimitSlider.Value).ToString();
+                FfbSpikeLimitText.Text    = SpikePercentText(FfbSpikeLimitSlider.Value);
+                UpdateSpikeRateHelp();
+                FfbSpikeThresholdSlider.Value = _plugin.Settings?.EffectiveSpikeTransientThresholdLsb
+                                                ?? TrueforceSettings.DefaultSpikeTransientThresholdLsb;
+                FfbSpikeThresholdText.Text    = SpikePercentText(FfbSpikeThresholdSlider.Value);
                 FfbPeakLimitSlider.Value  = _plugin.Settings?.FfbPeakSoftLimitLsb ?? 0.0;
-                FfbPeakLimitText.Text     = FfbPeakLimitSlider.Value <= 0
-                    ? "off"
-                    : ((int)FfbPeakLimitSlider.Value).ToString();
+                FfbPeakLimitText.Text     = SpikePercentText(FfbPeakLimitSlider.Value);
+                UpdateSpikePeakSummary();
 
                 // Telemetry based FFB (Mode B) tab: global settings, applied
                 // live via ApplyModeBFromSettings / ApplyModeBFeel.
@@ -743,7 +766,11 @@ namespace TrueforceForAll.Plugin
                     // ACTIVE game, and is disabled when the active game has no
                     // Mode B support (or none is running).
                     string mbGame = _plugin.ActiveGame;
-                    bool mbSupported = _plugin.ActiveGameSupportsModeB;
+                    // RaceRoom keeps the take-over section and checkbox even on the
+                    // tap route, so the one checkbox is the whole R3EFFB A/B switch:
+                    // checked = shared-memory reshape, unchecked = tap route.
+                    bool r3eHere = _plugin.ActiveGameIsR3E;
+                    bool mbSupported = _plugin.ActiveGameSupportsModeB || r3eHere;
                     // Spring-mode game (Farming Simulator): the force is the
                     // game's own spring, so the Forza tuning recipe and the
                     // per-game Enable are irrelevant and hide as a block. The
@@ -761,7 +788,7 @@ namespace TrueforceForAll.Plugin
                     // thirty controls that cannot do anything, and a dead knob
                     // reads as broken. Same rule the spring games already use,
                     // extended from a two-way split to a three-way one.
-                    bool reshapeGame = _plugin.ActiveGameIsReshapeGame;
+                    bool reshapeGame = _plugin.ActiveGameIsReshapeGame || r3eHere;
                     // The FFB tab is slim by default. The Telemetry Based FFB
                     // block (header, enable toggle, and every tuning panel) only
                     // belongs to games that actually have it, and its TUNING only
@@ -800,6 +827,17 @@ namespace TrueforceForAll.Plugin
                     if (IRacingTuningPanel != null)
                         IRacingTuningPanel.Visibility = (showTuning && reshapeGame)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Inside the reshape panel, RaceRoom (R3EFFB) swaps the iRacing
+                    // max-force box + Auto (inert on that route, which carries its
+                    // own scale) for its own press-to-apply auto-strength row.
+                    var iracingPeakVis = (showTuning && reshapeGame && !r3eHere)
+                        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    var r3eAutoVis = (showTuning && reshapeGame && r3eHere)
+                        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    if (IRacingPeakForceRow  != null) IRacingPeakForceRow.Visibility  = iracingPeakVis;
+                    if (IRacingPeakForceHelp != null) IRacingPeakForceHelp.Visibility = iracingPeakVis;
+                    if (R3EAutoStrengthRow   != null) R3EAutoStrengthRow.Visibility   = r3eAutoVis;
+                    if (R3EAutoStrengthHelp  != null) R3EAutoStrengthHelp.Visibility  = r3eAutoVis;
                     // Advanced lives outside that panel now, so Damping and
                     // Smoothing can sit above it while staying visible in every
                     // game. Its contents are still iRacing-only, so it follows
@@ -817,24 +855,85 @@ namespace TrueforceForAll.Plugin
                     // The whole group is also renamed, because "pass-through" is
                     // the wrong word for a mode that passes nothing through: it
                     // reshapes the sim's force and authors what reaches the wheel.
-                    var deadInReshape = reshapeGame
+                    // Arcade cabinets get their own panel, shown only while one
+                    // is the active game. Placed here rather than beside the
+                    // iRacing panel, where it had landed inside that panel's own
+                    // null guard and would have stopped refreshing entirely if
+                    // that unrelated control were ever absent.
+                    RefreshArcadePanel(_plugin.ActiveGameIsArcade);
+
+                    // Scale and invert reconcile a TAPPED value with the wheel,
+                    // and the device drops both only while the reshape is armed
+                    // (FfbBypassTapCorrections). Asking the plugin what the
+                    // device is doing, rather than assuming the game class
+                    // implies it: with takeover off in a reshape game the tapped
+                    // force still runs through both, and hiding them there left
+                    // a driver with two live corrections and no way to reach
+                    // them.
+                    var tapCorrectionVis = _plugin.TapCorrectionsBypassed
                         ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
-                    if (FfbScaleRow    != null) FfbScaleRow.Visibility    = deadInReshape;
-                    if (FfbInvertCheck != null) FfbInvertCheck.Visibility = deadInReshape;
-                    // Smoothing moved out to sit with Damping, so scale and
-                    // invert are all this section has left; under the reshape
-                    // both are dead, which makes the section itself dead.
+                    // Scale is live on a cabinet (it is the strength control) and
+                    // dead only under the armed reshape, so it keeps its own rule.
+                    if (FfbScaleRow != null) FfbScaleRow.Visibility = tapCorrectionVis;
+
+                    // The section holds ONE control, the invert checkbox: the scale
+                    // sits further up the tab and smoothing moved out to join
+                    // damping. So wherever invert is dead the section is empty, and
+                    // hiding the section is the same act as hiding the checkbox
+                    // with none of the oddity of an empty expander left behind.
+                    //
+                    // Greying the checkbox in place was tried first and was worse.
+                    // It leaves a control on screen that cannot be operated, which
+                    // invites the reader to work out why, and the answer is only
+                    // that this section does not apply to a cabinet at all.
                     if (FfbPassthroughExpanderSection != null)
-                        FfbPassthroughExpanderSection.Visibility = deadInReshape;
-                    // The stationary spring is hard-skipped for iRacing in
-                    // ApplyStationarySpring, and now that this group shares the
-                    // tab it would be a dead section sitting next to live ones.
-                    // iRacing's own torque already weights a parked car, which is
-                    // the whole job the spring exists to do elsewhere.
+                        FfbPassthroughExpanderSection.Visibility =
+                            _plugin.InvertIsDead
+                                ? System.Windows.Visibility.Collapsed
+                                : System.Windows.Visibility.Visible;
+                    // Damping writes ModeBDamper, and the only place that is read
+                    // sits past MaybeReshapeFfb's pass-through early return. So in
+                    // any game we are not synthesising for, which is Assetto Corsa,
+                    // every tapped game and every arcade cabinet, the slider has
+                    // never done anything. showTuning already means "one of our own
+                    // force paths is armed for this game", which is exactly the
+                    // condition that makes it live.
+                    var damperVis = showTuning
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
+                    if (ModeBDamperRow  != null) ModeBDamperRow.Visibility  = damperVis;
+                    if (ModeBDamperHelp != null) ModeBDamperHelp.Visibility = damperVis;
+
+                    // Stationary friction shows only on the RaceRoom R3EFFB route,
+                    // the one path that drops it (the shared-memory force it rebuilds
+                    // from is ~0 parked). Hidden everywhere else, including RaceRoom
+                    // on the tap route, where the game's own friction still comes
+                    // through.
+                    if (R3EStationaryDamperPanel != null)
+                        R3EStationaryDamperPanel.Visibility = _plugin.R3EStationaryDamperApplies
+                            ? System.Windows.Visibility.Visible
+                            : System.Windows.Visibility.Collapsed;
+
+                    // The stationary spring hides where the force path skips it,
+                    // which is now one rule in one place rather than this
+                    // condition and ApplyStationarySpring each stating their own.
+                    // They had already drifted: this hid on "is a reshape game",
+                    // and RaceRoom is one, but the force path skipped only
+                    // iRacing. The spring goes in before the reshape and gets
+                    // reshaped along with the game's force, so it was still
+                    // working in RaceRoom with no control left to tune it.
                     if (StationarySpringExpander != null)
-                        StationarySpringExpander.Visibility = deadInReshape;
+                        StationarySpringExpander.Visibility =
+                            _plugin.ActiveGameAllowsStationarySpring
+                                ? System.Windows.Visibility.Visible
+                                : System.Windows.Visibility.Collapsed;
+                    // Same flag as the two controls it names. "Wheel Output" is
+                    // the honest word only while nothing passes through, and
+                    // with takeover off in a reshape game the game's own force
+                    // does pass through, so the section is a pass-through again.
                     if (FfbPassthroughHeader != null)
-                        FfbPassthroughHeader.Text = reshapeGame ? "Wheel Output" : "FFB Pass-Through";
+                        FfbPassthroughHeader.Text = _plugin.TapCorrectionsBypassed
+                            ? "Wheel Output" : "FFB Pass-Through";
 
                     // Tab name. "Telemetry FFB" is wrong for iRacing, where the
                     // force is not built FROM telemetry but is the sim's own
@@ -1101,9 +1200,11 @@ namespace TrueforceForAll.Plugin
                     // explains why and the per-game Enable box greys out.
                     ModeBEnabledCheck.IsChecked = _plugin.ModeBEnabledForActiveGame;
                     ModeBEnabledCheck.IsEnabled = mbSupported;
-                    if (ModeBResetButton != null)
-                        ModeBResetButton.Visibility = showTuning
-                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // Deliberately NOT gated on showTuning any more. It sits at the
+                    // bottom of the tab and now also resets spike reduction, which
+                    // is global and on screen in every game, so hiding it with the
+                    // Mode B recipe would take away the only route back to the
+                    // spike defaults in exactly the games that do not use Mode B.
                     // "Telemetry Based FFB" is a promise we do not keep in
                     // iRacing. Everywhere else the force IS built from telemetry:
                     // a slip model invents it and the game contributes nothing.
@@ -1122,7 +1223,7 @@ namespace TrueforceForAll.Plugin
                     // as a HANDOVER makes the disable step read as part of the
                     // feature instead of an argument with it.
                     ModeBEnabledCheck.Content = reshapeGame
-                        ? "Take over force feedback for iRacing"
+                        ? $"Take over force feedback for {ModeBGameDisplayName(mbGame)}"
                         : "Enable Telemetry Based FFB for this game";
                     // Same correction wherever the phrase is user-facing. A
                     // heading and a checkbox that disagree about what the feature
@@ -1162,7 +1263,9 @@ namespace TrueforceForAll.Plugin
                             // all with nothing on screen to explain why. What it
                             // needs is force feedback DISABLED, with max force
                             // left wherever they like it.
-                            string note = reshapeGame
+                            string note = r3eHere
+                                ? "Applies to RaceRoom. Checked, the wheel is driven from the sim's own steering force read straight from its shared memory, instead of the USB capture. Unchecked returns to the USB capture (the tap route)."
+                                : reshapeGame
                                 ? "Applies to iRacing. Turn iRacing's own force feedback OFF (do not set its strength to 0, the plugin reads that number), and set loadTrueForceAPI=0 in app.ini."
                                 : $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
                             if (mbGame == "FM8")
@@ -1185,6 +1288,11 @@ namespace TrueforceForAll.Plugin
                     // centering + damping own center calm, so the slider left the UI.
                     ModeBDamperSlider.Value     = mbs.ModeBDamper;
                     ModeBDamperText.Text        = mbs.ModeBDamper.ToString("F2");
+                    R3EStationaryDamperCheck.IsChecked = mbs.R3EStationaryDamper;
+                    R3EDamperStrengthSlider.Value = mbs.R3EStationaryDamperStrength;
+                    R3EDamperStrengthText.Text    = mbs.R3EStationaryDamperStrength.ToString("F2");
+                    R3EDamperFadeSlider.Value     = mbs.R3EStationaryDamperFadeKmh;
+                    R3EDamperFadeText.Text        = mbs.R3EStationaryDamperFadeKmh.ToString("F0");
                     ModeBMinForceSlider.Value   = mbs.ModeBMinForce;
                     ModeBMinForceText.Text      = mbs.ModeBMinForce.ToString("F2");
                     ModeBRecoverSlider.Value    = mbs.ModeBLockupRecoverMs;
@@ -1241,6 +1349,10 @@ namespace TrueforceForAll.Plugin
                     bool manual = perf.Mode == PerformanceMode.Manual;
                     PerfTfRingSlider.IsEnabled    = manual;
                     PerfAudioRingSlider.IsEnabled = manual;
+                    // The readouts are click-to-type, so they have to follow the
+                    // sliders or a typed value would walk around the Auto gate.
+                    if (PerfTfRingText    != null) PerfTfRingText.IsEnabled    = manual;
+                    if (PerfAudioRingText != null) PerfAudioRingText.IsEnabled = manual;
                     PerfTfRingSlider.Value    = perf.TfRingSize;
                     PerfAudioRingSlider.Value = perf.AudioRingSize;
                     PerfTfRingText.Text    = FormatRing(perf.TfRingSize);
@@ -1276,6 +1388,16 @@ namespace TrueforceForAll.Plugin
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
                 if (ModeBRevLightsCheck != null)
                     ModeBRevLightsCheck.IsChecked = _plugin.Settings?.ModeBRevLightsEnabled != false;
+
+                // What the rim LEDs do when the revs cannot drive them.
+                if (IdleLedModeCombo != null && _plugin.Settings != null)
+                {
+                    FillAmbientLedCombos();
+                    IdleLedModeCombo.SelectedIndex  = (int)_plugin.Settings.IdleLedMode;
+                    NoRevLedModeCombo.SelectedIndex = (int)_plugin.Settings.NoRevLedMode;
+                    LedSweepSlider.Value = LedSweep.ClampPeriodMs(_plugin.Settings.LedSweepPeriodMs);
+                    RefreshAmbientLedRows();
+                }
 
                 // Wheel-base Dynamic OLED (experimental, default off). The whole
                 // section is hidden on a wheel with no screen: a G923 owner has
@@ -1690,6 +1812,9 @@ namespace TrueforceForAll.Plugin
             }
             finally { _suppressEvents = false; }
 
+            // Put the in-progress edit back over the refreshed display.
+            if (editing != null && editing.Text != editingText) editing.Text = editingText;
+
             // After all UI controls have been re-synced from plugin state,
             // re-derive each section's dirty bit from the (now-current)
             // values vs the active preset's snapshot. This catches scope
@@ -2012,6 +2137,7 @@ namespace TrueforceForAll.Plugin
 
             RefreshCarFactsPanel();
             RefreshIRacingAutoReadiness();
+            RefreshR3EAutoReadiness();
             RefreshModeBAutoStrengthReadiness();
 
             var src = _plugin?.AudioCapture;
@@ -2028,6 +2154,10 @@ namespace TrueforceForAll.Plugin
                 FfbTapText.Text = _plugin.FfbTapStatus;
                 StreamText.Text = _plugin.StreamStatus;
                 VoicesText.Text = _plugin.ActiveVoiceCount.ToString();
+
+                // The rim-LED audio meter's own readout. Cheap while it is off:
+                // one bool and one visibility compare.
+                RefreshAudioLedsStatus();
 
                 // Surface USBPcap recovery actions only when USBPcap is
                 // missing. Keeps the diagnostics row uncluttered in the
@@ -4949,9 +5079,9 @@ namespace TrueforceForAll.Plugin
         ///
         /// Both read the EFFECTIVE mode, which is what the plugin is actually doing,
         /// exactly as the checkbox this replaced read the effective bool. Showing the
-        /// stored choice instead looked tidier and broke the per-game switch: a Full
+        /// stored choice instead looked tidier and broke the per-game switch: a Normal
         /// user starting iRacing has the plugin auto-yield for that game, and a
-        /// selector still reading "Full" cannot be used to take it back, because
+        /// selector still reading "Normal" cannot be used to take it back, because
         /// picking the already-selected item raises no event in WPF.</summary>
         /// <summary>A signature of everything about the wheel that changes how
         /// this panel is BUILT: whether a wheel is known at all, whether its lights
@@ -5043,7 +5173,7 @@ namespace TrueforceForAll.Plugin
                 MasterModeNote.Inlines.Add(new Run(_plugin.NativeTrueforceStreamFromMaira
                     ? "Lightsync only for this session: MAIRA is streaming to the wheel. Running both at the "
                       + "same time is not supported; close MAIRA, then pick Normal. "
-                    : "Lightsync only for this session: " + (_plugin.ActiveGameIsReshapeGame ? "iRacing" : "the game")
+                    : "Lightsync only for this session: " + (_plugin.ActiveGameIsReshapeGame ? ModeBGameDisplayName(_plugin.ActiveGame) : "the game")
                       + " is streaming its own Trueforce, and two streams on one wheel make it whine. "
                       + "Pick Normal to try again. "));
                 var why = new Hyperlink(new Run("Open the guide"));
@@ -5268,100 +5398,13 @@ namespace TrueforceForAll.Plugin
         }
 
         // ---------- Editable slider readouts ----------
+        //
+        // The mechanism itself lives in EditableReadout so the engine editor,
+        // which is a separate class and so was never reached by it, can share it
+        // rather than grow a second copy.
 
-        // Readouts that show a transformed value (percent = value * 100). Typed
-        // input is divided by this before being written to the slider; keyed by
-        // the readout field name. Everything else maps 1:1.
-        private static readonly Dictionary<string, double> _readoutScale =
-            new Dictionary<string, double>
-            {
-                ["AirborneReductionText"]   = 100.0,
-            };
+        private void WireEditableReadouts() => EditableReadout.WireAll(this);
 
-        // Make every "<X>Slider" + "<X>Text" pair a click-to-type field. Each
-        // box writes back to its OWN slider (its own range), and that slider's
-        // existing ValueChanged still formats the display (units, precision,
-        // percent), so values stay per-slider, nothing is normalized. Paired by
-        // reflection over the generated x:Name fields, so new sliders are
-        // covered automatically as long as they keep the naming convention.
-        private void WireEditableReadouts()
-        {
-            var fields = GetType().GetFields(System.Reflection.BindingFlags.Instance
-                                             | System.Reflection.BindingFlags.NonPublic
-                                             | System.Reflection.BindingFlags.Public);
-            var byName = new Dictionary<string, System.Reflection.FieldInfo>();
-            foreach (var f in fields) byName[f.Name] = f;
-
-            foreach (var f in fields)
-            {
-                if (f.FieldType != typeof(Slider) || !f.Name.EndsWith("Slider")) continue;
-                string readoutName = f.Name.Substring(0, f.Name.Length - "Slider".Length) + "Text";
-                if (!byName.TryGetValue(readoutName, out var rf) || rf.FieldType != typeof(TextBox)) continue;
-                if (f.GetValue(this) is Slider slider && rf.GetValue(this) is TextBox box)
-                    AttachEditableReadout(box, slider, readoutName);
-            }
-        }
-
-        private void AttachEditableReadout(TextBox box, Slider slider, string readoutName)
-        {
-            double scale = _readoutScale.TryGetValue(readoutName, out var sc) ? sc : 1.0;
-
-            // Flat readout look (no border/background), but now focusable + typeable.
-            box.BorderThickness = new Thickness(0);
-            box.Background = Brushes.Transparent;
-            box.Padding = new Thickness(0);
-            box.HorizontalAlignment = HorizontalAlignment.Stretch;
-            box.TextAlignment = TextAlignment.Right;
-            box.HorizontalContentAlignment = HorizontalAlignment.Right;
-            box.Cursor = Cursors.IBeam;
-            if (box.ToolTip == null) box.ToolTip = "Click to type an exact value.";
-
-            box.GotKeyboardFocus += (s, e) =>
-            {
-                // Swap the formatted display (e.g. "8 (2ms)", "75%") for a clean
-                // editable number in display units, and select it.
-                box.Tag = box.Text;
-                box.Text = (slider.Value * scale).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
-                box.Dispatcher.BeginInvoke(new Action(box.SelectAll), DispatcherPriority.Input);
-            };
-            box.PreviewKeyDown += (s, e) =>
-            {
-                if (e.Key == Key.Enter)       { CommitReadout(box, slider, scale); Keyboard.ClearFocus(); e.Handled = true; }
-                else if (e.Key == Key.Escape) { RestoreReadout(box);               Keyboard.ClearFocus(); e.Handled = true; }
-            };
-            box.LostFocus += (s, e) => CommitReadout(box, slider, scale);
-        }
-
-        // Parse the first number the user typed and write it back to the slider
-        // (clamped to the slider's range, undoing any display scale). The cached
-        // display in box.Tag doubles as an "edit in progress" sentinel so Enter
-        // followed by LostFocus only commits once (re-parsing a rounded display
-        // like "86%" would otherwise drift the value).
-        private void CommitReadout(TextBox box, Slider slider, double scale)
-        {
-            if (!(box.Tag is string cached)) return; // not in an edit session
-            box.Tag = null;                          // end the session
-            var m = System.Text.RegularExpressions.Regex.Match(box.Text ?? "", @"-?\d+(\.\d+)?");
-            if (m.Success && double.TryParse(m.Value, System.Globalization.NumberStyles.Float,
-                                             System.Globalization.CultureInfo.InvariantCulture, out double typed))
-            {
-                double val = typed / scale;
-                if (val < slider.Minimum) val = slider.Minimum;
-                if (val > slider.Maximum) val = slider.Maximum;
-                if (Math.Abs(val - slider.Value) > 1e-9)
-                {
-                    slider.Value = val; // fires ValueChanged -> reformats + applies
-                    return;
-                }
-            }
-            box.Text = cached; // no-op or unparseable: restore the formatted display
-        }
-
-        private void RestoreReadout(TextBox box)
-        {
-            if (box.Tag is string cached) box.Text = cached;
-            box.Tag = null;
-        }
         private void FfbScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -5415,10 +5458,19 @@ namespace TrueforceForAll.Plugin
         private void ModeBEnabled_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
-            // Per-game toggle: enable Mode B for the ACTIVE game only (it
-            // persists + re-arms inside the plugin). Off unsupported games the
-            // checkbox is disabled, so this only fires for supported ones.
-            _plugin.SetModeBEnabledForActiveGame(ModeBEnabledCheck.IsChecked == true);
+            bool on = ModeBEnabledCheck.IsChecked == true;
+            // RaceRoom: the checkbox IS the R3EFFB shared-memory route switch, so
+            // one control A/Bs the tap route against it. Everywhere else it is the
+            // per-game Mode B / reshape opt-in. Both persist + re-arm in the plugin.
+            if (_plugin.ActiveGameIsR3E)
+            {
+                _plugin.SetR3ETakeover(on);
+                // The route change flips the FFB scale/invert rows, the tuning
+                // panels and the R3E friction section, so re-read them now.
+                RefreshFromPlugin();
+            }
+            else
+                _plugin.SetModeBEnabledForActiveGame(on);
         }
 
         // SimHub GameName -> friendly label for the Mode B tab note.
@@ -5430,6 +5482,9 @@ namespace TrueforceForAll.Plugin
                 case "FH4": return "Forza Horizon 4";
                 case "FH5": return "Forza Horizon 5";
                 case "FH6": return "Forza Horizon 6";
+                case "IRacing": return "iRacing";
+                case "RaceRoomRacingExperience":
+                case "RRRE": return "RaceRoom";
                 default:    return string.IsNullOrEmpty(game) ? "this game" : game;
             }
         }
@@ -5481,6 +5536,26 @@ namespace TrueforceForAll.Plugin
             ModeBRecoverText.Text  = s.ModeBLockupRecoverMs.ToString("F0");
             ModeBMinForceText.Text = s.ModeBMinForce.ToString("F2");
             _plugin.ApplyModeBFromSettings();
+            SchedulePersistDebounced();
+        }
+
+        // RaceRoom stationary friction (R3EFFB route). The FFB thread reads these
+        // settings every tick, so a slider move is live; just persist.
+        private void R3EStationaryDamper_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.R3EStationaryDamper = R3EStationaryDamperCheck.IsChecked == true;
+            SchedulePersistDebounced();
+        }
+
+        private void R3EDamperSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+            s.R3EStationaryDamperStrength = R3EDamperStrengthSlider.Value;
+            s.R3EStationaryDamperFadeKmh  = R3EDamperFadeSlider.Value;
+            R3EDamperStrengthText.Text = s.R3EStationaryDamperStrength.ToString("F2");
+            R3EDamperFadeText.Text     = s.R3EStationaryDamperFadeKmh.ToString("F0");
             SchedulePersistDebounced();
         }
 
@@ -5582,11 +5657,15 @@ namespace TrueforceForAll.Plugin
             string which = spring ? "Farming Simulator" : "Forza";
             string other = spring ? "Forza" : "Farming Simulator";
             bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
-                "Reset Telemetry Based FFB",
-                "Reset the " + which + " tuning to the defaults?\n\nThis puts every slider and feel-feature toggle on this tab back to your wheel's defaults (the G PRO, RS50, and G923 each have their own). Your " + other + " setup is left alone, and so are your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings.",
+                "Reset FFB tuning",
+                "Reset the " + which + " tuning and FFB spike reduction to the defaults?\n\nThis puts every slider and feel-feature toggle on this tab back to the shipped defaults (Telemetry Based FFB uses your wheel's own: the G PRO, RS50, and G923 each have their own). Your " + other + " setup is left alone, and so are your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings.",
                 DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
             if (ok != true) return;
             _plugin.ResetModeBTuningToDefaults();
+            // Spike reduction is global rather than per-game, so it resets
+            // whichever family the Mode B half just handled.
+            _plugin.ResetSpikeReductionToDefaults();
+            MarkEffectDirty(EffectKind.SpikeReduction);
             RefreshFromPlugin();
         }
 
@@ -5620,28 +5699,81 @@ namespace TrueforceForAll.Plugin
             MarkEffectDirty(EffectKind.SpikeReduction);
         }
 
-        // Swaps the shared limit slider's label + help and the method
-        // description for the selected method, and shows the transient-only
-        // "Cap softness" row only in transient mode. Pure UI, no settings
-        // writes, so it is safe to call during a suppressed refresh.
+        // Shows the selected method's own controls and hides the other's, and
+        // swaps the description above them. Each method has its own slider and
+        // its own setting, so this only toggles visibility: nothing here
+        // reassigns a Value, which is what keeps a method switch from firing
+        // ValueChanged into the setting the user did not touch. Pure UI, no
+        // settings writes, so it is safe during a suppressed refresh.
         private void UpdateSpikeModeUi()
         {
             if (SpikeModeSlewRadio == null) return; // designer / pre-init
             bool slew = SpikeModeSlewRadio.IsChecked == true;
+            // Deliberately parallel ("Slows how fast" / "Caps how hard") so the
+            // two methods can be told apart by reading one clause of each.
             if (SpikeModeDescription != null)
                 SpikeModeDescription.Text = slew
-                    ? "Caps how fast the force is allowed to change. No amplitude reduction, sustained forces always reach full strength; a sharp spike just gets spread across a few extra milliseconds."
-                    : "Soft-caps only the part of a sudden jump that exceeds your threshold. Sustained heavy cornering passes through at full strength; crashes and big curb hits get rounded off.";
-            if (FfbSpikeLimitLabel != null)
-                FfbSpikeLimitLabel.Text = slew ? "Slew rate:" : "Spike threshold:";
-            if (FfbSpikeLimitHelp != null)
-                FfbSpikeLimitHelp.Text = slew
-                    ? "Maximum change in force per millisecond. Lower spreads harsh spikes over more time (softer); higher lets force move faster (sharper)."
-                    : "Minimum force magnitude before the cap can engage. Below this, forces pass through untouched. Lower catches more spikes; higher only the biggest hits.";
-            if (SpikeCapSoftnessRow != null)
-                SpikeCapSoftnessRow.Visibility = slew
-                    ? System.Windows.Visibility.Collapsed
-                    : System.Windows.Visibility.Visible;
+                    ? "Slows how fast the force can change. Nothing is made weaker: a sharp hit still reaches full strength, it just arrives over a few more milliseconds."
+                    : "Measures each moment against the force of the last fifth of a second. A corner builds gradually and passes through at full strength; a curb strike outruns that average, and only the part above it gets flattened.";
+            var show = System.Windows.Visibility.Visible;
+            var hide = System.Windows.Visibility.Collapsed;
+            if (SpikeRateRow  != null) SpikeRateRow.Visibility  = slew ? show : hide;
+            if (SpikePeakRows != null) SpikePeakRows.Visibility = slew ? hide : show;
+        }
+
+        // Every spike knob is stored in LSB and shown as a share of full force,
+        // because a raw device count tells a user nothing: full scale is 32767,
+        // which the UI never had anywhere to say. Zero stays "off".
+        private static string SpikePercentText(double lsb)
+            => lsb <= 0
+               ? "off"
+               : (lsb * 100.0 / TrueforceSettings.FfbFullScaleLsb).ToString("0.#") + "%";
+
+        // The rate limit's second sentence is the one that makes it concrete:
+        // a percent-per-millisecond is still abstract, the time to cross the
+        // whole force range is not. Recomputed on every move.
+        private void UpdateSpikeRateHelp()
+        {
+            if (FfbSpikeLimitHelp == null || FfbSpikeLimitSlider == null) return;
+            double lsbPerMs = FfbSpikeLimitSlider.Value;
+            if (lsbPerMs <= 0)
+            {
+                FfbSpikeLimitHelp.Text = "Off: force changes as fast as the game sends it.";
+                return;
+            }
+            double fullRangeMs = TrueforceSettings.FfbFullScaleLsb / lsbPerMs;
+            FfbSpikeLimitHelp.Text =
+                "The most the force can change in one millisecond, as a share of full strength. At this setting the wheel takes about "
+                + fullRangeMs.ToString("0.#")
+                + " ms to swing from nothing to full force. Lower spreads a hit over more time (softer); higher lets it arrive faster (sharper).";
+        }
+
+        // The peak limiter's two knobs are both a share of full force, so on
+        // their own they read as one number twice and the way they combine
+        // stays invisible. This says what they actually produce, the same way
+        // the rate limiter's help names a time rather than a percentage.
+        private void UpdateSpikePeakSummary()
+        {
+            if (SpikePeakSummary == null
+                || FfbPeakLimitSlider == null || FfbSpikeThresholdSlider == null) return;
+            double maxHit = FfbPeakLimitSlider.Value;
+            double floor  = FfbSpikeThresholdSlider.Value;
+            // The runtime needs BOTH above zero to engage at all, so say that
+            // rather than describing a limiter that is not running.
+            if (maxHit <= 0 || floor <= 0)
+            {
+                SpikePeakSummary.Text = "Either one at zero turns the peak limiter off, and hits pass through as the game sent them.";
+                return;
+            }
+            double full = TrueforceSettings.FfbFullScaleLsb;
+            SpikePeakSummary.Text =
+                "So: a hit levels off about "
+                + (maxHit * 100.0 / full).ToString("0.#")
+                + "% above the running average. On a smooth road, where the floor holds that average at "
+                + (floor * 100.0 / full).ToString("0.#")
+                + "%, that means nothing gets past about "
+                + ((floor + maxHit) * 100.0 / full).ToString("0.#")
+                + "% of full strength.";
         }
 
         private void CaptureExeOverride_LostFocus(object sender, RoutedEventArgs e)
@@ -5685,15 +5817,26 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             float v = (float)e.NewValue;
-            FfbSpikeLimitText.Text = v <= 0 ? "off" : ((int)v).ToString();
+            FfbSpikeLimitText.Text = SpikePercentText(v);
+            UpdateSpikeRateHelp();
             _plugin.SetFfbSpikeMaxLsbPerMs(v);
+            MarkEffectDirty(EffectKind.SpikeReduction);
+        }
+        private void FfbSpikeThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            float v = (float)e.NewValue;
+            FfbSpikeThresholdText.Text = SpikePercentText(v);
+            UpdateSpikePeakSummary();
+            _plugin.SetFfbSpikeTransientThresholdLsb(v);
             MarkEffectDirty(EffectKind.SpikeReduction);
         }
         private void FfbPeakLimitSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
             float v = (float)e.NewValue;
-            FfbPeakLimitText.Text = v <= 0 ? "off" : ((int)v).ToString();
+            FfbPeakLimitText.Text = SpikePercentText(v);
+            UpdateSpikePeakSummary();
             _plugin.SetFfbPeakSoftLimitLsb(v);
             MarkEffectDirty(EffectKind.SpikeReduction);
         }
@@ -6122,7 +6265,7 @@ namespace TrueforceForAll.Plugin
                 FxTuneSignCheck.IsChecked = _plugin.DamperSignInvertedNow;
                 FxTuneInertiaCoastsCheck.IsChecked = _plugin.InertiaCoastsNow;
                 FxTuneLpfSlider.Value     = Math.Max(0, Math.Min(500, _plugin.ConditionLpfHzNow));
-                FxTuneLpfLabel.Text       = $"{_plugin.ConditionLpfHzNow:F0} Hz";
+                FxTuneLpfText.Text       = $"{_plugin.ConditionLpfHzNow:F0} Hz";
                 FxLoadGainForSelectedKind();
             }
             finally { _suppressEvents = prev; }
@@ -6146,7 +6289,7 @@ namespace TrueforceForAll.Plugin
             {
                 double g = _plugin.FxKindGainNow(kind);
                 FxTuneGainSlider.Value = TrueforcePlugin.ClampFxGain(g);
-                if (FxTuneGainLabel != null)   FxTuneGainLabel.Text   = g.ToString("F2");
+                if (FxTuneGainText != null)   FxTuneGainText.Text   = g.ToString("F2");
                 if (FxTuneGainCaption != null) FxTuneGainCaption.Text = TrueforcePlugin.FxGainFamilyLabel(kind);
             }
             finally { _suppressEvents = prev; }
@@ -6157,10 +6300,10 @@ namespace TrueforceForAll.Plugin
 
         private void FxTestParam_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (FxTestStrengthLabel != null && FxTestStrengthSlider != null)
-                FxTestStrengthLabel.Text = $"{(int)FxTestStrengthSlider.Value}%";
-            if (FxTestPeriodLabel != null && FxTestPeriodSlider != null)
-                FxTestPeriodLabel.Text = $"{(int)FxTestPeriodSlider.Value} ms";
+            if (FxTestStrengthText != null && FxTestStrengthSlider != null)
+                FxTestStrengthText.Text = $"{(int)FxTestStrengthSlider.Value}%";
+            if (FxTestPeriodText != null && FxTestPeriodSlider != null)
+                FxTestPeriodText.Text = $"{(int)FxTestPeriodSlider.Value} ms";
         }
 
         private void FxTestNative_Click(object sender, RoutedEventArgs e) => FxTestStart("NATIVE");
@@ -6205,8 +6348,8 @@ namespace TrueforceForAll.Plugin
 
         private void FxTuneGain_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (FxTuneGainLabel != null && FxTuneGainSlider != null)
-                FxTuneGainLabel.Text = FxTuneGainSlider.Value.ToString("F2");
+            if (FxTuneGainText != null && FxTuneGainSlider != null)
+                FxTuneGainText.Text = FxTuneGainSlider.Value.ToString("F2");
             if (_suppressEvents || _plugin == null) return;
             // Per-effect: a hand edit here touches ONLY the picked family.
             // (Only the measurement paths, auto-tune and DAMPCAL, carry the
@@ -6228,8 +6371,8 @@ namespace TrueforceForAll.Plugin
 
         private void FxTuneLpf_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (FxTuneLpfLabel != null && FxTuneLpfSlider != null)
-                FxTuneLpfLabel.Text = $"{(int)FxTuneLpfSlider.Value} Hz";
+            if (FxTuneLpfText != null && FxTuneLpfSlider != null)
+                FxTuneLpfText.Text = $"{(int)FxTuneLpfSlider.Value} Hz";
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetConditionLpfHz(FxTuneLpfSlider.Value);
         }
@@ -6941,6 +7084,106 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // RaceRoom (R3EFFB) auto-strength readiness, the press-to-apply twin of
+        // the iRacing one above. Keeps the editable "Car's max" box current, greys
+        // Apply until this car's peak has settled, and carries the observed value on
+        // the button (like iRacing's "Use X"). Ticked, for the same reason.
+        private bool? _r3eAutoReadyShown;
+        private int _r3eAutoPctShown = -1;
+        private string _r3eAutoBtnShown;
+
+        private void RefreshR3EAutoReadiness()
+        {
+            if (R3EApplyStrengthBtn == null || _plugin == null) return;
+            if (R3EAutoStrengthRow == null || R3EAutoStrengthRow.Visibility != Visibility.Visible) return;
+
+            // Keep the "Car's max" box current unless the user is typing in it.
+            if (R3EMaxBox != null && !R3EMaxBox.IsKeyboardFocused)
+            {
+                string shown = _plugin.R3EEffectivePeak.ToString("0.00");
+                if (R3EMaxBox.Text != shown) R3EMaxBox.Text = shown;
+            }
+
+            bool ready = _plugin.R3EPeakSettled;
+            int pct = (int)Math.Round(_plugin.R3EPeakConfidence * 100.0);
+            float obs = _plugin.R3EObservedPeak;
+            // The button carries the number it would set, doubling as the readout of
+            // what the car pushes, exactly like the iRacing Auto button.
+            string label = (ready && obs > 0.02f) ? "Apply " + obs.ToString("0.00") : "Apply";
+            if (_r3eAutoReadyShown == ready && _r3eAutoPctShown == pct && _r3eAutoBtnShown == label) return;
+            bool wasReady = _r3eAutoReadyShown == true;
+            _r3eAutoReadyShown = ready;
+            _r3eAutoPctShown = pct;
+            _r3eAutoBtnShown = label;
+
+            R3EApplyStrengthBtn.Content = label;
+            R3EApplyStrengthBtn.IsEnabled = ready;
+            R3EApplyStrengthBtn.Opacity = ready ? 1.0 : 0.45;
+            if (R3EAutoStrengthStatus == null) return;
+            // A press leaves its own confirmation on this line; don't stamp over it
+            // until the state moves on from where the press left it.
+            if (ready)
+            {
+                if (!wasReady)
+                    R3EAutoStrengthStatus.Text = "Ready. Press to use what this car pushes.";
+            }
+            else if (pct > 0)
+                R3EAutoStrengthStatus.Text = "Learning what this car pushes: " + pct + " percent.";
+            else
+                R3EAutoStrengthStatus.Text = "Drive a couple of clean laps.";
+        }
+
+        private void R3EApplyStrength_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            float applied = _plugin.ApplyR3EAutoStrength();
+            if (applied > 0.01f)
+            {
+                if (R3EAutoStrengthStatus != null)
+                    R3EAutoStrengthStatus.Text = $"Set this car's max to {applied:0.00}. Watching again from now.";
+                if (R3EMaxBox != null && !R3EMaxBox.IsKeyboardFocused)
+                    R3EMaxBox.Text = _plugin.R3EEffectivePeak.ToString("0.00");
+                R3EApplyStrengthBtn.Content = "Apply";
+                R3EApplyStrengthBtn.IsEnabled = false;
+                R3EApplyStrengthBtn.Opacity = 0.45;
+                // Reflect the post-apply reset (peak zeroed) so the next tick sees no
+                // change and does NOT clobber this confirmation line.
+                _r3eAutoReadyShown = false;
+                _r3eAutoPctShown = 0;
+                _r3eAutoBtnShown = "Apply";
+            }
+            else if (R3EAutoStrengthStatus != null)
+            {
+                R3EAutoStrengthStatus.Text = "Not settled yet. Drive a couple of clean laps first.";
+            }
+        }
+
+        private void R3EMax_LostFocus(object sender, RoutedEventArgs e) => CommitR3EMaxBox();
+
+        private void R3EMax_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter)
+            {
+                CommitR3EMaxBox();
+                System.Windows.Input.Keyboard.ClearFocus();
+            }
+        }
+
+        private void CommitR3EMaxBox()
+        {
+            if (_plugin == null || R3EMaxBox == null) return;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            if (float.TryParse(R3EMaxBox.Text, System.Globalization.NumberStyles.Float, ci, out float v)
+                || float.TryParse(R3EMaxBox.Text, System.Globalization.NumberStyles.Float,
+                       System.Globalization.CultureInfo.CurrentCulture, out v))
+            {
+                _plugin.SetR3EAppliedPeak(v);
+            }
+            // Re-fill with the clamped/accepted value.
+            R3EMaxBox.Text = _plugin.R3EEffectivePeak.ToString("0.00");
+            _r3eAutoBtnShown = null;   // let the readiness line/button refresh next tick
+        }
+
         // Clock gate for the periodic number-box re-fill above (400 ms).
         private DateTime _maxNmLastFillUtc = DateTime.MinValue;
 
@@ -7227,7 +7470,7 @@ namespace TrueforceForAll.Plugin
         private void UsbPcapPickDevice_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            // Full only. The picker's scan spawns a USBPcapCMD child per root hub
+            // Normal only. The picker's scan spawns a USBPcapCMD child per root hub
             // and captures every device on the bus, including the wheel the game is
             // driving, which is precisely the "no USB capture" the other two modes
             // promise. The FFB-tap buttons beside it are already inert without a
@@ -9521,6 +9764,14 @@ namespace TrueforceForAll.Plugin
                 // Opening the Effects view counts toward auto-retiring NEW badges the
                 // user keeps ignoring; refresh the chrome if any badge just cleared.
                 if (_plugin.NoteEffectsViewOpened()) RefreshNewBadges();
+            }
+            else if (MemoryMapTab != null && ReferenceEquals(MainTabs.SelectedItem, MemoryMapTab))
+            {
+                // What is running and whether the scanner is deployed can both
+                // have changed while the tab was hidden, and both decide whether
+                // Start does anything.
+                RefreshMemoryMapTab();
+                RefreshWheelCueLine();
             }
             else if (LightsyncTab != null && ReferenceEquals(MainTabs.SelectedItem, LightsyncTab))
             {
@@ -13026,14 +13277,16 @@ namespace TrueforceForAll.Plugin
             "FAULT          Force a stream fault to test auto-reconnect.\n" +
             "NOFFB          Simulate the FFB tap capturing no game force feedback while driving (tests the whole-bus retry + 'try another USB port' notice). Toggle.\n" +
             "CSPFFB         Assetto Corsa: the TF4ALL CSP Bridge is used AUTOMATICALLY when its script is installed (install it from Settings > Game mods, the on-screen prompt, or the guide), otherwise the USB capture is used. This code is a DEV force-off: type it to make AC use the capture even with the bridge installed, type again for automatic. Sub-commands pick the read field: VALUE (default, post-gain, keeps your CSP tweaks), PURE or TORQUE (pre-gain, work at in-game gain 0), FINAL, FINALFF; 'CSPFFB NM 8' sets full-scale torque for TORQUE; 'CSPFFB SUP/NOSUP' is a suppression diagnostic; 'CSPFFB DAMP' toggles the synthesized damper; 'CSPFFB DAMPK <x>' sets its strength (0..2, default 0.25); 'CSPFFB DAMPSIGN' flips its direction; 'CSPFFB DAMPTEST' runs a 28 s damper wiggle (off/on flips, then ramps). Persists.\n" +
-            "R3EFFB         RaceRoom: drive the wheel from the sim's own pre-gain steering force (read straight from its shared memory) instead of the USB capture; set in-game FFB intensity to 0 first. Frees the HID++ pipe for the rev lights and screen the way CSPFFB does in Assetto Corsa. Enabling also opts RaceRoom into Telemetry Based FFB, so this one code is the whole A/B switch against the tap route. 'R3EFFB INV' flips the force sign, 'R3EFFB NM 15' reads the raw SteeringForce channel with that full scale, 'R3EFFB PCT' returns to the percentage channel (those three are session only). Persists. Toggle.\n" +
+            "R3EFFB         RaceRoom: drive the wheel from the sim's own pre-gain steering force (read straight from its shared memory) instead of the USB capture; set in-game FFB intensity to 0 first. Frees the HID++ pipe for the rev lights and screen the way CSPFFB does in Assetto Corsa. Enabling also opts RaceRoom into Telemetry Based FFB, so this one code is the whole A/B switch against the tap route. 'R3EFFB INV' flips the force sign, 'R3EFFB NM 15' reads the raw SteeringForce channel with that full scale, 'R3EFFB PCT' returns to the percentage channel (those three are session only), 'R3EFFB AUTO' toggles per-car auto-strength (persisted, on by default; RaceRoom's percentage tops out well below full scale) and 'R3EFFB APPLY' commits this car's max iRacing-style (drive a couple of clean laps, watch the strength confidence, then apply; nothing drifts under you until you do). Bindable as R3EStrengthApply / R3EStrengthUp / R3EStrengthDown. Persists per car. Toggle.\n" +
             "R3EPROBE       RaceRoom signal probe: '[TF4ALL] R3EPROBE' lines every ~2 s with the sim's SteeringForce and percentage (current + min/max), steering input, tick rate and control state. For verifying, before trusting R3EFFB, that the force survives in-game FFB intensity 0 and that its sign matches the steering direction. Session only. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "DIDAMP [pct]   DEV: drive the wheel's NATIVE DirectInput damper from the plugin (default 75%) with the Trueforce stream fully stopped (the wheel exactly as without the plugin), and log the position read rate: the DAMPCAL feasibility spike. DIDAMP OFF ends it (auto-off after 60 s).\n" +
             "DAMPCAL        Damper calibration wizard, NO GAME NEEDED: three conditions x three hand flicks (the plugin stands aside and drives the wheel's own damper = the native reference; stream at raw zero = friction only; synthesized at the current gain). Fits each flick's decay on the wheel's DirectInput position, cancels friction and inertia, and sets the synthesized gain to match the native damper for this session. Progress on the status line and the wheel screen. DAMPCAL OFF cancels. CSPFFB DAMPSIGN flips the damper if it feels like an anti-damper.\n" +
             "DICOND         A/B: the game's DirectInput condition effects (damper, spring, friction, inertia) and rumble, decoded from the USB wire and rendered into the Trueforce stream (the wheel firmware ignores them while any stream is live). ON by default; type to disable or re-enable. Session only.\n" +
             "FXTEST         Shows or hides the effect test bench at the bottom of the FFB tab (type it again to hide it). NO GAME NEEDED: the bench plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel), then the identical effect through the plugin's renderer, so you can alternate the two and tune until they match. It also carries the hands-free Auto-tune. The typed forms still work: 'FXTEST NATIVE <effect>' and 'FXTEST ENGINE <effect>'; effects DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP, with optional strength% (default 50) and period ms (default 250). FXTEST OFF ends a running test; auto-off after 30 s.\n" +
+            "FXDUMP         Effect-download trace: one log line per effect the wheel is asked to download, decoded straight off the USB wire, with its type byte and its raw parameters (coefficients, saturations, deadband, centre, or magnitude and period). Answers whether the wheel was asked for what you think you asked for: on the bench a native effect passes through DirectInput, Windows and Logitech's driver first, and a substituted type or reshaped parameter cannot be told apart by feel. Session only. Toggle.\n" +
             "ACLEDS         Rev-light contention diagnostic: every 2 s, a '[REVLIGHT]' line with the level writes the GAME landed on the wheel's rev-light feature (measured off the USB wire), the longest gap between two of them, the level they left, and what our own LEDs and base screen were allowed to do at the time. In Assetto Corsa it also reports whether CSP's own rev-light module is driving the bar. For lights that stick, go dark, then catch up seconds later. Session only. Toggle.\n" +
+            "MEMMAP         Reveal the Memory Map tab, which runs the read-only memory scanner against a running arcade cabinet. It drives a short scripted run (idle, full throttle, idle, three throttle blips on a count) and works out where the game keeps its revs, so titles that publish no telemetry at all can eventually get some. Cues go to the wheel's screen and rev lights, because you are at the wheel, not the keyboard. It only ever READS the game's memory. Needs memscan.exe copied in beside the plugin; the tab says so with the paths if it is missing. MEMMAP OFF hides the tab and stops any running scan. Session only: hidden again on the next launch.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup taken before the plugin first wrote the slot. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
@@ -13779,6 +14032,9 @@ namespace TrueforceForAll.Plugin
                         AccessCodeStatus.Text = on
                             ? "R3E shared-memory FFB ON: in RaceRoom the wheel is driven from the sim's own steering force, read straight from its shared memory, instead of the USB capture. Set RaceRoom's FFB intensity to 0 so the game is not also driving the wheel. Type R3EFFB again for the tap route."
                             : "R3E shared-memory FFB OFF: RaceRoom is back on the USB capture. Restore your in-game FFB intensity.";
+                    // Reflect the new takeover state on the FFB tab right away; the
+                    // checkbox and section only re-read plugin state in RefreshFromPlugin.
+                    RefreshFromPlugin();
                     return;
                 }
                 string r3eArg = r3eParts[1].ToUpperInvariant();
@@ -13812,8 +14068,40 @@ namespace TrueforceForAll.Plugin
                         AccessCodeStatus.Text = "R3E force back to the SteeringForcePercentage channel (the default).";
                     return;
                 }
+                if (r3eArg == "AUTO")
+                {
+                    bool autoOn = _plugin.ToggleR3EAutoStrength();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = autoOn
+                            ? "R3E auto-strength ON: drive a couple of clean laps, then apply this car's max with 'R3EFFB APPLY' (or the R3EStrengthApply binding), iRacing style. Nothing changes under you until you apply. Persists per car."
+                            : "R3E auto-strength OFF: the raw RaceRoom percentage goes to the wheel unscaled (weaker, no per-car max). Persists.";
+                    return;
+                }
+                if (r3eArg == "APPLY")
+                {
+                    float applied = _plugin.ApplyR3EAutoStrength();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = applied > 0.01f
+                            ? $"R3E max applied for this car (peak {applied:0.00}). Nudge with R3EStrengthUp/Down; press APPLY again after a clean lap to re-capture."
+                            : "Nothing to apply yet: drive a couple of clean laps first so the peak settles (watch the R3E strength confidence), then press APPLY.";
+                    return;
+                }
+                if (r3eArg == "DAMP")
+                {
+                    var ci = System.Globalization.CultureInfo.InvariantCulture;
+                    double? strength = null, fade = null;
+                    if (r3eParts.Length >= 3 && double.TryParse(r3eParts[2],
+                            System.Globalization.NumberStyles.Float, ci, out double dS))
+                        strength = dS;
+                    if (r3eParts.Length >= 4 && double.TryParse(r3eParts[3],
+                            System.Globalization.NumberStyles.Float, ci, out double dF))
+                        fade = dF;
+                    string msg = _plugin.SetR3EStationaryDamper(strength, fade);
+                    if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                    return;
+                }
                 if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "R3EFFB sub-commands: INV (flip sign), NM <n> (raw channel + full scale), PCT (percentage channel).";
+                    AccessCodeStatus.Text = "R3EFFB sub-commands: INV (flip sign), NM <n> (raw channel + full scale), PCT (percentage channel), AUTO (auto-strength on/off), APPLY (commit this car's max), DAMP [strength] [fadeKmh] (stationary friction: firm parked, gone at speed).";
                 return;
             }
 
@@ -13842,6 +14130,30 @@ namespace TrueforceForAll.Plugin
             // DAMPCAL [OFF]: the damper calibration wizard. No game needed;
             // three conditions of three flicks each, measured on the wheel's
             // own DirectInput position; result lands in the synthesized gain.
+            // ARCADEFX [OFF]: name the live arcade effects in the log, so which
+            // effect carries which feel is read off a run instead of inferred.
+            if (code.Equals("ARCADEFX", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("ARCADEFX ", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                bool on = code.IndexOf("OFF", StringComparison.OrdinalIgnoreCase) < 0;
+                string msg = _plugin.SetArcadeEffectTrace(on);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                return;
+            }
+            // MEMMAP [OFF]: reveal or hide the Memory Map tab, which drives the
+            // read-only memory scanner. Session only by design: the unlock does
+            // not persist, so a machine that ran one scan does not carry a
+            // developer tab around afterwards.
+            if (code.Equals("MEMMAP", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("MEMMAP ", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                bool memOn = code.IndexOf("OFF", StringComparison.OrdinalIgnoreCase) < 0;
+                string memMsg = ToggleMemoryMapTab(memOn);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = memMsg;
+                return;
+            }
             if (code.Equals("DAMPCAL", StringComparison.OrdinalIgnoreCase)
                 || code.StartsWith("DAMPCAL ", StringComparison.OrdinalIgnoreCase))
             {
@@ -13896,6 +14208,15 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = dicondOff
                         ? "DirectInput effect rendering OFF (A/B: the game's damper and spring are dropped again while Trueforce streams). Session only."
                         : "DirectInput effect rendering ON: the game's condition effects are decoded from the wire and played into the stream. CSPFFB DAMPSIGN flips the direction, CSPFFB DAMPK scales the damper, DAMPCAL measures it.";
+                return;
+            }
+            // FXDUMP: what the wheel is actually ASKED for. One line per
+            // effect download, decoded off the wire, type and parameters.
+            if (code.Equals("FXDUMP", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string msg = _plugin.ToggleEffectDownloadTrace();
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
                 return;
             }
             // ACLEDS: the rev-light contention diagnostic. Reports what the
@@ -14404,6 +14725,128 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.ModeBRevLightsEnabled = ModeBRevLightsCheck.IsChecked == true;
             _plugin.PersistSettings();
             if (!_plugin.Settings.ModeBRevLightsEnabled) _plugin.TurnOffRpmLeds();
+        }
+
+        // ---------------- rim LEDs with no revs to draw ----------------
+
+        // Index = AmbientLedMode value, so a combo's SelectedIndex IS the enum.
+        // The picker is deliberately the same three items on both rows: one
+        // vocabulary means one sentence of help and one thing to learn.
+        private static readonly string[] AmbientLedModeLabels =
+        {
+            "Off", "Sweep", "Audio level",
+        };
+
+        private void FillAmbientLedCombos()
+        {
+            foreach (var combo in new[] { IdleLedModeCombo, NoRevLedModeCombo })
+            {
+                if (combo == null || combo.Items.Count > 0) continue;
+                foreach (var label in AmbientLedModeLabels) combo.Items.Add(label);
+            }
+        }
+
+        private static AmbientLedMode ModeFromIndex(int index) =>
+            index >= 0 && index < AmbientLedModeLabels.Length
+                ? (AmbientLedMode)index : AmbientLedMode.Off;
+
+        private void AmbientLedMode_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.IdleLedMode  = ModeFromIndex(IdleLedModeCombo.SelectedIndex);
+            _plugin.Settings.NoRevLedMode = ModeFromIndex(NoRevLedModeCombo.SelectedIndex);
+            _plugin.PersistSettings();
+            // Starts or stops the metering thread. The strip itself follows on
+            // the plugin's next tick, so nothing is released from here.
+            _plugin.SyncAudioOutputMeter();
+            RefreshAmbientLedRows();
+        }
+
+        private void LedSweep_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            int ms = LedSweep.ClampPeriodMs((int)Math.Round(e.NewValue));
+            if (LedSweepText != null) LedSweepText.Text = (ms / 1000.0).ToString("0.0") + " s";
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            // Live: the sweep reads this every frame, so a drag animates.
+            _plugin.Settings.LedSweepPeriodMs = ms;
+            QueueAmbientLedSave();
+        }
+
+        /// <summary>Debounced save for the sweep slider. PersistSettings
+        /// serializes the whole settings graph, and a drag fires per pixel.</summary>
+        private void QueueAmbientLedSave()
+        {
+            if (_ambientLedSaveTimer == null)
+            {
+                _ambientLedSaveTimer = new System.Windows.Threading.DispatcherTimer
+                { Interval = TimeSpan.FromMilliseconds(400) };
+                _ambientLedSaveTimer.Tick += (s, ev) =>
+                {
+                    _ambientLedSaveTimer.Stop();
+                    _plugin?.PersistSettings();
+                };
+            }
+            _ambientLedSaveTimer.Stop();
+            _ambientLedSaveTimer.Start();
+        }
+
+        private System.Windows.Threading.DispatcherTimer _ambientLedSaveTimer;
+
+        /// <summary>Put each shared setting under the picker that wants it, and
+        /// out of the tree when neither does.
+        ///
+        /// Both settings are SHARED (one sweep time, one sensitivity, whatever
+        /// the two occasions are set to), so the block is moved rather than
+        /// duplicated: two sliders editing one value is a worse answer than a
+        /// slider that is not always where you looked first. Where both pickers
+        /// want the same block it goes under the FIRST of them, which is the
+        /// only placement that does not imply the setting belongs to one
+        /// occasion more than the other.
+        ///
+        /// A block nobody wants goes back to its collapsed holder rather than
+        /// being hidden in place. That way "which controls are showing" is one
+        /// question about parents, not a second set of Visibility flags that can
+        /// disagree with them.</summary>
+        private void RefreshAmbientLedRows()
+        {
+            if (LedSweepRow == null || _plugin?.Settings == null) return;
+            var s = _plugin.Settings;
+
+            MoveBlock(LedSweepRow,     HostFor(AmbientLedMode.Sweep, s));
+            MoveBlock(AudioLedsBlock,  HostFor(AmbientLedMode.AudioLevel, s));
+            RefreshAudioLedsStatus();
+        }
+
+        /// <summary>Which host panel should own the block for <paramref name="mode"/>:
+        /// the idle picker's, the no-revs picker's, or the collapsed holder when
+        /// neither picker is on that mode.</summary>
+        private Panel HostFor(AmbientLedMode mode, TrueforceSettings s) =>
+              s.IdleLedMode  == mode ? IdleModeExtras
+            : s.NoRevLedMode == mode ? NoRevModeExtras
+            : (Panel)AmbientLedBlockHolder;
+
+        /// <summary>Which output is being metered, and the bar it is producing.
+        /// Whether this is on screen at all is decided by RefreshAmbientLedRows,
+        /// which parents the whole audio block under a picker or into the
+        /// holder; this only fills it in.
+        ///
+        /// Called from the panel's 60 Hz tick, so it writes only what actually
+        /// changed. The bar moves every frame by design; the device name changes
+        /// about once a session.</summary>
+        private void RefreshAudioLedsStatus()
+        {
+            if (AudioLedsStatusText == null || _plugin?.Settings == null) return;
+            // Nothing to read while the block is parked in the holder, and
+            // nothing to read it: skip the string work rather than formatting
+            // for a panel with Visibility Collapsed above it.
+            if (AudioLedsBlock?.Parent == AmbientLedBlockHolder) return;
+
+            string line = "Metering: " + _plugin.AudioOutputMeterStatus;
+            if (AudioLedsStatusText.Text != line) AudioLedsStatusText.Text = line;
+            // Whole LEDs, the same rounding the wheel gets, against a fixed ten
+            // steps: this is the setting-up view, and it must not change shape
+            // with whichever wheel happens to be plugged in.
+            AmbientLedPreviewBar.Value = Math.Floor(_plugin.AudioOutputMeterLevel * 10 + 0.5);
         }
 
         // Labels for effects 1-9 (index = effect number; [0] unused). The
@@ -17191,6 +17634,10 @@ namespace TrueforceForAll.Plugin
             bool manual = mode == PerformanceMode.Manual;
             PerfTfRingSlider.IsEnabled    = manual;
             PerfAudioRingSlider.IsEnabled = manual;
+            // The readouts are click-to-type, so they have to follow the
+            // sliders or a typed value would walk around the Auto gate.
+            if (PerfTfRingText    != null) PerfTfRingText.IsEnabled    = manual;
+            if (PerfAudioRingText != null) PerfAudioRingText.IsEnabled = manual;
         }
 
         private void PerfTfRingSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

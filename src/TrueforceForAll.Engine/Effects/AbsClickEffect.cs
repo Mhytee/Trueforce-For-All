@@ -56,6 +56,17 @@ namespace TrueforceForAll.Plugin.Effects
 
         private const double SampleRate = 4000.0;
         private const int HoldMs = 120;   // Pulse-mode hold
+
+        // Standstill suppression threshold (km/h), the same one the pit limiter
+        // uses. Anti-lock braking does nothing at zero speed, so a set flag down
+        // there is never real. Two ways it gets set anyway:
+        //
+        // A held flag survives a game closing, and the enricher then paints it
+        // onto whatever runs next. That matters most on an arcade cabinet, which
+        // publishes force and no physics at all, so every frame reads as parked
+        // and there is nothing else to end the buzz. ABS and DRS were the only
+        // flag-driven effects without this gate.
+        private const float StandstillKmh = 1.0f;
         private static readonly long HoldStopwatchTicks =
             HoldMs * Stopwatch.Frequency / 1000;
 
@@ -177,6 +188,7 @@ namespace TrueforceForAll.Plugin.Effects
             if (IsTesting) return;
 
             int absValue = f.AbsActive;
+            if (absValue > 0 && f.SpeedKmh < StandstillKmh) absValue = 0;
 
             if (Mode == AbsMode.PerTick)
             {

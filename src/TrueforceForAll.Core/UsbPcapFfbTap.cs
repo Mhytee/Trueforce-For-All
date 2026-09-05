@@ -362,6 +362,45 @@ namespace TrueforceForAll.Core
         private readonly long[] _levelWritesByFeature = new long[256];
         private readonly long[] _levelMaxGapByFeature = new long[256];
 
+        /// <summary>Log every effect download the wheel is sent, decoded from
+        /// the wire. Off by default: it is one line per download and a game
+        /// re-downloads constantly.</summary>
+        public bool LogEffectDownloads { get; set; }
+
+        private static ushort TraceU16(byte[] p, int off) => (ushort)((p[off] << 8) | p[off + 1]);
+        private static short  TraceS16(byte[] p, int off) => (short)((p[off] << 8) | p[off + 1]);
+
+        private void TraceEffectDownload(byte[] payload, int off, int len)
+        {
+            byte typeByte = payload[off + 5];
+            byte type     = (byte)(typeByte & 0x7f);
+            var sb = new System.Text.StringBuilder();
+            sb.Append("FFB tap: DOWNLOAD slot=").Append(payload[off + 4])
+              .Append(" type=0x").Append(type.ToString("X2"))
+              .Append(" (").Append(HidppEffectEngine.TypeName(type)).Append(")");
+            if ((typeByte & HidppEffectEngine.AutostartBit) != 0) sb.Append(" autostart");
+            sb.Append(" len=").Append((payload[off + 6] << 8) | payload[off + 7]).Append("ms")
+              .Append(" delay=").Append((payload[off + 8] << 8) | payload[off + 9]).Append("ms");
+            // Raw wire values, deliberately: the point is to compare against
+            // what was sent, and a normalized float hides a scaling mistake.
+            if (type >= HidppEffectEngine.TypeSpring && type <= HidppEffectEngine.TypeInertia && len >= 22)
+                sb.Append(" leftSat=").Append(TraceU16(payload, off + 10))
+                  .Append(" leftCoeff=").Append(TraceS16(payload, off + 12))
+                  .Append(" deadband=").Append(TraceU16(payload, off + 14))
+                  .Append(" center=").Append(TraceS16(payload, off + 16))
+                  .Append(" rightCoeff=").Append(TraceS16(payload, off + 18))
+                  .Append(" rightSat=").Append(TraceU16(payload, off + 20));
+            else if (type == HidppEffectEngine.TypeRamp && len >= 20)
+                sb.Append(" start=").Append(TraceS16(payload, off + 10))
+                  .Append(" end=").Append(TraceS16(payload, off + 12));
+            else if (len >= 18)
+                sb.Append(" mag=").Append(TraceS16(payload, off + 10))
+                  .Append(" offset=").Append(TraceS16(payload, off + 12))
+                  .Append(" period=").Append(TraceU16(payload, off + 14)).Append("ms")
+                  .Append(" phase=").Append(TraceU16(payload, off + 16));
+            Log(sb.ToString());
+        }
+
         private void NoteLevelWrite(byte featIdx, int level)
         {
             _lastLevelByFeature[featIdx] = level;
@@ -1657,6 +1696,35 @@ namespace TrueforceForAll.Core
         private int _paraStreak;
         private ushort _lastLoggedGain = 0xffff;
 
+        // The wheel's configured rotation range in degrees, as last SET by
+        // whoever configures it (G HUB, or a game's soft lock through the
+        // Logitech driver): HID++ 0x8123 fn6 SET_APERTURE, BE16 degrees in
+        // params[0..1]. Read-only bookkeeping. We never send fn6, and we do
+        // not send the fn5 GET either: the router only ever sees host->device
+        // traffic, so this stays 0 (unknown) until something else sets the
+        // range while we are capturing.
+        //
+        // Why it is worth having: every steering value in the plugin is
+        // normalized to -1..1 across THIS range, so it is the missing unit on
+        // the condition engine's velocity metric and on any damper gain
+        // measured against it. Diagnostics for now, not wired into force.
+        //
+        // Bounds of a real Logitech rotation range: 40 degrees was the
+        // narrowest the old Profiler would set, 1080 the widest any supported
+        // wheel offers (G PRO; the G29/G920/G923 family stops at 900). Only a
+        // value inside this band is accepted as an aperture.
+        private const int MinPlausibleRangeDeg = 40;
+        private const int MaxPlausibleRangeDeg = 1080;
+        private volatile int _observedRangeDeg;
+
+        /// <summary>The wheel's configured rotation range in degrees, or null
+        /// while nothing has set it in our hearing. Observed only: see
+        /// <see cref="_observedRangeDeg"/>.</summary>
+        public int? ObservedRotationRangeDeg
+        {
+            get { int d = _observedRangeDeg; return d > 0 ? d : (int?)null; }
+        }
+
         /// <summary>The decoded DirectInput effect table (conditions,
         /// periodics, ramps). Counters and gain are diagnostics; evaluation
         /// goes through <see cref="TryEvaluateHidppEffects"/>.</summary>
@@ -1738,6 +1806,15 @@ namespace TrueforceForAll.Core
                     // bit the packet is ambiguous and falls through to the
                     // scalar path, where the arbiter's change gate guards it;
                     // dropping those too could deafen an unknown dialect.
+                    // Effect-download trace (FXDUMP). What the wheel was
+                    // actually ASKED for, as against what we believe we asked
+                    // for. Built for the native-vs-engine bench: a DirectInput
+                    // effect passes through Windows and Logitech's driver
+                    // before it reaches the wire, and either could substitute a
+                    // type or reshape the parameters without us being able to
+                    // feel the difference. Logged before every type check, so
+                    // constant and unknown types show up too.
+                    if (LogEffectDownloads && len >= 12) TraceEffectDownload(payload, off, len);
                     if (len >= 12 && (payload[off + 5] & 0x7f) > HidppEffectEngine.TypeRamp
                         && (payload[off + 5] & HidppEffectEngine.AutostartBit) != 0)
                     {
@@ -1825,6 +1902,23 @@ namespace TrueforceForAll.Core
                     return;
                 case 0x40:   // DESTROY_EFFECT [slot]
                     if (len >= 5) _hidppEffects.HandleDestroy(payload[off + 4]);
+                    return;
+                case 0x60:   // SET_APERTURE [range u16, degrees]
+                    // The host telling the wheel its rotation range. Purely
+                    // observed; a value outside what any Logitech wheel
+                    // accepts means this is not an aperture write (a foreign
+                    // dialect reusing fn6, or a short report whose params are
+                    // padding), so drop it rather than publish a wrong unit.
+                    if (len >= 6)
+                    {
+                        int deg = (payload[off + 4] << 8) | payload[off + 5];
+                        if (deg >= MinPlausibleRangeDeg && deg <= MaxPlausibleRangeDeg
+                            && deg != _observedRangeDeg)
+                        {
+                            _observedRangeDeg = deg;
+                            Log($"FFB tap: wheel rotation range set to {deg} degrees.");
+                        }
+                    }
                     return;
                 case 0x80:   // SET_GLOBAL_GAINS [gain u16, boost u16]
                     if (len >= 6)

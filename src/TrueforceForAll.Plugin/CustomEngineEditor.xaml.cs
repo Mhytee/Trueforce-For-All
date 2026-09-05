@@ -33,6 +33,11 @@ namespace TrueforceForAll.Plugin
         public CustomEngineEditor()
         {
             InitializeComponent();
+            // The cylinder count is the one number here a user is likely to know
+            // outright rather than hunt for, so let them type it. This window is
+            // a separate class from the settings panel, which is why its readout
+            // was read-only until the mechanism moved out into its own file.
+            EditableReadout.WireAll(this);
             // Default the shape dropdown to Even-fire so the count slider
             // starts in a sensible state; will be overridden in Init.
             _suppress = true;

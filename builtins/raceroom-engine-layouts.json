@@ -1,0 +1,2500 @@
+{
+ "_comment": "RaceRoom engine layouts, keyed by the sim's numeric VehicleInfo.ModelId. SimHub reports RaceRoom carIds as \"<modelId>,<car name>\", so the key is the part before the comma. Unlike iRacing, RaceRoom publishes NO cylinder count: its shared memory carries EngineType (combustion / electric / hybrid) and nothing else about the engine, so both the count and the crank have to come from here. This is a SEED: community CarFacts overrides any entry. Confidence low marks RaceRoom's fictional cars, whose engines are published nowhere.",
+ "_generated": "2026-09-05",
+ "_source": "Car list from Sector3's own r3e-data.json (the spectator-overlay data file); engine specs from manufacturer and series data.",
+ "_layoutEnum": "TrueforceForAll.Plugin.Effects.EngineLayout",
+ "cars": {
+  "10787": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO",
+   "class": "ADAC Esports GT Masters",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "10795": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M6 GT3",
+   "class": "ADAC Esports GT Masters",
+   "engine": "4.4L twin-turbo V8 (BMW S63, cross-plane)",
+   "confidence": "high"
+  },
+  "10790": {
+   "layout": "V8CrossPlane",
+   "name": "Bentley Continental GT3 EVO",
+   "class": "ADAC Esports GT Masters",
+   "engine": "4.0L twin-turbo V8",
+   "confidence": "high"
+  },
+  "10127": {
+   "layout": "V8CrossPlane",
+   "name": "Callaway Corvette C7 GT3-R",
+   "class": "ADAC Esports GT Masters",
+   "engine": "6.2L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "10804": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 720S GT3",
+   "class": "ADAC Esports GT Masters",
+   "engine": "4.0L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "10806": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020",
+   "class": "ADAC Esports GT Masters",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "10808": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (2019)",
+   "class": "ADAC Esports GT Masters",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "10051": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO",
+   "class": "ADAC Esports GT Masters 2021",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "10076": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M6 GT3",
+   "class": "ADAC Esports GT Masters 2021",
+   "engine": "4.4L twin-turbo V8 (BMW S63, cross-plane)",
+   "confidence": "high"
+  },
+  "10085": {
+   "layout": "V8CrossPlane",
+   "name": "Bentley Continental GT3 EVO",
+   "class": "ADAC Esports GT Masters 2021",
+   "engine": "4.0L twin-turbo V8",
+   "confidence": "high"
+  },
+  "10110": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020",
+   "class": "ADAC Esports GT Masters 2021",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "10119": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (2019)",
+   "class": "ADAC Esports GT Masters 2021",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "2923": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS Ultra",
+   "class": "ADAC GT Masters 2013",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "2924": {
+   "layout": "V8CrossPlane",
+   "name": "BMW Z4 GT3",
+   "class": "ADAC GT Masters 2013",
+   "engine": "4.4L naturally aspirated V8 (BMW P65, S65-derived)",
+   "confidence": "medium"
+  },
+  "2925": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Camaro GT3",
+   "class": "ADAC GT Masters 2013",
+   "engine": "7.0L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "2611": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Corvette Z06.R GT3",
+   "class": "ADAC GT Masters 2013",
+   "engine": "7.0L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "2409": {
+   "layout": "V8CrossPlane",
+   "name": "Ford GT GT3",
+   "class": "ADAC GT Masters 2013",
+   "engine": "5.4L supercharged V8",
+   "confidence": "medium"
+  },
+  "2927": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-Benz SLS AMG GT3",
+   "class": "ADAC GT Masters 2013",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "2926": {
+   "layout": "V6_60Even",
+   "name": "Nissan GT-R GT3",
+   "class": "ADAC GT Masters 2013",
+   "engine": "3.8L twin-turbo 60 degree V6 (Nissan VR38DETT)",
+   "confidence": "high"
+  },
+  "3500": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS Ultra",
+   "class": "ADAC GT Masters 2014",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "3530": {
+   "layout": "V8CrossPlane",
+   "name": "BMW Z4 GT3",
+   "class": "ADAC GT Masters 2014",
+   "engine": "4.4L naturally aspirated V8 (BMW P65, S65-derived)",
+   "confidence": "medium"
+  },
+  "3534": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Camaro GT3",
+   "class": "ADAC GT Masters 2014",
+   "engine": "7.0L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "3508": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Corvette Z06.R GT3",
+   "class": "ADAC GT Masters 2014",
+   "engine": "7.0L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "3527": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren MP4-12C GT3",
+   "class": "ADAC GT Masters 2014",
+   "engine": "3.8L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "3384": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-Benz SLS AMG GT3",
+   "class": "ADAC GT Masters 2014",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "4518": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS Ultra",
+   "class": "ADAC GT Masters 2015",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "4544": {
+   "layout": "V8CrossPlane",
+   "name": "BMW Z4 GT3",
+   "class": "ADAC GT Masters 2015",
+   "engine": "4.4L naturally aspirated V8 (BMW P65, S65-derived)",
+   "confidence": "medium"
+  },
+  "5152": {
+   "layout": "V8CrossPlane",
+   "name": "Bentley Continental GT3",
+   "class": "ADAC GT Masters 2015",
+   "engine": "4.0L twin-turbo V8",
+   "confidence": "high"
+  },
+  "4582": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Camaro GT3",
+   "class": "ADAC GT Masters 2015",
+   "engine": "7.0L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "4570": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Corvette Z06.R GT3 GTM15",
+   "class": "ADAC GT Masters 2015",
+   "engine": "7.0L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "4551": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-Benz SLS AMG GT3",
+   "class": "ADAC GT Masters 2015",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "4557": {
+   "layout": "V6_60Even",
+   "name": "Nissan GT-R GT3",
+   "class": "ADAC GT Masters 2015",
+   "engine": "3.8L twin-turbo 60 degree V6 (Nissan VR38DETT)",
+   "confidence": "high"
+  },
+  "7630": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS",
+   "class": "ADAC GT Masters 2018",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "7629": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M6 GT3",
+   "class": "ADAC GT Masters 2018",
+   "engine": "4.4L twin-turbo V8 (BMW S63, cross-plane)",
+   "confidence": "high"
+  },
+  "7640": {
+   "layout": "V8CrossPlane",
+   "name": "Callaway Corvette C7 GT3-R",
+   "class": "ADAC GT Masters 2018",
+   "engine": "6.2L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "7643": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes AMG GT3",
+   "class": "ADAC GT Masters 2018",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "7647": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R",
+   "class": "ADAC GT Masters 2018",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "9031": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS",
+   "class": "ADAC GT Masters 2020",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "9548": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO",
+   "class": "ADAC GT Masters 2020",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "8936": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M6 GT3",
+   "class": "ADAC GT Masters 2020",
+   "engine": "4.4L twin-turbo V8 (BMW S63, cross-plane)",
+   "confidence": "high"
+  },
+  "9565": {
+   "layout": "V8CrossPlane",
+   "name": "Bentley Continental GT3 EVO",
+   "class": "ADAC GT Masters 2020",
+   "engine": "4.0L twin-turbo V8",
+   "confidence": "high"
+  },
+  "8942": {
+   "layout": "V8CrossPlane",
+   "name": "Callaway Corvette C7 GT3-R",
+   "class": "ADAC GT Masters 2020",
+   "engine": "6.2L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "8940": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes AMG GT3",
+   "class": "ADAC GT Masters 2020",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "9581": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020",
+   "class": "ADAC GT Masters 2020",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "8938": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (2019)",
+   "class": "ADAC GT Masters 2020",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "11567": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO",
+   "class": "ADAC GT Masters 2021",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "11586": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M6 GT3",
+   "class": "ADAC GT Masters 2021",
+   "engine": "4.4L twin-turbo V8 (BMW S63, cross-plane)",
+   "confidence": "high"
+  },
+  "11025": {
+   "layout": "V8CrossPlane",
+   "name": "Callaway Corvette C7 GT3-R",
+   "class": "ADAC GT Masters 2021",
+   "engine": "6.2L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "11589": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020",
+   "class": "ADAC GT Masters 2021",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "11597": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (2019)",
+   "class": "ADAC GT Masters 2021",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "13394": {
+   "layout": "Inline4",
+   "name": "Alpine A110 Cup",
+   "class": "Alpine A110 Cup",
+   "engine": "1.8L turbo inline-4",
+   "confidence": "high"
+  },
+  "252": {
+   "layout": "V8CrossPlane",
+   "name": "Aquila CR1 Sports GT",
+   "class": "Aquila CR1 Cup",
+   "engine": "6.2L naturally aspirated Chevrolet LS V8",
+   "confidence": "medium"
+  },
+  "4681": {
+   "layout": "Inline4",
+   "name": "Audi TT cup 2015",
+   "class": "Audi Sport TT Cup 2015",
+   "engine": "2.0L turbo inline-4 (Audi TFSI)",
+   "confidence": "high"
+  },
+  "5588": {
+   "layout": "Inline4",
+   "name": "Audi TT cup 2016",
+   "class": "Audi Sport TT Cup 2016",
+   "engine": "2.0L turbo inline-4 (Audi TFSI)",
+   "confidence": "high"
+  },
+  "4299": {
+   "layout": "Inline5",
+   "name": "Audi TT RS VLN",
+   "class": "Audi TT RS cup",
+   "engine": "2.5L turbo inline-5 (Audi TFSI)",
+   "confidence": "high"
+  },
+  "10599": {
+   "layout": "Inline6",
+   "name": "BMW M2 CS Racing 2021",
+   "class": "BMW M2 Cup",
+   "engine": "3.0L turbo inline-6 (BMW S55-derived)",
+   "confidence": "high"
+  },
+  "6262": {
+   "layout": "Inline6",
+   "name": "BMW M235i Racing",
+   "class": "BMW M235i Racing Cup",
+   "engine": "3.0L turbo inline-6 (BMW N55)",
+   "confidence": "high"
+  },
+  "7183": {
+   "layout": "V6_60Even",
+   "name": "AMG-Mercedes C-Klasse DTM",
+   "class": "C-Klasse DTM 2005",
+   "engine": "2.5L 60 degree V6 (ITC/DTM 1995 spec)",
+   "confidence": "high"
+  },
+  "8757": {
+   "layout": "Electric",
+   "name": "CUPRA Leon e-Racer",
+   "class": "CUPRA Leon e-Racer",
+   "engine": "battery electric",
+   "confidence": "high"
+  },
+  "6568": {
+   "layout": "Boxer6",
+   "name": "Porsche Cayman GT4 Clubsport",
+   "class": "Cayman GT4 Trophy by Manthey-Racing",
+   "engine": "3.8L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "10896": {
+   "layout": "Inline4",
+   "name": "Crosslé 90F",
+   "class": "Crosslé 90F",
+   "engine": "1.6L naturally aspirated inline-4 (Formula Ford)",
+   "confidence": "high"
+  },
+  "11285": {
+   "layout": "Inline4",
+   "name": "Crosslé 9S",
+   "class": "Crosslé 9S",
+   "engine": "1.6L naturally aspirated inline-4 (Formula Ford)",
+   "confidence": "high"
+  },
+  "3662": {
+   "layout": "V8CrossPlane",
+   "name": "Audi V8 DTM",
+   "class": "DTM 1992",
+   "engine": "3.6L naturally aspirated V8, road-derived cross-plane",
+   "confidence": "medium"
+  },
+  "3549": {
+   "layout": "Inline4",
+   "name": "BMW M3 Sport Evolution",
+   "class": "DTM 1992",
+   "engine": "2.5L naturally aspirated inline-4 (BMW S14)",
+   "confidence": "high"
+  },
+  "3842": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Mustang GT DTM",
+   "class": "DTM 1992",
+   "engine": "5.0L naturally aspirated pushrod V8",
+   "confidence": "medium"
+  },
+  "3539": {
+   "layout": "Inline4",
+   "name": "Mercedes 190E Evo II DTM",
+   "class": "DTM 1992",
+   "engine": "2.5L naturally aspirated inline-4 (Mercedes M102)",
+   "confidence": "high"
+  },
+  "3874": {
+   "layout": "Inline6",
+   "name": "Opel Omega 3000 Evo500",
+   "class": "DTM 1992",
+   "engine": "3.0L naturally aspirated inline-6",
+   "confidence": "high"
+  },
+  "7076": {
+   "layout": "V6_60Even",
+   "name": "AMG-Mercedes C-Klasse DTM",
+   "class": "DTM 1995",
+   "engine": "2.5L 60 degree V6 (ITC/DTM 1995 spec)",
+   "confidence": "high"
+  },
+  "12850": {
+   "layout": "V6_60Even",
+   "name": "Alfa Romeo 155 TI DTM 1995",
+   "class": "DTM 1995",
+   "engine": "2.5L 60 degree V6",
+   "confidence": "high"
+  },
+  "12839": {
+   "layout": "V6_60Even",
+   "name": "Opel Calibra V6 DTM",
+   "class": "DTM 1995",
+   "engine": "2.5L 60 degree V6",
+   "confidence": "high"
+  },
+  "13265": {
+   "layout": "V8FlatPlane",
+   "name": "AMG-Mercedes CLK-DTM 2002",
+   "class": "DTM 2002",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "13312": {
+   "layout": "V8FlatPlane",
+   "name": "Abt-Audi TT-R",
+   "class": "DTM 2002",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "13323": {
+   "layout": "V8FlatPlane",
+   "name": "Opel Astra V8 Coupé",
+   "class": "DTM 2002",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "7169": {
+   "layout": "V8FlatPlane",
+   "name": "AMG-Mercedes CLK DTM",
+   "class": "DTM 2003",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "2420": {
+   "layout": "V8FlatPlane",
+   "name": "Audi RS 5 DTM",
+   "class": "DTM 2013",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "2417": {
+   "layout": "V8FlatPlane",
+   "name": "BMW M3 DTM",
+   "class": "DTM 2013",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "2413": {
+   "layout": "V8FlatPlane",
+   "name": "DTM Mercedes AMG C-Coupé",
+   "class": "DTM 2013",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "3380": {
+   "layout": "V8FlatPlane",
+   "name": "Audi RS 5 DTM 2014",
+   "class": "DTM 2014",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "3408": {
+   "layout": "V8FlatPlane",
+   "name": "BMW M4 DTM",
+   "class": "DTM 2014",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "3479": {
+   "layout": "V8FlatPlane",
+   "name": "DTM Mercedes AMG C Coupe 14",
+   "class": "DTM 2014",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "4261": {
+   "layout": "V8FlatPlane",
+   "name": "Audi RS 5 DTM 2015",
+   "class": "DTM 2015",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "4267": {
+   "layout": "V8FlatPlane",
+   "name": "BMW M4 DTM 2015",
+   "class": "DTM 2015",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "4264": {
+   "layout": "V8FlatPlane",
+   "name": "Mercedes-AMG C63 DTM",
+   "class": "DTM 2015",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "5411": {
+   "layout": "V8FlatPlane",
+   "name": "Audi RS 5 DTM 2016",
+   "class": "DTM 2016",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "5399": {
+   "layout": "V8FlatPlane",
+   "name": "BMW M4 DTM 2016",
+   "class": "DTM 2016",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "5402": {
+   "layout": "V8FlatPlane",
+   "name": "Mercedes-AMG C 63 DTM 2016",
+   "class": "DTM 2016",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "9206": {
+   "layout": "Inline4",
+   "name": "Audi RS 5 DTM 2020",
+   "class": "DTM 2020",
+   "engine": "2.0L turbo inline-4 (Class One)",
+   "confidence": "high"
+  },
+  "9220": {
+   "layout": "Inline4",
+   "name": "BMW M4 DTM 2020",
+   "class": "DTM 2020",
+   "engine": "2.0L turbo inline-4 (Class One)",
+   "confidence": "high"
+  },
+  "9102": {
+   "layout": "Inline4",
+   "name": "Audi RS 5 DTM 2020e",
+   "class": "DTM 2020 Esport",
+   "engine": "2.0L turbo inline-4 (Class One)",
+   "confidence": "high"
+  },
+  "9094": {
+   "layout": "Inline4",
+   "name": "BMW M4 DTM 2020e",
+   "class": "DTM 2020 Esport",
+   "engine": "2.0L turbo inline-4 (Class One)",
+   "confidence": "high"
+  },
+  "10541": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO DTM",
+   "class": "DTM 2021",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "10546": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M6 GT3 DTM",
+   "class": "DTM 2021",
+   "engine": "4.4L twin-turbo V8 (BMW S63, cross-plane)",
+   "confidence": "high"
+  },
+  "10387": {
+   "layout": "V8FlatPlane",
+   "name": "Ferrari 488 GT3 EVO 2020 DTM",
+   "class": "DTM 2021",
+   "engine": "3.9L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "10552": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 720S GT3 DTM",
+   "class": "DTM 2021",
+   "engine": "4.0L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "10556": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020 DTM",
+   "class": "DTM 2021",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "10564": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (2019) DTM",
+   "class": "DTM 2021",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "12352": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO II DTM",
+   "class": "DTM 2023",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "12237": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT3 DTM",
+   "class": "DTM 2023",
+   "engine": "3.0L twin-turbo inline-6 (BMW S58)",
+   "confidence": "high"
+  },
+  "12421": {
+   "layout": "V6_60Even",
+   "name": "Ferrari 296 GT3 DTM",
+   "class": "DTM 2023",
+   "engine": "3.0L twin-turbo 120 degree V6, even-fire",
+   "confidence": "high"
+  },
+  "12240": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020 DTM",
+   "class": "DTM 2023",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "12197": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (992) DTM",
+   "class": "DTM 2023",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "12788": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO II DTM",
+   "class": "DTM 2024",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "12790": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT3 DTM",
+   "class": "DTM 2024",
+   "engine": "3.0L twin-turbo inline-6 (BMW S58)",
+   "confidence": "high"
+  },
+  "12792": {
+   "layout": "V6_60Even",
+   "name": "Ferrari 296 GT3 DTM",
+   "class": "DTM 2024",
+   "engine": "3.0L twin-turbo 120 degree V6, even-fire",
+   "confidence": "high"
+  },
+  "12795": {
+   "layout": "V10_72",
+   "name": "Lamborghini Huracán GT3 EVO II DTM",
+   "class": "DTM 2024",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "12815": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 720S GT3 EVO DTM",
+   "class": "DTM 2024",
+   "engine": "4.0L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "12800": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020 DTM",
+   "class": "DTM 2024",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "12807": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (992) DTM",
+   "class": "DTM 2024",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "13190": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO II DTM",
+   "class": "DTM 2025",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "13172": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT3 EVO DTM",
+   "class": "DTM 2025",
+   "engine": "3.0L twin-turbo inline-6 (BMW S58)",
+   "confidence": "high"
+  },
+  "13141": {
+   "layout": "V6_60Even",
+   "name": "Ferrari 296 GT3 DTM",
+   "class": "DTM 2025",
+   "engine": "3.0L twin-turbo 120 degree V6, even-fire",
+   "confidence": "high"
+  },
+  "13160": {
+   "layout": "V10_72",
+   "name": "Lamborghini Huracán GT3 EVO II DTM",
+   "class": "DTM 2025",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "13174": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 720S GT3 EVO DTM",
+   "class": "DTM 2025",
+   "engine": "4.0L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "13164": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020 DTM",
+   "class": "DTM 2025",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "13150": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (992) DTM",
+   "class": "DTM 2025",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "13603": {
+   "layout": "V8CrossPlane",
+   "name": "Aston Martin Vantage AMR GT3 EVO DTM",
+   "class": "DTM 2026",
+   "engine": "4.0L twin-turbo V8 (AMG M177, cross-plane)",
+   "confidence": "high"
+  },
+  "13617": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT3 EVO DTM",
+   "class": "DTM 2026",
+   "engine": "3.0L twin-turbo inline-6 (BMW S58)",
+   "confidence": "high"
+  },
+  "13591": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Mustang GT3 EVO DTM",
+   "class": "DTM 2026",
+   "engine": "5.4L naturally aspirated Coyote-derived V8",
+   "confidence": "medium"
+  },
+  "13594": {
+   "layout": "V8FlatPlane",
+   "name": "Lamborghini Temerario GT3 DTM",
+   "class": "DTM 2026",
+   "engine": "4.0L twin-turbo V8, flat-plane crank",
+   "confidence": "medium"
+  },
+  "13620": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 720S GT3 EVO DTM",
+   "class": "DTM 2026",
+   "engine": "4.0L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "13597": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020 DTM",
+   "class": "DTM 2026",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "13572": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (992.2) DTM",
+   "class": "DTM 2026",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "10918": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO eDTM",
+   "class": "DTM Esports 2022",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "10920": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M6 GT3 eDTM",
+   "class": "DTM Esports 2022",
+   "engine": "4.4L twin-turbo V8 (BMW S63, cross-plane)",
+   "confidence": "high"
+  },
+  "10924": {
+   "layout": "V8FlatPlane",
+   "name": "Ferrari 488 GT3 EVO 2020 eDTM",
+   "class": "DTM Esports 2022",
+   "engine": "3.9L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "10945": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020 eDTM",
+   "class": "DTM Esports 2022",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "10950": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (2019) eDTM",
+   "class": "DTM Esports 2022",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "9761": {
+   "layout": "Inline4",
+   "name": "BMW E30 M3 Drift",
+   "class": "Drift",
+   "engine": "2.3L naturally aspirated inline-4 (BMW S14)",
+   "confidence": "medium"
+  },
+  "10604": {
+   "layout": "Inline6",
+   "name": "BMW G82 M4 Drift",
+   "class": "Drift",
+   "engine": "3.0L twin-turbo inline-6 (BMW S58)",
+   "confidence": "medium"
+  },
+  "6588": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS",
+   "class": "Esports WTCR Prologue",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "5348": {
+   "layout": "V6_60Even",
+   "name": "Formula RaceRoom US",
+   "class": "FR US Cup",
+   "engine": "2.2L twin-turbo V6, IndyCar style",
+   "confidence": "medium"
+  },
+  "5821": {
+   "layout": "V6_60Even",
+   "name": "Formula Raceroom X-17",
+   "class": "FR X-17 Cup",
+   "engine": "1.6L turbo hybrid V6, modern F1 style",
+   "confidence": "medium"
+  },
+  "10018": {
+   "layout": "V6_60Even",
+   "name": "Formula Raceroom X-22",
+   "class": "FR X-22 Cup",
+   "engine": "1.6L turbo hybrid V6, modern F1 style",
+   "confidence": "medium"
+  },
+  "7220": {
+   "layout": "V10_72",
+   "name": "Formula RR 90 V10",
+   "class": "FR X-90 Cup",
+   "engine": "3.5L naturally aspirated V10, 1990s F1 style",
+   "confidence": "medium"
+  },
+  "7218": {
+   "layout": "V12_60",
+   "name": "Formula RR 90 V12",
+   "class": "FR X-90 Cup",
+   "engine": "3.5L naturally aspirated V12, 1990s F1 style",
+   "confidence": "medium"
+  },
+  "7215": {
+   "layout": "V8FlatPlane",
+   "name": "Formula RR 90 V8",
+   "class": "FR X-90 Cup",
+   "engine": "3.5L naturally aspirated V8, 1990s F1 style",
+   "confidence": "medium"
+  },
+  "4598": {
+   "layout": "Inline4",
+   "name": "Formula RaceRoom 2",
+   "class": "FR2 Cup",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "medium"
+  },
+  "5396": {
+   "layout": "Inline4",
+   "name": "Formula RaceRoom 3",
+   "class": "FR3 Cup",
+   "engine": "2.0L naturally aspirated inline-4 (F3)",
+   "confidence": "medium"
+  },
+  "4865": {
+   "layout": "Inline4",
+   "name": "Formula RaceRoom Junior",
+   "class": "FRJ Cup",
+   "engine": "1.6L naturally aspirated inline-4",
+   "confidence": "medium"
+  },
+  "11474": {
+   "layout": "V6_60Even",
+   "name": "Formula Raceroom X-22 Esports",
+   "class": "FRX-22 Esports",
+   "engine": "1.6L turbo hybrid V6, modern F1 style",
+   "confidence": "medium"
+  },
+  "10263": {
+   "layout": "Electric",
+   "name": "Ford Mustang Mach-E 1400",
+   "class": "Ford Mustang Mach E",
+   "engine": "battery electric, seven motors",
+   "confidence": "high"
+  },
+  "8652": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT2 2019",
+   "class": "GT2",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "11991": {
+   "layout": "Inline5",
+   "name": "KTM X-BOW GT2",
+   "class": "GT2",
+   "engine": "2.5L turbo inline-5 (Audi TFSI)",
+   "confidence": "high"
+  },
+  "8242": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT2 RS Clubsport",
+   "class": "GT2",
+   "engine": "3.8L twin-turbo flat-6",
+   "confidence": "high"
+  },
+  "12430": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M8 GTE",
+   "class": "GTE",
+   "engine": "4.0L twin-turbo V8 (BMW P63, S63-derived)",
+   "confidence": "medium"
+  },
+  "8487": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 RSR 2019",
+   "class": "GTE",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "2405": {
+   "layout": "Inline5",
+   "name": "Audi 90 Quattro",
+   "class": "GTO Classics",
+   "engine": "2.2L turbo inline-5 (IMSA GTO)",
+   "confidence": "high"
+  },
+  "4386": {
+   "layout": "Inline4",
+   "name": "Ford Mustang IMSA GTO",
+   "class": "GTO Classics",
+   "engine": "2.1L turbo inline-4 (Zakspeed)",
+   "confidence": "medium"
+  },
+  "2868": {
+   "layout": "V6_60Even",
+   "name": "Nissan 300ZX Z32",
+   "class": "GTO Classics",
+   "engine": "3.0L twin-turbo 60 degree V6 (Nissan VG30DETT)",
+   "confidence": "high"
+  },
+  "1779": {
+   "layout": "V8CrossPlane",
+   "name": "Ford GT GT1",
+   "class": "GTR 1",
+   "engine": "5.0L naturally aspirated V8",
+   "confidence": "medium"
+  },
+  "1788": {
+   "layout": "V8CrossPlane",
+   "name": "Gumpert Apollo Sport",
+   "class": "GTR 1",
+   "engine": "4.2L twin-turbo V8 (Audi, cross-plane)",
+   "confidence": "medium"
+  },
+  "1794": {
+   "layout": "V8FlatPlane",
+   "name": "Koenigsegg CCGT",
+   "class": "GTR 1",
+   "engine": "4.8L naturally aspirated V8, flat-plane crank",
+   "confidence": "medium"
+  },
+  "1807": {
+   "layout": "V8CrossPlane",
+   "name": "Nissan GT-R GT1",
+   "class": "GTR 1",
+   "engine": "4.5L naturally aspirated V8 (Nissan VK45DE)",
+   "confidence": "medium"
+  },
+  "1834": {
+   "layout": "Boxer6",
+   "name": "RUF CTR3",
+   "class": "GTR 1",
+   "engine": "3.8L twin-turbo flat-6",
+   "confidence": "high"
+  },
+  "1686": {
+   "layout": "V8CrossPlane",
+   "name": "Saleen S7R",
+   "class": "GTR 1",
+   "engine": "7.0L naturally aspirated V8",
+   "confidence": "medium"
+  },
+  "1733": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M3 E92 GT",
+   "class": "GTR 2",
+   "engine": "4.0L naturally aspirated V8 (BMW S65, cross-plane)",
+   "confidence": "high"
+  },
+  "2410": {
+   "layout": "V8CrossPlane",
+   "name": "Cadillac CTS-V.R",
+   "class": "GTR 2",
+   "engine": "5.5L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "1747": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Corvette C6.R ZR1",
+   "class": "GTR 2",
+   "engine": "5.5L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "5214": {
+   "layout": "V8FlatPlane",
+   "name": "P4-5 Competizione GT2",
+   "class": "GTR 2",
+   "engine": "4.0L naturally aspirated Ferrari V8, flat-plane crank",
+   "confidence": "medium"
+  },
+  "1837": {
+   "layout": "Boxer6",
+   "name": "RUF RT12R",
+   "class": "GTR 2",
+   "engine": "3.8L twin-turbo flat-6",
+   "confidence": "high"
+  },
+  "6057": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS",
+   "class": "GTR 3",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "8604": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO",
+   "class": "GTR 3",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "12319": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO II",
+   "class": "GTR 3",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "2037": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS Ultra",
+   "class": "GTR 3",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "1695": {
+   "layout": "V8CrossPlane",
+   "name": "BMW Alpina B6 GT3",
+   "class": "GTR 3",
+   "engine": "4.4L twin-turbo V8 (BMW N63/S63, cross-plane)",
+   "confidence": "high"
+  },
+  "11536": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT3",
+   "class": "GTR 3",
+   "engine": "3.0L twin-turbo inline-6 (BMW S58)",
+   "confidence": "high"
+  },
+  "5818": {
+   "layout": "V8CrossPlane",
+   "name": "BMW M6 GT3",
+   "class": "GTR 3",
+   "engine": "4.4L twin-turbo V8 (BMW S63, cross-plane)",
+   "confidence": "high"
+  },
+  "1738": {
+   "layout": "V8CrossPlane",
+   "name": "BMW Z4 GT3",
+   "class": "GTR 3",
+   "engine": "4.4L naturally aspirated V8 (BMW P65, S65-derived)",
+   "confidence": "medium"
+  },
+  "5170": {
+   "layout": "V8CrossPlane",
+   "name": "Bentley Continental GT3",
+   "class": "GTR 3",
+   "engine": "4.0L twin-turbo V8",
+   "confidence": "high"
+  },
+  "8593": {
+   "layout": "V8CrossPlane",
+   "name": "Bentley Continental GT3 EVO",
+   "class": "GTR 3",
+   "engine": "4.0L twin-turbo V8",
+   "confidence": "high"
+  },
+  "6174": {
+   "layout": "V8CrossPlane",
+   "name": "Callaway Corvette C7 GT3-R",
+   "class": "GTR 3",
+   "engine": "6.2L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "2338": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Camaro GT3",
+   "class": "GTR 3",
+   "engine": "7.0L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "3626": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Corvette Z06.R GT3",
+   "class": "GTR 3",
+   "engine": "7.0L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "12405": {
+   "layout": "V6_60Even",
+   "name": "Ferrari 296 GT3",
+   "class": "GTR 3",
+   "engine": "3.0L twin-turbo 120 degree V6, even-fire",
+   "confidence": "high"
+  },
+  "10890": {
+   "layout": "V8FlatPlane",
+   "name": "Ferrari 488 GT3 EVO 2020",
+   "class": "GTR 3",
+   "engine": "3.9L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "3754": {
+   "layout": "V8CrossPlane",
+   "name": "Ford GT GT3",
+   "class": "GTR 3",
+   "engine": "5.4L supercharged V8",
+   "confidence": "medium"
+  },
+  "1782": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Mustang GT3",
+   "class": "GTR 3",
+   "engine": "5.0L naturally aspirated V8 (FR500-derived)",
+   "confidence": "medium"
+  },
+  "12771": {
+   "layout": "V10_72",
+   "name": "Lamborghini Huracán GT3 EVO II",
+   "class": "GTR 3",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "5786": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 650S GT3",
+   "class": "GTR 3",
+   "engine": "3.8L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "9575": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 720S GT3",
+   "class": "GTR 3",
+   "engine": "4.0L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "1909": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren MP4-12C GT3",
+   "class": "GTR 3",
+   "engine": "3.8L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "6168": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes AMG GT3",
+   "class": "GTR 3",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "9603": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 2020",
+   "class": "GTR 3",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "2533": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-Benz SLS AMG GT3",
+   "class": "GTR 3",
+   "engine": "6.2L naturally aspirated V8 (AMG M159)",
+   "confidence": "high"
+  },
+  "1811": {
+   "layout": "V6_60Even",
+   "name": "Nissan GT-R GT3",
+   "class": "GTR 3",
+   "engine": "3.8L twin-turbo 60 degree V6 (Nissan VR38DETT)",
+   "confidence": "high"
+  },
+  "1821": {
+   "layout": "V8FlatPlane",
+   "name": "P4-5 Competizione GT3",
+   "class": "GTR 3",
+   "engine": "4.0L naturally aspirated Ferrari V8, flat-plane crank",
+   "confidence": "medium"
+  },
+  "6349": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R",
+   "class": "GTR 3",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "8257": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (2019)",
+   "class": "GTR 3",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "12090": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (992)",
+   "class": "GTR 3",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "13524": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (992.2)",
+   "class": "GTR 3",
+   "engine": "4.2L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "3516": {
+   "layout": "Boxer6",
+   "name": "RUF RT12R GTR3",
+   "class": "GTR 3",
+   "engine": "3.8L twin-turbo flat-6",
+   "confidence": "high"
+  },
+  "13398": {
+   "layout": "Inline4",
+   "name": "Alpine A110 GT4+",
+   "class": "GTR 4",
+   "engine": "1.8L turbo inline-4",
+   "confidence": "high"
+  },
+  "8900": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT4 2020",
+   "class": "GTR 4",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "8053": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT4 (F82)",
+   "class": "GTR 4",
+   "engine": "3.0L twin-turbo inline-6 (BMW S55)",
+   "confidence": "high"
+  },
+  "12509": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT4 (G82)",
+   "class": "GTR 4",
+   "engine": "3.0L twin-turbo inline-6 (BMW S58)",
+   "confidence": "high"
+  },
+  "5767": {
+   "layout": "Inline4",
+   "name": "KTM X-Bow GT4",
+   "class": "GTR 4",
+   "engine": "2.0L turbo inline-4 (Audi TFSI)",
+   "confidence": "high"
+  },
+  "7162": {
+   "layout": "V6_60Even",
+   "name": "Lotus Evora GT4",
+   "class": "GTR 4",
+   "engine": "3.5L naturally aspirated 60 degree V6 (Toyota 2GR)",
+   "confidence": "high"
+  },
+  "10744": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 570s GT4",
+   "class": "GTR 4",
+   "engine": "3.8L twin-turbo V8, flat-plane crank",
+   "confidence": "high"
+  },
+  "9644": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes AMG GT4 2020",
+   "class": "GTR 4",
+   "engine": "4.0L twin-turbo V8 (AMG M178)",
+   "confidence": "high"
+  },
+  "8201": {
+   "layout": "Boxer6",
+   "name": "Porsche 718 Cayman GT4 Clubsport",
+   "class": "GTR 4",
+   "engine": "3.8L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "6623": {
+   "layout": "Boxer6",
+   "name": "Porsche Cayman GT4 CS MR",
+   "class": "GTR 4",
+   "engine": "3.8L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "1744": {
+   "layout": "V12_60",
+   "name": "Carlsson C25 GT",
+   "class": "German Nationals",
+   "engine": "6.0L twin-turbo 60 degree V12 (AMG M275)",
+   "confidence": "medium"
+  },
+  "1797": {
+   "layout": "V8CrossPlane",
+   "name": "McLaren-Mercedes SLR 722 GT",
+   "class": "German Nationals",
+   "engine": "5.5L supercharged V8 (AMG M155)",
+   "confidence": "medium"
+  },
+  "8498": {
+   "layout": "Inline4",
+   "name": "Volkswagen Scirocco Gr2",
+   "class": "Group 2",
+   "engine": "1.6L naturally aspirated inline-4",
+   "confidence": "medium"
+  },
+  "7805": {
+   "layout": "Inline6",
+   "name": "BMW M1 Gr. 4",
+   "class": "Group 4",
+   "engine": "3.5L naturally aspirated inline-6 (BMW M88)",
+   "confidence": "high"
+  },
+  "7282": {
+   "layout": "Boxer6",
+   "name": "Porsche 934 Turbo RSR",
+   "class": "Group 4",
+   "engine": "3.0L turbo flat-6",
+   "confidence": "high"
+  },
+  "1700": {
+   "layout": "Inline4",
+   "name": "BMW 320 Turbo",
+   "class": "Group 5",
+   "engine": "2.0L turbo inline-4 (Group 5)",
+   "confidence": "high"
+  },
+  "4075": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Corvette Greenwood 1977",
+   "class": "Group 5",
+   "engine": "7.4L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "4145": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Dekon Monza",
+   "class": "Group 5",
+   "engine": "5.7L naturally aspirated pushrod V8",
+   "confidence": "high"
+  },
+  "2859": {
+   "layout": "Boxer6",
+   "name": "Fabcar 935",
+   "class": "Group 5",
+   "engine": "turbo flat-6 (Porsche 935-derived)",
+   "confidence": "medium"
+  },
+  "1815": {
+   "layout": "Inline4",
+   "name": "Nissan Silvia Turbo",
+   "class": "Group 5",
+   "engine": "2.0L turbo inline-4 (Nissan LZ20B)",
+   "confidence": "high"
+  },
+  "1818": {
+   "layout": "Inline4",
+   "name": "Nissan Skyline 2000RS",
+   "class": "Group 5",
+   "engine": "2.1L turbo inline-4 (Nissan FJ20)",
+   "confidence": "high"
+  },
+  "2044": {
+   "layout": "Inline4",
+   "name": "Zakspeed Capri",
+   "class": "Group 5",
+   "engine": "1.7L turbo inline-4 (Zakspeed)",
+   "confidence": "high"
+  },
+  "4114": {
+   "layout": "V8FlatPlane",
+   "name": "Nissan R90CK",
+   "class": "Group C",
+   "engine": "3.5L twin-turbo V8 (Nissan VRH35)",
+   "confidence": "medium"
+  },
+  "7399": {
+   "layout": "Boxer6",
+   "name": "Porsche 962 C Team Joest",
+   "class": "Group C",
+   "engine": "3.0L twin-turbo flat-6",
+   "confidence": "high"
+  },
+  "258": {
+   "layout": "V8FlatPlane",
+   "name": "BMW 134 Judd V8",
+   "class": "Hillclimb Icons",
+   "engine": "Judd naturally aspirated race V8",
+   "confidence": "medium"
+  },
+  "2849": {
+   "layout": "V8FlatPlane",
+   "name": "Carlsson SLK 340 JUDD",
+   "class": "Hillclimb Icons",
+   "engine": "Judd naturally aspirated race V8",
+   "confidence": "medium"
+  },
+  "8115": {
+   "layout": "V8FlatPlane",
+   "name": "E36 V8 JUDD",
+   "class": "Hillclimb Icons",
+   "engine": "Judd naturally aspirated race V8",
+   "confidence": "medium"
+  },
+  "13126": {
+   "layout": "V8FlatPlane",
+   "name": "BMW M Hybrid V8",
+   "class": "Hypercars",
+   "engine": "4.0L twin-turbo V8 (BMW P66/3)",
+   "confidence": "medium"
+  },
+  "13137": {
+   "layout": "V8FlatPlane",
+   "name": "Lamborghini SC63",
+   "class": "Hypercars",
+   "engine": "3.8L twin-turbo V8",
+   "confidence": "medium"
+  },
+  "13169": {
+   "layout": "V8FlatPlane",
+   "name": "Porsche 963",
+   "class": "Hypercars",
+   "engine": "4.6L twin-turbo V8, 918-derived flat-plane",
+   "confidence": "medium"
+  },
+  "9660": {
+   "layout": "Inline5",
+   "name": "KTM X-BOW GTX",
+   "class": "KTM GTX",
+   "engine": "2.5L turbo inline-5 (Audi TFSI)",
+   "confidence": "high"
+  },
+  "5342": {
+   "layout": "Inline4",
+   "name": "KTM X-Bow RR",
+   "class": "KTM X-Bow RR Cup",
+   "engine": "2.0L turbo inline-4 (Audi TFSI)",
+   "confidence": "high"
+  },
+  "11342": {
+   "layout": "Inline4",
+   "name": "Mazda RT24 P DPi",
+   "class": "Mazda Dpi",
+   "engine": "2.0L turbo inline-4 (Mazda MZ-2.0T)",
+   "confidence": "high"
+  },
+  "10914": {
+   "layout": "Inline4",
+   "name": "Mazda MX-5 CUP 2019 ND2",
+   "class": "Mazda MX-5 Cup",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "high"
+  },
+  "5259": {
+   "layout": "V8FlatPlane",
+   "name": "Mercedes-AMG C 63 DTM",
+   "class": "Mercedes-AMG Motorsport",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "6860": {
+   "layout": "Inline4",
+   "name": "AMG-Mercedes 190 E 2.5-16 Evolution II 1992",
+   "class": "Mercedes-AMG Motorsport 30 Years of DTM",
+   "engine": "2.5L naturally aspirated inline-4 (Mercedes M102)",
+   "confidence": "high"
+  },
+  "6978": {
+   "layout": "V6_60Even",
+   "name": "AMG-Mercedes C-Klasse DTM 1995",
+   "class": "Mercedes-AMG Motorsport 30 Years of DTM",
+   "engine": "2.5L 60 degree V6 (ITC/DTM 1995 spec)",
+   "confidence": "high"
+  },
+  "6849": {
+   "layout": "V8FlatPlane",
+   "name": "AMG-Mercedes C-Klasse DTM 2005",
+   "class": "Mercedes-AMG Motorsport 30 Years of DTM",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "6791": {
+   "layout": "V8FlatPlane",
+   "name": "AMG-Mercedes CLK DTM 2003",
+   "class": "Mercedes-AMG Motorsport 30 Years of DTM",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "6949": {
+   "layout": "V8FlatPlane",
+   "name": "Mercedes-AMG C 63 DTM 2015",
+   "class": "Mercedes-AMG Motorsport 30 Years of DTM",
+   "engine": "4.0L naturally aspirated DTM V8",
+   "confidence": "medium"
+  },
+  "4810": {
+   "layout": "Inline4",
+   "name": "NSU TTS",
+   "class": "NSU TTS Cup",
+   "engine": "1.3L naturally aspirated air-cooled inline-4",
+   "confidence": "high"
+  },
+  "13355": {
+   "layout": "Electric",
+   "name": "LRT NXT1",
+   "class": "NXT Gen Cup",
+   "engine": "battery electric (NXT Gen Cup)",
+   "confidence": "high"
+  },
+  "4308": {
+   "layout": "V6_60Even",
+   "name": "Audi R18",
+   "class": "P1",
+   "engine": "3.7L turbodiesel V6, even-fire",
+   "confidence": "medium"
+  },
+  "1756": {
+   "layout": "V8FlatPlane",
+   "name": "DMD P20",
+   "class": "P1",
+   "engine": "fictional RaceRoom prototype, engine not published",
+   "confidence": "low"
+  },
+  "1800": {
+   "layout": "V8FlatPlane",
+   "name": "Mistral M530",
+   "class": "P1",
+   "engine": "fictional RaceRoom prototype, engine not published",
+   "confidence": "low"
+  },
+  "2333": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Daytona Prototype",
+   "class": "P2",
+   "engine": "5.0L naturally aspirated V8",
+   "confidence": "medium"
+  },
+  "1759": {
+   "layout": "V8FlatPlane",
+   "name": "DMD P21",
+   "class": "P2",
+   "engine": "fictional RaceRoom prototype, engine not published",
+   "confidence": "low"
+  },
+  "1803": {
+   "layout": "V8FlatPlane",
+   "name": "Mistral M531",
+   "class": "P2",
+   "engine": "fictional RaceRoom prototype, engine not published",
+   "confidence": "low"
+  },
+  "1827": {
+   "layout": "Inline4",
+   "name": "Radical SR9 AER",
+   "class": "P2",
+   "engine": "2.0L turbo inline-4 (AER P07)",
+   "confidence": "medium"
+  },
+  "1831": {
+   "layout": "V8FlatPlane",
+   "name": "Radical SR9 Judd",
+   "class": "P2",
+   "engine": "3.4L naturally aspirated Judd V8",
+   "confidence": "medium"
+  },
+  "11561": {
+   "layout": "Inline4",
+   "name": "Porsche 944 Turbo Cup",
+   "class": "Porsche 944 Turbo Cup",
+   "engine": "2.5L turbo inline-4",
+   "confidence": "high"
+  },
+  "7396": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 Carrera Cup (964)",
+   "class": "Porsche 964 Cup",
+   "engine": "3.6L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "4675": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (991.2) Endurance",
+   "class": "Porsche 991.2 GT3 Cup",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "12012": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (992) Endurance",
+   "class": "Porsche 992 GT3 Cup",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "7983": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup",
+   "class": "Porsche Carrera Cup Deutschland 2019",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "12163": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (992)",
+   "class": "Porsche Carrera Cup Deutschland 2023",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "12942": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (992)",
+   "class": "Porsche Carrera Cup North America 2024",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "8166": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (991.2)",
+   "class": "Porsche Carrera Cup Scandinavia",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "8792": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (992) Endurance",
+   "class": "Porsche Esports Malaysia",
+   "engine": "4.0L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "11051": {
+   "layout": "Inline4",
+   "name": "Praga R1",
+   "class": "Praga R1",
+   "engine": "2.0L turbo inline-4 (Renault)",
+   "confidence": "medium"
+  },
+  "2339": {
+   "layout": "Inline6",
+   "name": "BMW M1 Procar",
+   "class": "Procar",
+   "engine": "3.5L naturally aspirated inline-6 (BMW M88)",
+   "confidence": "high"
+  },
+  "8006": {
+   "layout": "Inline4",
+   "name": "CUPRA TCR",
+   "class": "RaceRoom Esports",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "6177": {
+   "layout": "Inline4",
+   "name": "Chevrolet RML Cruze eSports",
+   "class": "RaceRoom Esports",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6187": {
+   "layout": "Inline4",
+   "name": "Citroen C Elysee eSports",
+   "class": "RaceRoom Esports",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "8467": {
+   "layout": "Inline4",
+   "name": "Honda Civic Type R",
+   "class": "RaceRoom Esports",
+   "engine": "2.0L turbo inline-4",
+   "confidence": "high"
+  },
+  "6195": {
+   "layout": "Inline4",
+   "name": "Honda Civic eSports",
+   "class": "RaceRoom Esports",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6203": {
+   "layout": "Inline4",
+   "name": "Lada Vesta eSports",
+   "class": "RaceRoom Esports",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6208": {
+   "layout": "Inline4",
+   "name": "Volvo S60 Polestar eSports",
+   "class": "RaceRoom Esports",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "12537": {
+   "layout": "V10_72",
+   "name": "S.C. Audi R8 LMS",
+   "class": "Safety Cars",
+   "engine": "5.2L naturally aspirated V10",
+   "confidence": "high"
+  },
+  "13039": {
+   "layout": "Inline4",
+   "name": "S.C. Cupra Formentor",
+   "class": "Safety Cars",
+   "engine": "2.0L turbo inline-4",
+   "confidence": "high"
+  },
+  "10721": {
+   "layout": "Inline4",
+   "name": "S.C. Cupra TCR",
+   "class": "Safety Cars",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8677": {
+   "layout": "Electric",
+   "name": "Shopping Cart",
+   "class": "Shopping Cart",
+   "engine": "no engine, RaceRoom joke vehicle",
+   "confidence": "high"
+  },
+  "1694": {
+   "layout": "V8FlatPlane",
+   "name": "Canhard R51",
+   "class": "Silhouette Series",
+   "engine": "fictional RaceRoom silhouette, engine not published",
+   "confidence": "low"
+  },
+  "1741": {
+   "layout": "V8FlatPlane",
+   "name": "Canhard R52",
+   "class": "Silhouette Series",
+   "engine": "fictional RaceRoom silhouette, engine not published",
+   "confidence": "low"
+  },
+  "1750": {
+   "layout": "V8FlatPlane",
+   "name": "Cougar C14-1",
+   "class": "Silhouette Series",
+   "engine": "fictional RaceRoom silhouette, engine not published",
+   "confidence": "low"
+  },
+  "1753": {
+   "layout": "V8FlatPlane",
+   "name": "Cougar C14-2",
+   "class": "Silhouette Series",
+   "engine": "fictional RaceRoom silhouette, engine not published",
+   "confidence": "low"
+  },
+  "7040": {
+   "layout": "Boxer6",
+   "name": "Porsche Cayman GT4 Clubsport",
+   "class": "Super Racer",
+   "engine": "3.8L naturally aspirated flat-6",
+   "confidence": "high"
+  },
+  "13049": {
+   "layout": "Inline4",
+   "name": "Alfa Romeo 156 Super Touring",
+   "class": "Super Touring",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "high"
+  },
+  "12561": {
+   "layout": "Inline4",
+   "name": "Audi A4 Super Touring 1995",
+   "class": "Super Touring",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "high"
+  },
+  "12556": {
+   "layout": "Inline4",
+   "name": "BMW 320i E36 Super Touring",
+   "class": "Super Touring",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "high"
+  },
+  "8645": {
+   "layout": "Inline4",
+   "name": "Honda Accord Super Touring",
+   "class": "Super Touring",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "high"
+  },
+  "13065": {
+   "layout": "Inline4",
+   "name": "Opel Vectra Super Touring",
+   "class": "Super Touring",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "high"
+  },
+  "13183": {
+   "layout": "Inline4",
+   "name": "Renault Laguna Super Touring",
+   "class": "Super Touring",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "high"
+  },
+  "12652": {
+   "layout": "Inline5",
+   "name": "Volvo 850 Super Touring",
+   "class": "Super Touring",
+   "engine": "2.0L naturally aspirated inline-5",
+   "confidence": "high"
+  },
+  "12829": {
+   "layout": "Inline4",
+   "name": "Volvo S40 Super Touring",
+   "class": "Super Touring",
+   "engine": "2.0L naturally aspirated inline-4",
+   "confidence": "medium"
+  },
+  "5051": {
+   "layout": "Inline4",
+   "name": "Tatuus F4",
+   "class": "Tatuus F4 Cup",
+   "engine": "1.4L turbo inline-4 (Abarth)",
+   "confidence": "high"
+  },
+  "10578": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS",
+   "class": "Touring Cars Cup",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8726": {
+   "layout": "Inline4",
+   "name": "CUPRA Leon Competición",
+   "class": "Touring Cars Cup",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "10441": {
+   "layout": "Inline4",
+   "name": "Honda Civic TCR",
+   "class": "Touring Cars Cup",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8661": {
+   "layout": "Inline4",
+   "name": "Hyundai i30 N TCR",
+   "class": "Touring Cars Cup",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8698": {
+   "layout": "Inline4",
+   "name": "Lada Vesta",
+   "class": "Touring Cars Cup",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "9154": {
+   "layout": "Inline4",
+   "name": "Lynk & Co 03 TCR",
+   "class": "Touring Cars Cup",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8149": {
+   "layout": "Inline4",
+   "name": "Opel Astra",
+   "class": "Touring Cars Cup",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8084": {
+   "layout": "Inline4",
+   "name": "Volkswagen Golf GTI TCR",
+   "class": "Touring Cars Cup",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "1862": {
+   "layout": "Inline6",
+   "name": "BMW 635 CSI",
+   "class": "Touring Classics",
+   "engine": "3.5L naturally aspirated inline-6 (BMW M88/M30)",
+   "confidence": "high"
+  },
+  "2116": {
+   "layout": "Inline4",
+   "name": "BMW M3 E30 Gr.A",
+   "class": "Touring Classics",
+   "engine": "2.3L naturally aspirated inline-4 (BMW S14)",
+   "confidence": "high"
+  },
+  "3964": {
+   "layout": "Inline6",
+   "name": "Nissan Skyline GTR R32 Group N",
+   "class": "Touring Classics",
+   "engine": "2.6L twin-turbo inline-6 (Nissan RB26DETT)",
+   "confidence": "high"
+  },
+  "2275": {
+   "layout": "Inline4",
+   "name": "Volvo 240 Turbo",
+   "class": "Touring Classics",
+   "engine": "2.1L turbo inline-4",
+   "confidence": "high"
+  },
+  "9986": {
+   "layout": "Inline6",
+   "name": "RaceRoom Truck",
+   "class": "Truck Racing",
+   "engine": "turbodiesel inline-6 race truck",
+   "confidence": "medium"
+  },
+  "7810": {
+   "layout": "Electric",
+   "name": "Volkswagen ID. R",
+   "class": "Volkswagen ID. R",
+   "engine": "battery electric, two motors",
+   "confidence": "high"
+  },
+  "2705": {
+   "layout": "Inline4",
+   "name": "BMW E90 320 TC",
+   "class": "WTCC 2013",
+   "engine": "1.6L turbo inline-4 (WTCC)",
+   "confidence": "high"
+  },
+  "2846": {
+   "layout": "Inline4",
+   "name": "Chevrolet Cruze WTCC",
+   "class": "WTCC 2013",
+   "engine": "1.6L turbo inline-4 (WTCC)",
+   "confidence": "high"
+  },
+  "2728": {
+   "layout": "Inline4",
+   "name": "Honda Civic WTCC",
+   "class": "WTCC 2013",
+   "engine": "1.6L turbo inline-4 (WTCC)",
+   "confidence": "high"
+  },
+  "2842": {
+   "layout": "Inline4",
+   "name": "Lada Granta WTCC",
+   "class": "WTCC 2013",
+   "engine": "1.6L turbo inline-4 (WTCC)",
+   "confidence": "high"
+  },
+  "2804": {
+   "layout": "Inline4",
+   "name": "SEAT León WTCC",
+   "class": "WTCC 2013",
+   "engine": "1.6L turbo inline-4 (WTCC)",
+   "confidence": "high"
+  },
+  "4046": {
+   "layout": "Inline4",
+   "name": "Chevrolet RML Cruze TC1",
+   "class": "WTCC 2014",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "3899": {
+   "layout": "Inline4",
+   "name": "Citroen C Elysee WTCC",
+   "class": "WTCC 2014",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "4197": {
+   "layout": "Inline4",
+   "name": "Honda Civic WTCC 2014",
+   "class": "WTCC 2014",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "4067": {
+   "layout": "Inline4",
+   "name": "LADA Granta 1.6T",
+   "class": "WTCC 2014",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "4579": {
+   "layout": "Inline4",
+   "name": "Chevrolet RML Cruze TC1 2015",
+   "class": "WTCC 2015",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "4585": {
+   "layout": "Inline4",
+   "name": "Citroen C Elysee WTCC 2015",
+   "class": "WTCC 2015",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "4554": {
+   "layout": "Inline4",
+   "name": "Honda Civic WTCC 2015",
+   "class": "WTCC 2015",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "4720": {
+   "layout": "Inline4",
+   "name": "Lada Vesta WTCC 2015",
+   "class": "WTCC 2015",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6011": {
+   "layout": "Inline4",
+   "name": "Chevrolet RML Cruze TC1 2016",
+   "class": "WTCC 2016",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6017": {
+   "layout": "Inline4",
+   "name": "Citroen C Elysee WTCC 2016",
+   "class": "WTCC 2016",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6024": {
+   "layout": "Inline4",
+   "name": "Honda Civic WTCC 2016",
+   "class": "WTCC 2016",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6031": {
+   "layout": "Inline4",
+   "name": "Lada Vesta WTCC 2016",
+   "class": "WTCC 2016",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6002": {
+   "layout": "Inline4",
+   "name": "Volvo S60 Polestar TC1",
+   "class": "WTCC 2016",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6310": {
+   "layout": "Inline4",
+   "name": "Chevrolet RML Cruze TC1 2017",
+   "class": "WTCC 2017",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6314": {
+   "layout": "Inline4",
+   "name": "Citroen C Elysee WTCC 2017",
+   "class": "WTCC 2017",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6321": {
+   "layout": "Inline4",
+   "name": "Honda Civic WTCC 2017",
+   "class": "WTCC 2017",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6329": {
+   "layout": "Inline4",
+   "name": "Lada Vesta WTCC 2017",
+   "class": "WTCC 2017",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "6334": {
+   "layout": "Inline4",
+   "name": "Volvo S60 Polestar TC1",
+   "class": "WTCC 2017",
+   "engine": "1.6L turbo inline-4 (TC1)",
+   "confidence": "high"
+  },
+  "7029": {
+   "layout": "Inline4",
+   "name": "Alfa Romeo Giulietta TCR",
+   "class": "WTCR 2018",
+   "engine": "1.75L turbo inline-4",
+   "confidence": "high"
+  },
+  "7011": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS",
+   "class": "WTCR 2018",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7005": {
+   "layout": "Inline4",
+   "name": "CUPRA TCR",
+   "class": "WTCR 2018",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7125": {
+   "layout": "Inline4",
+   "name": "Honda Civic TCR",
+   "class": "WTCR 2018",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7117": {
+   "layout": "Inline4",
+   "name": "Hyundai i30 N TCR",
+   "class": "WTCR 2018",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7036": {
+   "layout": "Inline4",
+   "name": "Peugeot 308 TCR",
+   "class": "WTCR 2018",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7105": {
+   "layout": "Inline4",
+   "name": "Volkswagen Golf GTI TCR",
+   "class": "WTCR 2018",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7845": {
+   "layout": "Inline4",
+   "name": "Alfa Romeo Giulietta TCR",
+   "class": "WTCR 2019",
+   "engine": "1.75L turbo inline-4",
+   "confidence": "high"
+  },
+  "7847": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS",
+   "class": "WTCR 2019",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7850": {
+   "layout": "Inline4",
+   "name": "CUPRA TCR",
+   "class": "WTCR 2019",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7853": {
+   "layout": "Inline4",
+   "name": "Honda Civic TCR",
+   "class": "WTCR 2019",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7856": {
+   "layout": "Inline4",
+   "name": "Hyundai i30 N TCR",
+   "class": "WTCR 2019",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7926": {
+   "layout": "Inline4",
+   "name": "Lynk & Co 03 TCR",
+   "class": "WTCR 2019",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "7859": {
+   "layout": "Inline4",
+   "name": "Volkswagen Golf GTI TCR",
+   "class": "WTCR 2019",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "9252": {
+   "layout": "Inline4",
+   "name": "Alfa Romeo Giulietta TCR",
+   "class": "WTCR 2020",
+   "engine": "1.75L turbo inline-4",
+   "confidence": "high"
+  },
+  "9256": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS",
+   "class": "WTCR 2020",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "9278": {
+   "layout": "Inline4",
+   "name": "CUPRA Leon Competición",
+   "class": "WTCR 2020",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "9266": {
+   "layout": "Inline4",
+   "name": "Honda Civic TCR",
+   "class": "WTCR 2020",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "9234": {
+   "layout": "Inline4",
+   "name": "Hyundai i30 N TCR",
+   "class": "WTCR 2020",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "9241": {
+   "layout": "Inline4",
+   "name": "Lynk & Co 03 TCR",
+   "class": "WTCR 2020",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "9467": {
+   "layout": "Inline4",
+   "name": "Renault Mégane RS TCR",
+   "class": "WTCR 2020",
+   "engine": "1.8L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "10345": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS 2021",
+   "class": "WTCR 2021",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "10371": {
+   "layout": "Inline4",
+   "name": "CUPRA Leon Competición",
+   "class": "WTCR 2021",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "10401": {
+   "layout": "Inline4",
+   "name": "Honda Civic TCR",
+   "class": "WTCR 2021",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "10397": {
+   "layout": "Inline4",
+   "name": "Hyundai Elantra TCR 2021",
+   "class": "WTCR 2021",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "10674": {
+   "layout": "Inline4",
+   "name": "Lada Vesta TCR",
+   "class": "WTCR 2021",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "10368": {
+   "layout": "Inline4",
+   "name": "Lynk & Co 03 TCR",
+   "class": "WTCR 2021",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "11325": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS 2021",
+   "class": "WTCR 2022",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "11323": {
+   "layout": "Inline4",
+   "name": "CUPRA Leon Competición",
+   "class": "WTCR 2022",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "11320": {
+   "layout": "Inline4",
+   "name": "Honda Civic TCR",
+   "class": "WTCR 2022",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "11318": {
+   "layout": "Inline4",
+   "name": "Hyundai Elantra TCR 2022",
+   "class": "WTCR 2022",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "11328": {
+   "layout": "Inline4",
+   "name": "Lynk & Co 03 TCR",
+   "class": "WTCR 2022",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "1824": {
+   "layout": "V12_60",
+   "name": "Pagani Zonda R",
+   "class": "Zonda R Cup",
+   "engine": "6.0L naturally aspirated 60 degree V12 (AMG M120)",
+   "confidence": "high"
+  },
+  "8782": {
+   "layout": "Inline4",
+   "name": "Alfa Romeo Giulietta TCR",
+   "class": "eSports WTCR",
+   "engine": "1.75L turbo inline-4",
+   "confidence": "high"
+  },
+  "8657": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS",
+   "class": "eSports WTCR",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "11917": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS 2021",
+   "class": "eSports WTCR",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8788": {
+   "layout": "Inline4",
+   "name": "CUPRA Leon Competición",
+   "class": "eSports WTCR",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8776": {
+   "layout": "Inline4",
+   "name": "Honda Civic TCR",
+   "class": "eSports WTCR",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "11922": {
+   "layout": "Inline4",
+   "name": "Hyundai Elantra TCR 2022",
+   "class": "eSports WTCR",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8715": {
+   "layout": "Inline4",
+   "name": "Hyundai i30 N TCR",
+   "class": "eSports WTCR",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8719": {
+   "layout": "Inline4",
+   "name": "Lynk & Co 03 TCR",
+   "class": "eSports WTCR",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  },
+  "8785": {
+   "layout": "Inline4",
+   "name": "Peugeot 308",
+   "class": "eSports WTCR",
+   "engine": "2.0L turbo inline-4 (TCR)",
+   "confidence": "high"
+  }
+ }
+}

@@ -17,6 +17,9 @@ namespace TrueforceForAll.Core
         public abstract bool IsEnhanced { get; }
         public abstract bool IsRunning { get; }
 
+        // Default true: every source but the arcade readers carries physics.
+        public virtual bool PublishesPhysics => true;
+
         // Default false. Sources that surface NumCylinders override to true.
         public virtual bool ProvidesNumCylinders => false;
 

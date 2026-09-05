@@ -29,6 +29,20 @@ namespace TrueforceForAll.Core
         /// Drives the "Enhanced Effects" badge in the UI.</summary>
         bool IsEnhanced { get; }
 
+        /// <summary>True when this source's frames carry vehicle physics at all.
+        /// False for the arcade readers, which publish force and nothing else and
+        /// emit an empty frame only so the rate tracking stays alive.
+        ///
+        /// Separate from IsEnhanced, which those sources also set: enhanced says
+        /// "sampled at physics rate, not through SimHub", and that is true of
+        /// them. This says whether there is any physics in the frame to begin
+        /// with, which is a different question and the one the enrichment overlay
+        /// needs to ask. A frame's own contents cannot answer it: a car parked in
+        /// the pits with the engine off carries no revs, no speed and no throttle
+        /// either, and that frame is not the same thing as a source that will
+        /// never have any.</summary>
+        bool PublishesPhysics { get; }
+
         /// <summary>True between Start() and Stop().</summary>
         bool IsRunning { get; }
 

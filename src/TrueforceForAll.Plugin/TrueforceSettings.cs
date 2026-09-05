@@ -37,10 +37,20 @@ namespace TrueforceForAll.Plugin
         Never = 2,   // withhold it silently, no notice
     }
 
+    /// <summary>What the rim LEDs do when the revs are not driving them. One
+    /// enum for both occasions (idle, and a game that has no revs to report) so
+    /// there is a single vocabulary rather than a switch per case.</summary>
+    public enum AmbientLedMode
+    {
+        Off = 0,         // leave the strip alone (default for both occasions)
+        Sweep = 1,       // step up and back down on repeat, in the chosen pattern
+        AudioLevel = 2,  // the computer's audio output level as a meter
+    }
+
     public sealed class TrueforceSettings
     {
         // Master enable, RETIRED as an input on 2026-08-24 and kept as a
-        // DERIVED mirror of MasterMode == Full (the RpmLedUnlocked precedent
+        // DERIVED mirror of MasterMode == Normal (the RpmLedUnlocked precedent
         // below). Still written on every mode change, still backed up, still
         // read by the ep3 pause gate and the producer loop, so an older build
         // reading a newer settings file sees exactly the answer it expects:
@@ -55,10 +65,10 @@ namespace TrueforceForAll.Plugin
 
         // The real master switch. Off touches nothing at all; LightsyncOnly
         // runs the wheel's lights and nothing else (no ep3 stream, no USBPcap
-        // capture, no helper exe, no telemetry sources, no effects); Full is
+        // capture, no helper exe, no telemetry sources, no effects); Normal is
         // everything, with the per-game switch underneath it.
         //
-        // Defaults to Full so a fresh install behaves exactly as it always
+        // Defaults to Normal so a fresh install behaves exactly as it always
         // has. Existing installs are translated once by MasterModeMigratedV1.
         [JsonConverter(typeof(StringEnumConverter))]
         public TrueforceMasterMode MasterMode { get; set; } = TrueforceMasterMode.Normal;
@@ -81,6 +91,45 @@ namespace TrueforceForAll.Plugin
         // labeled "iRacing" silently gated the Mode B lights too, and a
         // stored false darkened the wheel with no visible cause.)
         public bool ModeBRevLightsEnabled { get; set; } = true;
+
+        // Rim LEDs as an audio level meter: the computer's own output level
+        // written to the same 0..10 (G PRO / RS50) or 0..5 (G923) bar the revs
+        // use, in whatever pattern the wheelbase is set to. Nothing else about
+        // the strip changes.
+        //
+        // Two occasions where the revs cannot drive the strip, each choosing
+        // from the same set (nothing / sweep / audio level).
+        //
+        // Nobody is driving: no game running, or a game running with the car
+        // parked past the idle delay. The same question the dash's idle card
+        // asks (DashIdleElapsed), so the two agree about what "not driving"
+        // means without either owning the answer.
+        public AmbientLedMode IdleLedMode { get; set; } = AmbientLedMode.Off;
+        // A game that has never reported an engine for as long as it has been
+        // running. An emulated arcade cabinet publishes force feedback and
+        // nothing else, so its rev bar has no input at all and sits dark.
+        //
+        // Resolved BEFORE the idle case and never falls through to it, which is
+        // load-bearing rather than an ordering accident: the arcade sources
+        // publish no speed, so the idle rule reads a live cabinet as parked and
+        // would otherwise take the bar mid-race. It applies to a game being
+        // PLAYED, not merely one feeding frames: an arcade source publishes for
+        // as long as its shared block exists, so TeknoParrot left open at its
+        // menu would otherwise hold this case open with no cabinet running.
+        public AmbientLedMode NoRevLedMode { get; set; } = AmbientLedMode.Off;
+
+        // Both default off. These are a look, not a driving aid, and the safe
+        // baseline for anything new that writes to the wheel is off.
+
+        // No knob for the meter's scaling, deliberately. It stretches the
+        // strip between the quietest and loudest the sound has recently been
+        // (AudioLevelEnvelope, which also records the two fixed-scale designs
+        // that failed before it), and the one control that briefly existed for
+        // it only ever wanted to be at maximum.
+        // One full pass up the strip and back down, in milliseconds. Owner's
+        // call that this is a slider rather than a fixed rate: how fast a sweep
+        // wants to be depends on the wheel it is on and the room it is in.
+        public int LedSweepPeriodMs { get; set; } = LedSweep.DefaultPeriodMs;
 
         // Per-car rev-light pattern picks: "{game}/{carId}" -> effect 1-9
         // (1-4 built-in patterns, 2 = outside-in; 5-9 the wheel's custom
@@ -302,6 +351,12 @@ namespace TrueforceForAll.Plugin
         // checkbox gates application, not learning persistence.
         public Dictionary<string, CarGripCal> CarGripCalibration { get; set; }
             = new Dictionary<string, CarGripCal>();
+
+        // Per-car R3E auto-strength: learned peak (so a known car starts strong)
+        // plus the user's strength trim. Keyed game|carId. Must default empty:
+        // the settings loader appends onto it.
+        public Dictionary<string, R3ECarStrength> R3EStrengthByCar { get; set; }
+            = new Dictionary<string, R3ECarStrength>();
 
         // Car facts layer: community-vetted (or scanner-detected) truth per
         // (game, carId). Replaces the cylinder-only CarCylinderCache as
@@ -985,24 +1040,63 @@ namespace TrueforceForAll.Plugin
         public double StationarySpringCutoffKmh { get; set; } = 12.0;  // spring fully gone at/above this speed
 
         // FFB spike taming: tames AC's over-the-top kerb / collision FFB so
-        // it lands as a firm shove instead of a wheel-yanking jolt. Two
-        // knobs: FfbSpikeMaxLsbPerMs caps slew rate (LSB/ms); FfbPeakSoftLimitLsb
-        // sets attenuation strength when slew exceeds the spike-detect
-        // threshold. Defaults are the values that feel right on a GPRO; users
-        // can fine-tune attenuation in the UI. The rate cap rarely needs to
-        // change so it lives behind an Advanced section.
-        // Enabled flag gates both: when false, runtime treats them as 0
-        // regardless of stored values, so users can flip the feature off
-        // without losing their tuning.
+        // it lands as a firm shove instead of a wheel-yanking jolt.
+        // Enabled gates the whole feature: when false, runtime treats every
+        // knob as 0 regardless of stored values, so users can flip the
+        // feature off without losing their tuning.
         public bool  FfbSpikeTamingEnabled    { get; set; } = true;
-        // Algorithm switch (experimental A/B). True = pure slew-rate limiter
-        // (iRacing-style, no amplitude reduction). False = transient detector
-        // with magnitude threshold + soft cap. Each interprets
-        // FfbSpikeMaxLsbPerMs differently: as a rate cap (LSB/ms) when true,
-        // or as a magnitude threshold (LSB) when false. FfbPeakSoftLimitLsb
-        // is only used by the transient detector.
+        // Method switch. True = rate limiter (iRacing-style: cap how fast
+        // force may change, no amplitude reduction). False = peak limiter
+        // (transient detector: magnitude threshold + soft cap).
+        //
+        // Each method owns its OWN stored number, deliberately. They used to
+        // share FfbSpikeMaxLsbPerMs, read as a rate (LSB/ms) under the rate
+        // limiter and as a magnitude threshold (LSB) under the peak limiter,
+        // which meant flipping the method silently reinterpreted a value
+        // tuned for the other unit. The AC preset's 386 is a sane rate and a
+        // nonsensical threshold, so anyone switching method landed on
+        // behavior they could not reason about (user report, 2026-09-05).
         public bool  FfbSpikeUseSlewLimiter   { get; set; } = true;
+        // Rate limiter only: max change in force per millisecond, in LSB.
         public float FfbSpikeMaxLsbPerMs      { get; set; } = 2508.36f;
+        // Peak limiter only: the magnitude floor, in LSB, below which nothing
+        // is touched. Null means a settings file written before the split, so
+        // SeedSpikeTransientThreshold takes the user's tuning across when it
+        // was theirs to keep (they were already on the peak limiter) and the
+        // shipped default otherwise. Seeded once at load, concrete after that.
+        public float? FfbSpikeTransientThresholdLsb { get; set; } = null;
+
+        /// <summary>Full-scale FFB magnitude in LSB. The device commands
+        /// signed 16-bit torque, so every spike knob is a fraction of this;
+        /// the UI shows the fraction, the settings store the LSB.</summary>
+        public const float FfbFullScaleLsb = 32767f;
+        /// <summary>Shipped peak-limiter floor: 60% of full force, tuned on a
+        /// G PRO (owner, 2026-09-05). The old 6.3% was a placeholder from the
+        /// method's A/B days that no built-in preset ever selected, and it sat
+        /// BELOW ordinary road force, which is precisely when a floor stops
+        /// doing its job: the reference collapsed onto it, every everyday bump
+        /// read as a jump, and nothing on a calm road could exceed 12.6% of
+        /// full force. At 60% the floor is above normal load, so the limiter
+        /// behaves as a near-absolute ceiling (this plus Max hit) and leaves
+        /// ordinary road feel alone.</summary>
+        public const float DefaultSpikeTransientThresholdLsb = 19665.9141f;
+
+        /// <summary>Peak-limiter threshold with the pre-split fallback applied,
+        /// so every reader is safe even if the seed never ran (a snapshot
+        /// applied before load, a unit test constructing settings directly).</summary>
+        [JsonIgnore]
+        public float EffectiveSpikeTransientThresholdLsb
+            => FfbSpikeTransientThresholdLsb
+               ?? (FfbSpikeUseSlewLimiter ? DefaultSpikeTransientThresholdLsb : FfbSpikeMaxLsbPerMs);
+
+        /// <summary>One-time seed of the peak-limiter threshold for settings
+        /// and presets written before the two methods stopped sharing a
+        /// number. Idempotent: does nothing once the field is concrete.</summary>
+        public void SeedSpikeTransientThreshold()
+        {
+            if (FfbSpikeTransientThresholdLsb == null)
+                FfbSpikeTransientThresholdLsb = EffectiveSpikeTransientThresholdLsb;
+        }
 
         // Hand the wheel back to the game while paused (the checkbox under
         // Force feedback (advanced)). When on, the plugin
@@ -1346,6 +1440,25 @@ namespace TrueforceForAll.Plugin
         // pipeline; in-game FFB intensity should be 0 so the game is not also
         // driving the wheel. Off = the tap route, exactly as before.
         public bool R3ESharedMemoryFfb { get; set; } = false;
+
+        // Auto-strength for the R3E reshape: learn each car's normalized force
+        // peak and boost RaceRoom's weak SteeringForcePercentage toward a
+        // consistent ceiling (the percentage tops out far below full scale, and
+        // on this path FfbScale and the iRacing max-force are both bypassed, so
+        // there is no other working strength control). Default on.
+        public bool R3EAutoStrength { get; set; } = true;
+
+        // Stationary friction for the R3E reshape. RaceRoom bakes a low-speed
+        // damper ("stationary friction") into the FFB OUTPUT, which this route
+        // replaces with the sim's shared-memory steering force. That physics
+        // value is ~0 at a standstill, so the parked firmness the tap route
+        // carries is missing here. Resynthesize it: a resistance whose FIRMNESS
+        // is set by CAR SPEED (full parked, fading to nothing by FadeKmh) and
+        // that saturates on the smallest wheel motion, so how fast the wheel is
+        // turned does not change how heavy it feels. Default on.
+        public bool R3EStationaryDamper { get; set; } = true;
+        public double R3EStationaryDamperStrength { get; set; } = 0.40;  // fraction of full scale when parked
+        public double R3EStationaryDamperFadeKmh  { get; set; } = 25.0;  // car speed where it fades to nothing
         public float ModeBRiseGamma { get; set; } = 0.80f;   // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
         public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit
@@ -1434,6 +1547,11 @@ namespace TrueforceForAll.Plugin
         // Performance: the port the user picks is local to their setup. Lives
         // here so it survives preset switches.
         public ForzaSettings Forza { get; set; } = new ForzaSettings();
+
+        // Emulated arcade titles (TeknoParrot). Machine-local for the same
+        // reason as Forza: which dumps are installed and what their executables
+        // are called is a property of this machine, not of the user's tuning.
+        public ArcadeSettings Arcade { get; set; } = new ArcadeSettings();
 
         // Built-in preset source folder. Blank = use the shipped default next
         // to the plugin DLL (<dll>\TrueforceForAll-Presets). A user can point this at
@@ -1909,6 +2027,15 @@ namespace TrueforceForAll.Plugin
         public float ForceQualSec  { get; set; }
     }
 
+    /// <summary>Persisted R3E auto-strength state for one car: the learned
+    /// normalized force peak (so a known car starts strong with no warm-up) and
+    /// the user's per-car strength trim (nudge to weaken/strengthen). Keyed by
+    /// game|carId in <see cref="TrueforceSettings.R3EStrengthByCar"/>.</summary>
+    public sealed class R3ECarStrength
+    {
+        public float Peak { get; set; }   // the applied (pressed or nudged) normalized max; 0 = none
+    }
+
     /// <summary>User-authored engine definition. Stored in
     /// <summary>Persisted sort state for one of the preset manager tabs.
     /// Empty Key = natural (insertion) order; populated Key matches the
@@ -2300,6 +2427,11 @@ namespace TrueforceForAll.Plugin
         public bool  FfbSpikeUseSlewLimiter    { get; set; } = true;
         public float FfbSpikeMaxLsbPerMs       { get; set; } = 2508.36f;
         public float FfbPeakSoftLimitLsb       { get; set; } = 2061.90f;
+        // Nullable on purpose: a preset saved before the rate and peak
+        // limiters got separate numbers has no opinion here, so applying it
+        // leaves the live threshold alone (see ApplyGamePreset) and it never
+        // reads as dirty (see SpikeReductionEquals). Concrete once resaved.
+        public float? FfbSpikeTransientThresholdLsb { get; set; } = null;
         public bool  DuckingEnabled            { get; set; } = true;
         public float DuckDepth                 { get; set; } = 0.60f;
         public float DuckAttackMs              { get; set; } = 5.0f;
@@ -2427,6 +2559,111 @@ namespace TrueforceForAll.Plugin
     /// title is the active game (FH4/5/6, FM); SimHub's GameName detection now
     /// covers the shipped Forza titles, so the old always-on escape hatch was
     /// retired.</summary>
+    /// <summary>Games SimHub cannot see at all, because they run under an arcade
+    /// emulator. TeknoParrot publishes the cabinet's IO board as a named shared
+    /// memory block, and the game's own force feedback command lives in it, so we
+    /// can read force for titles that have no telemetry of any kind. Nothing here
+    /// reads or writes the game's memory.</summary>
+    public sealed class ArcadeSettings
+    {
+        /// <summary>Master switch for the whole process-detected arcade path.</summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>Process name (no .exe, case-insensitive) to the game identity
+        /// to run under, which is what binds a preset to that cabinet.
+        ///
+        /// Dictionary, not a list, for the loader reason on DashTabOrder: SimHub's
+        /// serializer reuses a pre-populated instance, which APPENDS to a list but
+        /// merely sets keys on a dictionary. Empty is the correct default anyway:
+        /// with no entry we still detect a running arcade game from the shared
+        /// memory block itself and run under a generic identity, so this exists to
+        /// give a particular cabinet its own name and therefore its own preset.</summary>
+        public Dictionary<string, string> Games { get; set; }
+            = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Per-cabinet tuning, keyed by the game identity detection
+        /// produces ("Arcade ID8"), which is what ActiveGame carries. NOT one
+        /// global set: the per-game decoders divide their magnitudes by anything
+        /// from 9 to 1000, and the cabinets differ wildly in how hard they push, so
+        /// a single force scale would mean tuning one title detunes the next.
+        ///
+        /// Dictionary for the loader reason on DashTabOrder: SimHub's serializer
+        /// reuses a pre-populated instance, which APPENDS to a list but merely sets
+        /// keys on a dictionary.</summary>
+        public Dictionary<string, ArcadeGameTuning> Tuning { get; set; }
+            = new Dictionary<string, ArcadeGameTuning>(StringComparer.OrdinalIgnoreCase);
+
+
+        /// <summary>Shared block a publishing build of FFBArcadePlugin writes its
+        /// decoded effect calls to. Empty means the default name. When that block
+        /// is present we read it in preference to decoding the cabinet IO
+        /// ourselves, because it covers roughly ninety games rather than the
+        /// dozen we have written decoders for.</summary>
+        public string PublisherMapName { get; set; } = "";
+
+        /// <summary>Where TeknoParrot is installed. Filled in automatically when we
+        /// can find it; set by hand when it lives somewhere unusual. Its
+        /// UserProfiles folder is what tells us which cabinets are configured and
+        /// where each one's files are.</summary>
+        public string TeknoParrotPath { get; set; } = "";
+
+        /// <summary>Which cabinets have our publishing plugin installed, keyed by
+        /// TeknoParrot profile name, valued with the version we put there so a
+        /// newer plugin build can refresh it.
+        ///
+        /// Dictionary, not a list, for the loader reason spelled out on
+        /// DashTabOrder: SimHub's serializer reuses a pre-populated instance, which
+        /// APPENDS to a list but merely sets keys on a dictionary.</summary>
+        public Dictionary<string, string> ModInstalledVersions { get; set; }
+            = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    }
+
+    /// <summary>What one arcade cabinet needs on top of what we read from it.
+    /// Everything here is applied AFTER capture, which is why it is ours rather
+    /// than something we write into that game's own ini: the settings that shape
+    /// the force BEFORE we see it live in FFBPlugin.ini and belong to the plugin
+    /// that applies them.</summary>
+    public sealed class ArcadeGameTuning
+    {
+        /// <summary>FFBArcadePlugin's game id, which is how these protocols are
+        /// identified everywhere. Only used by the direct block reader, which has
+        /// to be told which protocol to decode because the block carries nothing
+        /// that says who wrote it. The publishing route reports its own id and
+        /// ignores this. 0 means "not set".</summary>
+        public int GameId { get; set; }
+
+        /// <summary>Which int-sized slot of the cabinet IO block carries the force
+        /// command: 2 for most titles, 6 for a handful. 0 means "use the decoder's
+        /// own answer". Only set this if a capture shows it elsewhere.</summary>
+        public int FfbSlotOverride { get; set; }
+
+        /// <summary>Scales what we captured into device force. On the publishing
+        /// route 1.0 means exactly what this user's wheel would have felt, because
+        /// their own tuning is already baked in by then.</summary>
+        public double ForceScale { get; set; } = 1.0;
+
+        /// <summary>Flips the decoded left/right of the constant force. Note this
+        /// is BEFORE TrueforceDevice.FfbInvertSign, which negates every provider
+        /// value again, so there are two flips in the chain and only the wheel
+        /// settles which combination is right.</summary>
+        public bool InvertDirection { get; set; }
+
+        /// <summary>Whether to render a damper the arcade plugin sends us.
+        ///
+        /// ON by default, because a damper only ever reaches us if somebody asked
+        /// for one. That plugin emits none unless EnableDamper is set, and it is
+        /// unset in all 88 shipped configurations, so this costs nothing for anyone
+        /// who has not opted in. For anyone who HAS, silently dropping it would
+        /// make a setting they deliberately turned on do nothing, which is worse
+        /// than the doubling it avoids: two dampers is a thing they can see and
+        /// undo, a dead setting is not.
+        ///
+        /// It is rendered through our own damper gain, calibrated on the effects
+        /// bench, so a commanded coefficient becomes the torque it should.</summary>
+        public bool AcceptPublishedDamper { get; set; } = true;
+    }
+
     public sealed class ForzaSettings
     {
         public bool   Enabled       { get; set; } = true;

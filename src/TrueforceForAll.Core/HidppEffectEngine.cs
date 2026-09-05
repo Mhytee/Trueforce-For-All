@@ -66,6 +66,28 @@ namespace TrueforceForAll.Core
         public const byte TypeRamp         = 0x0a;
         public const byte AutostartBit     = 0x80;
 
+        /// <summary>Name for an effect type byte, for logs that have to be read
+        /// by a human deciding whether the wheel was asked for the right
+        /// thing.</summary>
+        public static string TypeName(byte type)
+        {
+            switch (type)
+            {
+                case TypeConstant:     return "constant";
+                case TypeSine:         return "sine";
+                case TypeSquare:       return "square";
+                case TypeTriangle:     return "triangle";
+                case TypeSawtoothUp:   return "sawtooth-up";
+                case TypeSawtoothDown: return "sawtooth-down";
+                case TypeSpring:       return "spring";
+                case TypeDamper:       return "damper";
+                case TypeFriction:     return "friction";
+                case TypeInertia:      return "inertia";
+                case TypeRamp:         return "ramp";
+                default:               return "unknown";
+            }
+        }
+
         public const byte StateStop  = 0x01;
         public const byte StatePlay  = 0x02;
         public const byte StatePause = 0x03;
@@ -287,6 +309,31 @@ namespace TrueforceForAll.Core
             var old = _slots[slot];
             fx.Playing    = autostart || (old != null && old.Playing);
             fx.StartTicks = (old != null && old.Playing && fx.Playing) ? old.StartTicks : nowTicks;
+
+            // A game that VARIES a condition re-downloads the same slot every time
+            // it moves the coefficient, and a fresh Fx starts with an uninitialised
+            // output filter. At 60 changes a second that filter restarts before it
+            // has ever settled, so the smoothing it exists to provide never
+            // happens and a varying spring can come through grainier than a steady
+            // one at the same strength.
+            //
+            // Carrying the filter across is only safe when nothing can be reading
+            // it as we write, so it is opt-in: a caller that ingests and evaluates
+            // on ONE thread sets PreserveConditionFilterOnUpdate, and the wire tap,
+            // whose downloads arrive on the parser thread while the pump renders,
+            // leaves it alone.
+            //
+            // The friction lock is deliberately NOT carried even then. Its hazard
+            // is different in kind: a stale LockPos paired with LockInit true is a
+            // full-scale kick rather than a small transient, which is why it is
+            // reset in CloneWith too.
+            if (PreserveConditionFilterOnUpdate
+                && old != null
+                && (old.Type & 0x7f) == (fx.Type & 0x7f))
+            {
+                fx.LpfState = old.LpfState;
+                fx.LpfInit  = old.LpfInit;
+            }
             _slots[slot]  = fx;
             ParametricDownloads++;
             RetireOtherCopies(slot);
@@ -619,6 +666,19 @@ namespace TrueforceForAll.Core
         /// millisecond-scale corner audibly even when the step itself is
         /// bounded.</summary>
         public float WaveformMaxStepPerMs { get; set; } = 0.08f;
+
+        /// <summary>Carry a condition's output filter across a re-download of the
+        /// same slot and type, instead of restarting it.
+        ///
+        /// Default OFF, and the default is the safe one. The render state is owned
+        /// by the pump thread, so an engine whose downloads arrive on a different
+        /// thread (the wire tap) could copy a value mid-write. Only set this on an
+        /// instance that ingests and evaluates on ONE thread.
+        ///
+        /// It matters for a game that varies a condition rather than setting it
+        /// once: each change is a re-download, and a filter that restarts on every
+        /// change never gets to smooth anything.</summary>
+        public bool PreserveConditionFilterOnUpdate { get; set; }
 
         // Rate-limit a waveform's output. Shares the per-effect LPF state
         // slot, which conditions never touch and waveforms never used.

@@ -44,6 +44,10 @@ namespace TrueforceForAll.Plugin
         private readonly DispatcherTimer _carChangeWatcher;
 
         private DataGrid _grid;
+        // Kept so CellEditEnding can tell the two editable columns apart; both
+        // commit through a TextBox and there is nothing else to distinguish them.
+        private DataGridTextColumn _labelCol;
+        private DataGridTextColumn _redlineCol;
         private TextBlock _emptyHint;
 
         public sealed class Row
@@ -212,7 +216,7 @@ namespace TrueforceForAll.Plugin
 
             // Label column with inline edit. Commits via CellEditEnding
             // below so we can plumb the rename into the plugin.
-            var labelCol = new DataGridTextColumn
+            _labelCol = new DataGridTextColumn
             {
                 Header = "Label (click to rename)",
                 Binding = new Binding("Label") { Mode = BindingMode.TwoWay },
@@ -226,8 +230,8 @@ namespace TrueforceForAll.Plugin
                 TryFindResource(typeof(DataGridColumnHeader)) as Style);
             labelHeaderStyle.Setters.Add(new Setter(FrameworkElement.ToolTipProperty,
                 "Rename a row for your own reference. The label is cosmetic and stays on this PC; it is never shared."));
-            labelCol.HeaderStyle = labelHeaderStyle;
-            g.Columns.Add(labelCol);
+            _labelCol.HeaderStyle = labelHeaderStyle;
+            g.Columns.Add(_labelCol);
 
             g.Columns.Add(new DataGridTextColumn
             {
@@ -257,11 +261,23 @@ namespace TrueforceForAll.Plugin
                 CellTemplate = engineTemplate,
             });
 
-            g.Columns.Add(new DataGridTextColumn
+            // Redline, editable. The rev limiter is the effect a user is most
+            // likely to know the exact number for, and until now this column
+            // showed it and offered no way to set it: the only redline field in
+            // the plugin writes the variant being DRIVEN, which is never the
+            // row you came to this window to correct.
+            _redlineCol = new DataGridTextColumn
             {
-                Header = "Redline", Width = 130, IsReadOnly = true,
-                Binding = new Binding("Redline"),
-            });
+                Header = "Redline (click to set)", Width = 130,
+                Binding = new Binding("Redline") { Mode = BindingMode.TwoWay },
+            };
+            var redlineHeaderStyle = new Style(typeof(DataGridColumnHeader),
+                TryFindResource(typeof(DataGridColumnHeader)) as Style);
+            redlineHeaderStyle.Setters.Add(new Setter(FrameworkElement.ToolTipProperty,
+                "Type this variant's redline in RPM. Clear the cell, or type auto, to go back to "
+                + "working it out automatically. Built-in rows cannot be pinned."));
+            _redlineCol.HeaderStyle = redlineHeaderStyle;
+            g.Columns.Add(_redlineCol);
 
             // Delete button column. Disabled for built-in rows AND for the
             // variant currently being driven (telemetry would just recreate it).
@@ -434,6 +450,7 @@ namespace TrueforceForAll.Plugin
             if (e.EditAction != DataGridEditAction.Commit) return;
             if (!(e.Row.Item is Row row)) return;
             if (!(e.EditingElement is TextBox tb)) return;
+            if (e.Column == _redlineCol) { CommitRedlineEdit(row, tb); return; }
             string newLabel = (tb.Text ?? "").Trim();
             if (string.IsNullOrEmpty(newLabel))
             {
@@ -451,6 +468,46 @@ namespace TrueforceForAll.Plugin
                 row.Label = newLabel;
             else
                 tb.Text = row.Label;
+        }
+
+        // Redline cell commit. Blank or "auto" clears the pin and hands the row
+        // back to automatic resolution; a number in range pins it. Anything else
+        // reverts, because a redline the user cannot see the effect of is worse
+        // than one they have to retype.
+        private void CommitRedlineEdit(Row row, TextBox tb)
+        {
+            string typed = (tb.Text ?? "").Trim();
+            if (string.Equals(typed, row.Redline, StringComparison.Ordinal)) return;
+            if (!row.CanEdit) { tb.Text = row.Redline; return; }
+
+            bool clearing = typed.Length == 0
+                         || typed.Equals("auto", StringComparison.OrdinalIgnoreCase);
+            int? rpm = null;
+            if (!clearing)
+            {
+                // The same parse the settings readouts use, so "7,200" and
+                // "7200 rpm" both land, and the source tag the cell may already
+                // be showing ("7200 (community)") is ignored rather than
+                // rejected: retyping what is on screen should be a no-op.
+                if (!Core.ReadoutNumber.TryParse(typed, out double v))
+                {
+                    tb.Text = row.Redline;
+                    return;
+                }
+                rpm = (int)Math.Round(v);
+            }
+
+            if (!_plugin.SaveActiveCarVariantUserRedlineById(row.Id, rpm))
+            {
+                tb.Text = row.Redline;
+                return;
+            }
+            // Rebuild from the plugin so the cell shows what the row actually
+            // resolves to now, including a source tag if the cleared row falls
+            // back to a community value. Deferred: the grid is still finishing
+            // this edit, and rebuilding its rows underneath that reenters it.
+            Dispatcher.BeginInvoke(new Action(() => { try { Reload(); } catch { } }),
+                                   DispatcherPriority.Background);
         }
 
         // Per-row Engine dropdown commit. Fires on the initial binding too,
