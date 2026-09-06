@@ -4541,36 +4541,6 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => NudgeR3EStrength(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("R3EStrengthDown", GetType(),
                     (pm, a) => NudgeR3EStrength(-1), (pm, a) => { });
-                // Memory Map: the operator's own ground truth, from the rim.
-                // A shift moves engine speed while the pedal stays still, which
-                // is the one test that tells a tachometer apart from the pile
-                // of pedal-followers a racing game is full of (manifold
-                // pressure, engine load, audio level, our own force). The
-                // scanner cannot see a shift; the person driving can, and these
-                // are bound to the shift paddles they are already using.
-                //
-                // Each press is one line on the scanner's stdin, timestamped on
-                // arrival against the recorder's own clock, and a no-op with a
-                // logged reason when no scan is running.
-                pluginManager.AddInputMapping("MemoryMapShiftUp", GetType(),
-                    (pm, a) => SendMemoryScanShift("up"), (pm, a) => { });
-                pluginManager.AddInputMapping("MemoryMapShiftDown", GetType(),
-                    (pm, a) => SendMemoryScanShift("down"), (pm, a) => { });
-                // The race started. Marks segment the recording, so the
-                // analysis can throw away the menu and keep the driving.
-                pluginManager.AddInputMapping("MemoryMapRaceStart", GetType(),
-                    (pm, a) => SendMemoryScanMark("race-start"), (pm, a) => { });
-                // The session's mark button. One binding, and the NAME it sends
-                // is chosen on the tab before the run (lap, stop, car-change,
-                // crash, drift, or a plain note), because at the wheel there is
-                // one spare button and no keyboard. A mark is the END of a
-                // lookback window, not the instant: a tap is always late except
-                // for a shift, so the window travels with the name and the
-                // analysis looks back from the tap rather than at it. Same
-                // AddInputMapping rule as everything above: AddAction would show
-                // in the Actions list and never fire from a button.
-                pluginManager.AddInputMapping("MemoryMapMark", GetType(),
-                    (pm, a) => SendMemoryScanMark(MemoryScanMarkName), (pm, a) => { });
 
                 // The dash's -/+ pair fires ACTIONS (ButtonItem.TriggerAction),
                 // which AddInputMapping does not register: the mappings above
@@ -6385,10 +6355,6 @@ namespace TrueforceForAll.Plugin
                 CancelDamperCalibration();
                 StopDiDamperSpike();
                 StopWheelMotion();
-                // The memory scanner is a child process holding a read handle
-                // on a game. Left alive it outlives the plugin with nothing on
-                // screen to say so, and nothing left to stop it from.
-                StopMemoryScan();
             }
             catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] bench teardown on exit: " + ex.Message); }
 

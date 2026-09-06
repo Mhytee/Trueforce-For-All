@@ -55,27 +55,6 @@
     <Compile Include="..\TrueforceForAll.Plugin\LovelyCarDataStore.cs">
       <Link>Linked\LovelyCarDataStore.cs</Link>
     </Compile>
-    <!-- The memory-map watch list and the wire it rides on. Both are pure
-         logic with no WPF and no SimHub: the list validates the addresses a row
-         is anchored on, and ScanHost decodes the scanner's event lines. Worth
-         pinning because a watch row that silently fails to parse looks exactly
-         like a value that stopped moving, which is the one reading this whole
-         feature exists to make trustworthy. -->
-    <Compile Include="..\TrueforceForAll.Plugin\MemoryWatchList.cs">
-      <Link>Linked\MemoryWatchList.cs</Link>
-    </Compile>
-    <Compile Include="..\TrueforceForAll.Plugin\ScanHost.cs">
-      <Link>Linked\ScanHost.cs</Link>
-    </Compile>
-    <!-- The field frame and the map file. Same rationale, and a stronger one:
-         this is where a candidate is eliminated and where a saved entry is
-         judged live or stale, and both of those decisions are invisible on a
-         screen until they are already wrong. Eliminating on silence would
-         delete the right answer, and calling a garbage read live would feed a
-         wrong number onward, so the arithmetic behind both is pinned here. -->
-    <Compile Include="..\TrueforceForAll.Plugin\MemoryFieldMap.cs">
-      <Link>Linked\MemoryFieldMap.cs</Link>
-    </Compile>
     <!-- Per-channel LED colour trim. BCL only. Worth pinning because three
          separate comparison sites depend on it being deterministic, and a
          rounding change would make them re-upload slots forever. -->

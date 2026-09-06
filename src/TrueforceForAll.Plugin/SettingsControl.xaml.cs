@@ -274,10 +274,6 @@ namespace TrueforceForAll.Plugin
             // any visibility pass runs over the controls inside it.
             ApplyFxBenchVisibility();
             ApplyLightsyncTabVisibility();
-            // Session-only unlock, so this always starts hidden. Called anyway
-            // so the tab and its handlers are in a known state before the first
-            // RefreshFromPlugin.
-            ApplyMemoryMapTabVisibility();
 
             // Header version readout. Read once at construction; doesn't change
             // at runtime within a session. ToString(3) drops the build/revision
@@ -365,15 +361,6 @@ namespace TrueforceForAll.Plugin
                 _meterTimer.Stop();
                 try { DismissToast(); } catch { }
                 try { _discordLinkCts?.Cancel(); } catch { }
-                // The memory scanner is a child process reading a game. Leaving
-                // the plugin's panel is the last surface that could stop it, so
-                // it goes with the panel rather than running on unseen.
-                try { _plugin?.StopMemoryScan(); } catch { }
-                try { DetachScanHandlers(); } catch { }
-                try { StopMemMapTimer(); } catch { }
-                // SimHub's binding list is not panel-scoped, so a handler left
-                // on it keeps this whole control alive after it is gone.
-                try { AttachBindingWatch(false); } catch { }
                 if (_plugin != null)
                 {
                     _plugin.AuthIdentityChanged -= OnAuthIdentityChanged;
@@ -9810,14 +9797,6 @@ namespace TrueforceForAll.Plugin
                 // user keeps ignoring; refresh the chrome if any badge just cleared.
                 if (_plugin.NoteEffectsViewOpened()) RefreshNewBadges();
             }
-            else if (MemoryMapTab != null && ReferenceEquals(MainTabs.SelectedItem, MemoryMapTab))
-            {
-                // What is running and whether the scanner is deployed can both
-                // have changed while the tab was hidden, and both decide whether
-                // Start does anything.
-                RefreshMemoryMapTab();
-                RefreshWheelCueLine();
-            }
             else if (LightsyncTab != null && ReferenceEquals(MainTabs.SelectedItem, LightsyncTab))
             {
                 // Deferred so the tab paints behind the dialog rather than after
@@ -13331,7 +13310,6 @@ namespace TrueforceForAll.Plugin
             "FXTEST         Shows or hides the effect test bench at the bottom of the FFB tab (type it again to hide it). NO GAME NEEDED: the bench plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel), then the identical effect through the plugin's renderer, so you can alternate the two and tune until they match. It also carries the hands-free Auto-tune. The typed forms still work: 'FXTEST NATIVE <effect>' and 'FXTEST ENGINE <effect>'; effects DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP, with optional strength% (default 50) and period ms (default 250). FXTEST OFF ends a running test; auto-off after 30 s.\n" +
             "FXDUMP         Effect-download trace: one log line per effect the wheel is asked to download, decoded straight off the USB wire, with its type byte and its raw parameters (coefficients, saturations, deadband, centre, or magnitude and period). Answers whether the wheel was asked for what you think you asked for: on the bench a native effect passes through DirectInput, Windows and Logitech's driver first, and a substituted type or reshaped parameter cannot be told apart by feel. Session only. Toggle.\n" +
             "ACLEDS         Rev-light contention diagnostic: every 2 s, a '[REVLIGHT]' line with the level writes the GAME landed on the wheel's rev-light feature (measured off the USB wire), the longest gap between two of them, the level they left, and what our own LEDs and base screen were allowed to do at the time. In Assetto Corsa it also reports whether CSP's own rev-light module is driving the bar. For lights that stick, go dark, then catch up seconds later. Session only. Toggle.\n" +
-            "MEMMAP         Reveal the Memory Map tab, which runs the read-only memory scanner against a running arcade cabinet. You fill in what you can read on screen (the car, your own name, the redline) on the map's own rows and search for all of it at once, or record a session (drive, shift a lot, hit the limiter, press a bound mark button at the end of anything worth marking) that every field is answered from, so titles that publish no telemetry at all can eventually get some. Cues and marks show on the wheel's screen, because you are at the wheel, not the keyboard. It only ever READS the game's memory. Needs memscan.exe copied in beside the plugin; the tab says so with the paths if it is missing. MEMMAP OFF hides the tab and stops any running scan. Session only: hidden again on the next launch.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup taken before the plugin first wrote the slot. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +
@@ -14184,19 +14162,6 @@ namespace TrueforceForAll.Plugin
                 bool on = code.IndexOf("OFF", StringComparison.OrdinalIgnoreCase) < 0;
                 string msg = _plugin.SetArcadeEffectTrace(on);
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
-                return;
-            }
-            // MEMMAP [OFF]: reveal or hide the Memory Map tab, which drives the
-            // read-only memory scanner. Session only by design: the unlock does
-            // not persist, so a machine that ran one scan does not carry a
-            // developer tab around afterwards.
-            if (code.Equals("MEMMAP", StringComparison.OrdinalIgnoreCase)
-                || code.StartsWith("MEMMAP ", StringComparison.OrdinalIgnoreCase))
-            {
-                AccessCodeBox.Text = string.Empty;
-                bool memOn = code.IndexOf("OFF", StringComparison.OrdinalIgnoreCase) < 0;
-                string memMsg = ToggleMemoryMapTab(memOn);
-                if (AccessCodeStatus != null) AccessCodeStatus.Text = memMsg;
                 return;
             }
             if (code.Equals("DAMPCAL", StringComparison.OrdinalIgnoreCase)
