@@ -264,6 +264,7 @@ namespace TrueforceForAll.Core
             return outp;
         }
 
+
         public override void Start()
         {
             if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;

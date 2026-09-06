@@ -22,7 +22,8 @@
 //     operator's own ground truth, which is stronger evidence than anything
 //     behaviour can prove:
 //         {"cmd":"shift","dir":"up"}      a gearshift just happened
-//         {"cmd":"mark","name":"race-start"}
+//         {"cmd":"mark","name":"race-start","lookbackMs":3000}
+//                                         a mark is the END of a lookback window
 //         {"cmd":"gear","value":3}        the current gear, declared
 //         {"cmd":"abort"}                 stop cleanly, keeping the run
 //     Every command is echoed back as an {"ev":"ack"} line, so the host knows
@@ -137,6 +138,16 @@ namespace TrueforceForAll.Plugin
         /// loaded image. THIS is what makes a finding a map entry: it resolves
         /// again after a relaunch, and a plain address does not.</summary>
         public string ModuleAddr;
+        /// <summary>WHICH NEEDLE produced this finding, as the exact text that
+        /// was searched for. It exists because one sweep now carries several: a
+        /// run looking for the car and the driver at once has to give each hit
+        /// back to the field whose value found it, and the two come through the
+        /// same code path with the same label.
+        ///
+        /// Absent on a finding that came from no needle at all, such as a
+        /// redline or a gear, and absent from a scanner too old to send it. Both
+        /// are handled by the router rather than guessed at here.</summary>
+        public string Needle;
 
         // survey: the census result. A survey names no address and earns no
         // verdict, so without these the one mode whose entire product is a
@@ -240,6 +251,19 @@ namespace TrueforceForAll.Plugin
         // done
         public int ExitCode;
         public string OutDir;
+
+        // recording progress: how much a session has written so far. A session
+        // is the one run on this tab that lives for ten minutes with the
+        // operator away from the screen, and "is it still writing" is the
+        // question they come back with. Zero when the line carried neither
+        // form. Read from whatever event carries it: a scanner that reports it
+        // on its stage lines and one that has a progress event of its own both
+        // land here. The final size also arrives as "fileBytes" on the
+        // session-result line, which is the one machine-readable size the
+        // scanner emits, so the summary after the run shows the recording's real
+        // size even though nothing reported it live.
+        public long BytesWritten;
+        public double MbWritten;
 
         /// <summary>The line as parsed, so a field added to the protocol later
         /// is still reachable without a change here.</summary>
@@ -424,12 +448,24 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>An operator or detector mark on the current tick:
-        /// race-start, race-end, or note.</summary>
-        public string SendMark(string name)
+        /// race-start, race-end, or note.
+        ///
+        /// The mark is the END of a lookback window, not the moment the thing
+        /// happened: a tap is always late except for a shift, which SimHub
+        /// sees at the instant the game does. The window is given here in
+        /// seconds and goes on the wire as "lookbackMs" in whole milliseconds,
+        /// which is the key and the unit the scanner reads; it says how far back
+        /// the analysis should look for the change this mark is about, and it
+        /// differs by event: a crash is a second or two, a car change is a menu
+        /// action and can be fifteen. Too narrow eliminates the real value and
+        /// looks like a clean negative, so the defaults in MemoryMarks are
+        /// generous. Sent only when positive, so a scanner that reads "name"
+        /// alone sees exactly the line it always did.</summary>
+        public string SendMark(string name, double lookbackSecs = 0)
         {
             string n = (name ?? "").Trim();
             if (n.Length == 0) n = "note";
-            var o = new JObject { ["cmd"] = "mark", ["name"] = n };
+            var o = MemoryMarks.CommandFor(n, lookbackSecs);
             return SendCommand(o);
         }
 
@@ -772,6 +808,11 @@ namespace TrueforceForAll.Plugin
                 WatchKind   = (string)o["watchKind"],
                 WatchLen    = Int(o["watchLen"]),
                 ModuleAddr  = (string)o["moduleAddr"],
+                // Synonyms for the same reason the path fields have them: the
+                // scanner half is written alongside this one, and a spelling
+                // that differs by a word would put every hit of a multi-needle
+                // run on one field without saying anything was wrong.
+                Needle      = FirstString(o, "needle", "knownString", "searchedFor", "forNeedle"),
                 Cmd         = (string)o["cmd"],
                 AtTick      = Int(o["atTick"]),
                 Tick        = Int(o["tick"]),
@@ -803,6 +844,8 @@ namespace TrueforceForAll.Plugin
                 UnchangedCount = Int(o["unchangedCount"]),
                 ExitCode    = Int(o["exitCode"]),
                 OutDir      = (string)o["outDir"],
+                BytesWritten = Lng(FirstToken(o, "bytesWritten", "bytes", "written", "fileBytes")),
+                MbWritten    = Dbl(FirstToken(o, "mbWritten", "mb")),
                 Raw         = o,
             };
         }
@@ -1027,6 +1070,41 @@ namespace TrueforceForAll.Plugin
         /// Stop ends it sooner.</summary>
         public int WatchSeconds = 600;
 
+        // ---- the session: one recorded drive, mined many times ---------------
+        //
+        // The owner's own words for what was wrong with everything above: "so
+        // basically i would be going item by item searching and watching? this
+        // doesnt happen in one analysis pass based on a session of driving?"
+        // It did not, because a recording could not be read again, so every
+        // question was asked live, one at a time.
+        //
+        // A session is the wide recording that fixes that: the whole readable
+        // space of the GAME, delta-encoded (a value is stored only when it
+        // changes, and most of memory never does), with every event we know
+        // about beside it: shift presses, marks, the FFB stream. Gear from the
+        // shifts, RPM from its jump at those same shifts and its ceiling at the
+        // limiter, lap time from a clock fit, speed from its relation to the
+        // other two: all of it is arithmetic over the file afterwards, and the
+        // file can be asked new questions later with detectors that do not
+        // exist yet.
+
+        /// <summary>Record a session rather than search for anything. Excludes
+        /// every known value, the script and the survey: a session declares
+        /// nothing and names nothing, and the questions are asked of the file.</summary>
+        public bool Session;
+
+        /// <summary>How long the recording may run before the scanner ends it on
+        /// its own. Stop ends it sooner, cleanly, and is the normal way out.</summary>
+        public int SessionSeconds = 1800;
+
+        /// <summary>What the recording is allowed to write per second, in
+        /// megabytes. Stated and honoured: the scanner prints its ladder and
+        /// stops rather than silently truncating when the file would exceed it.
+        /// Measured on the owner's own survey recording, the values that move
+        /// MOST change on about two percent of ticks, so delta encoding puts the
+        /// whole readable game inside this at 30 Hz.</summary>
+        public int SessionBudgetMbps = 20;
+
         // ---- known values: what the operator can read off the screen --------
         //
         // The strongest evidence in this whole tool, and the cheapest. A
@@ -1035,9 +1113,32 @@ namespace TrueforceForAll.Plugin
         // Each of these is passed ONLY when it has been filled in, so a blank
         // box means that search does not run rather than running on a guess.
 
-        /// <summary>The car's displayed name, searched for in ASCII, UTF-8,
-        /// UTF-16LE and Shift-JIS. Needs no driving at all.</summary>
+        /// <summary>One piece of text to search for, in ASCII, UTF-8, UTF-16LE
+        /// and Shift-JIS. Needs no driving at all.
+        ///
+        /// It was never a car-name search: the flag takes ARBITRARY TEXT, and a
+        /// player name is arguably the better probe, because a name the player
+        /// typed has to be stored as characters somewhere whereas a car name can
+        /// be baked into a texture.
+        ///
+        /// Kept alongside <see cref="KnownStrings"/> because the wire gate and
+        /// the known gate both drive the single-needle form, and because one
+        /// needle is still the commonest run.</summary>
         public string KnownString;
+
+        /// <summary>Every OTHER piece of text this run is searching for. The
+        /// flag is repeatable and all of them are hunted in ONE sweep of memory.
+        ///
+        /// One sweep is not tidiness, it is the cost model: the READ is what
+        /// costs, 711 MB came back in 0.4 s on the real target, and matching a
+        /// second pattern over a chunk already in cache is nearly free. So N
+        /// needles cost about what one costs, and "the car AND the driver AND
+        /// the track" stops being three runs. It sharpens the answer as well: a
+        /// full name gave 6 hits on the real target where a short one gave 51.
+        ///
+        /// Each finding comes back naming the needle that produced it, which is
+        /// what lets one run fill in several fields of the map.</summary>
+        public List<string> KnownStrings = new List<string>();
 
         /// <summary>Find the gear from the SHIFT PRESSES, with nothing declared.
         /// The normal path, and the stronger one.
@@ -1124,10 +1225,51 @@ namespace TrueforceForAll.Plugin
         /// recorder starts, so a script asked for alongside it would be accepted
         /// and never performed.</summary>
         public bool AnyKnownValue =>
-            !string.IsNullOrWhiteSpace(KnownString)
+            AnyKnownString
             || KnownGearLive
             || !string.IsNullOrWhiteSpace(KnownGear)
             || KnownRedline > 0;
+
+        /// <summary>True when any text at all is being searched for, either
+        /// way round.</summary>
+        public bool AnyKnownString
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(KnownString)) return true;
+                if (KnownStrings != null)
+                    foreach (string s in KnownStrings)
+                        if (!string.IsNullOrWhiteSpace(s)) return true;
+                return false;
+            }
+        }
+
+        /// <summary>Every needle this run carries, in order, with the blanks and
+        /// the repeats taken out. One place so the command line and anything
+        /// describing the run cannot disagree about what was searched for.
+        ///
+        /// A repeat is a BYTE-FOR-BYTE repeat. The scanner's text search is case
+        /// sensitive on purpose, so "AE86 Trueno" and "ae86 trueno" are two
+        /// different searches over there and dropping one of them here is
+        /// dropping a search the operator asked for. Measured: the multi-text
+        /// harness plants a lowercase decoy beside the real name, and folding
+        /// case here sent one needle, found the real plant, and handed it to the
+        /// row that had typed the decoy.</summary>
+        public List<string> AllKnownStrings()
+        {
+            var list = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            if (!string.IsNullOrWhiteSpace(KnownString) && seen.Add(KnownString.Trim()))
+                list.Add(KnownString.Trim());
+            if (KnownStrings != null)
+                foreach (string s in KnownStrings)
+                {
+                    if (string.IsNullOrWhiteSpace(s)) continue;
+                    string t = s.Trim();
+                    if (seen.Add(t)) list.Add(t);
+                }
+            return list;
+        }
 
         /// <summary>True when this run wants the gear, either way round.</summary>
         public bool AnyGearSearch => KnownGearLive || !string.IsNullOrWhiteSpace(KnownGear);
@@ -1161,15 +1303,65 @@ namespace TrueforceForAll.Plugin
         /// <summary>The scanner's own ceiling on the press count.</summary>
         public const int MaxGearPresses = 200;
 
-        /// <summary>Wrap an argument that may contain spaces. A trailing
-        /// backslash is trimmed rather than escaped: left in place it would
-        /// escape the closing quote and swallow the next argument.</summary>
+        /// <summary>How many text needles one run may carry. THE SCANNER'S OWN
+        /// CEILING, mirrored: past a couple of dozen this is a dictionary attack
+        /// on the address space rather than a map being filled in, and every
+        /// needle multiplies the pointer-follow target set as well.</summary>
+        public const int MaxKnownStrings = MemoryValueKinds.MaxTextNeedles;
+
+        /// <summary>One argument, encoded so the child gets back the exact
+        /// string that went in.
+        ///
+        /// This is the Windows rule that CommandLineToArgvW implements, written
+        /// out rather than approximated, because the values on this wire are
+        /// TYPED BY THE OPERATOR now. A needle is whatever is spelled on the
+        /// screen in front of them.
+        ///
+        /// Two ways the approximation lost characters silently, and silence is
+        /// the whole problem: a needle that arrives at the scanner as different
+        /// text finds nothing, or finds the wrong thing, and comes back
+        /// attributed to a needle this side never sent.
+        ///
+        ///   A quote with no space beside it. "quote only when there is a
+        ///   space" left AE86"GT unquoted, and the child's parser ate the quote
+        ///   and searched for AE86GT.
+        ///
+        ///   A trailing backslash. Trimming it stopped it escaping the closing
+        ///   quote, and searched for one character less than was typed. The real
+        ///   rule is to DOUBLE the backslashes that run up to a quote, which
+        ///   keeps every one of them and closes the quote properly.</summary>
         public static string Quote(string s)
         {
             if (string.IsNullOrEmpty(s)) return "\"\"";
-            string v = s.TrimEnd('\\');
-            if (v.Length == 0) v = s;
-            return v.IndexOf(' ') >= 0 ? "\"" + v.Replace("\"", "\\\"") + "\"" : v;
+            bool needs = false;
+            foreach (char c in s)
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '"') { needs = true; break; }
+            if (!needs) return s;
+
+            var sb = new StringBuilder(s.Length + 8);
+            sb.Append('"');
+            for (int i = 0; i < s.Length; i++)
+            {
+                int slashes = 0;
+                while (i < s.Length && s[i] == '\\') { slashes++; i++; }
+                if (i == s.Length)
+                {
+                    // Backslashes at the very end: doubled, so none of them is
+                    // read as escaping the quote that closes the argument.
+                    sb.Append('\\', slashes * 2);
+                    break;
+                }
+                if (s[i] == '"')
+                {
+                    sb.Append('\\', slashes * 2 + 1).Append('"');
+                }
+                else
+                {
+                    sb.Append('\\', slashes).Append(s[i]);
+                }
+            }
+            sb.Append('"');
+            return sb.ToString();
         }
 
         /// <summary>Build the whole command line. Returns null and sets
@@ -1278,6 +1470,30 @@ namespace TrueforceForAll.Plugin
                     .Append(" --watch-hz ").Append(watchHz.ToString(inv))
                     .Append(" --watch-seconds ").Append(wsecs.ToString(inv));
             }
+            else if (req.Session)
+            {
+                // ONE mode flag, on the model of --survey and --watch-only, and
+                // everything else it needs is a flag the scanner already has.
+                // The scanner half of this round is being built alongside this
+                // one, so the shape here is the assumption this half makes and
+                // states: --session selects the wide, delta-encoded recording
+                // with marks enabled; --seconds is its cap; --hz its tick rate;
+                // --store-budget-mbps the budget it prints its ladder against
+                // and refuses to exceed. Marks, shifts and the abort ride the
+                // wire exactly as they do on every other run, and snapshots at
+                // the marks are the scanner's own policy rather than a flag
+                // this end has to spell.
+                //
+                // --script none stays for the same reason it does on a survey:
+                // a session performs no script, and saying so costs nothing next
+                // to a default that would.
+                int secs = req.SessionSeconds > 0 ? req.SessionSeconds : 1800;
+                int budget = req.SessionBudgetMbps > 0 ? req.SessionBudgetMbps : 20;
+                args.Append(" --session --script none")
+                    .Append(" --seconds ").Append(secs.ToString(inv))
+                    .Append(" --hz 30")
+                    .Append(" --store-budget-mbps ").Append(budget.ToString(inv));
+            }
             else if (req.Survey)
             {
                 // ONE flag, and the scanner owns the policy behind it.
@@ -1349,8 +1565,20 @@ namespace TrueforceForAll.Plugin
             // run starts from, so asking for both is a statement about the run
             // that cannot be true.
             if (req.AnyPathSearch) return args.ToString();
-            if (!string.IsNullOrWhiteSpace(req.KnownString))
-                args.Append(" --known-string ").Append(Quote(req.KnownString.Trim()));
+            // Nor on a session. A session declares nothing: the values are asked
+            // of the recording afterwards, and a needle on its command line
+            // would turn it into a known-value run that returns before the
+            // recorder starts.
+            if (req.Session) return args.ToString();
+            // --known-string is REPEATABLE, and every needle is searched in one
+            // sweep of memory. Capped here as well as over there: the scanner
+            // refuses past its ceiling, and a refusal on the command line takes
+            // the whole run down rather than costing one needle, which reads on
+            // the tab as "your memscan is too old".
+            var needles = req.AllKnownStrings();
+            if (needles.Count > MaxKnownStrings) needles = needles.GetRange(0, MaxKnownStrings);
+            foreach (string needle in needles)
+                args.Append(" --known-string ").Append(Quote(needle));
             // The gear, one way or the other and never both. Live is the normal
             // path: the shift bindings are already sending every press with its
             // direction, so the sequence is DERIVED from what was actually
@@ -1382,6 +1610,123 @@ namespace TrueforceForAll.Plugin
                 args.Append(" --known-redline ").Append(req.KnownRedline.ToString(inv));
 
             return args.ToString();
+        }
+    }
+
+    /// <summary>
+    /// Marks: what the operator taps during a session, and how far back each one
+    /// looks.
+    ///
+    /// The owner: "taps would always be late except shifts. i think the tap is
+    /// more of the end point of the window. we need to also look a period before
+    /// the tap." So a mark is a timestamp and a LOOKBACK WINDOW, and the analysis
+    /// asks "did this value change anywhere in [tap - window, tap]". The window
+    /// differs by event because reaction lag differs, and too narrow is the worst
+    /// failure available: it eliminates the real value for "not responding" and
+    /// looks like a clean negative. The defaults here are generous on purpose.
+    ///
+    /// Out here beside the command line builder, with no SimHub types near it,
+    /// so the tests can pin the wire shape and the table without a screen.
+    /// </summary>
+    public static class MemoryMarks
+    {
+        /// <summary>One thing worth marking, what it separates, and how far back
+        /// the analysis looks for it.</summary>
+        public sealed class Preset
+        {
+            public readonly string Name;
+            public readonly double LookbackSecs;
+            public readonly string Separates;
+            public Preset(string name, double lookbackSecs, string separates)
+            {
+                Name = name; LookbackSecs = lookbackSecs; Separates = separates;
+            }
+        }
+
+        /// <summary>The name a mark takes when nobody chose one.</summary>
+        public const string DefaultName = "note";
+
+        /// <summary>The window for a name this table does not know.</summary>
+        public const double DefaultLookbackSecs = 5;
+
+        private static readonly Preset[] PresetList =
+        {
+            new Preset(DefaultName, DefaultLookbackSecs,
+                "Anything else. Five seconds back, which covers a tap that took a moment."),
+            new Preset("race-start", 3,
+                "The race began. Segments the recording so the menu can be thrown away and the driving kept."),
+            new Preset("lap", 3,
+                "You crossed the line. The lap counter steps, the lap time resets, the best time may change."),
+            new Preset("stop", 12,
+                "You stopped dead and sat for ten seconds. Speed goes to exactly zero when nothing else does; the window covers the whole stop."),
+            new Preset("car-change", 15,
+                "You changed car. Everything the game stores per car (name, redline, ratios) follows; a menu action, so the window is long."),
+            new Preset("crash", 3,
+                "You crashed. Damage, collision, a sharp speed drop."),
+            new Preset("drift", 5,
+                "You were drifting. Yaw and slip stop tracking speed."),
+        };
+
+        public static IReadOnlyList<Preset> Presets => PresetList;
+
+        /// <summary>The name as it goes on the wire: trimmed, lower case, spaces
+        /// to hyphens, and never empty.</summary>
+        public static string Normalize(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return DefaultName;
+            var sb = new StringBuilder();
+            foreach (char c in name.Trim().ToLowerInvariant())
+            {
+                if (char.IsLetterOrDigit(c)) sb.Append(c);
+                else if (c == ' ' || c == '-' || c == '_')
+                {
+                    if (sb.Length > 0 && sb[sb.Length - 1] != '-') sb.Append('-');
+                }
+            }
+            string n = sb.ToString().Trim('-');
+            return n.Length == 0 ? DefaultName : n;
+        }
+
+        /// <summary>How far back the analysis should look for the change a mark
+        /// with this name is about.</summary>
+        public static double LookbackSecsFor(string name)
+        {
+            string n = Normalize(name);
+            foreach (var p in PresetList)
+                if (string.Equals(p.Name, n, StringComparison.Ordinal)) return p.LookbackSecs;
+            return DefaultLookbackSecs;
+        }
+
+        /// <summary>The preset behind a name, or null for one this table does
+        /// not know.</summary>
+        public static Preset Find(string name)
+        {
+            string n = Normalize(name);
+            foreach (var p in PresetList)
+                if (string.Equals(p.Name, n, StringComparison.Ordinal)) return p;
+            return null;
+        }
+
+        /// <summary>The mark command as it goes on the wire. The window is given
+        /// here in seconds, because that is what the operator reads, and goes on
+        /// the wire as "lookbackMs" in whole milliseconds, which is the key and
+        /// the unit the scanner actually reads (Commands.cs, and PLAN-v4's mark
+        /// table). It is added only when positive, so a scanner that reads
+        /// "name" alone sees exactly the line it always did, and one that knows
+        /// the window gets it. Forward compatible in the direction the protocol
+        /// already is: a field the far side does not know is ignored, never
+        /// refused.</summary>
+        public static JObject CommandFor(string name, double lookbackSecs)
+        {
+            var o = new JObject { ["cmd"] = "mark", ["name"] = Normalize(name) };
+            // Seconds in, milliseconds out. The tab and the presets talk in
+            // seconds; the scanner reads "lookbackMs". Converting anywhere but
+            // here would leave two ends having to agree on the unit, which is
+            // exactly how the window used to be sent as seconds under a key the
+            // scanner does not read and silently dropped every mark's window.
+            if (lookbackSecs > 0)
+                o["lookbackMs"] = (long)Math.Round(lookbackSecs * 1000.0);
+            return o;
         }
     }
 

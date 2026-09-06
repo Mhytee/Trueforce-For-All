@@ -519,7 +519,7 @@ namespace TrueforceForAll.Core
                 // true of a filter set for conditions and false of one set an
                 // order of magnitude higher: at 150 Hz the edge is rounded
                 // over about a millisecond while a 4 Hz ramp is untouched.
-                sum += condition ? OutputLpf(fx, term, dtSec)
+                sum += condition ? OutputLpf(fx, term, dtSec, CutoffForType(fx.Type))
                                  : WaveformSlew(fx, term, dtSec);
             }
             return sum * _globalGain;
@@ -650,6 +650,27 @@ namespace TrueforceForAll.Core
         /// unfiltered, a condition rendered over USB rings on a low-friction
         /// motor. 0 disables (A/B and tests).</summary>
         public float ConditionOutputCutoffHz { get; set; } = 200f;
+
+        /// <summary>Per-condition override of ConditionOutputCutoffHz. Negative =
+        /// follow the shared value above. Lets one condition (typically the damper,
+        /// whose delayed-velocity loop buzzes on a low-friction motor) be filtered
+        /// harder than the rest.</summary>
+        public float DamperCutoffHz   { get; set; } = -1f;
+        public float SpringCutoffHz   { get; set; } = -1f;
+        public float FrictionCutoffHz { get; set; } = -1f;
+        public float InertiaCutoffHz  { get; set; } = -1f;
+
+        private float CutoffForType(byte t)
+        {
+            switch (t)
+            {
+                case TypeSpring:   return SpringCutoffHz   >= 0f ? SpringCutoffHz   : ConditionOutputCutoffHz;
+                case TypeDamper:   return DamperCutoffHz   >= 0f ? DamperCutoffHz   : ConditionOutputCutoffHz;
+                case TypeFriction: return FrictionCutoffHz >= 0f ? FrictionCutoffHz : ConditionOutputCutoffHz;
+                case TypeInertia:  return InertiaCutoffHz  >= 0f ? InertiaCutoffHz  : ConditionOutputCutoffHz;
+                default:           return ConditionOutputCutoffHz;
+            }
+        }
 
         /// <summary>How fast a waveform's output may change, in fractions
         /// of full scale per millisecond. 0 disables.

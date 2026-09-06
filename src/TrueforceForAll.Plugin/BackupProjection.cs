@@ -64,6 +64,7 @@ namespace TrueforceForAll.Plugin
             // preference about which force source to trust, not a machine fact.
             "R3ESharedMemoryFfb", "R3EAutoStrength", "R3EStrengthByCar",
             "R3EStationaryDamper", "R3EStationaryDamperStrength", "R3EStationaryDamperFadeKmh",
+            "R3ESmoothingMs",
             // Wheel full-scale in Nm. Travels with the other feel settings: it
             // describes the WHEEL, and the wheel goes to the second PC with the
             // driver, same reasoning as the rev-light and OLED preferences.
@@ -126,11 +127,13 @@ namespace TrueforceForAll.Plugin
             // Condition-render tuning (FXTEST bench): describes the wheel's
             // feel and travels with it, same category as FfbScale.
             "FfbConditionDamperGain", "FfbConditionSignInverted", "FfbConditionLpfHz",
+            "FfbConditionDamperLpfHz", "FfbConditionSpringLpfHz", "FfbConditionFrictionLpfHz", "FfbConditionInertiaLpfHz",
             "FfbConditionSpringGain", "FfbConditionFrictionGain",
             "FfbConditionInertiaGain", "FfbConditionPeriodicGain", "FfbConditionRampGain",
             "FfbConditionInertiaCoasts", "FfbConditionMeasuredAtScale",
             "FfbConditionInertiaAsDamping",
             "StationarySpringEnabled", "StationarySpringStrength", "StationarySpringCutoffKmh",
+            "StationarySpringByGame",
             "ClassicSpringEmulationEnabled",
             "SpringModeTerrainEnabled", "SpringModeTerrainGain",
             "SpringModeCenterGain", "SpringModeCenterFirmness", "SpringModeSpeedEffect",

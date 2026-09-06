@@ -1950,6 +1950,66 @@ namespace TrueforceForAll.Plugin
         // Registration. Called once from Init; wrapped there so a SimHub API
         // hiccup can't abort plugin startup.
         // ==================================================================
+        /// <summary>The most recent technique the game scored, named. Techniques are one-frame
+        /// pulses and the reader latches them, so this holds the last one briefly rather than
+        /// blinking past faster than a display can show it.</summary>
+        private string ArcadeLastTechnique()
+        {
+            uint bits = ArcadeMem().TechniqueFlags;
+            if (bits == 0) return _arcadeTechniqueLast ?? "";
+            // Bit numbers taken from the code that counts these, not from the display ids. Each
+            // counter shifts the flag word by its own amount and then announces an id, and the two
+            // together give the pairing: bit 3 is id 11, bit 6 is id 14, bit 4 is id 16. An earlier
+            // version assumed the bit equalled the id and was wrong on every one.
+            if ((bits & (1u << 3)) != 0) _arcadeTechniqueLast = "GUTTER RUN";
+            else if ((bits & (1u << 6)) != 0) _arcadeTechniqueLast = "SHORTCUT";
+            else if ((bits & (1u << 4)) != 0) _arcadeTechniqueLast = "WHEEL LIFT";
+            return _arcadeTechniqueLast ?? "";
+        }
+
+        private string _arcadeTechniqueLast;
+
+        /// <summary>The latest arcade memory reading, or an empty one when no such game is mapped.
+        /// Never null, so every property above is safe to bind.</summary>
+        private TrueforceForAll.Core.Id8Sample ArcadeMem()
+        {
+            var m = _arcadeMemory;
+            return m != null ? m.Last : default(TrueforceForAll.Core.Id8Sample);
+        }
+
+        /// <summary>The car in play: the one being driven during a race, else the one selected in
+        /// the garage, which is what identifies it in the menus.</summary>
+        private TrueforceForAll.Core.Id8Car ArcadeCarNow()
+        {
+            var s = ArcadeMem();
+            return s.Car ?? s.GarageCar;
+        }
+
+        private string ArcadeCarNameNow()
+        {
+            var c = ArcadeCarNow();
+            return c != null ? c.Name : "";
+        }
+
+        /// <summary>The redline for whichever tacho face is active. Zero when no car is known.</summary>
+        private int ArcadeRedlineNow()
+        {
+            var s = ArcadeMem();
+            var c = ArcadeCarNow();
+            return c != null ? c.Redline(s.TunedFace) : 0;
+        }
+
+        /// <summary>The race clock as a display string. Blank before GO, since the field counts up
+        /// from a negative value through the countdown and a leading minus reads as a fault.</summary>
+        private string ArcadeElapsedText()
+        {
+            int ms = ArcadeMem().RaceElapsedMs;
+            if (ms <= 0) return "";
+            int totalSeconds = ms / 1000;
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0}:{1:00}.{2:000}", totalSeconds / 60, totalSeconds % 60, ms % 1000);
+        }
+
         private void InitDashRemote(PluginManager pluginManager)
         {
             _dashFx = BuildDashFxTable();
@@ -1965,6 +2025,41 @@ namespace TrueforceForAll.Plugin
                 : (Settings?.DashDefaultTab ?? 0);
             _dashTab = Math.Max(0, Math.Min(DashTabCount - 1, startTab));
             RefreshDashTabSlots();
+
+            // ---------- properties: arcade memory map ----------
+            // Read out of an emulated cabinet's own memory, because these games publish no
+            // telemetry at all. Everything here is empty or zero unless such a game is running and
+            // its pointer chain resolved, so a dash binding to them degrades quietly.
+            this.AttachDelegate("Arcade.Mapped",       () => ArcadeMem().Valid);
+            this.AttachDelegate("Arcade.InRace",       () => ArcadeMem().InRace);
+            this.AttachDelegate("Arcade.PlayerName",   () => ArcadeMem().PlayerName ?? "");
+            // The same name romanised, for anything that cannot draw Japanese.
+            this.AttachDelegate("Arcade.PlayerNameAscii", () => ArcadeMem().PlayerNameAscii ?? "");
+            this.AttachDelegate("Arcade.TeamName",     () => ArcadeMem().TeamName ?? "");
+            this.AttachDelegate("Arcade.CarName",      () => ArcadeCarNameNow());
+            this.AttachDelegate("Arcade.CarCode",      () => ArcadeCarNow()?.Code ?? "");
+            this.AttachDelegate("Arcade.Redline",      () => ArcadeRedlineNow());
+            this.AttachDelegate("Arcade.Cylinders",    () => ArcadeCarNow()?.Cylinders ?? 0);
+            this.AttachDelegate("Arcade.IsRotary",     () => ArcadeCarNow()?.IsRotary ?? false);
+            this.AttachDelegate("Arcade.GearCount",    () => ArcadeCarNow()?.GearCount ?? 0);
+            this.AttachDelegate("Arcade.CourseName",   () => ArcadeMem().CourseName ?? "");
+            this.AttachDelegate("Arcade.TimeLeftSeconds", () => ArcadeMem().TimeLeftSeconds);
+            this.AttachDelegate("Arcade.ElapsedMs",    () => ArcadeMem().RaceElapsedMs);
+            this.AttachDelegate("Arcade.ElapsedText",  () => ArcadeElapsedText());
+            this.AttachDelegate("Arcade.Lap",          () => ArcadeMem().LapsCompleted + 1);
+            this.AttachDelegate("Arcade.TotalLaps",    () => ArcadeMem().TotalLaps);
+            this.AttachDelegate("Arcade.LapFraction",  () => ArcadeMem().CourseFraction);
+            this.AttachDelegate("Arcade.GapMetres",    () => ArcadeMem().GapMetres);
+            this.AttachDelegate("Arcade.Paused",       () => ArcadeMem().Paused);
+            this.AttachDelegate("Arcade.SpeedFraction", () => ArcadeMem().SpeedFraction);
+            this.AttachDelegate("Arcade.ManualGearbox", () => ArcadeMem().ManualGearbox);
+            this.AttachDelegate("Arcade.Airborne",     () => ArcadeMem().Airborne);
+            this.AttachDelegate("Arcade.SideslipDeg",  () => ArcadeMem().SideslipDeg);
+            this.AttachDelegate("Arcade.ImpactG",      () => ArcadeMem().ImpactG);
+            // The techniques the game itself scores. A name rather than a bitfield, because the
+            // number means nothing to a dash and these are the game's own language for what you
+            // just did well.
+            this.AttachDelegate("Arcade.LastTechnique", () => ArcadeLastTechnique());
 
             // ---------- properties: status ----------
             this.AttachDelegate("Dash.WheelOk", () =>

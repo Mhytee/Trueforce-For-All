@@ -565,10 +565,10 @@ namespace TrueforceForAll.Plugin
 
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
                 FfbScaleText.Text      = FfbScaleSlider.Value.ToString("F2");
-                StationarySpringCheck.IsChecked = _plugin.Settings?.StationarySpringEnabled ?? false;
-                StationarySpringStrengthSlider.Value = _plugin.Settings?.StationarySpringStrength ?? 1.00;
+                StationarySpringCheck.IsChecked = _plugin.StationarySpringEnabledForActiveGame;
+                StationarySpringStrengthSlider.Value = _plugin.StationarySpringStrengthForActiveGame;
                 StationarySpringStrengthText.Text    = StationarySpringStrengthSlider.Value.ToString("F2");
-                StationarySpringCutoffSlider.Value   = _plugin.Settings?.StationarySpringCutoffKmh ?? 12.0;
+                StationarySpringCutoffSlider.Value   = _plugin.StationarySpringCutoffForActiveGame;
                 StationarySpringCutoffText.Text      = ((int)StationarySpringCutoffSlider.Value).ToString();
                 // Strength / fade-out sliders only matter when the spring is on.
                 if (StationarySpringSliders != null)
@@ -592,7 +592,9 @@ namespace TrueforceForAll.Plugin
                     }
                     if (DriverInterceptHelp != null) DriverInterceptHelp.Visibility = driverVis;
                 }
-                FfbSmoothSlider.Value  = _plugin.Settings?.FfbSmoothTimeConstantMs ?? 0.0;
+                // Game-aware: in RaceRoom the slider shows/edits the per-game R3E
+                // smoothing (default ~3 ms), everywhere else the global one.
+                FfbSmoothSlider.Value  = _plugin.DisplayedSmoothingMs();
                 FfbSmoothText.Text     = FfbSmoothSlider.Value.ToString("F1");
                 if (FfbInvertCheck != null)
                     FfbInvertCheck.IsChecked = _plugin.Settings?.FfbInvertSign ?? true;
@@ -1777,6 +1779,15 @@ namespace TrueforceForAll.Plugin
                 AbsOverrideBadge.Visibility      = (_plugin.IsAbsOverridden      && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (AbsUnsupportedBadge != null)
                     AbsUnsupportedBadge.Visibility = _plugin.ShowAbsUnsupportedBadge ? Visibility.Visible : Visibility.Collapsed;
+                // ABS, DRS and a pit limiter do not exist in an arcade cabinet's game at all, so
+                // their sections go away entirely rather than sitting there badged as unsupported.
+                // Collapsed, not disabled: the settings are preset-scoped and still apply in the
+                // games that do have these systems.
+                Visibility assists = _plugin.HideAssistEffectsForActiveGame
+                    ? Visibility.Collapsed : Visibility.Visible;
+                if (AbsExpander != null) AbsExpander.Visibility = assists;
+                if (DrsExpander != null) DrsExpander.Visibility = assists;
+                if (PitLimiterExpander != null) PitLimiterExpander.Visibility = assists;
                 if (StationarySpringUnsupportedBadge != null)
                 {
                     bool springSupported = _plugin.ActiveSourceSupportsStationarySpring;
@@ -5420,9 +5431,10 @@ namespace TrueforceForAll.Plugin
             MarkEffectDirty(EffectKind.Master);
         }
 
-        // Stationary-spring handlers. Per-game preset-scoped (its own Save/Revert
-        // section, like FFB spike reduction): edits update the live value and
-        // mark the section dirty; the Save button commits it to the active preset.
+        // Stationary-spring handlers. Now PER GAME (owner, 2026-09-05): the
+        // checkbox and sliders edit the active game's entry and persist there
+        // directly (the checkbox at once, the sliders on a debounce), so there is
+        // no preset Save/Revert step for it anymore.
         private void StationarySpring_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -5430,7 +5442,6 @@ namespace TrueforceForAll.Plugin
             _plugin.SetStationarySpringEnabled(on);
             if (StationarySpringSliders != null)
                 StationarySpringSliders.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-            MarkEffectDirty(EffectKind.StationarySpring);
         }
 
         // Pause hand-back toggle (shipped default-on since 0.3.0). Global
@@ -5673,15 +5684,17 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             StationarySpringStrengthText.Text = e.NewValue.ToString("F2");
+            // Per-game now: the setter writes the active game's entry; persist on a
+            // debounce so a slider drag does not thrash the disk.
             _plugin.SetStationarySpringStrength(e.NewValue);
-            MarkEffectDirty(EffectKind.StationarySpring);
+            SchedulePersistDebounced();
         }
         private void StationarySpringCutoffSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppressEvents || _plugin == null) return;
             StationarySpringCutoffText.Text = ((int)e.NewValue).ToString();
             _plugin.SetStationarySpringCutoffKmh(e.NewValue);
-            MarkEffectDirty(EffectKind.StationarySpring);
+            SchedulePersistDebounced();
         }
         private void SpikeTamingEnabled_Changed(object sender, RoutedEventArgs e)
         {
@@ -5811,7 +5824,12 @@ namespace TrueforceForAll.Plugin
             float v = (float)e.NewValue;
             FfbSmoothText.Text = v.ToString("F1");
             _plugin.SetFfbSmoothMs(v);
-            MarkEffectDirty(EffectKind.Master);
+            // In RaceRoom this slider edits the per-game R3E smoothing, which is its
+            // own setting (not part of the Master scale/smoothing/invert snapshot),
+            // so persist it directly. Elsewhere it is the global one and rides the
+            // Master Save/Revert flow.
+            if (_plugin.ActiveGameIsR3E) SchedulePersistDebounced();
+            else MarkEffectDirty(EffectKind.Master);
         }
         private void FfbSpikeLimitSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -6264,9 +6282,29 @@ namespace TrueforceForAll.Plugin
             {
                 FxTuneSignCheck.IsChecked = _plugin.DamperSignInvertedNow;
                 FxTuneInertiaCoastsCheck.IsChecked = _plugin.InertiaCoastsNow;
-                FxTuneLpfSlider.Value     = Math.Max(0, Math.Min(500, _plugin.ConditionLpfHzNow));
-                FxTuneLpfText.Text       = $"{_plugin.ConditionLpfHzNow:F0} Hz";
                 FxLoadGainForSelectedKind();
+                FxLoadLpfForSelectedKind();
+            }
+            finally { _suppressEvents = prev; }
+        }
+
+        // The condition filter row is per-effect too: each condition keeps its own
+        // low-pass override (waveforms have none), so the slider follows the picked
+        // effect exactly like the gain row above.
+        private void FxLoadLpfForSelectedKind()
+        {
+            if (_plugin == null || FxTuneLpfSlider == null) return;
+            string kind = FxSelectedKind();
+            var prev = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                bool uses = TrueforcePlugin.FxKindUsesLpf(kind);
+                double hz = _plugin.FxKindLpf(kind);
+                FxTuneLpfSlider.Value = Math.Max(0, Math.Min(500, hz));
+                FxTuneLpfSlider.IsEnabled = uses;
+                FxTuneLpfSlider.Opacity = uses ? 1.0 : 0.5;
+                if (FxTuneLpfText != null) FxTuneLpfText.Text = $"{hz:F0} Hz";
             }
             finally { _suppressEvents = prev; }
         }
@@ -6296,7 +6334,10 @@ namespace TrueforceForAll.Plugin
         }
 
         private void FxTestEffect_Changed(object sender, SelectionChangedEventArgs e)
-            => FxLoadGainForSelectedKind();
+        {
+            FxLoadGainForSelectedKind();
+            FxLoadLpfForSelectedKind();
+        }
 
         private void FxTestParam_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -6374,7 +6415,9 @@ namespace TrueforceForAll.Plugin
             if (FxTuneLpfText != null && FxTuneLpfSlider != null)
                 FxTuneLpfText.Text = $"{(int)FxTuneLpfSlider.Value} Hz";
             if (_suppressEvents || _plugin == null) return;
-            _plugin.SetConditionLpfHz(FxTuneLpfSlider.Value);
+            // Per-effect: the filter belongs to the picked condition family, so
+            // tune -> switch -> tune leaves the others intact, like the gain row.
+            _plugin.SetFxKindLpf(FxSelectedKind(), FxTuneLpfSlider.Value);
         }
 
         private void FxTuneResetKind_Click(object sender, RoutedEventArgs e)
@@ -6382,9 +6425,11 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             string kind = FxSelectedKind();
             double v = _plugin.ResetFxKindGain(kind);
+            _plugin.ResetFxKindLpf(kind);
             FxLoadGainForSelectedKind();
+            FxLoadLpfForSelectedKind();
             if (FxTestStatus != null)
-                FxTestStatus.Text = $"{kind} gain back to its default ({v:F2}). Save tuning to keep it.";
+                FxTestStatus.Text = $"{kind} gain ({v:F2}) and filter back to defaults. Save tuning to keep it.";
         }
 
         private void FxTuneResetAll_Click(object sender, RoutedEventArgs e)
@@ -13286,7 +13331,7 @@ namespace TrueforceForAll.Plugin
             "FXTEST         Shows or hides the effect test bench at the bottom of the FFB tab (type it again to hide it). NO GAME NEEDED: the bench plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel), then the identical effect through the plugin's renderer, so you can alternate the two and tune until they match. It also carries the hands-free Auto-tune. The typed forms still work: 'FXTEST NATIVE <effect>' and 'FXTEST ENGINE <effect>'; effects DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP, with optional strength% (default 50) and period ms (default 250). FXTEST OFF ends a running test; auto-off after 30 s.\n" +
             "FXDUMP         Effect-download trace: one log line per effect the wheel is asked to download, decoded straight off the USB wire, with its type byte and its raw parameters (coefficients, saturations, deadband, centre, or magnitude and period). Answers whether the wheel was asked for what you think you asked for: on the bench a native effect passes through DirectInput, Windows and Logitech's driver first, and a substituted type or reshaped parameter cannot be told apart by feel. Session only. Toggle.\n" +
             "ACLEDS         Rev-light contention diagnostic: every 2 s, a '[REVLIGHT]' line with the level writes the GAME landed on the wheel's rev-light feature (measured off the USB wire), the longest gap between two of them, the level they left, and what our own LEDs and base screen were allowed to do at the time. In Assetto Corsa it also reports whether CSP's own rev-light module is driving the bar. For lights that stick, go dark, then catch up seconds later. Session only. Toggle.\n" +
-            "MEMMAP         Reveal the Memory Map tab, which runs the read-only memory scanner against a running arcade cabinet. It drives a short scripted run (idle, full throttle, idle, three throttle blips on a count) and works out where the game keeps its revs, so titles that publish no telemetry at all can eventually get some. Cues go to the wheel's screen and rev lights, because you are at the wheel, not the keyboard. It only ever READS the game's memory. Needs memscan.exe copied in beside the plugin; the tab says so with the paths if it is missing. MEMMAP OFF hides the tab and stops any running scan. Session only: hidden again on the next launch.\n" +
+            "MEMMAP         Reveal the Memory Map tab, which runs the read-only memory scanner against a running arcade cabinet. You fill in what you can read on screen (the car, your own name, the redline) on the map's own rows and search for all of it at once, or record a session (drive, shift a lot, hit the limiter, press a bound mark button at the end of anything worth marking) that every field is answered from, so titles that publish no telemetry at all can eventually get some. Cues and marks show on the wheel's screen, because you are at the wheel, not the keyboard. It only ever READS the game's memory. Needs memscan.exe copied in beside the plugin; the tab says so with the paths if it is missing. MEMMAP OFF hides the tab and stops any running scan. Session only: hidden again on the next launch.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
             "SLOTRESTORE<n> Put your own colors back into custom slot n (1-5, default 5) from the backup taken before the plugin first wrote the slot. A slot left borrowed by a crashed session is also restored automatically at the next launch.\n" +

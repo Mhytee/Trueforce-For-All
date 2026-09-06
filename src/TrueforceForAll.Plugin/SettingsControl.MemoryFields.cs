@@ -6,12 +6,24 @@
 // the order, and this tool has already put an engine-audio filter cutoff above
 // a tachometer at 96.9 out of 100 in a program with no engine in it.
 //
-// So the main view is the MAP: one row per field, each either empty, holding
-// candidates, or confirmed at an address with a name. A finding is a candidate
-// FOR a field. Elimination is bulk, not click-through: the operator declares
-// what they are about to do, does it, and everything that did not respond the
-// way the field must respond is dropped in one go. The count falling is the
-// product.
+// So the main view is the MAP: one EXPANDER per field, each either empty,
+// holding candidates, or confirmed at an address with a name. The header row is
+// the field, what it reads right now, the box for the value to search for, and
+// how many candidates it holds; open it and its candidates are there with live
+// values, the buttons that rule them out, and promote and find-path. Everything
+// about one field in one place, which is the owner's own design after four
+// rounds had put searching, results, watching and the map in four sections.
+//
+// A finding is a candidate FOR a field. Elimination is bulk, not click-through:
+// the operator declares what they are about to do, does it, and everything that
+// did not respond the way the field must respond is dropped in one go. The
+// count falling is the product.
+//
+// ONE detail panel, not eight. The candidate rows, the elimination buttons and
+// the promotion row are a single set of controls, re-parented into whichever
+// field's expander is open. Forty live candidate rows times eight fields would
+// be a settings window that stutters, and only one field is worked on at a
+// time.
 //
 // Everything with a judgement in it lives in MemoryFieldMap.cs, where it is
 // unit tested without a game, a scanner or a screen. This file paints, and
@@ -38,10 +50,27 @@ namespace TrueforceForAll.Plugin
         private sealed class MemFieldUiRow
         {
             public string Key;
+            /// <summary>The expander itself, which is what sits in the host.
+            /// Its header is <see cref="Root"/> and its content is the shared
+            /// detail panel while this field is the open one.</summary>
+            public Expander Expander;
+            /// <summary>The header row: what gets highlighted and greyed.</summary>
             public Border Root;
             public TextBlock NameText;
+            /// <summary>What sort of value this field carries, in two or three
+            /// words. Shown rather than implied: an operator who cannot see that
+            /// a lap time is not searchable by typing will type one and conclude
+            /// the field is not there.</summary>
+            public TextBlock KindText;
+            /// <summary>The value to search for. Present only for a kind the
+            /// scanner can actually search.</summary>
+            public Border ValueBoxHost;
+            public TextBox ValueBox;
+            /// <summary>What stands in for the box when there is nothing to
+            /// type: the reason, in words.</summary>
+            public TextBlock NoValueText;
             public TextBlock StateText;
-            public TextBlock ValueText;
+            public TextBlock ReadingText;
             public TextBlock RouteText;
         }
 
@@ -69,6 +98,35 @@ namespace TrueforceForAll.Plugin
         private bool _memFieldsUiReady;
         private DateTime _memCandPaintedUtc = DateTime.MinValue;
         private string _memFieldProblem;
+
+        /// <summary>Which field's expander is open, or null for none. Distinct
+        /// from the store's SelectedKey: a run's findings still land on the
+        /// selected field when every expander is closed.</summary>
+        private string _memFieldOpenKey;
+        private bool _memFieldOpenInit;
+        /// <summary>Set while this code is opening and closing expanders itself,
+        /// so the Expanded and Collapsed handlers do not treat that as the
+        /// operator's click and select a field twice over.</summary>
+        private bool _memExpanderSync;
+
+        /// <summary>Which field each of this run's findings belongs to. Built
+        /// when the run starts, from the plan the run was built from, and thrown
+        /// away with it: a value edited mid-run must not move where the findings
+        /// already on their way are going to land.</summary>
+        private MemoryFindingRouter _memRouter;
+
+        /// <summary>How many texts this run went looking for. Kept because the
+        /// SCANNER'S EXIT CODE IS THE WORST NEEDLE'S, not the run's: a search for
+        /// three names where one is a texture exits 11, and "nothing did what it
+        /// was told to do" is then a lie about the two that are on the map.</summary>
+        private int _memRunNeedles;
+
+        /// <summary>How many findings this run put on each field, so the line
+        /// under the verdict can say where the work went. A run now fills in
+        /// several fields at once, and naming one of them would be a lie about
+        /// the rest.</summary>
+        private readonly Dictionary<string, int> _memFindingsPerField =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         /// <summary>Findings this run that could not be taken as candidates, and
         /// why. A search that overflows a field is the one case where the answer
         /// can be dropped without anybody noticing.</summary>
@@ -162,18 +220,126 @@ namespace TrueforceForAll.Plugin
 
             if (!FieldRowsAlreadyDrawn(store.Fields))
             {
+                // The detail panel has ONE logical parent. Taken out of whichever
+                // expander holds it before that expander is thrown away, or the
+                // orphan keeps it and the new expander cannot take it.
+                ParkFieldDetail();
                 MemMapFieldsHost.Children.Clear();
                 _memFieldUi.Clear();
                 foreach (var f in store.Fields)
                 {
                     var ui = BuildFieldRow(f);
                     _memFieldUi[f.Key] = ui;
-                    MemMapFieldsHost.Children.Add(ui.Root);
+                    MemMapFieldsHost.Children.Add(ui.Expander);
                 }
             }
+            // The field the map is pointed at starts open, once, so the shape of
+            // the tab is visible without a click: a row, and what is inside one.
+            if (!_memFieldOpenInit)
+            {
+                _memFieldOpenInit = true;
+                _memFieldOpenKey = store.SelectedKey;
+            }
             PaintFieldRows();
+            PaintSearchPlanLine();
             PaintMapFileLine();
+            SyncFieldExpanders();
             RefreshSelectedField();
+        }
+
+        // ---- the expanders ----------------------------------------------------
+
+        /// <summary>Open exactly the field in <see cref="_memFieldOpenKey"/> and
+        /// close the rest, then put the detail panel inside it. One open at a
+        /// time, because there is one panel.</summary>
+        private void SyncFieldExpanders()
+        {
+            _memExpanderSync = true;
+            try
+            {
+                foreach (var kv in _memFieldUi)
+                {
+                    bool open = _memFieldOpenKey != null
+                             && string.Equals(kv.Key, _memFieldOpenKey, StringComparison.OrdinalIgnoreCase);
+                    if (kv.Value.Expander != null && kv.Value.Expander.IsExpanded != open)
+                        kv.Value.Expander.IsExpanded = open;
+                }
+            }
+            finally { _memExpanderSync = false; }
+            PlaceFieldDetail();
+        }
+
+        /// <summary>Move the shared detail panel into the open field's expander,
+        /// or back to its parking place when none is open. A WPF element has one
+        /// logical parent, so it is detached from wherever it is first.</summary>
+        private void PlaceFieldDetail()
+        {
+            if (MemMapFieldBox == null || MemMapFieldDetailParking == null) return;
+            MemFieldUiRow target = null;
+            if (_memFieldOpenKey != null) _memFieldUi.TryGetValue(_memFieldOpenKey, out target);
+            if (target?.Expander == null)
+            {
+                ParkFieldDetail();
+                return;
+            }
+            if (ReferenceEquals(target.Expander.Content, MemMapFieldBox)) return;
+            DetachFieldDetail();
+            target.Expander.Content = MemMapFieldBox;
+        }
+
+        /// <summary>Put the detail panel back in its collapsed parking border.</summary>
+        private void ParkFieldDetail()
+        {
+            if (MemMapFieldBox == null || MemMapFieldDetailParking == null) return;
+            if (ReferenceEquals(MemMapFieldDetailParking.Child, MemMapFieldBox)) return;
+            DetachFieldDetail();
+            MemMapFieldDetailParking.Child = MemMapFieldBox;
+        }
+
+        private void DetachFieldDetail()
+        {
+            if (MemMapFieldBox == null) return;
+            if (MemMapFieldDetailParking != null
+                && ReferenceEquals(MemMapFieldDetailParking.Child, MemMapFieldBox))
+                MemMapFieldDetailParking.Child = null;
+            foreach (var ui in _memFieldUi.Values)
+                if (ui.Expander != null && ReferenceEquals(ui.Expander.Content, MemMapFieldBox))
+                    ui.Expander.Content = null;
+            // An expander already thrown out of the host can still be the
+            // panel's logical parent. The parent is asked directly for that
+            // case, which is the one the dictionary no longer knows about.
+            var orphan = System.Windows.LogicalTreeHelper.GetParent(MemMapFieldBox) as Expander;
+            if (orphan != null && ReferenceEquals(orphan.Content, MemMapFieldBox)) orphan.Content = null;
+        }
+
+        /// <summary>The operator opened a field. It becomes the selected field,
+        /// every other one closes, and the detail panel moves into it.</summary>
+        private void MemMapFieldExpander_Expanded(object sender, RoutedEventArgs e)
+        {
+            if (_memExpanderSync) return;
+            // Bubbled from an expander INSIDE the panel, not from a field row.
+            if (!ReferenceEquals(e.OriginalSource, sender)) return;
+            string key = (sender as Expander)?.Tag as string;
+            if (key == null) return;
+            _memFieldOpenKey = key;
+            bool same = string.Equals(Store?.SelectedKey, key, StringComparison.OrdinalIgnoreCase);
+            // A change of selection redraws the panel itself; re-opening the
+            // field that was already selected only has to put the panel back.
+            SelectField(key);
+            if (same) RefreshSelectedField();
+        }
+
+        /// <summary>The operator closed the open field. The selection stays,
+        /// so a run's findings still know where to go; only the panel parks.</summary>
+        private void MemMapFieldExpander_Collapsed(object sender, RoutedEventArgs e)
+        {
+            if (_memExpanderSync) return;
+            if (!ReferenceEquals(e.OriginalSource, sender)) return;
+            string key = (sender as Expander)?.Tag as string;
+            if (key == null || !string.Equals(key, _memFieldOpenKey, StringComparison.OrdinalIgnoreCase)) return;
+            _memFieldOpenKey = null;
+            PlaceFieldDetail();
+            PaintFieldRows();
         }
 
         /// <summary>The blue a selected field row is picked out in. Static
@@ -187,6 +353,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_memFieldsUiReady) return;
             _memFieldsUiReady = true;
+            EnsureNewFieldKinds();
             PointMapAtTarget();
         }
 
@@ -198,16 +365,17 @@ namespace TrueforceForAll.Plugin
             for (int i = 0; i < fields.Count; i++)
             {
                 if (!_memFieldUi.TryGetValue(fields[i].Key, out var ui)) return false;
-                if (!ReferenceEquals(ui.Root, MemMapFieldsHost.Children[i])) return false;
+                if (!ReferenceEquals(ui.Expander, MemMapFieldsHost.Children[i])) return false;
             }
             return true;
         }
 
         private MemFieldUiRow BuildFieldRow(MemoryField f)
         {
-            var grid = new Grid();
-            // Mirrored in the XAML header. Change one, change the other.
-            foreach (double w in new double[] { 150, 128, -1, 118 })
+            var grid = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
+            // The header row's columns: field, kind, the value to search for (or
+            // why there is none), state, what it reads, how it is anchored.
+            foreach (double w in new double[] { 130, 96, -1, 118, 150, 96 })
                 grid.ColumnDefinitions.Add(new ColumnDefinition
                 {
                     Width = w < 0 ? new GridLength(1, GridUnitType.Star) : new GridLength(w),
@@ -223,16 +391,83 @@ namespace TrueforceForAll.Plugin
             Grid.SetColumn(name, 0);
             grid.Children.Add(name);
 
+            var kind = new TextBlock
+            {
+                Text = MemoryValueKinds.Word(f.ValueKind),
+                FontSize = 11,
+                Opacity = 0.75,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(0, 0, 6, 0),
+                ToolTip = MemoryValueKinds.How(f.ValueKind),
+            };
+            Grid.SetColumn(kind, 1);
+            grid.Children.Add(kind);
+
+            // The value to search for, ON THE ROW. This is the whole of this
+            // round: naming a field and saying what it reads are one action, and
+            // one press then searches every field that has an answer in it.
+            bool searchable = MemoryValueKinds.Searchable(f.ValueKind);
+
+            var box = new TextBox
+            {
+                Height = 22,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                VerticalContentAlignment = VerticalAlignment.Center,
+                FontSize = 12,
+                Cursor = System.Windows.Input.Cursors.IBeam,
+                Tag = f.Key,
+                ToolTip = MemoryValueKinds.How(f.ValueKind),
+            };
+            box.TextChanged += MemMapFieldValue_TextChanged;
+            box.LostKeyboardFocus += MemMapFieldValue_LostFocus;
+            var boxHost = new Border
+            {
+                BorderBrush = TryFindResource("EditableNumberBorder") as Brush ?? Brushes.Gray,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3),
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = searchable ? Visibility.Visible : Visibility.Collapsed,
+                // A floor, because this sits in a star column inside an
+                // expander header, and a header the theme does not stretch
+                // would otherwise give the star column nothing at all.
+                MinWidth = 170,
+                Child = box,
+            };
+            Grid.SetColumn(boxHost, 2);
+            grid.Children.Add(boxHost);
+
+            // And what stands in its place when the scanner has no search that
+            // takes this kind of value. A box here would be worse than nothing:
+            // the operator would type a lap time, get no hits, and learn that
+            // the field is absent when all they learned is that nobody looked.
+            var noValue = new TextBlock
+            {
+                Text = searchable ? "" : NoValueLine(f),
+                FontSize = 11,
+                Opacity = 0.6,
+                FontStyle = FontStyles.Italic,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(0, 0, 6, 0),
+                Visibility = searchable ? Visibility.Collapsed : Visibility.Visible,
+                ToolTip = MemoryValueKinds.How(f.ValueKind),
+            };
+            Grid.SetColumn(noValue, 2);
+            grid.Children.Add(noValue);
+
             var state = new TextBlock
             {
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             };
-            Grid.SetColumn(state, 1);
+            Grid.SetColumn(state, 3);
             grid.Children.Add(state);
 
-            var value = new TextBlock
+            var reading = new TextBlock
             {
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 12,
@@ -240,8 +475,8 @@ namespace TrueforceForAll.Plugin
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Margin = new Thickness(0, 0, 6, 0),
             };
-            Grid.SetColumn(value, 2);
-            grid.Children.Add(value);
+            Grid.SetColumn(reading, 4);
+            grid.Children.Add(reading);
 
             var route = new TextBlock
             {
@@ -250,32 +485,77 @@ namespace TrueforceForAll.Plugin
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             };
-            Grid.SetColumn(route, 3);
+            Grid.SetColumn(route, 5);
             grid.Children.Add(route);
 
             var root = new Border
             {
                 CornerRadius = new CornerRadius(3),
-                Padding = new Thickness(6, 5, 6, 5),
-                Margin = new Thickness(0, 0, 0, 2),
-                Cursor = System.Windows.Input.Cursors.Hand,
+                Padding = new Thickness(6, 4, 6, 4),
                 Background = Brushes.Transparent,
                 Child = grid,
                 Tag = f.Key,
-                ToolTip = "Work on this field: its candidates, and what it was confirmed at.",
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                ToolTip = "Open this field: its candidates with live values, the buttons that rule them out, "
+                        + "and what it was confirmed at.",
             };
-            root.MouseLeftButtonUp += MemMapField_Click;
+
+            // The expander is the row. Its header is the border above, its
+            // content is the shared detail panel while this field is open, and
+            // opening it is what selects the field. Stretch, so a header with a
+            // star column fills the width the way a plain row did.
+            var expander = new Expander
+            {
+                Header = root,
+                Content = null,
+                IsExpanded = false,
+                Tag = f.Key,
+                Margin = new Thickness(0, 0, 0, 2),
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            expander.Expanded += MemMapFieldExpander_Expanded;
+            expander.Collapsed += MemMapFieldExpander_Collapsed;
 
             return new MemFieldUiRow
             {
                 Key = f.Key,
+                Expander = expander,
                 Root = root,
                 NameText = name,
+                KindText = kind,
+                ValueBoxHost = boxHost,
+                ValueBox = box,
+                NoValueText = noValue,
                 StateText = state,
-                ValueText = value,
+                ReadingText = reading,
                 RouteText = route,
             };
         }
+
+        /// <summary>Why a row has no box, in the few words a column can hold.
+        /// The whole reason is on the tooltip and in the field's own panel.
+        ///
+        /// Revs get their own line, because on this cabinet the answer is
+        /// specific: the car cannot rev in neutral, so the stationary scripts
+        /// cannot work and the value comes out of a recorded drive.</summary>
+        private static string NoValueLine(MemoryField f)
+        {
+            if (f != null && string.Equals(f.Key, MemoryFields.Rpm, StringComparison.OrdinalIgnoreCase))
+                return "from a recorded drive: shift a lot, hit the limiter";
+            return f?.ValueKind == MemoryValueKind.Displayed
+                ? "no search for this yet"
+                : "nothing to type: found by driving";
+        }
+
+        /// <summary>True when nothing on the tab can look for this field yet:
+        /// no typed search, no candidates, no entry. Shown greyed, never hidden,
+        /// so the map shows the whole target and what the tool still owes.</summary>
+        private static bool NothingToDoYet(MemoryField f)
+            => f != null
+            && !MemoryValueKinds.Searchable(f.ValueKind)
+            && f.Entry == null
+            && (f.Candidates == null || f.Candidates.Count == 0);
 
         /// <summary>Write the state, the live value and the anchoring into every
         /// field row. Cheap enough to call on a refresh: four text writes per
@@ -315,13 +595,50 @@ namespace TrueforceForAll.Plugin
                 if (!ReferenceEquals(ui.StateText.Foreground, stateBrush))
                     ui.StateText.Foreground = stateBrush;
 
+                // The kind can move under a row that is already drawn: naming an
+                // existing custom field again is how a kind is corrected, and
+                // the row is not rebuilt for it because the field list did not
+                // change. A stale box here would be a box for a kind that has no
+                // search.
+                string kindWord = MemoryValueKinds.Word(f.ValueKind);
+                if (ui.KindText != null && !string.Equals(ui.KindText.Text, kindWord, StringComparison.Ordinal))
+                {
+                    ui.KindText.Text = kindWord;
+                    ui.KindText.ToolTip = MemoryValueKinds.How(f.ValueKind);
+                    bool canSearch = MemoryValueKinds.Searchable(f.ValueKind);
+                    if (ui.ValueBoxHost != null)
+                        ui.ValueBoxHost.Visibility = canSearch ? Visibility.Visible : Visibility.Collapsed;
+                    if (ui.NoValueText != null)
+                    {
+                        ui.NoValueText.Visibility = canSearch ? Visibility.Collapsed : Visibility.Visible;
+                        ui.NoValueText.Text = canSearch ? "" : NoValueLine(f);
+                        ui.NoValueText.ToolTip = MemoryValueKinds.How(f.ValueKind);
+                    }
+                }
+
+                // The value to search for. NEVER written while the operator has
+                // the caret in it: this runs five times a second, and rewriting
+                // a box under someone's fingers would eat the letter they were
+                // halfway through and put the caret back at the start.
+                if (ui.ValueBox != null && !ui.ValueBox.IsKeyboardFocusWithin)
+                {
+                    string known = f.KnownValue ?? "";
+                    if (!string.Equals(ui.ValueBox.Text, known, StringComparison.Ordinal))
+                    {
+                        bool was = _suppressEvents;
+                        _suppressEvents = true;
+                        try { ui.ValueBox.Text = known; }
+                        finally { _suppressEvents = was; }
+                    }
+                }
+
                 string value = f.Entry != null
                     ? (f.Entry.HasRead ? (f.Entry.Shown ?? "") : "")
                     : "";
-                if (!string.Equals(ui.ValueText.Text, value, StringComparison.Ordinal))
+                if (!string.Equals(ui.ReadingText.Text, value, StringComparison.Ordinal))
                 {
-                    ui.ValueText.Text = value;
-                    ui.ValueText.ToolTip = value.Length > 0 ? value : null;
+                    ui.ReadingText.Text = value;
+                    ui.ReadingText.ToolTip = value.Length > 0 ? value : null;
                 }
 
                 string route = f.Entry == null ? ""
@@ -340,6 +657,10 @@ namespace TrueforceForAll.Plugin
                 if (!ReferenceEquals(ui.Root.Background, back)) ui.Root.Background = back;
                 var weight = selected ? FontWeights.SemiBold : FontWeights.Normal;
                 if (ui.NameText.FontWeight != weight) ui.NameText.FontWeight = weight;
+                // Greyed, not hidden: a field with no search yet is still on the
+                // map, so the list doubles as the to-do list for the tool itself.
+                double opacity = NothingToDoYet(f) ? 0.55 : 1.0;
+                if (ui.Root.Opacity != opacity) ui.Root.Opacity = opacity;
             }
 
             if (MemMapFieldsSummaryText != null)
@@ -369,6 +690,65 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // ---- the one action --------------------------------------------------
+
+        /// <summary>What one press of the search button will look for, said
+        /// before it is pressed and in the same words the rows use.
+        ///
+        /// It is built from the same plan object the run itself is built from,
+        /// so the sentence and the command line cannot disagree. The two used to
+        /// be worked out separately from the same boxes, and they drifted: the
+        /// plan claimed a gear sequence would be searched for in a mode that
+        /// would never send it.</summary>
+        private void PaintSearchPlanLine()
+        {
+            if (MemMapSearchValuesText == null) return;
+            var store = Store;
+            if (store == null) return;
+            var plan = store.PlanSearch();
+            bool running = _plugin?.MemoryScanRunning == true || _memAborting;
+
+            string line;
+            if (!plan.Any && plan.Problems.Count == 0)
+                line = "Nothing to search for yet. Fill in a value on any row above: the car on screen, "
+                     + "your own name, the redline off the dial. Your name is often the easiest of the "
+                     + "three, because a name you typed has to be stored as characters somewhere.";
+            else
+                line = plan.Describe();
+            if (plan.Any && !plan.AnyWithoutDriving)
+                line += "  This button asks for nothing at the wheel, so there is nothing here for it to "
+                      + "do: the gear is found by driving, under Tools, Driving script, or from a recorded "
+                      + "session.";
+
+            // A field already confirmed keeps its value on the row and takes no
+            // part in the search, and that has to be said or its absence from
+            // the sentence above reads as the value having been ignored.
+            var settled = new List<string>();
+            foreach (var f in store.Fields)
+                if (f.Entry != null && f.HasKnownValue) settled.Add(f.Name ?? f.Key);
+            if (settled.Count > 0)
+                line += "  Already confirmed, so not searched for again: " + string.Join(", ", settled)
+                      + ". Press \"Find it again\" on one of those to look for it afresh.";
+
+            if (!string.Equals(MemMapSearchValuesText.Text, line, StringComparison.Ordinal))
+                MemMapSearchValuesText.Text = line;
+            MemMapSearchValuesText.Foreground = plan.Problems.Count > 0 ? MemAmberBrush : MemSkipBrush;
+
+            if (MemMapSearchValuesButton != null)
+            {
+                string exe = _plugin?.MemoryScanExePath();
+                bool have = exe != null && MemoryScanDeployGap(exe) == null;
+                MemMapSearchValuesButton.IsEnabled =
+                    have && !running && _memMapTarget != null
+                    && plan.AnyWithoutDriving && plan.Problems.Count == 0;
+            }
+
+            // The value boxes are read once, when the run starts. Editable
+            // afterwards they would show one thing and have sent another.
+            foreach (var pair in _memFieldUi)
+                if (pair.Value.ValueBox != null) pair.Value.ValueBox.IsEnabled = !running;
+        }
+
         /// <summary>Which file the map is in, and whether it saved. Out of the
         /// repaint on purpose: the rows are rewritten five times a second while
         /// a watch is live, and this line changes only when the target or a save
@@ -388,18 +768,24 @@ namespace TrueforceForAll.Plugin
             MemMapFieldsFileText.Text = string.Join("  ", parts);
         }
 
-        private void MemMapField_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            string key = (sender as Border)?.Tag as string;
-            if (key == null) return;
-            SelectField(key);
-        }
-
+        /// <summary>Point the map at a field, and open it. Called when the
+        /// operator opens an expander and when a run aims itself at the field
+        /// its findings are about.</summary>
         private void SelectField(string key)
         {
             var store = Store;
             if (store == null) return;
-            if (string.Equals(store.SelectedKey, key, StringComparison.OrdinalIgnoreCase)) return;
+            if (string.Equals(store.SelectedKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                // Already selected: only the expander may be out of step.
+                if (!string.Equals(_memFieldOpenKey, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    _memFieldOpenKey = key;
+                    SyncFieldExpanders();
+                }
+                return;
+            }
+            _memFieldOpenKey = key;
             // A round belongs to the field it was started on. Switching away
             // mid-round would leave it running against candidates nobody is
             // looking at, and it would finish against whatever was selected when
@@ -413,8 +799,17 @@ namespace TrueforceForAll.Plugin
             if (MemMapPromoteText != null) MemMapPromoteText.Text = "";
             if (MemMapEliminateText != null) MemMapEliminateText.Text = "";
             _plugin?.SaveMemoryFields();
+            // The scanner's list is one list with one ceiling, and the field
+            // being worked on is served first out of it. So moving to another
+            // field has to move the budget too, or the operator arrives at a row
+            // whose candidates nothing is reading and a round there would judge
+            // none of them. A resync, not a re-arm: it sends the difference and
+            // leaves every value already on screen where it is.
+            _plugin?.ResyncMemoryFieldWatch();
             PaintFieldRows();
+            PaintSearchPlanLine();
             PaintMapFileLine();
+            SyncFieldExpanders();
             RefreshSelectedField();
         }
 
@@ -433,10 +828,30 @@ namespace TrueforceForAll.Plugin
             MemMapFieldBox.Visibility = Visibility.Visible;
             var def = field.Def;
 
-            if (MemMapFieldTitle != null)
-                MemMapFieldTitle.Text = field.Name ?? field.Key;
             if (MemMapFieldWhat != null)
-                MemMapFieldWhat.Text = def.What ?? "";
+            {
+                // What the field is, then what its own row's box does, which is
+                // where the operator has to look next. A field that cannot be
+                // searched by typing says so here in full, rather than only in
+                // the few words its row column can hold.
+                var what = new List<string>();
+                if (!string.IsNullOrWhiteSpace(def.What)) what.Add(def.What);
+                what.Add(MemoryValueKinds.How(field.ValueKind));
+                if (MemoryValueKinds.Searchable(field.ValueKind) && !string.IsNullOrWhiteSpace(def.ValueHint))
+                    what.Add("Write " + def.ValueHint + ".");
+                // The one thing about a fixed number worth saying twice: without
+                // a text value to measure from, the search has nothing to be
+                // near, and a number found everywhere is evidence of nothing.
+                if (field.ValueKind == MemoryValueKind.Static)
+                    what.Add("Fill in a text value on another row as well, usually the car. Whatever points "
+                           + "at that text is the car table, and the fixed number is in the same struct, so "
+                           + "the search can start close in and say which tier the answer came from. On its "
+                           + "own it can only look everywhere at once.");
+                if (field.HasKnownValue && field.Entry != null)
+                    what.Add("It is confirmed, so it takes no part in a search until you press \"Find it "
+                           + "again\".");
+                MemMapFieldWhat.Text = string.Join("  ", what);
+            }
 
             RefreshEntryBox(field);
             RefreshEliminateBox(field);
@@ -560,6 +975,17 @@ namespace TrueforceForAll.Plugin
                     ? "Round running: " + store.RoundAction.Prompt.ToLowerInvariant()
                       + ". Go and do it now, then press Done."
                     : chosen?.Proves ?? "";
+            // The button says what pressing it will do to the list, in the
+            // words of the round that is running or about to.
+            var forLabel = store.RoundLive ? store.RoundAction : chosen;
+            if (MemMapEliminateFinishButton != null && forLabel != null)
+            {
+                string done = forLabel.Expect == MemoryFieldExpect.Change
+                    ? "Done: drop what did not change"
+                    : "Done: drop what moved";
+                if (!string.Equals(MemMapEliminateFinishButton.Content as string, done, StringComparison.Ordinal))
+                    MemMapEliminateFinishButton.Content = done;
+            }
 
             if (MemMapEliminateStartButton  != null) MemMapEliminateStartButton.IsEnabled  = !store.RoundLive;
             if (MemMapEliminateFinishButton != null) MemMapEliminateFinishButton.IsEnabled = store.RoundLive;
@@ -577,6 +1003,10 @@ namespace TrueforceForAll.Plugin
         /// would redraw forty controls every time a run changed state.</summary>
         private void SyncFieldButtons()
         {
+            // The search button and the value boxes belong to the MAP, not to
+            // whichever field is selected, so they are synced before the early
+            // return: a map with no selection still has values to search for.
+            PaintSearchPlanLine();
             var field = Store?.Selected;
             if (field == null) return;
             RefreshEntryBox(field);
@@ -812,7 +1242,11 @@ namespace TrueforceForAll.Plugin
             if (total == 0)
             {
                 parts.Add(field.Entry == null
-                    ? "No candidates yet. Run a search below, and whatever it finds lands here."
+                    ? (MemoryValueKinds.Searchable(field.ValueKind)
+                        ? "No candidates yet. Fill in the value on this row and press Search all filled fields, "
+                          + "and whatever it finds lands here."
+                        : "No candidates yet. This field has no typed search: it is answered from a recorded "
+                          + "session, which is the next round's analysis.")
                     : "No candidates: this field is confirmed. Press Find it again to start over.");
             }
             else
@@ -839,7 +1273,8 @@ namespace TrueforceForAll.Plugin
                 bool running = _plugin?.MemoryScanRunning == true;
                 if (!running)
                     parts.Add("Nothing is reading these right now, so a round would judge nothing. "
-                            + "Press Watch now further down to start a scanner that does.");
+                            + "Record a session, or open Tools and press Read these now, to start a scanner "
+                            + "that does.");
             }
             MemMapCandidateStatusText.Text = string.Join("  ", parts);
         }
@@ -890,22 +1325,164 @@ namespace TrueforceForAll.Plugin
 
         // ---- handlers ---------------------------------------------------------
 
+        /// <summary>What this field's value is, as it is typed. Written into the
+        /// map on every keystroke so the plan line under the button follows
+        /// along; the FILE is written on the way out of the box, because a save
+        /// per letter is a file write per letter.</summary>
+        private void MemMapFieldValue_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_suppressEvents) return;
+            var box = sender as TextBox;
+            string key = box?.Tag as string;
+            var store = Store;
+            if (key == null || store == null) return;
+            string problem = store.SetKnownValue(key, box.Text);
+            // Shown, not swallowed, and shown WITHOUT throwing the text away: a
+            // half-typed redline is briefly out of range, and a box that snapped
+            // back to empty on the third digit would be unusable.
+            _memFieldProblem = problem;
+            SyncGearModeToRow(key, box.Text);
+            if (problem != null && MemMapSearchValuesText != null)
+            {
+                MemMapSearchValuesText.Text = problem;
+                MemMapSearchValuesText.Foreground = MemAmberBrush;
+                if (MemMapSearchValuesButton != null) MemMapSearchValuesButton.IsEnabled = false;
+                RefreshMemMapPlan();
+                return;
+            }
+            PaintSearchPlanLine();
+            // The "when you press Start" box reads the same values, so it has to
+            // follow them as they are typed rather than at the next resync.
+            RefreshMemMapPlan();
+        }
+
+        /// <summary>Typing a gear order into the Gear row chooses the declared
+        /// path, and clearing it goes back to the press-driven one.
+        ///
+        /// Without this the Gear row would be the one box on the tab that can do
+        /// nothing: the sequence is only ever sent under the override, so a
+        /// sequence typed while the mode says "drive and shift" would be typed,
+        /// saved, shown and never searched for. The radios still say which path
+        /// is running, and the plan box still spells it out.</summary>
+        private void SyncGearModeToRow(string fieldKey, string text)
+        {
+            if (!string.Equals(fieldKey, MemoryFields.Gear, StringComparison.OrdinalIgnoreCase)) return;
+            bool any = !string.IsNullOrWhiteSpace(text);
+            // Never touches "Do not look for the gear": that is a deliberate
+            // choice to leave the gear alone, and a stale sequence on the row
+            // must not undo it.
+            var mode = GearSearchMode();
+            if (any && mode == MemGearMode.Live && MemMapGearTyped != null) MemMapGearTyped.IsChecked = true;
+            else if (!any && mode == MemGearMode.Typed && MemMapGearLive != null) MemMapGearLive.IsChecked = true;
+        }
+
+        private void MemMapFieldValue_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+        {
+            if (_suppressEvents) return;
+            _plugin?.SaveMemoryFields();
+            // The full resync on the way out of the box rather than per
+            // keystroke: this is what re-gates Start, and it walks the watch
+            // list and the bindings on its way past.
+            SyncMemMapButtons();
+            PaintMapFileLine();
+        }
+
+        /// <summary>The one action: search for every value the map has been
+        /// given, in a single sweep, with each field's hits coming back to
+        /// it.</summary>
+        private void MemMapSearchValues_Click(object sender, RoutedEventArgs e)
+        {
+            _plugin?.SaveMemoryFields();
+            StartMemMapRun(MemMapRunKind.Known);
+        }
+
+        private void MemMapFieldNewKind_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents) return;
+            SyncNewFieldRow();
+        }
+
         private void MemMapFieldNew_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (_suppressEvents) return;
+            SyncNewFieldRow();
+        }
+
+        /// <summary>The add-a-field row follows the kind that was picked: a kind
+        /// with no typed search gets no value box, exactly as its row would not,
+        /// and the line underneath says what the kind means.</summary>
+        private void SyncNewFieldRow()
+        {
+            var kind = SelectedNewFieldKind();
+            bool searchable = MemoryValueKinds.Searchable(kind);
+            if (MemMapFieldNewValueBox != null)
+            {
+                MemMapFieldNewValueBox.IsEnabled = searchable;
+                if (!searchable && MemMapFieldNewValueBox.Text.Length > 0)
+                {
+                    bool was = _suppressEvents;
+                    _suppressEvents = true;
+                    try { MemMapFieldNewValueBox.Text = ""; }
+                    finally { _suppressEvents = was; }
+                }
+            }
+            if (MemMapFieldNewHelp != null)
+                MemMapFieldNewHelp.Text = MemoryValueKinds.How(kind)
+                    + (searchable ? "  Leave the value empty to add the row now and fill it in later." : "");
             if (MemMapFieldAddButton != null)
                 MemMapFieldAddButton.IsEnabled = !string.IsNullOrWhiteSpace(MemMapFieldNewBox?.Text);
+        }
+
+        private MemoryValueKind SelectedNewFieldKind()
+        {
+            var item = MemMapFieldNewKindCombo?.SelectedItem as ComboBoxItem;
+            if (item?.Tag is MemoryValueKind kind) return kind;
+            return MemoryValueKind.Text;
+        }
+
+        /// <summary>Fill the kind dropdown once. Text first, because it is the
+        /// kind that can actually be searched for several at a time and the one
+        /// an operator adding a field usually means.</summary>
+        private void EnsureNewFieldKinds()
+        {
+            if (MemMapFieldNewKindCombo == null || MemMapFieldNewKindCombo.Items.Count > 0) return;
+            bool was = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                foreach (var kind in MemoryValueKinds.All)
+                    MemMapFieldNewKindCombo.Items.Add(new ComboBoxItem
+                    {
+                        Content = MemoryValueKinds.Label(kind),
+                        Tag = kind,
+                        ToolTip = MemoryValueKinds.How(kind),
+                    });
+                MemMapFieldNewKindCombo.SelectedIndex = 0;
+            }
+            finally { _suppressEvents = was; }
+            SyncNewFieldRow();
         }
 
         private void MemMapFieldAdd_Click(object sender, RoutedEventArgs e)
         {
             var store = Store;
             if (store == null) return;
-            string problem = store.AddCustomField(MemMapFieldNewBox?.Text, out var field);
-            if (problem != null) { _memFieldProblem = problem; RefreshSelectedField(); return; }
-            _memFieldProblem = null;
-            if (MemMapFieldNewBox != null) MemMapFieldNewBox.Text = "";
+            string problem = store.AddCustomField(MemMapFieldNewBox?.Text, SelectedNewFieldKind(),
+                                                  MemMapFieldNewValueBox?.Text, out var field);
+            // The field lands even when its value did not, so the name does not
+            // have to be typed twice. The reason is shown either way.
+            _memFieldProblem = problem;
+            if (field == null) { RefreshSelectedField(); return; }
+            bool was = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                if (MemMapFieldNewBox != null) MemMapFieldNewBox.Text = "";
+                if (problem == null && MemMapFieldNewValueBox != null) MemMapFieldNewValueBox.Text = "";
+            }
+            finally { _suppressEvents = was; }
             store.SelectedKey = field.Key;
+            _memFieldOpenKey = field.Key;
             _plugin?.SaveMemoryFields();
             RefreshFieldFrame();
         }
@@ -1532,18 +2109,36 @@ namespace TrueforceForAll.Plugin
 
         // ---- findings become candidates ---------------------------------------
 
-        /// <summary>One finding, added to the field the tab is pointed at. This
-        /// is what turns a run's output from a wall of rows into work on one
-        /// field, and it is why a run says which field it is feeding before it
-        /// starts rather than after.</summary>
+        /// <summary>One finding, added to the field WHOSE VALUE FOUND IT.
+        ///
+        /// One sweep now carries several needles, so the field the tab happens
+        /// to be pointed at is no longer the answer: a run looking for the car
+        /// and the driver at once returns both, and putting all of it on one
+        /// field would undo the whole point of searching them together. The
+        /// scanner echoes back the exact text that produced each hit, and the
+        /// router turns that into a field; anything it cannot attribute still
+        /// lands on the selected field rather than being dropped.</summary>
         private void NoteFindingAsCandidate(ScanEvent ev)
         {
             var store = Store;
-            var field = store?.Selected;
-            if (field == null || string.IsNullOrWhiteSpace(ev.Address)) return;
+            if (store == null || string.IsNullOrWhiteSpace(ev.Address)) return;
+            string key = _memRouter != null
+                ? _memRouter.Route(ev.Needle, ev.Label, ev.Type)
+                : store.SelectedKey;
+            var field = store.Find(key) ?? store.Selected;
+            if (field == null) return;
+            _memFindingsPerField.TryGetValue(field.Key, out int already);
+            _memFindingsPerField[field.Key] = already + 1;
 
+            // The needle is what this address was found BY, so it is the name a
+            // watch row takes when the finding carries none: once the car is
+            // changed, a value that no longer matches its own label is the
+            // finding, visible at a glance.
+            string searchedFor = !string.IsNullOrWhiteSpace(ev.Needle) ? ev.Needle.Trim()
+                               : field.ValueKind == MemoryValueKind.Text ? field.KnownValue
+                               : null;
             MemoryWatchList.SpecForFinding(ev.Address, ev.ModuleAddr, ev.Type, ev.WatchKind,
-                                           ev.WatchLen, ev.Label, KnownCarName(),
+                                           ev.WatchLen, ev.Label, searchedFor,
                                            out string addr, out string kind, out int len, out _);
             // SpecForFinding hands back the durable form when there is one, which
             // is what a watch row wants. A candidate keeps BOTH: the absolute
@@ -1592,33 +2187,62 @@ namespace TrueforceForAll.Plugin
         /// for the reason above.</summary>
         private void SettleFindingsIntoField()
         {
-            var field = Store?.Selected;
-            if (field == null) return;
+            if (Store == null) return;
             _plugin?.SaveMemoryFields();
-            // Deliberately NOT re-armed here. Each candidate was put on the wire
-            // as it arrived, while the run that found it was still alive, and a
-            // re-arm at this point would clear a scanner that is on its way out
-            // and blank every value the run left on screen.
+            // Deliberately not RE-ARMED here, which clears the scanner's list
+            // first: that would blank every value the run left on screen, and on
+            // a run without a hold it would be clearing a scanner on its way out.
+            //
+            // A RESYNC is a different thing and it is worth doing, but only while
+            // the scanner is still there to hear it. Candidates were armed first
+            // come first served as they arrived, which is fine for one needle and
+            // unfair for several: the first text's two hundred hits take the
+            // whole of the scanner's list and the player name typed on the row
+            // below it is read at zero rows. The resync sends the DIFFERENCE
+            // between that and the fair share, so the later fields start being
+            // read without the earlier ones losing what they have already read.
+            if (_memRunNeedles > 1 && _plugin?.MemoryScanRunning == true)
+                _plugin.ResyncMemoryFieldWatch();
             RefreshFieldFrame();
         }
 
-        /// <summary>Which field this run's findings are landing on, said before
-        /// anybody drives. A run that fed the wrong field is a session
-        /// wasted.</summary>
+        /// <summary>Which fields this run's findings landed on, per field.
+        ///
+        /// It used to name one field, because a run fed one. A run now carries
+        /// several needles and fills in several fields at once, and "these went
+        /// to Car name" would be a lie about most of them.</summary>
         private void ShowFindingsDestination()
         {
             if (MemMapFindingsToFieldText == null) return;
-            var field = Store?.Selected;
+            var store = Store;
             // Only for a run that actually looked for something. A watch host
             // and a paths run find nothing by design, and telling the operator
             // where their findings went after one of those would be describing
             // work that never happened.
-            if (field == null || _memFindingCount == 0) { MemMapFindingsToFieldText.Text = ""; return; }
-            int n = field.Candidates?.Count ?? 0;
-            string line =
-                "These went to " + (field.Name ?? field.Key) + " as candidates. That field now holds "
-              + n.ToString(CultureInfo.InvariantCulture) + ". Work on it up in the map: declare what you are "
-              + "about to do, do it, and everything that did not respond is ruled out in one go.";
+            if (store == null || _memFindingCount == 0) { MemMapFindingsToFieldText.Text = ""; return; }
+
+            var parts = new List<string>();
+            foreach (var f in store.Fields)
+            {
+                if (!_memFindingsPerField.TryGetValue(f.Key, out int n) || n <= 0) continue;
+                parts.Add(n.ToString(CultureInfo.InvariantCulture) + " to " + (f.Name ?? f.Key)
+                        + " (now holding "
+                        + (f.Candidates?.Count ?? 0).ToString(CultureInfo.InvariantCulture) + ")");
+            }
+            string line = parts.Count == 0
+                ? "Nothing landed on the map from this run."
+                : "These went to the map as candidates: " + string.Join(", ", parts)
+                  + ". Work on a field up in the map: declare what you are about to do, do it, and "
+                  + "everything that did not respond is ruled out in one go.";
+            // A run that searched for several things and could not tell which
+            // needle found what. Said out loud, because a pile of candidates on
+            // the wrong field looks exactly like a field that really did match.
+            int lost = _memRouter?.Unattributed ?? 0;
+            if (lost > 0)
+                line += "  " + lost.ToString(CultureInfo.InvariantCulture)
+                      + " of them arrived without saying which value found them, so they went to the "
+                      + "field that was selected. That is what an older scanner does; check them before "
+                      + "trusting which field they are on.";
             if (_memCandRefused > 0)
                 line += "  " + _memCandRefused.ToString(CultureInfo.InvariantCulture)
                       + " of them were NOT taken: " + (_memCandRefusedWhy ?? "no reason given")
@@ -1631,32 +2255,82 @@ namespace TrueforceForAll.Plugin
             MemMapFindingsToFieldText.Text = line;
         }
 
-        /// <summary>Point the run at the field its declared values are about, so
-        /// a name search does not dump its findings onto whatever happened to be
-        /// selected. Only moves the selection when the run is unambiguous about
-        /// what it is looking for.</summary>
-        private void AimRunAtField(MemMapRunKind kind)
+        /// <summary>Build the run's router, and point the tab at the field its
+        /// findings are most likely to be about.
+        ///
+        /// The router is what actually decides where a finding lands, and it is
+        /// built from the plan BEFORE the run starts: a value edited while the
+        /// scanner is working must not be able to move where its findings go.
+        /// The selection still moves, because it is what the operator will be
+        /// looking at and it is where anything unattributed goes.</summary>
+        private void AimRunAtField(MemMapRunKind kind, MemoryFieldSearch plan)
         {
             var store = Store;
             if (store == null) return;
+
+            // Which single field this run is most about, when it is about one.
+            // A run carrying several needles is about several, and the router
+            // rather than the selection is what sorts those out.
             string want = null;
-            if (kind == MemMapRunKind.FindString) want = MemoryFields.CarName;
-            else if (kind == MemMapRunKind.Hunt && GearSearchMode() != MemGearMode.Off
-                     && string.IsNullOrWhiteSpace(KnownCarName())) want = MemoryFields.Gear;
-            if (want == null) return;
-            var field = store.Find(want);
-            if (field == null || field.Entry != null) return;   // already confirmed: leave it alone
-            SelectField(want);
+            if (plan != null && plan.Needles.Count == 1 && !plan.HasStatic)
+                want = plan.Needles[0].FieldKey;
+            else if (plan != null && plan.Needles.Count == 0 && plan.HasStatic)
+                want = plan.StaticFieldKey;
+            else if (kind != MemMapRunKind.Session && kind != MemMapRunKind.Survey
+                     && kind != MemMapRunKind.Paths && kind != MemMapRunKind.Watch
+                     && GearSearchMode() != MemGearMode.Off && (plan == null || !plan.Any))
+                want = MemoryFields.Gear;
+
+            if (want != null)
+            {
+                var field = store.Find(want);
+                // Already confirmed: leave the selection alone rather than
+                // pointing the tab at a field this run is not refilling.
+                if (field != null && field.Entry == null) SelectField(want);
+            }
+
+            _memRunNeedles = plan?.Needles.Count ?? 0;
+            _memRouter = MemoryFieldStore.RouterFor(plan, store.SelectedKey);
+            // A press-driven gear search declares nothing, so it has no needle
+            // and no plan entry, and its findings would otherwise fall through
+            // to whatever was selected.
+            if (kind != MemMapRunKind.Survey && kind != MemMapRunKind.Paths
+                && kind != MemMapRunKind.Session
+                && GearSearchMode() != MemGearMode.Off)
+                _memRouter.ForRole("gear", MemoryFields.Gear);
+        }
+
+        /// <summary>What a run that carried SEVERAL texts really ended as, or
+        /// null when the ordinary exit-code line is right.
+        ///
+        /// The scanner's exit code is the WORST needle's outcome, deliberately:
+        /// a run that found the car and did not find the driver exits 11, and 11
+        /// reads as "not found: nothing did what it was told to do". With one
+        /// needle that sentence is true. With three it is a lie about the two
+        /// that are on the map, and it is the kind of lie that makes an operator
+        /// throw away a good answer.</summary>
+        private string MultiNeedleOutcomeLine(int exitCode)
+        {
+            var filled = new List<string>();
+            var store = Store;
+            if (store != null)
+                foreach (var f in store.Fields)
+                    if (_memFindingsPerField.TryGetValue(f.Key, out int n) && n > 0)
+                        filled.Add(f.Name ?? f.Key);
+            return MemoryFieldSearch.OutcomeLine(exitCode, _memRunNeedles, filled);
         }
 
         /// <summary>A new run: the tally of findings this one could not take is
         /// its own, not the last three runs'.</summary>
         private void ResetCandidateIntake()
         {
+            _memRunNeedles = 0;
             _memCandRefused = 0;
             _memCandRefusedWhy = null;
             _memCandUnarmed = 0;
             _memCandUnarmedWhy = null;
+            _memFindingsPerField.Clear();
+            _memRouter = null;
             // A refusal belongs to the scanner that made it. Carried across runs
             // it would report a full watch list on a run that had two rows on it.
             _memWatchRefused = 0;

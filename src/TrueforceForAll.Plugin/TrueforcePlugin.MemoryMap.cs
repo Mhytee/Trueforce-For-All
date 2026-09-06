@@ -332,6 +332,7 @@ namespace TrueforceForAll.Plugin
             System.Threading.Interlocked.Exchange(ref _memShiftDownSent, 0);
             System.Threading.Interlocked.Exchange(ref _memMarkSent, 0);
             System.Threading.Interlocked.Exchange(ref _memPressesDropped, 0);
+            MemoryScanLastMark = null;
         }
 
         /// <summary>A gearshift just happened: "up" or "down".</summary>
@@ -355,7 +356,31 @@ namespace TrueforceForAll.Plugin
             return err;
         }
 
-        /// <summary>Mark the current tick: race-start, race-end, or note.</summary>
+        /// <summary>The name the bound mark button sends. Chosen on the tab
+        /// before the run, from the session's own list (lap, stop, car-change,
+        /// crash, drift) or left as "note". Read on SimHub's input thread and
+        /// written on the UI thread; a string reference swap is atomic, and a
+        /// mark that lands one press before or after a change of name is the
+        /// operator's own timing rather than a race worth locking for.</summary>
+        public string MemoryScanMarkName
+        {
+            get { return _memMarkName ?? MemoryMarks.DefaultName; }
+            set { _memMarkName = MemoryMarks.Normalize(value); }
+        }
+        private string _memMarkName = MemoryMarks.DefaultName;
+
+        /// <summary>The name of the last mark that went down the wire, for the
+        /// tab's session line and the wheel.</summary>
+        public string MemoryScanLastMark { get; private set; }
+
+        /// <summary>Mark the current tick: race-start, lap, stop, car-change,
+        /// crash, drift, or a note.
+        ///
+        /// Every mark carries its lookback window, worked out from the name:
+        /// the tap is the END of the window, and the analysis looks back from it
+        /// for the change the mark is about. The scanner may know better and
+        /// widen it; it is never sent a window of zero, which would ask it to
+        /// look for a change AT the tap, where the change has already happened.</summary>
         public string SendMemoryScanMark(string name)
         {
             var h = _scanHost;
@@ -365,8 +390,13 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info("[TF4ALL] memscan mark ignored: no scan is running.");
                 return "no scan is running";
             }
-            string err = h.SendMark(name);
-            if (err == null) System.Threading.Interlocked.Increment(ref _memMarkSent);
+            string n = MemoryMarks.Normalize(name);
+            string err = h.SendMark(n, MemoryMarks.LookbackSecsFor(n));
+            if (err == null)
+            {
+                System.Threading.Interlocked.Increment(ref _memMarkSent);
+                MemoryScanLastMark = n;
+            }
             return err;
         }
 
@@ -635,7 +665,11 @@ namespace TrueforceForAll.Plugin
             _memFields.Process = key;
             if (!string.IsNullOrWhiteSpace(gameName)) _memFields.Game = gameName;
             if (why != null)
-                SimHub.Logging.Current.Info("[TF4ALL] the memory map for " + key + " could not be read: " + why);
+                // Not "could not be read". Load returns a note for a file it read
+                // and partly dropped as well as for one it could not open, and a
+                // log line that called the first case the second would send
+                // anybody reading it after the wrong thing.
+                SimHub.Logging.Current.Info("[TF4ALL] the memory map for " + key + ": " + why);
             return why;
         }
 

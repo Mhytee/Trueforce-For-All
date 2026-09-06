@@ -890,6 +890,16 @@ namespace TrueforceForAll.Plugin
         public double FfbConditionDamperGain   { get; set; } = 0.25;
         public bool   FfbConditionSignInverted { get; set; } = false;
         public double FfbConditionLpfHz        { get; set; } = 200;
+        // Per-effect condition low-pass, the filter counterpart of the per-effect
+        // gains above. A negative value means "follow FfbConditionLpfHz" (the
+        // shipped default), so existing setups are unchanged until an effect's
+        // filter is tuned on the bench. Set below the wheel's damper-buzz band
+        // (~70 Hz) to smooth a grainy damper at the source. Conditions only
+        // (spring/damper/friction/inertia); waveforms use their own slew.
+        public double FfbConditionDamperLpfHz   { get; set; } = -1;
+        public double FfbConditionSpringLpfHz   { get; set; } = -1;
+        public double FfbConditionFrictionLpfHz { get; set; } = -1;
+        public double FfbConditionInertiaLpfHz  { get; set; } = -1;
         // Per-effect scales the auto-tuner measures (1.0 = the DI model's
         // own scale, the pre-measurement assumption). Each effect family the
         // renderer covers gets its own, so the bench can tune one at a time
@@ -1038,6 +1048,14 @@ namespace TrueforceForAll.Plugin
         // by the wheel's physical steering position).
         public double StationarySpringStrength  { get; set; } = 0.5;
         public double StationarySpringCutoffKmh { get; set; } = 12.0;  // spring fully gone at/above this speed
+        // Per-game stationary spring (owner, 2026-09-05): each game keeps its own
+        // enabled/strength/cutoff. An explicit entry wins; with no entry a game
+        // uses the defaults, which are ON only for Assetto Corsa (off everywhere
+        // else) and the shared strength/cutoff above. The top-level fields above
+        // stay as those shared defaults and for the preset snapshot; this map is
+        // what the spring actually reads.
+        public System.Collections.Generic.Dictionary<string, StationarySpringGameConfig> StationarySpringByGame { get; set; }
+            = new System.Collections.Generic.Dictionary<string, StationarySpringGameConfig>();
 
         // FFB spike taming: tames AC's over-the-top kerb / collision FFB so
         // it lands as a firm shove instead of a wheel-yanking jolt.
@@ -1080,6 +1098,13 @@ namespace TrueforceForAll.Plugin
         /// behaves as a near-absolute ceiling (this plus Max hit) and leaves
         /// ordinary road feel alone.</summary>
         public const float DefaultSpikeTransientThresholdLsb = 19665.9141f;
+
+        /// <summary>Shipped peak-limiter "Max hit": 10% of full force, the most
+        /// a hit may rise above the reference (owner, 2026-09-05). With the
+        /// floor above, that puts the calm-road ceiling at 70% of full force.
+        /// A const because this default had four copies (settings, snapshot,
+        /// preset-load fallback, device) that could drift apart.</summary>
+        public const float DefaultPeakSoftLimitLsb = 3276.7f;   // 10% of 32767
 
         /// <summary>Peak-limiter threshold with the pre-split fallback applied,
         /// so every reader is safe even if the seed never ran (a snapshot
@@ -1265,7 +1290,7 @@ namespace TrueforceForAll.Plugin
         // and backups deserialize cleanly.
         public bool   ExperimentalSuccessReportDismissed { get; set; } = false;
 
-        public float FfbPeakSoftLimitLsb      { get; set; } = 2061.90f;
+        public float FfbPeakSoftLimitLsb      { get; set; } = DefaultPeakSoftLimitLsb;
 
         // Sidechain ducking applied to continuous effects (engine pulse, audio
         // capture) when transient effects (gear shift, ABS, road bumps,
@@ -1459,6 +1484,13 @@ namespace TrueforceForAll.Plugin
         public bool R3EStationaryDamper { get; set; } = true;
         public double R3EStationaryDamperStrength { get; set; } = 0.40;  // fraction of full scale when parked
         public double R3EStationaryDamperFadeKmh  { get; set; } = 25.0;  // car speed where it fades to nothing
+
+        // Per-game FFB output smoothing for RaceRoom. This wheel reads a little
+        // grainy in RaceRoom (present on the tap route too) without a touch of
+        // smoothing; ~3 ms irons it out. Kept SEPARATE from the global
+        // FfbSmoothTimeConstantMs so RaceRoom can carry it without smoothing every
+        // other game. The device uses it while RaceRoom is the active game.
+        public float R3ESmoothingMs { get; set; } = 3.0f;
         public float ModeBRiseGamma { get; set; } = 0.80f;   // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
         public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit
@@ -2036,6 +2068,16 @@ namespace TrueforceForAll.Plugin
         public float Peak { get; set; }   // the applied (pressed or nudged) normalized max; 0 = none
     }
 
+    /// <summary>One game's stationary-spring settings, held in
+    /// <see cref="TrueforceSettings.StationarySpringByGame"/>. A game with no
+    /// entry uses the defaults (on for Assetto Corsa only; shared strength/cutoff).</summary>
+    public sealed class StationarySpringGameConfig
+    {
+        public bool   Enabled   { get; set; }
+        public double Strength  { get; set; }
+        public double CutoffKmh { get; set; }
+    }
+
     /// <summary>User-authored engine definition. Stored in
     /// <summary>Persisted sort state for one of the preset manager tabs.
     /// Empty Key = natural (insertion) order; populated Key matches the
@@ -2426,7 +2468,7 @@ namespace TrueforceForAll.Plugin
         public bool  FfbSpikeTamingEnabled     { get; set; } = true;
         public bool  FfbSpikeUseSlewLimiter    { get; set; } = true;
         public float FfbSpikeMaxLsbPerMs       { get; set; } = 2508.36f;
-        public float FfbPeakSoftLimitLsb       { get; set; } = 2061.90f;
+        public float FfbPeakSoftLimitLsb       { get; set; } = TrueforceSettings.DefaultPeakSoftLimitLsb;
         // Nullable on purpose: a preset saved before the rate and peak
         // limiters got separate numbers has no opinion here, so applying it
         // leaves the live threshold alone (see ApplyGamePreset) and it never

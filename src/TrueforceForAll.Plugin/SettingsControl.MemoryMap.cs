@@ -59,6 +59,25 @@ namespace TrueforceForAll.Plugin
         private string _memStopLine    = "";
         private string _memOutDir;
 
+        // ---- the session ----
+        //
+        // One recorded drive, mined many times. What the tab keeps about the
+        // recording in flight: when it started, when it ended, how much the
+        // scanner says it has written, and the tallies frozen at the end so the
+        // summary line survives the next run resetting the plugin's counters.
+        private const int MemSessionCapSeconds = 1800;
+        private DateTime _memSessionStartedUtc = DateTime.MinValue;
+        private DateTime _memSessionEndedUtc   = DateTime.MinValue;
+        private double   _memSessionMb;
+        private int      _memSessionMarks;
+        private int      _memSessionShifts;
+        private bool     _memMarkNamesReady;
+        /// <summary>A mark just landed: its name goes on the wheel for two
+        /// seconds, so a press at the rim is seen to have landed without a
+        /// screen.</summary>
+        private DateTime _memMarkFlashUntilUtc = DateTime.MinValue;
+        private string   _memMarkFlashName = "";
+
         // A Stop is in flight: the abort has been sent and the scanner is being
         // given its three seconds. Suppresses the "it died on its own" line,
         // which would be a lie about a stop we asked for.
@@ -97,6 +116,12 @@ namespace TrueforceForAll.Plugin
         // at the wheel has told nobody anything. The scanner writes these to its
         // report file, which is exactly where they were being missed.
         private readonly List<string> _memWarnLines = new List<string>();
+
+        /// <summary>Warnings past what the box will hold. A run carrying a dozen
+        /// texts can raise two each, and eight is the most worth reading; the
+        /// number that did not fit is still said, because a warning list that
+        /// truncated itself silently would be the very thing it warns about.</summary>
+        private int _memWarnHidden;
 
         private EventHandler<ScanEvent> _memScanEventHandler;
         private EventHandler            _memScanExitedHandler;
@@ -338,30 +363,39 @@ namespace TrueforceForAll.Plugin
             // code 2, which reads on this tab as "your memscan is too old".
             CensusStaticCap(out string censusIssue);
             if (MemMapSurveyButton != null) MemMapSurveyButton.IsEnabled = ready && censusIssue == null;
-            // Finding the name needs a name, and nothing else: no script, no
-            // driving, no other box filled in.
-            if (MemMapFindStringButton != null)
-                MemMapFindStringButton.IsEnabled = ready && !string.IsNullOrWhiteSpace(MemMapCarNameBox?.Text);
+            // The search button lives with the map, where the values are, and
+            // it is gated by what is actually filled in. PaintSearchPlanLine
+            // owns it, for the same reason the plan sentence is built from the
+            // plan: one place decides whether there is anything to search for.
             if (MemMapStopButton  != null) MemMapStopButton.IsEnabled  = running && !_memAborting;
-            if (MemMapScriptV1       != null) MemMapScriptV1.IsEnabled       = !running;
-            if (MemMapScriptFast     != null) MemMapScriptFast.IsEnabled     = !running;
-            if (MemMapScriptInMotion != null) MemMapScriptInMotion.IsEnabled = !running;
+            if (MemMapScriptCombo != null) MemMapScriptCombo.IsEnabled = !running;
+            // The session: one button that records, and while a recording is
+            // in flight the same button stops it. Any OTHER run in flight
+            // disables it, because the scanner does one thing at a time.
+            bool sessionLive = _plugin?.MemoryScanRunning == true && _memMapRunKind == MemMapRunKind.Session;
+            if (MemMapSessionButton != null)
+            {
+                MemMapSessionButton.IsEnabled = have && _memMapTarget != null && !_memAborting
+                                             && (!running || sessionLive);
+                string want = sessionLive ? "Stop recording" : "Record a session";
+                if (!string.Equals(MemMapSessionButton.Content as string, want, StringComparison.Ordinal))
+                    MemMapSessionButton.Content = want;
+            }
+            // A mark from the tab is the same mark the bound button sends, and it
+            // needs a scanner to land on.
+            if (MemMapMarkNowButton != null) MemMapMarkNowButton.IsEnabled = _plugin?.MemoryScanRunning == true;
+            EnsureMarkNames();
+            RefreshSessionStatus();
             if (MemMapProcessBox != null) MemMapProcessBox.IsEnabled = !running;
             if (MemMapRefreshTargetButton != null) MemMapRefreshTargetButton.IsEnabled = !running;
             // The declared values are read once, when the run starts. Letting
             // them be edited afterwards would show one thing and have sent
-            // another.
-            if (MemMapCarNameBox != null) MemMapCarNameBox.IsEnabled = !running;
-            if (MemMapRedlineBox != null) MemMapRedlineBox.IsEnabled = !running;
+            // another. The field rows' own boxes are frozen by
+            // PaintSearchPlanLine, which is where they are drawn.
             if (MemMapGearOff   != null) MemMapGearOff.IsEnabled   = !running;
             if (MemMapGearLive  != null) MemMapGearLive.IsEnabled  = !running;
             if (MemMapGearTyped != null) MemMapGearTyped.IsEnabled = !running;
-            // The sequence box only means anything under the override, so it is
-            // dead until that is picked. A box that is live but ignored is how
-            // the pre-filled default used to take over a run nobody meant to
-            // declare anything for.
-            if (MemMapGearSeqBox != null)
-                MemMapGearSeqBox.IsEnabled = !running && MemMapGearTyped?.IsChecked == true;
+            RefreshGearSequenceLine();
             // The seed cap belongs to whichever gear search runs, so it follows
             // the two of them and not the sequence box.
             if (MemMapGearSeedCapBox != null)
@@ -415,67 +449,83 @@ namespace TrueforceForAll.Plugin
             return MemGearMode.Live;
         }
 
-        private string KnownCarName()
-            => string.IsNullOrWhiteSpace(MemMapCarNameBox?.Text) ? null : MemMapCarNameBox.Text.Trim();
+        /// <summary>What one search would look for, taken from the map's own
+        /// rows. THE fields carry the values now, so there is one place a run
+        /// and the sentence describing it both read from.</summary>
+        private MemoryFieldSearch KnownSearchPlan()
+            => Store?.PlanSearch() ?? new MemoryFieldSearch();
+
+        /// <summary>What the declared-gear override would use, said where the
+        /// override is chosen. The sequence itself is typed on the Gear row up
+        /// in the map with every other value, and a second box here could
+        /// disagree with the first.</summary>
+        private void RefreshGearSequenceLine()
+        {
+            if (MemMapGearSeqText == null) return;
+            var gearField = Store?.Find(MemoryFields.Gear);
+            string seq = gearField?.KnownValue;
+            bool typed = GearSearchMode() == MemGearMode.Typed;
+            string line;
+            if (!string.IsNullOrWhiteSpace(seq))
+                line = typed
+                    ? "The gears to declare: " + seq + ". Edit them on the Gear row up in the map."
+                    : "The Gear row up in the map says " + seq
+                      + ", which is NOT used while the gear is set the way it is above. Clear that row, or "
+                      + "pick the override, so what is on screen is what will be searched for.";
+            else
+                line = typed
+                    ? "The Gear row up in the map is empty, so there is nothing to declare. Write the gears "
+                      + "in its box, or go back to driving and shifting."
+                    : "Nothing declared, which is the stronger path.";
+            if (!string.Equals(MemMapGearSeqText.Text, line, StringComparison.Ordinal))
+                MemMapGearSeqText.Text = line;
+            MemMapGearSeqText.Foreground = typed && string.IsNullOrWhiteSpace(seq) ? MemAmberBrush : MemSkipBrush;
+        }
 
         /// <summary>The gear sequence, normalised to "1,2,3,4,3,2", or null when
-        /// the override is not selected or the box is empty. Non-null "problem"
-        /// means it was filled in and cannot be used.
+        /// the override is not selected or the Gear row is empty. Non-null
+        /// "problem" means it was declared and cannot be used.
         ///
-        /// Gated on the mode, not merely on the box having text: the box ships
-        /// pre-filled with a sample, so reading it whatever the mode would make
-        /// every run a declared one by default, which is exactly the mistake the
-        /// live path exists to remove.</summary>
+        /// Gated on the MODE, not merely on the row having a value: the row is a
+        /// value like any other, and a sequence left in it from last time must
+        /// not turn a drive-and-shift run into a declared one behind the
+        /// operator's back.</summary>
         private string KnownGearSequence(out string problem)
         {
             problem = null;
             if (GearSearchMode() != MemGearMode.Typed) return null;
-            string raw = MemMapGearSeqBox?.Text;
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                problem = "The gears are set to be declared, but the sequence box is empty. "
-                        + "Write the gears you are about to drive, or switch to driving and shifting.";
-                return null;
-            }
-            var parts = raw.Split(new[] { ',', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            var gears = new List<string>();
-            foreach (string p in parts)
-            {
-                if (!int.TryParse(p.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int g))
-                {
-                    problem = "The gear sequence has \"" + p.Trim() + "\" in it, which is not a gear number. "
-                            + "Write the gears you are about to drive in order, separated by commas, like 1,2,3,4,3,2.";
-                    return null;
-                }
-                gears.Add(g.ToString(CultureInfo.InvariantCulture));
-            }
-            if (gears.Count < 2)
-            {
-                problem = "One gear is not a sequence. It takes at least two, and six is what leaves almost nothing.";
-                return null;
-            }
-            return string.Join(",", gears);
+            var plan = KnownSearchPlan();
+            if (!string.IsNullOrEmpty(plan.GearSequence)) return plan.GearSequence;
+            foreach (string p in plan.Problems)
+                if (p.IndexOf("gear", StringComparison.OrdinalIgnoreCase) >= 0) { problem = p; return null; }
+            problem = "The gears are set to be declared, but the Gear row up in the map is empty. "
+                    + "Write the gears you are about to drive in its box, or switch to driving and shifting.";
+            return null;
         }
 
-        /// <summary>The redline in rpm, or 0 when the box is empty. Non-null
-        /// "problem" means it was filled in and cannot be used.</summary>
+        /// <summary>The one fixed number this run searches for, in whole units,
+        /// or 0 when no field has one. Non-null "problem" means a field has one
+        /// that cannot be used.
+        ///
+        /// The scanner takes ONE. Which field it came from is the plan's answer,
+        /// not this method's, and the plan says out loud when a second field had
+        /// one that could not ride along.</summary>
         private int KnownRedline(out string problem)
         {
+            // The plan has already judged every value, and FirstValueProblem is
+            // what reports a bad one. Judging it a second time here would be a
+            // second opinion that could disagree with the row.
             problem = null;
-            string raw = MemMapRedlineBox?.Text;
-            if (string.IsNullOrWhiteSpace(raw)) return 0;
-            if (!int.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) || n <= 0)
-            {
-                problem = "The redline has to be a whole number of rpm, like 7400.";
-                return 0;
-            }
-            if (n < 500 || n > 30000)
-            {
-                problem = "A redline of " + n.ToString(CultureInfo.InvariantCulture)
-                        + " rpm is outside anything an engine does. Check the number.";
-                return 0;
-            }
-            return n;
+            return StaticFromPlan(KnownSearchPlan());
+        }
+
+        /// <summary>The one fixed number a plan carries, in whole units.</summary>
+        private static int StaticFromPlan(MemoryFieldSearch plan)
+        {
+            if (plan == null || !plan.HasStatic) return 0;
+            double v = plan.StaticValue;
+            if (v <= 0 || v > int.MaxValue) return 0;
+            return (int)Math.Round(v);
         }
 
         /// <summary>How many candidate slots the gear seed may hold, or 0 for
@@ -562,15 +612,19 @@ namespace TrueforceForAll.Plugin
         /// this end builds all say the same number.</summary>
         private const int MemGearPresses = 8;
 
-        /// <summary>The first thing wrong with what has been typed, or null.</summary>
+        /// <summary>The first thing wrong with what has been typed, or null.
+        ///
+        /// The field rows are asked FIRST, because they are where the values
+        /// live now: a redline typed as 74 has to stop the run here rather than
+        /// be dropped from the command line and waited for.</summary>
         private string KnownValueProblem()
         {
+            string valueProblem = Store?.FirstValueProblem();
+            if (valueProblem != null) return valueProblem;
             KnownGearSequence(out string gearProblem);
             if (gearProblem != null) return gearProblem;
             GearSeedCap(out string capProblem);
-            if (capProblem != null) return capProblem;
-            KnownRedline(out string redlineProblem);
-            return redlineProblem;
+            return capProblem;
         }
 
         /// <summary>Say what Start is going to do, in the same words the boxes
@@ -593,12 +647,12 @@ namespace TrueforceForAll.Plugin
             // plain text colour belongs to the theme.
             MemMapPlanText.ClearValue(TextBlock.ForegroundProperty);
 
-            string car = KnownCarName();
+            var plan = KnownSearchPlan();
             var gearMode = GearSearchMode();
             string gears = KnownGearSequence(out _);
             int redline = KnownRedline(out _);
             long seedCap = GearSeedCap(out _);
-            bool known = car != null || gearMode != MemGearMode.Off || redline > 0;
+            bool known = plan.AnyText || gearMode != MemGearMode.Off || redline > 0;
 
             var lines = new List<string>();
             // WHICH OF THE TWO RUNS, first and plainly. They cannot share one: a
@@ -610,15 +664,27 @@ namespace TrueforceForAll.Plugin
             lines.Add(known
                 ? "A known-value run. What you have asked for is read straight out of memory; the driving "
                   + "script " + SelectedMemMapScript() + " does NOT run, because those are two different "
-                  + "runs. Clear the name and the redline, and set the gear to \"Do not look for the gear\", "
-                  + "to drive the script instead."
+                  + "runs. Clear the values on the map's rows, and set the gear to \"Do not look for the "
+                  + "gear\", to drive the script instead."
                 : "The driving script " + SelectedMemMapScript()
                   + ", and nothing known. Ask for something instead: what you can read off the screen, or "
                   + "the shift buttons you are already pressing, beats anything a script can work out.");
 
-            lines.Add(car != null
-                ? "The car name \"" + car + "\", searched as text in four encodings, then whatever points at it."
-                : "No car name search: that box is empty.");
+            // Every text value on the map, by the field it belongs to, because
+            // one sweep now carries all of them and each field gets its own
+            // findings back.
+            if (plan.Needles.Count == 0)
+                lines.Add("No text search: no row up in the map has a value in it.");
+            else
+            {
+                var bits = new List<string>();
+                foreach (var n in plan.Needles) bits.Add(n.FieldName + " = \"" + n.Text + "\"");
+                lines.Add((plan.Needles.Count == 1 ? "One text search, " : plan.Needles.Count
+                            .ToString(CultureInfo.InvariantCulture) + " text searches in ONE sweep, ")
+                        + string.Join(", ", bits)
+                        + ". Each is searched in four encodings, then whatever points at it, and each "
+                        + "field keeps its own candidates.");
+            }
 
             // The gear line has to make plain WHICH of the two happens when
             // Start is pressed, because they ask completely different things of
@@ -650,23 +716,32 @@ namespace TrueforceForAll.Plugin
                     : "The gear seed uses the scanner's own cap. If the run warns that it truncated, put a bigger "
                       + "number in the seed cap box and run it again.");
 
-            lines.Add(redline > 0
-                ? "The redline " + redline.ToString(CultureInfo.InvariantCulture) + " rpm"
-                  + (car != null
-                     ? ", measured from whatever points at the car name, so the tightest tier can run and the "
+            lines.Add(plan.HasStatic
+                ? "The fixed number " + redline.ToString(CultureInfo.InvariantCulture)
+                  + " for " + plan.StaticFieldName
+                  + (plan.AnyText
+                     ? ", measured from whatever points at the text above, so the tightest tier can run and the "
                        + "answer says which tier it came from."
-                     : ". With no car name to measure from there is nothing to be near, so only the widest "
-                       + "tier runs and every hit is weak. Fill in the car name as well.")
-                : "No redline search: that box is empty.");
+                     : ". With no text value to measure from there is nothing to be near, so only the widest "
+                       + "tier runs and every hit is weak. Fill in a text row as well, usually the car.")
+                : "No fixed-number search: no row up in the map has one filled in.");
+            if (plan.StaticNotThisRun.Count > 0)
+                lines.Add("NOT searched this run: " + string.Join(", ", plan.StaticNotThisRun)
+                        + ". The scanner searches one fixed number at a time, so run them one after the other.");
+            if (plan.NeedlesNotThisRun.Count > 0)
+                lines.Add("NOT searched this run: " + string.Join(", ", plan.NeedlesNotThisRun)
+                        + ". The scanner takes "
+                        + MemoryValueKinds.MaxTextNeedles.ToString(CultureInfo.InvariantCulture)
+                        + " text searches at once.");
 
             MemMapPlanText.Text = string.Join("\n", lines);
         }
 
         private string SelectedMemMapScript()
         {
-            if (MemMapScriptFast?.IsChecked == true) return "rpm-fast";
-            if (MemMapScriptInMotion?.IsChecked == true) return "rpm-inmotion";
-            return "rpm-v1";
+            var item = MemMapScriptCombo?.SelectedItem as ComboBoxItem;
+            string s = item?.Tag as string;
+            return string.IsNullOrEmpty(s) ? "rpm-v1" : s;
         }
 
         // ---- the shift bindings ----------------------------------------------
@@ -723,6 +798,7 @@ namespace TrueforceForAll.Plugin
             int up = BindingCount(MemMapShiftUpEditor);
             int down = BindingCount(MemMapShiftDownEditor);
             int mark = BindingCount(MemMapRaceStartEditor);
+            int markBtn = BindingCount(MemMapMarkEditor);
 
             var parts = new List<string>();
             bool unknown = up < 0 || down < 0;
@@ -738,6 +814,9 @@ namespace TrueforceForAll.Plugin
             else
                 parts.Add("Shift up and shift down are bound.");
             if (!unknown && mark == 0) parts.Add("Race started is not bound (optional).");
+            if (markBtn == 0)
+                parts.Add("The mark button is not bound, so during a session marks can only be made with "
+                        + "Mark now on this tab.");
 
             // The tally, and it is the half that catches a binding that exists
             // and is still sending nowhere.
@@ -754,6 +833,14 @@ namespace TrueforceForAll.Plugin
                       + sentUp.ToString(CultureInfo.InvariantCulture) + " up, "
                       + sentDown.ToString(CultureInfo.InvariantCulture) + " down), "
                       + acked.ToString(CultureInfo.InvariantCulture) + " confirmed by the scanner.");
+            }
+            int marks = _plugin?.MemoryScanMarksSent ?? 0;
+            if (marks > 0)
+            {
+                _memAckCounts.TryGetValue("mark", out int marksAcked);
+                parts.Add(marks.ToString(CultureInfo.InvariantCulture) + (marks == 1 ? " mark" : " marks")
+                        + " sent this run, " + marksAcked.ToString(CultureInfo.InvariantCulture)
+                        + " confirmed by the scanner.");
             }
             if (dropped > 0)
                 parts.Add(dropped.ToString(CultureInfo.InvariantCulture)
@@ -806,9 +893,11 @@ namespace TrueforceForAll.Plugin
             _memTargetDebounce.Start();
         }
 
-        private void MemMapScript_Changed(object sender, RoutedEventArgs e)
+        private void MemMapScript_Changed(object sender, SelectionChangedEventArgs e)
         {
-            if (_suppressEvents) return;
+            // Fires during XAML load too, from the item marked selected, before
+            // the chained constructor has set _plugin. Nothing to sync then.
+            if (_suppressEvents || _plugin == null) return;
             SyncMemMapButtons();
         }
 
@@ -838,8 +927,14 @@ namespace TrueforceForAll.Plugin
             /// <summary>Census the whole of memory, filter nothing, name
             /// nothing, and report the tier ladder.</summary>
             Survey,
-            /// <summary>The car name and nothing else. No script, no driving.</summary>
-            FindString,
+            /// <summary>Every value the map's rows have been given, searched in
+            /// one sweep. No script and no driving: the values were read off the
+            /// screen, so there is nothing to perform.
+            ///
+            /// This is THE ONE ACTION. It replaced a single "Find it now" beside
+            /// a single box, which could only ever search one thing and put its
+            /// findings wherever the tab happened to be pointed.</summary>
+            Known,
             /// <summary>Nothing but the watch list: a scanner kept alive so the
             /// rows have something reading for them while the operator goes and
             /// changes something in the game.</summary>
@@ -849,15 +944,191 @@ namespace TrueforceForAll.Plugin
             /// or a watch-only host: a paths run walks backwards from an address
             /// somebody already has, and a search is how you get one.</summary>
             Paths,
+            /// <summary>Record a session: the whole readable game, delta
+            /// encoded, with every shift press and mark beside it, for as long
+            /// as the operator drives. It searches for nothing and names
+            /// nothing; the questions are asked of the file afterwards, and one
+            /// drive answers every field.</summary>
+            Session,
         }
 
         private MemMapRunKind _memMapRunKind = MemMapRunKind.Hunt;
 
         private void MemMapSurvey_Click(object sender, RoutedEventArgs e) => StartMemMapRun(MemMapRunKind.Survey);
 
-        private void MemMapStart_Click(object sender, RoutedEventArgs e) => StartMemMapRun(MemMapRunKind.Hunt);
+        // ---- the session -------------------------------------------------------
 
-        private void MemMapFindString_Click(object sender, RoutedEventArgs e) => StartMemMapRun(MemMapRunKind.FindString);
+        /// <summary>Record, or stop recording: one button, because at the wheel
+        /// there is one thing to do and it is the same button both times.</summary>
+        private void MemMapSession_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (_plugin.MemoryScanRunning && _memMapRunKind == MemMapRunKind.Session)
+            {
+                MemMapStop_Click(sender, e);
+                return;
+            }
+            StartMemMapRun(MemMapRunKind.Session);
+        }
+
+        /// <summary>Fill the mark-name dropdown once, from the same table the
+        /// wire uses, and pick whatever the plugin is currently set to send.</summary>
+        private void EnsureMarkNames()
+        {
+            if (MemMapMarkNameCombo == null || _memMarkNamesReady) return;
+            _memMarkNamesReady = true;
+            bool was = _suppressEvents;
+            _suppressEvents = true;
+            try
+            {
+                MemMapMarkNameCombo.Items.Clear();
+                string current = _plugin?.MemoryScanMarkName ?? MemoryMarks.DefaultName;
+                ComboBoxItem pick = null;
+                foreach (var p in MemoryMarks.Presets)
+                {
+                    var item = new ComboBoxItem { Content = p.Name, Tag = p, ToolTip = p.Separates };
+                    MemMapMarkNameCombo.Items.Add(item);
+                    if (string.Equals(p.Name, current, StringComparison.Ordinal)) pick = item;
+                }
+                if (MemMapMarkNameCombo.Items.Count > 0)
+                    MemMapMarkNameCombo.SelectedItem = pick ?? MemMapMarkNameCombo.Items[0];
+            }
+            finally { _suppressEvents = was; }
+            RefreshMarkHelp();
+        }
+
+        private MemoryMarks.Preset SelectedMarkPreset()
+            => (MemMapMarkNameCombo?.SelectedItem as ComboBoxItem)?.Tag as MemoryMarks.Preset;
+
+        /// <summary>What the chosen mark is for, and how far back it looks. Said
+        /// beside the picker, because the window is the thing that decides
+        /// whether a late tap still finds the change.</summary>
+        private void RefreshMarkHelp()
+        {
+            if (MemMapMarkHelpText == null) return;
+            var p = SelectedMarkPreset();
+            MemMapMarkHelpText.Text = p == null ? "" :
+                "Looks back " + p.LookbackSecs.ToString("0.#", CultureInfo.InvariantCulture)
+                + " s from the tap. " + p.Separates;
+        }
+
+        private void MemMapMarkName_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEvents) return;
+            var p = SelectedMarkPreset();
+            if (p != null && _plugin != null) _plugin.MemoryScanMarkName = p.Name;
+            RefreshMarkHelp();
+        }
+
+        /// <summary>The same mark the bound button sends, from the tab.</summary>
+        private void MemMapMarkNow_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string err = _plugin.SendMemoryScanMark(_plugin.MemoryScanMarkName);
+            if (err != null) SetMemStage("The mark was not sent: " + err + ".");
+            RefreshSessionStatus();
+        }
+
+        /// <summary>How long the recording has run, or ran, as m:ss.</summary>
+        private string SessionElapsedText()
+        {
+            if (_memSessionStartedUtc == DateTime.MinValue) return "0:00";
+            var end = _memSessionEndedUtc == DateTime.MinValue ? DateTime.UtcNow : _memSessionEndedUtc;
+            var t = end - _memSessionStartedUtc;
+            if (t < TimeSpan.Zero) t = TimeSpan.Zero;
+            return ((int)t.TotalMinutes).ToString(CultureInfo.InvariantCulture) + ":"
+                 + t.Seconds.ToString("00", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>The recording's size as the scanner last reported it. A
+        /// session lives for ten minutes with the operator away from the screen,
+        /// and "is it still writing" is the question they come back with, so
+        /// the honest answer when the scanner has not said is that it has not
+        /// said, rather than a zero that reads as a dead recording.</summary>
+        private string SessionSizeText()
+            => _memSessionMb > 0
+                ? _memSessionMb.ToString(_memSessionMb >= 100 ? "0" : "0.0", CultureInfo.InvariantCulture) + " MB written"
+                : "size not reported by the scanner yet";
+
+        /// <summary>The line beside the session button: elapsed time, marks,
+        /// shifts and megabytes while recording, and the same numbers frozen
+        /// afterwards. Rewritten twice a second from the tick.</summary>
+        private void RefreshSessionStatus()
+        {
+            if (MemMapSessionStatusText == null || _plugin == null) return;
+            bool live = _plugin.MemoryScanRunning && _memMapRunKind == MemMapRunKind.Session;
+            if (live)
+            {
+                // Read while the counters belong to this run, and kept, so the
+                // summary after the run does not show the next run's zeros.
+                _memSessionMarks  = _plugin.MemoryScanMarksSent;
+                _memSessionShifts = _plugin.MemoryScanShiftUpSent + _plugin.MemoryScanShiftDownSent;
+            }
+            string text;
+            if (live)
+            {
+                _memAckCounts.TryGetValue("mark", out int acked);
+                text = "Recording " + SessionElapsedText() + ".  "
+                     + _memSessionMarks.ToString(CultureInfo.InvariantCulture)
+                     + (_memSessionMarks == 1 ? " mark" : " marks")
+                     + (acked < _memSessionMarks
+                        ? " (" + acked.ToString(CultureInfo.InvariantCulture) + " confirmed by the scanner)" : "")
+                     + ", " + _memSessionShifts.ToString(CultureInfo.InvariantCulture)
+                     + (_memSessionShifts == 1 ? " shift" : " shifts")
+                     + ", " + SessionSizeText() + ".";
+            }
+            else if (_memSessionStartedUtc != DateTime.MinValue)
+            {
+                text = "Last recording: " + SessionElapsedText() + ", "
+                     + _memSessionMarks.ToString(CultureInfo.InvariantCulture)
+                     + (_memSessionMarks == 1 ? " mark" : " marks") + ", "
+                     + _memSessionShifts.ToString(CultureInfo.InvariantCulture)
+                     + (_memSessionShifts == 1 ? " shift" : " shifts") + ", "
+                     + SessionSizeText() + "."
+                     + (string.IsNullOrEmpty(_memOutDir) ? "" : "  It is in the results folder below.");
+            }
+            else text = "";
+            if (!string.Equals(MemMapSessionStatusText.Text, text, StringComparison.Ordinal))
+                MemMapSessionStatusText.Text = text;
+        }
+
+        /// <summary>What the scanner says it has written, off whatever event
+        /// carries it. Only while a session is the run in flight: a survey or a
+        /// hunt reporting its own file size is not this recording.</summary>
+        private void NoteRecordingProgress(ScanEvent ev)
+        {
+            if (ev == null || _memMapRunKind != MemMapRunKind.Session) return;
+            if (ev.MbWritten > 0) _memSessionMb = ev.MbWritten;
+            else if (ev.BytesWritten > 0) _memSessionMb = ev.BytesWritten / 1048576.0;
+        }
+
+        /// <summary>The recording is over, one way or another. Freezes the
+        /// clock and the tallies; idempotent, because the done event and the
+        /// exit both end a run and either can arrive first.</summary>
+        private void NoteSessionEnded()
+        {
+            if (_memMapRunKind != MemMapRunKind.Session) return;
+            if (_memSessionStartedUtc == DateTime.MinValue || _memSessionEndedUtc != DateTime.MinValue) return;
+            _memSessionEndedUtc = DateTime.UtcNow;
+            RefreshSessionStatus();
+        }
+
+        /// <summary>The done line for a session. It names nothing by design, so
+        /// exit codes that mean "unproven" or "stopped early" are the recording
+        /// having worked, not a shortfall.</summary>
+        private string SessionDoneLine(int exitCode)
+        {
+            if (exitCode == 0 || exitCode == 7 || exitCode == 9)
+                return "The session was recorded (" + SessionElapsedText() + "). Everything it kept is in the "
+                     + "folder below: the recording, and every shift press and mark beside it. The analysis that "
+                     + "answers the map from it is the next round.";
+            if (exitCode == 2)
+                return "The recording could not start. " + ExitCodeMeaning(2);
+            return "The recording ended with exit code " + exitCode.ToString(CultureInfo.InvariantCulture)
+                 + ". " + ExitCodeMeaning(exitCode) + " Whatever it had already written is in the folder below.";
+        }
+
+        private void MemMapStart_Click(object sender, RoutedEventArgs e) => StartMemMapRun(MemMapRunKind.Hunt);
 
         private void StartMemMapRun(MemMapRunKind kind)
         {
@@ -867,7 +1138,7 @@ namespace TrueforceForAll.Plugin
             // A hunt carries the declared values, so a box that cannot be read
             // stops it here rather than being silently dropped from the command
             // line. The other two runs declare nothing.
-            if (kind == MemMapRunKind.Hunt)
+            if (kind == MemMapRunKind.Hunt || kind == MemMapRunKind.Known)
             {
                 string problem = KnownValueProblem();
                 if (problem != null)
@@ -876,6 +1147,19 @@ namespace TrueforceForAll.Plugin
                     ShowLiveBox(true);
                     return;
                 }
+            }
+            if (kind == MemMapRunKind.Known && !KnownSearchPlan().AnyWithoutDriving)
+            {
+                // Checked here as well as on the button, because getting it
+                // wrong is not a no-op: a request carrying nothing the scanner
+                // recognises as a known value falls through to the DRIVING
+                // SCRIPT, and the operator who pressed "search for these values"
+                // would be counted through a run at the wheel instead.
+                SetMemStage("There is nothing here to read straight out of memory. Fill in a text value or "
+                          + "a fixed number on one of the map's rows. The gear is found by driving: record a "
+                          + "session, or start the Driving script under Tools.");
+                ShowLiveBox(true);
+                return;
             }
             else if (kind == MemMapRunKind.Survey)
             {
@@ -902,10 +1186,15 @@ namespace TrueforceForAll.Plugin
 
             ClearMemMapRun(keepResults: kind == MemMapRunKind.Watch);
             ResetCandidateIntake();
-            // Which field this run is feeding, decided BEFORE anybody drives. A
-            // run whose findings landed on the wrong field is a session wasted,
-            // and the field frame says which one on screen while it is running.
-            AimRunAtField(kind);
+            // What this run is looking for, worked out ONCE and used for both
+            // the arguments and the routing, so a value edited while the scanner
+            // is working cannot move where its findings land.
+            var searchPlan = kind == MemMapRunKind.Known || kind == MemMapRunKind.Hunt
+                ? KnownSearchPlan() : null;
+            // Which field each finding is going to, decided BEFORE anybody
+            // drives. A run whose findings landed on the wrong field is a
+            // session wasted, and the field frame says where they went.
+            AimRunAtField(kind, searchPlan);
             AttachScanHandlers();
 
             var req = new MemoryScanRequest
@@ -915,7 +1204,23 @@ namespace TrueforceForAll.Plugin
                 Script      = SelectedMemMapScript(),
                 Survey      = kind == MemMapRunKind.Survey,
                 WatchHost   = kind == MemMapRunKind.Watch,
+                Session     = kind == MemMapRunKind.Session,
+                SessionSeconds = MemSessionCapSeconds,
             };
+            if (kind == MemMapRunKind.Session)
+            {
+                // A new recording. The last one's summary line gives way to this
+                // one's clock, and the mark name the button will send is whatever
+                // the picker says right now.
+                _memSessionStartedUtc = DateTime.UtcNow;
+                _memSessionEndedUtc   = DateTime.MinValue;
+                _memSessionMb = 0;
+                _memSessionMarks = 0;
+                _memSessionShifts = 0;
+                _memMarkFlashUntilUtc = DateTime.MinValue;
+                var preset = SelectedMarkPreset();
+                if (preset != null) _plugin.MemoryScanMarkName = preset.Name;
+            }
             if (kind == MemMapRunKind.Paths && !FillPathsRequest(req)) return;
             if (kind == MemMapRunKind.Survey)
             {
@@ -926,21 +1231,24 @@ namespace TrueforceForAll.Plugin
                 // out has not surveyed anything.
                 req.CensusStaticCap = CensusStaticCap(out _);
             }
-            else if (kind == MemMapRunKind.FindString)
+            else if (kind == MemMapRunKind.Known)
             {
-                // Deliberately only the name. Everything else needs driving, and
-                // the whole point of this button is that this one does not.
-                req.KnownString = KnownCarName();
+                // Every value the map has been given, in ONE sweep. Deliberately
+                // no gear and no script: those are the two things that need
+                // somebody at the wheel, and the whole point of this button is
+                // that it asks for nothing.
+                FillNeedles(req, searchPlan);
+                req.KnownRedline = StaticFromPlan(searchPlan);
             }
             else if (kind == MemMapRunKind.Hunt)
             {
                 var gearMode = GearSearchMode();
-                req.KnownString   = KnownCarName();
+                FillNeedles(req, searchPlan);
                 req.KnownGearLive = gearMode == MemGearMode.Live;
                 req.GearPresses   = MemGearPresses;
                 req.KnownGear     = KnownGearSequence(out _);
                 req.GearSeedCap   = GearSeedCap(out _);
-                req.KnownRedline  = KnownRedline(out _);
+                req.KnownRedline  = StaticFromPlan(searchPlan);
             }
 
             string err = _plugin.StartMemoryScan(req);
@@ -980,8 +1288,11 @@ namespace TrueforceForAll.Plugin
             _memPressesExpected = gearRun;
             if (MemMapCueText != null)
                 MemMapCueText.Text =
-                    kind == MemMapRunKind.Survey     ? "Nothing to do. Leave the game where it is."
-                  : kind == MemMapRunKind.FindString ? "Nothing to do. Leave the game on that car."
+                    kind == MemMapRunKind.Session    ? "Recording. Get in and drive: shift a lot, hold it to the limiter, "
+                                                       + "do laps, stop dead, change car, crash, drift. Press the mark "
+                                                       + "button at the END of each. Stop when you are done."
+                  : kind == MemMapRunKind.Survey     ? "Nothing to do. Leave the game where it is."
+                  : kind == MemMapRunKind.Known      ? "Nothing to do. Leave the game exactly as it is: the values you typed are the ones on screen now."
                   : kind == MemMapRunKind.Paths      ? "Nothing to do. Leave the game exactly where it is."
                   : kind == MemMapRunKind.Watch      ? "Go and change the thing you are watching for."
                   : declaredNoDriving                ? "Nothing to do. Leave the game where it is."
@@ -990,13 +1301,23 @@ namespace TrueforceForAll.Plugin
                                                      : "Get to the wheel.";
             if (MemMapPhaseText != null)
                 MemMapPhaseText.Text =
-                    kind == MemMapRunKind.Survey     ? "Surveying memory…"
-                  : kind == MemMapRunKind.FindString ? "Looking for the name…"
+                    kind == MemMapRunKind.Session    ? "Recording a session…"
+                  : kind == MemMapRunKind.Survey     ? "Surveying memory…"
+                  : kind == MemMapRunKind.Known      ? "Looking for what you filled in…"
                   : kind == MemMapRunKind.Paths      ? "Looking for a pointer path…"
                   : kind == MemMapRunKind.Watch      ? "Watching…"
                   : declaredNoDriving                ? "Reading memory…"
                                                      : "Starting…";
             if (kind == MemMapRunKind.Hunt) SetMemCommandLine(HuntGroundTruthLine());
+            if (kind == MemMapRunKind.Session)
+                SetMemCommandLine("Ground truth: every shift press, with its direction, and every mark, named \""
+                                + _plugin.MemoryScanMarkName + "\" until you pick another. A shift is exact; a mark "
+                                + "is the end of a lookback window chosen by its name. Nothing is searched for now: "
+                                + "the recording is asked afterwards.");
+            if (kind == MemMapRunKind.Known)
+                SetMemCommandLine("Ground truth: " + KnownSearchPlan().Describe()
+                                + " There is nothing to press and nothing to drive. Leave the game where it "
+                                + "is until the run finishes.");
             if (kind == MemMapRunKind.Watch)
                 SetMemStage("Watching "
                           + (_plugin.MemoryWatch.Count + _plugin.MemoryFields.ReadableCount)
@@ -1010,11 +1331,28 @@ namespace TrueforceForAll.Plugin
             SyncMemMapButtons();
         }
 
+        /// <summary>Put the plan's text values on the request, in map order.
+        ///
+        /// The FIRST one goes in the single-needle field and the rest in the
+        /// list, which is not a detail: the single form is what the scanner's
+        /// own gates drive, so the commonest run on this tab stays the shape
+        /// that is tested end to end over there.</summary>
+        private static void FillNeedles(MemoryScanRequest req, MemoryFieldSearch plan)
+        {
+            if (req == null || plan == null) return;
+            req.KnownStrings = new List<string>();
+            for (int i = 0; i < plan.Needles.Count; i++)
+            {
+                if (i == 0) req.KnownString = plan.Needles[i].Text;
+                else req.KnownStrings.Add(plan.Needles[i].Text);
+            }
+        }
+
         /// <summary>True when something is known, which is what makes a run a
         /// known-value run rather than a driving one.</summary>
         private bool AnyKnownValueDeclared()
         {
-            if (KnownCarName() != null) return true;
+            if (KnownSearchPlan().AnyText) return true;
             if (GearSearchMode() != MemGearMode.Off) return true;
             return KnownRedline(out _) > 0;
         }
@@ -1103,7 +1441,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>Wipe the last run off the tab.
         ///
         /// "keepResults" is for the watch host, and it is not a convenience: the
-        /// operator gets to a watch by pressing Watch this on a FINDING, and
+        /// operator gets to a watch by pressing Re-check this on a FINDING, and
         /// clearing the findings out from under them would take away the list
         /// they are working through, one row at a time, to add the next
         /// candidate. A watch host searches for nothing and names nothing, so it
@@ -1131,6 +1469,7 @@ namespace TrueforceForAll.Plugin
             // wiping the warning on the way would take away the reason the
             // operator is checking.
             _memWarnLines.Clear();
+            _memWarnHidden = 0;
             RenderMemWarnLines();
 
             _memOutDir      = null;
@@ -1150,7 +1489,7 @@ namespace TrueforceForAll.Plugin
             }
             if (MemMapFindingsToFieldText != null) MemMapFindingsToFieldText.Text = "";
             if (MemMapWatchAllButton != null) MemMapWatchAllButton.Visibility = Visibility.Collapsed;
-            if (MemMapLedgerSection != null) MemMapLedgerSection.Visibility = Visibility.Collapsed;
+            if (MemMapLedgerExpander != null) MemMapLedgerExpander.Visibility = Visibility.Collapsed;
             if (MemMapVerdictBox != null) MemMapVerdictBox.Visibility = Visibility.Collapsed;
             if (MemMapSurveyResultBox != null) MemMapSurveyResultBox.Visibility = Visibility.Collapsed;
             if (MemMapOpenFolderButton != null) MemMapOpenFolderButton.IsEnabled = false;
@@ -1248,6 +1587,11 @@ namespace TrueforceForAll.Plugin
 
         private void DispatchScanEvent(ScanEvent ev)
         {
+            // Before the switch, off whatever kind of line carried it: the
+            // scanner half is being written alongside this one, and whether it
+            // reports what it has written on a stage line or a line of its own
+            // is not something this half should have to know.
+            NoteRecordingProgress(ev);
             switch ((ev.Ev ?? "").ToLowerInvariant())
             {
                 case "stage":
@@ -1346,14 +1690,15 @@ namespace TrueforceForAll.Plugin
                     // rather than as the mode working. Its own block says what
                     // it counted.
                     if (_memMapRunKind != MemMapRunKind.Watch && _memMapRunKind != MemMapRunKind.Survey
-                        && _memMapRunKind != MemMapRunKind.Paths)
+                        && _memMapRunKind != MemMapRunKind.Paths && _memMapRunKind != MemMapRunKind.Session)
                         ShowVerdict(ev);
                     break;
 
                 case "finding":
                     // Same reason, and one more: these rows are what the
                     // operator is adding to the watch list from, one at a time.
-                    if (_memMapRunKind != MemMapRunKind.Watch && _memMapRunKind != MemMapRunKind.Paths)
+                    if (_memMapRunKind != MemMapRunKind.Watch && _memMapRunKind != MemMapRunKind.Paths
+                        && _memMapRunKind != MemMapRunKind.Session)
                     {
                         AddFindingRow(ev);
                         // And the part that matters: a finding is a CANDIDATE
@@ -1430,20 +1775,25 @@ namespace TrueforceForAll.Plugin
                     // named, because it looked for nothing. Reporting that as an
                     // exit code and a refusal would read as a failed run.
                     SetMemStage(
+                        // A session names nothing by design, so its line is its
+                        // own: "unproven" and "stopped early" are the recording
+                        // having worked.
+                        _memMapRunKind == MemMapRunKind.Session
+                            ? SessionDoneLine(ev.ExitCode)
                         // A watch that never read anything did not "end", it
                         // failed, and the commonest reason is a memscan too old
                         // to know the flag this asks for. Swallowing the exit
                         // code here would leave that looking like a watch that
                         // simply found nothing to say.
-                        _memMapRunKind == MemMapRunKind.Watch && ev.ExitCode == 2
+                      : _memMapRunKind == MemMapRunKind.Watch && ev.ExitCode == 2
                             ? "The watch could not start. " + ExitCodeMeaning(2)
                       : _memMapRunKind == MemMapRunKind.Watch && _memWatchLastUpdateUtc == DateTime.MinValue
                             ? "The watch ended without reading anything, exit code "
                               + ev.ExitCode.ToString(CultureInfo.InvariantCulture) + ". "
                               + ExitCodeMeaning(ev.ExitCode)
                       : _memMapRunKind == MemMapRunKind.Watch
-                            ? "The watch ended. The values below are the last ones read; press Watch now to "
-                              + "start reading again."
+                            ? "The watch ended. The values on the list are the last ones read; press Read these "
+                              + "now (under Tools) to start reading again."
                         // A survey ends UNPROVEN with nothing named, which is
                         // the mode working. Reporting exit code 9 and "nothing
                         // is named" as though it were a shortfall is the same
@@ -1451,6 +1801,12 @@ namespace TrueforceForAll.Plugin
                       : _memMapRunKind == MemMapRunKind.Survey && (ev.ExitCode == 9 || ev.ExitCode == 0)
                             ? "The survey finished. It named nothing, which is what a census does; what it "
                               + "counted is above, and every row of it is in survey.csv in the report folder."
+                        // A run that carried several texts. Its exit code is the
+                        // WORST needle's, so the one-line meanings below would
+                        // report a run that filled in two fields as a run where
+                        // nothing did what it was told to do.
+                      : MultiNeedleOutcomeLine(ev.ExitCode) != null
+                            ? MultiNeedleOutcomeLine(ev.ExitCode)
                       : ev.ExitCode == 0
                             ? "Finished."
                             : "Finished, exit code " + ev.ExitCode.ToString(CultureInfo.InvariantCulture)
@@ -1486,7 +1842,8 @@ namespace TrueforceForAll.Plugin
                 case 0:  return "Confirmed.";
                 case 1:  return "That process was not running.";
                 case 2:  return "The scanner rejected its command line. Usually that means this plugin asked for "
-                              + "something the copy of memscan beside it is too old to know about: survey mode, "
+                              + "something the copy of memscan beside it is too old to know about: a recorded "
+                              + "session, survey mode, "
                               + "the gear from your shift presses, the seed cap, the census row limit, or one of "
                               + "the known values. Update the scanner, or fall back to what it does know (declare "
                               + "the gears instead, and leave the seed cap and the census rows empty). The "
@@ -1514,6 +1871,7 @@ namespace TrueforceForAll.Plugin
         private void EndRunUi()
         {
             StopMemMapTimer();
+            NoteSessionEnded();
             _memPhaseLive = false;
             _memWheelStageCue = "";
             _memStageSecondsLeft = 0;
@@ -1586,7 +1944,7 @@ namespace TrueforceForAll.Plugin
         private void AddPredicateRow(ScanEvent ev)
         {
             if (MemMapLedgerHost == null) return;
-            if (MemMapLedgerSection != null) MemMapLedgerSection.Visibility = Visibility.Visible;
+            if (MemMapLedgerExpander != null) MemMapLedgerExpander.Visibility = Visibility.Visible;
 
             string result = (ev.Result ?? "NOT-RUN").ToUpperInvariant();
             string key = string.IsNullOrEmpty(ev.Id) ? (ev.Name ?? Guid.NewGuid().ToString()) : ev.Id;
@@ -1670,6 +2028,11 @@ namespace TrueforceForAll.Plugin
                      + "   " + (ev.Type ?? "")
                      + (string.IsNullOrEmpty(ev.Label) ? "" : "   " + ev.Label)
                      + (conf.Length == 0 ? "" : "   " + conf.Replace('_', ' '))
+                     // WHICH VALUE FOUND IT, on the row. One sweep carries
+                     // several needles now, and a raw list that did not say
+                     // would leave the operator unable to tell the car's hits
+                     // from their own name's.
+                     + (string.IsNullOrWhiteSpace(ev.Needle) ? "" : "   found by \"" + ev.Needle.Trim() + "\"")
                      + (string.IsNullOrEmpty(ev.Evidence) ? "" : "\n" + ev.Evidence),
                 // Every finding carries the verdict word it earned, and a run
                 // that refused to name anything says UNPROVEN on all of them. A
@@ -1692,14 +2055,14 @@ namespace TrueforceForAll.Plugin
             {
                 var watch = new Button
                 {
-                    Content = "Watch this",
+                    Content = "Re-check this",
                     Height = 24,
                     Padding = new Thickness(10, 0, 10, 0),
                     Margin = new Thickness(8, 0, 0, 0),
                     Cursor = System.Windows.Input.Cursors.Hand,
                     VerticalAlignment = VerticalAlignment.Top,
                     Tag = ev,
-                    ToolTip = "Put this address on the watch list below, so you can see its value change.",
+                    ToolTip = "Put this address on the re-check list under Tools, so you can see its value change.",
                 };
                 watch.Click += MemMapWatchFinding_Click;
                 Grid.SetColumn(watch, 1);
@@ -1743,13 +2106,28 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>The address, kind, length and name to watch one finding
         /// with. The rules live in MemoryWatchList, where they can be tested
-        /// against the scanner's real findings; this only supplies the name that
-        /// was searched for, which is a box on this tab.</summary>
+        /// against the scanner's real findings; this only supplies the text that
+        /// was searched for.
+        ///
+        /// The finding says which needle found it, and that is the text a row is
+        /// named after: once the car is changed, a row whose value no longer
+        /// matches its own name is the answer, visible at a glance. A run
+        /// carrying several needles would otherwise name every row after
+        /// whichever value happened to be first.</summary>
         private void WatchSpecForFinding(ScanEvent f, out string addr, out string kind,
                                          out int len, out string label)
             => MemoryWatchList.SpecForFinding(f.Address, f.ModuleAddr, f.Type, f.WatchKind,
-                                              f.WatchLen, f.Label, KnownCarName(),
+                                              f.WatchLen, f.Label, NeedleForFinding(f),
                                               out addr, out kind, out len, out label);
+
+        /// <summary>The text one finding was found by, or the only text this run
+        /// searched for when the finding did not say.</summary>
+        private string NeedleForFinding(ScanEvent f)
+        {
+            if (!string.IsNullOrWhiteSpace(f?.Needle)) return f.Needle.Trim();
+            var plan = KnownSearchPlan();
+            return plan.Needles.Count == 1 ? plan.Needles[0].Text : null;
+        }
 
         private void ShowVerdict(ScanEvent ev)
         {
@@ -1850,8 +2228,12 @@ namespace TrueforceForAll.Plugin
             foreach (string have in _memWarnLines)
                 if (string.Equals(have, line, StringComparison.OrdinalIgnoreCase)) return;
             // Bounded: a run that decides to warn about every region would
-            // otherwise turn this into the whole tab.
-            if (_memWarnLines.Count >= 8) return;
+            // otherwise turn this into the whole tab. COUNTED rather than
+            // dropped, though. A run carrying a dozen texts can raise two
+            // warnings each, and a list that quietly stopped at eight would be
+            // doing the exact thing every one of those warnings exists to
+            // report: leaving something out without saying so.
+            if (_memWarnLines.Count >= 8) { _memWarnHidden++; RenderMemWarnLines(); return; }
             _memWarnLines.Add(line);
             RenderMemWarnLines();
         }
@@ -1874,11 +2256,14 @@ namespace TrueforceForAll.Plugin
                 if (w.IndexOf("seed-cap", StringComparison.OrdinalIgnoreCase) >= 0
                     || w.IndexOf("seed hit its cap", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    lines.Add("Put a bigger number in the Seed cap box above and run it again. The addresses that "
+                    lines.Add("Put a bigger number in the Seed cap box (Tools, Driving script) and run it again. The addresses that "
                             + "were dropped are the highest ones, so what survived is not the whole answer.");
                     break;
                 }
             }
+            if (_memWarnHidden > 0)
+                lines.Add("And " + _memWarnHidden.ToString(CultureInfo.InvariantCulture)
+                        + " more warning(s) not shown here. All of them are in the report folder below.");
             MemMapWarnText.Text = string.Join("\n", lines);
             MemMapWarnText.Foreground = MemAmberBrush;
             MemMapWarnText.Visibility = Visibility.Visible;
@@ -1932,6 +2317,17 @@ namespace TrueforceForAll.Plugin
             }
             _memAckCounts.TryGetValue(cmd, out int n);
             _memAckCounts[cmd] = n + 1;
+
+            // A mark that landed is shown at the wheel by name for a moment, so
+            // a press at the rim is seen to have counted without a screen; the
+            // session line picks up the new tally on the same beat.
+            if (cmd.Equals("mark", StringComparison.OrdinalIgnoreCase))
+            {
+                _memMarkFlashName = _plugin?.MemoryScanLastMark ?? "mark";
+                _memMarkFlashUntilUtc = DateTime.UtcNow.AddSeconds(2);
+                RefreshSessionStatus();
+                if (_memMapRunKind == MemMapRunKind.Session) PushCueToWheel(force: true);
+            }
 
             string what = cmd + (string.IsNullOrEmpty(ev.Detail) ? "" : " " + ev.Detail);
             _memLastAckLine = "Last sent: " + what
@@ -2017,6 +2413,8 @@ namespace TrueforceForAll.Plugin
                 // looks exactly like one receiving everything unless the tally
                 // is redrawn while nothing is arriving.
                 RefreshShiftBindingStatus();
+                // And the recording's clock, which nothing else rewrites.
+                RefreshSessionStatus();
                 // And for a pointer path: "still searching" and "no path exists"
                 // look identical to a line nobody rewrites, and the second is a
                 // real answer the operator has to be able to act on.
@@ -2061,13 +2459,27 @@ namespace TrueforceForAll.Plugin
             // wheel is left alone through both. Telling somebody at the wheel to
             // drive, during a run that wants the game left exactly where it is,
             // is worse than showing them nothing.
-            if (_memMapRunKind != MemMapRunKind.Hunt) return;
+            if (_memMapRunKind != MemMapRunKind.Hunt && _memMapRunKind != MemMapRunKind.Session) return;
             var now = DateTime.UtcNow;
             if (!force && (now - _memLastCuePushUtc).TotalMilliseconds < 900) return;
             _memLastCuePushUtc = now;
             if (force) RefreshWheelCueLine();
             try
             {
+                if (_memMapRunKind == MemMapRunKind.Session)
+                {
+                    // Recording: the elapsed time, and for two seconds after a
+                    // mark lands, its name. The operator is at the wheel and the
+                    // screen is where they see that the press counted.
+                    if (_plugin.MemoryScanRunning)
+                    {
+                        if (now < _memMarkFlashUntilUtc)
+                            _plugin.ShowScanCue("MARK", (_memMarkFlashName ?? "").ToUpperInvariant());
+                        else
+                            _plugin.ShowScanCue("RECORDING", SessionElapsedText());
+                    }
+                    return;
+                }
                 if (_memPhaseLive)
                 {
                     string value = _memLastSecondShown > 0
@@ -2596,7 +3008,7 @@ namespace TrueforceForAll.Plugin
             if (_memWatchProblem != null) parts.Add(_memWatchProblem);
             if (rows == 0)
             {
-                parts.Add("Nothing is being watched. Add an address above, or press Watch this on a finding.");
+                parts.Add("Nothing is on the list. Add an address above, or press Re-check this on a finding.");
             }
             else if (running)
             {
@@ -2612,7 +3024,7 @@ namespace TrueforceForAll.Plugin
                     // row that never moved would look like an answer.
                     parts.Add(rows.ToString(CultureInfo.InvariantCulture)
                               + (rows == 1 ? " address, but nothing" : " addresses, but nothing")
-                              + " is reading them: this run does not watch. Press Watch now for one that does.");
+                              + " is reading them: this run does not watch. Press Read these now for one that does.");
                 }
                 else if (sinceRefresh < 0)
                 {
@@ -2656,7 +3068,7 @@ namespace TrueforceForAll.Plugin
                 parts.Add(rows.ToString(CultureInfo.InvariantCulture)
                           + (rows == 1 ? " address. " : " addresses. ")
                           + "Nothing is reading them right now, so these values are the last ones seen. "
-                          + "Press Watch now, or start any other run.");
+                          + "Press Read these now, or start any other run.");
             }
             if (_memWatchStrangers > 0)
                 parts.Add("The scanner is also watching "

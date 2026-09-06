@@ -8,6 +8,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using TrueforceForAll.Core;
 using Xunit;
 
@@ -79,14 +80,76 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void TheSameProgramAtAnyVolumeReadsTheSame()
+        public void TheSameProgramAtAnyNormalVolumeReadsTheSame()
         {
             // The point of moving both ends: turning the system volume down is
             // not supposed to change the picture, and this is what neither fixed
             // scale could do.
+            //
+            // At any NORMAL volume. The quiet pin below deliberately breaks
+            // this once the material is barely audible, so both fixtures have
+            // to sit above QuietCeilingDb for the property to mean anything.
             var loud  = LevelsFor(Program(-22, -9, 20));
-            var quiet = LevelsFor(Program(-52, -39, 20));
+            var quiet = LevelsFor(Program(-35, -22, 20));
+            Assert.True(-22 > AudioLevelEnvelope.QuietCeilingDb,
+                "the quiet fixture has fallen under the pin; move it, not the assert");
             Assert.Equal(loud, quiet);
+        }
+
+        /// <summary>The highest level a program reaches, in LEDs of ten.</summary>
+        private static int PeakLed(IEnumerable<double> programDb)
+        {
+            var env = new AudioLevelEnvelope();
+            int peak = 0;
+            foreach (double db in programDb)
+                peak = Math.Max(peak, (int)Math.Floor(env.Push(Peak(db), Poll) * 10 + 0.5));
+            return peak;
+        }
+
+        [Fact]
+        public void QuietMaterialCannotFillTheStrip()
+        {
+            // The complaint this exists for: with both ends free, the window
+            // closes around a very quiet passage and the next small sound drives
+            // the strip to full. Genuinely audible, so the silence gate cannot
+            // catch it; just quiet.
+            Assert.Equal(10, PeakLed(Program(-22, -9, 20)));    // normal, untouched
+            Assert.Equal(10, PeakLed(Program(-40, -30, 20)));   // moderate, untouched
+
+            int quiet = PeakLed(Program(-58, -52, 20));
+            Assert.True(quiet < 10, $"quiet material still reached {quiet} of 10");
+            Assert.True(quiet > 0, "quiet material went dark instead of reading quiet");
+        }
+
+        [Fact]
+        public void TheQuieterItGetsTheLessOfTheStripItEarns()
+        {
+            int quiet     = PeakLed(Program(-58, -52, 20));
+            int veryQuiet = PeakLed(Program(-66, -62, 20));
+            Assert.True(veryQuiet < quiet,
+                $"very quiet reached {veryQuiet}, quiet reached {quiet}");
+        }
+
+        [Fact]
+        public void ASmallSoundInAQuietRoomDoesNotPegTheMeter()
+        {
+            // The exact shape reported: a quiet floor, then a brief louder blip.
+            // The blip should move the bar, not fill it.
+            var program = Program(-64, -62, 10)
+                .Concat(Program(-64, -55, 4))
+                .Concat(Program(-64, -62, 6));
+            int peak = PeakLed(program);
+            Assert.True(peak < 8, $"a blip 15 dB under the quiet pin reached {peak} of 10");
+        }
+
+        [Fact]
+        public void TheQuietPinStillLeavesTheMeterMoving()
+        {
+            // Reading low is the point; reading NOTHING would just be a second
+            // silence gate with a higher threshold.
+            var levels = LevelsFor(Program(-58, -52, 20));
+            Assert.True(levels.Count >= 3,
+                $"quiet material only used {levels.Count} levels: {string.Join(",", levels)}");
         }
 
         [Fact]

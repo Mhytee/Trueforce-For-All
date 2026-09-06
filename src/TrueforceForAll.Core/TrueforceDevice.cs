@@ -320,7 +320,10 @@ namespace TrueforceForAll.Core
         // ~1.0, alternating-sign rumble drops to ~0.1-0.3. Slew only counts
         // when directionality is high, so the envelope stays low through
         // kerb buzz and pops on real impacts.
-        public float FfbPeakSoftLimitLsb { get; set; } = 1561.78564f;
+        // 10% of full scale, matching TrueforceSettings.DefaultPeakSoftLimitLsb
+        // so a bare device (tests, bench) behaves like a shipped one. The plugin
+        // overwrites this from settings on every attach.
+        public float FfbPeakSoftLimitLsb { get; set; } = 3276.7f;
         // Below this slew rate, no attenuation regardless of cap setting.
         // 1000 LSB/ms is well above the rates produced by even hard cornering
         // and well below typical kerb-hit slew. Hardcoded; could be exposed

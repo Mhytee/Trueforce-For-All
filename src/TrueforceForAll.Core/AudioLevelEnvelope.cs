@@ -1,4 +1,4 @@
-// Turns a stream of audio peak readings into a bar fill of 0..1 that actually
+﻿// Turns a stream of audio peak readings into a bar fill of 0..1 that actually
 // uses the bar.
 //
 // This is the third attempt and the first one measured against real audio, so
@@ -47,6 +47,33 @@ namespace TrueforceForAll.Core
         /// any normal setup, and comfortably above the idle floor of a real
         /// sound card as well as a virtual one.</summary>
         public const double SilenceDb = -70.0;
+
+        /// <summary>The quietest a program's recent peak may be and still be
+        /// allowed to fill the strip. Above this the meter is fully relative and
+        /// the same material reads the same at any volume; below it the top of
+        /// the bar stays pinned here, so quiet material reads as quiet instead
+        /// of being magnified into a full-scale display of itself.
+        ///
+        /// -32 dBFS, owner's pick from a measured sweep of candidates. Peak LED
+        /// of ten, by where the pin sits:
+        ///
+        ///     program                       -45   -38   -32   -26
+        ///     normal music (-22..-9)         10    10    10    10
+        ///     moderate     (-40..-30)        10    10    10     7
+        ///     quiet        (-58..-52)         5     3     2     2
+        ///     very quiet   (-66..-62)         2     1     1     1
+        ///     owner's capture (peaks -25)    10    10    10    10
+        ///       the same, 6 dB quieter       10    10    10     6
+        ///       the same, 12 dB quieter      10    10     6     4
+        ///
+        /// -26 was too far: it starts shortening ordinary material. -32 leaves
+        /// every normal level alone with about 7 dB to spare on real programme,
+        /// and is decisive about the quiet end, which is the whole point.
+        ///
+        /// The trade it buys: listening a good 12 dB below normal caps the strip
+        /// around 6 of 10. That is the intended reading of "quiet looks quiet",
+        /// not a fault.</summary>
+        public const double QuietCeilingDb = -32.0;
 
         /// <summary>How narrow a program the bar will still stretch across its
         /// full length, in decibels. Below this the strip stops opening up, so
@@ -144,6 +171,22 @@ namespace TrueforceForAll.Core
                 if (_hi[i] > hi) hi = _hi[i];
                 if (_lo[i] < lo) lo = _lo[i];
             }
+
+            // A quiet program may not claim the top of the bar.
+            //
+            // Auto-ranging is what makes the strip usable at any volume, and
+            // left unbounded it is also what makes near-nothing look like a
+            // full-scale signal: the window closes around a very quiet passage
+            // and the next small sound drives the strip to full. The silence
+            // gate above cannot catch this, because the material is genuinely
+            // audible, just quiet (owner, 2026-09-05).
+            //
+            // Pinning the ceiling no lower than this leaves quiet material only
+            // the fraction of the bar its own loudness earns, while anything at
+            // a normal listening level sits well above the pin and still gets
+            // the whole strip. It is the one place the meter is deliberately
+            // absolute rather than relative.
+            if (hi < QuietCeilingDb) hi = QuietCeilingDb;
 
             // A program narrower than the floor is CENTRED in it rather than
             // hung from the top. Both keep the division safe; centring also

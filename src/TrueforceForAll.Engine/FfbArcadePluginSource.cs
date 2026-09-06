@@ -72,6 +72,7 @@ namespace TrueforceForAll.Core
         private const int RetryPeriodMs = 500;
         private const int EmitEveryNPolls = 8;
 
+
         // The publisher runs on the game's ~60 Hz FFB loop, so about 16 ms a frame.
         // Four missed frames is a stall rather than jitter.
         private const int StaleFrameMs = 70;
@@ -222,6 +223,9 @@ namespace TrueforceForAll.Core
         {
             if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
             _stopping = false;
+
+            // Engine data for Initial D 8 comes from the game's own memory, because the arcade FFB
+            // stream carries forces only. Read only, and it stays silent unless the chain resolves.
 
             // Raised before the poll thread and before the block is open, so a
             // publisher coming up later sees a reader immediately rather than
@@ -602,6 +606,7 @@ namespace TrueforceForAll.Core
         private bool Expired(int slotBase, uint frame)
         {
             uint length = U32(slotBase + SLength);
+            NoteSlotLength(slotBase, length);
             if (length == SdlInfinity || length == 0) return false;
             uint updated = U32(slotBase + SUpdatedFrame);
             double sinceMs = (frame >= updated ? frame - updated : 0) * FramePeriodMs;
@@ -625,6 +630,48 @@ namespace TrueforceForAll.Core
             if ((Interlocked.Read(ref _pollCount) % EmitEveryNPolls) != 0) return;
             TelemetryFrame frame = default(TelemetryFrame);
             EmitFrame(frame);
+        }
+
+        /// <summary>What duration each effect kind actually arrives with, said once per kind.
+        ///
+        /// This answers a question worth settling rather than arguing: the reference plugin has one
+        /// FeedbackLength for the whole game, and the suspicion is that it stamps that on every
+        /// effect instead of passing through the duration the game asked for. Our side already
+        /// honours whatever length each slot carries, so if every kind reports the same number, the
+        /// flattening happened upstream and no change here can undo it. If they differ, the game's
+        /// own durations are coming through and the shared setting is not the constraint it looks
+        /// like. Bounded to one line per kind so it cannot fill a log.</summary>
+        private void NoteSlotLength(int slotBase, uint length)
+        {
+            uint kind = U32(slotBase + SKind);
+            if (kind == 0 || kind > 15) return;
+            uint mask = 1u << (int)kind;
+            if ((_slotLengthNoted & mask) != 0) return;
+            _slotLengthNoted |= mask;
+            Log("effect kind " + kind + " (" + KindName(kind) + ") arrives with a duration of "
+                + (length == SdlInfinity ? "infinite" : length + " ms")
+                + ". The game's FeedbackLength setting is " + _feedbackLengthMs
+                + " ms; a match on every kind means the reference flattened them.");
+        }
+
+        private uint _slotLengthNoted;
+
+        private static string KindName(uint kind)
+        {
+            switch (kind)
+            {
+                case KConstant: return "constant";
+                case KSine: return "sine";
+                case KTriangle: return "triangle";
+                case KSawUp: return "saw up";
+                case KSawDown: return "saw down";
+                case KSpring: return "spring";
+                case KDamper: return "damper";
+                case KInertia: return "inertia";
+                case KFriction: return "friction";
+                case KRamp: return "ramp";
+                default: return "kind " + kind;
+            }
         }
 
         /// <summary>One line per CHANGE of the live effect set, naming each effect

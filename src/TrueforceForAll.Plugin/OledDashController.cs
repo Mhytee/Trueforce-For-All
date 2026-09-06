@@ -84,6 +84,31 @@ namespace TrueforceForAll.Plugin
         /// <summary>Set on the one frame a lap time lands.</summary>
         public bool LapJustCompleted;
 
+        /// <summary>Who is driving and what they picked, shown between races. An emulated cabinet
+        /// keeps publishing frames in its menus and its garage, where there is no gear and no speed
+        /// to show, so the driving screen would otherwise sit on two dashes for as long as someone
+        /// browses. Drawn with a caption above each value, the same shape as the labelled
+        /// gear-over-speed screen. Both empty means there is nothing to say.</summary>
+        public string BetweenRacesTop, BetweenRacesBottom;
+
+        /// <summary>Captions for the two rows above. Empty means the value stands on its own, which
+        /// is what an attract message wants: before anyone swipes a card there is no driver and no
+        /// car, and captioning empty rows DRIVER and CAR asserts two things we do not know.</summary>
+        public string BetweenRacesTopLabel, BetweenRacesBottomLabel;
+
+        /// <summary>The starting lights, as "3", "2", "1" or "GO", and empty at every other moment.
+        /// This outranks the driving screen because for those four seconds it is the only thing
+        /// happening, and it is a cue you cannot look away from the road to read later.</summary>
+        public string CountdownText;
+
+        /// <summary>How the race ended, held for a few seconds after the goal. Empty otherwise.</summary>
+        public string ResultText;
+
+        /// <summary>A technique the game just rewarded, held for a couple of seconds. The game's
+        /// own words for what you did well, so it reads as the cabinet talking rather than as a
+        /// readout. Deliberately no haptic: it is a flourish, not a cue to act on.</summary>
+        public string TechniqueText;
+
         public bool ShiftFlashEnabled;
         public OledFlashStyle FlashStyle;
         public bool LapResultEnabled;
@@ -343,8 +368,26 @@ namespace TrueforceForAll.Plugin
                     setter = greeting;
                 else if (!string.IsNullOrEmpty(ctx.ReadoutLabel) || !string.IsNullOrEmpty(ctx.ReadoutValue))
                     setter = Stacked(ctx.ReadoutLabel, ctx.ReadoutValue);
+                // The starting lights. Above everything that is not an alarm: for those four
+                // seconds nothing else is happening on the panel worth reading.
+                else if (!string.IsNullOrEmpty(ctx.CountdownText))
+                    setter = _channel.BuildFourRowCenter("", ctx.CountdownText, "", "");
+                // How the race ended, held briefly at the goal.
+                else if (!string.IsNullOrEmpty(ctx.ResultText))
+                    setter = _channel.BuildFourRowCenter("RESULT", ctx.ResultText, "", "");
                 else if (LapResultDue())
                     setter = _lapResultFrame;
+                // Below the lap card, which is news, and above the driving screen.
+                else if (!string.IsNullOrEmpty(ctx.TechniqueText))
+                    setter = _channel.BuildFourRowCenter(
+                        ctx.TechniqueText == "WALL HIT" ? "OUCH" : "NICE", ctx.TechniqueText, "", "");
+                // Between races there is no gear and no speed, so the driving screen would show two
+                // dashes. Ranked below the takeovers above, because a readout or a lap result is
+                // news and this is only context.
+                else if (!string.IsNullOrEmpty(ctx.BetweenRacesTop) || !string.IsNullOrEmpty(ctx.BetweenRacesBottom))
+                    setter = _channel.BuildFourRowCenter(
+                        ctx.BetweenRacesTopLabel ?? "", ctx.BetweenRacesTop ?? "",
+                        ctx.BetweenRacesBottomLabel ?? "", ctx.BetweenRacesBottom ?? "");
                 else if (ShiftFlashDue(in ctx))
                     // Two honest options, because the panel cannot give both at
                     // once: the biggest font it has, which only exists in a

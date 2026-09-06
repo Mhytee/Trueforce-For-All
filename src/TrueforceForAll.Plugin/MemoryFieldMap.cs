@@ -260,6 +260,248 @@ namespace TrueforceForAll.Plugin
             => s.Length <= 24 ? s : s.Substring(0, 24) + "...";
     }
 
+    // ---- what kind of value a field carries ---------------------------------
+
+    /// <summary>What sort of value a field holds, which decides whether the
+    /// operator can type it in and what happens when they do.
+    ///
+    /// It exists because the row has to SAY this rather than let the operator
+    /// guess. A box that takes a lap time and searches for nothing is worse than
+    /// no box: the operator types it, presses search, gets nothing back, and has
+    /// learned that the field is not there when all they learned is that nobody
+    /// looks for it. So a kind the scanner cannot search offers no box at all
+    /// and says in words why.
+    ///
+    /// Three of these are searchable TODAY, and that list is a statement about
+    /// the scanner rather than about the fields: text through --known-string, a
+    /// gear order through --known-gear or the press-driven form, and one fixed
+    /// number through --known-redline. Nothing else has a typed search yet.</summary>
+    public enum MemoryValueKind
+    {
+        /// <summary>Nothing to type. Found by driving, or by ruling candidates
+        /// out. The revs are this: a needle on a dial is not a number anybody
+        /// can read off exactly.</summary>
+        None = 0,
+
+        /// <summary>Text the operator can read on screen right now. A car name,
+        /// a driver's name, a track. Searchable, and SEVERAL AT ONCE: the sweep
+        /// is what costs, so a second needle is nearly free.</summary>
+        Text = 1,
+
+        /// <summary>A number showing on screen right now: speed, lap, position,
+        /// a lap time, a countdown. NOT searchable by typing it, because nothing
+        /// in the scanner takes one yet.</summary>
+        Displayed = 2,
+
+        /// <summary>A number that never moves while the car does not change. A
+        /// redline. Searchable, one per run.</summary>
+        Static = 3,
+
+        /// <summary>The order of gears about to be driven. Searchable, one per
+        /// run, and only as the override: the press-driven path is stronger and
+        /// asks for nothing typed.</summary>
+        GearOrder = 4,
+    }
+
+    /// <summary>Everything the tab needs to say about a value kind, in one
+    /// place, so the row, the plan line and the search all describe a kind the
+    /// same way.</summary>
+    public static class MemoryValueKinds
+    {
+        /// <summary>How many text needles one search may carry. THE SCANNER'S
+        /// OWN CEILING, mirrored: it refuses past this, and a needle refused on
+        /// the command line takes the whole run with it rather than costing one
+        /// field. Past a couple of dozen this is a dictionary attack on the
+        /// address space rather than a map being filled in.</summary>
+        public const int MaxTextNeedles = 32;
+
+        /// <summary>The longest needle worth sending. A whole paragraph pasted
+        /// in by accident is not a value anybody read off a screen.</summary>
+        public const int MaxTextLength = 128;
+
+        /// <summary>The shortest. One character matches in a hundred thousand
+        /// places and answers nothing, and the run that returns it looks exactly
+        /// like a run that worked.</summary>
+        public const int MinTextLength = 2;
+
+        public static readonly MemoryValueKind[] All =
+        {
+            MemoryValueKind.Text, MemoryValueKind.Static, MemoryValueKind.GearOrder,
+            MemoryValueKind.Displayed, MemoryValueKind.None,
+        };
+
+        /// <summary>Whether a typed value for this kind actually reaches a
+        /// search. The one rule this whole file exists to keep: nothing offers a
+        /// box for a kind the scanner cannot search.</summary>
+        public static bool Searchable(MemoryValueKind kind)
+            => kind == MemoryValueKind.Text
+            || kind == MemoryValueKind.Static
+            || kind == MemoryValueKind.GearOrder;
+
+        /// <summary>The kind in the two or three words a column can hold.</summary>
+        public static string Word(MemoryValueKind kind)
+        {
+            switch (kind)
+            {
+                case MemoryValueKind.Text:      return "text";
+                case MemoryValueKind.Displayed: return "number on screen";
+                case MemoryValueKind.Static:    return "fixed number";
+                case MemoryValueKind.GearOrder: return "gear order";
+                default:                        return "nothing to type";
+            }
+        }
+
+        /// <summary>The kind as a whole phrase, for a dropdown and for prose.</summary>
+        public static string Label(MemoryValueKind kind)
+        {
+            switch (kind)
+            {
+                case MemoryValueKind.Text:      return "Text I can read on screen";
+                case MemoryValueKind.Displayed: return "A number showing on screen";
+                case MemoryValueKind.Static:    return "A number that never changes";
+                case MemoryValueKind.GearOrder: return "The gears I am about to drive";
+                default:                        return "Nothing to type";
+            }
+        }
+
+        /// <summary>What filling this in will do, or why there is nothing to
+        /// fill in. Shown beside the box, because a field that cannot be
+        /// searched has to say so rather than look forgotten.</summary>
+        public static string How(MemoryValueKind kind)
+        {
+            switch (kind)
+            {
+                case MemoryValueKind.Text:
+                    return "Searched as text in four encodings, in the same sweep as every other text "
+                         + "value you filled in. Several at once costs about what one costs, and each "
+                         + "one's hits come back to its own field.";
+                case MemoryValueKind.Static:
+                    return "Searched as a fixed number, with the scaled forms covered as well. One fixed "
+                         + "number per search: the scanner takes one.";
+                case MemoryValueKind.GearOrder:
+                    return "The gears you are about to drive, in order, like 1,2,3,4,3,2. It is the "
+                         + "override; leave it empty and the gear comes from your shift presses instead, "
+                         + "which cannot be declared wrongly.";
+                case MemoryValueKind.Displayed:
+                    return "There is no search that takes a number off the screen yet, so there is nothing "
+                         + "to type here. This one is found by driving, or by ruling candidates out: put "
+                         + "candidates on it another way, then say what you are about to do and do it.";
+                default:
+                    return "Nothing to type. This one is found by driving, or by ruling candidates out.";
+            }
+        }
+
+        /// <summary>An example in the box, so the shape of the answer is never a
+        /// guess.</summary>
+        public static string Example(MemoryValueKind kind)
+        {
+            switch (kind)
+            {
+                case MemoryValueKind.Text:      return "as it is spelled on screen";
+                case MemoryValueKind.Static:    return "7400";
+                case MemoryValueKind.GearOrder: return "1,2,3,4,3,2";
+                default:                        return "";
+            }
+        }
+
+        public static string ToWord(MemoryValueKind kind)
+        {
+            switch (kind)
+            {
+                case MemoryValueKind.Text:      return "text";
+                case MemoryValueKind.Displayed: return "displayed";
+                case MemoryValueKind.Static:    return "static";
+                case MemoryValueKind.GearOrder: return "gear-order";
+                default:                        return "none";
+            }
+        }
+
+        public static MemoryValueKind FromWord(string word)
+        {
+            switch ((word ?? "").Trim().ToLowerInvariant())
+            {
+                case "text":       return MemoryValueKind.Text;
+                case "displayed":  return MemoryValueKind.Displayed;
+                case "static":     return MemoryValueKind.Static;
+                case "gear-order":
+                case "gearorder":  return MemoryValueKind.GearOrder;
+                default:           return MemoryValueKind.None;
+            }
+        }
+
+        /// <summary>Judge one typed value for one kind. Returns null and the
+        /// value in the form it will be sent in, or the reason it cannot be
+        /// used. Clearing a box is always allowed: an empty field is not an
+        /// error, it is a field that is not part of this search.
+        ///
+        /// "band" is the field's own plausibility range when it has one, so a
+        /// redline typed as 74 is refused here rather than sent and searched
+        /// for everywhere.</summary>
+        public static string Check(MemoryValueKind kind, string raw, MemorySanity band, out string cleaned)
+        {
+            cleaned = "";
+            string s = (raw ?? "").Trim();
+            if (s.Length == 0) return null;
+
+            if (!Searchable(kind))
+                return "There is nothing to type for this field: " + How(kind);
+
+            switch (kind)
+            {
+                case MemoryValueKind.Text:
+                {
+                    if (s.Length < MinTextLength)
+                        return "One character matches in tens of thousands of places, which answers nothing. "
+                             + "Type it as the game spells it.";
+                    if (s.Length > MaxTextLength)
+                        return "That is longer than anything a game shows as a name ("
+                             + s.Length.ToString(CultureInfo.InvariantCulture) + " characters, and "
+                             + MaxTextLength.ToString(CultureInfo.InvariantCulture) + " is the most that is "
+                             + "searched for).";
+                    cleaned = s;
+                    return null;
+                }
+                case MemoryValueKind.Static:
+                {
+                    if (!MemorySanity.TryNumber(s, out double v) || double.IsNaN(v) || double.IsInfinity(v))
+                        return "\"" + s + "\" is not a number.";
+                    if (v <= 0)
+                        return "A fixed number to search for has to be more than zero. Zero is in memory "
+                             + "everywhere and would return the whole address space.";
+                    if (band != null && band.Kind == MemorySanity.Shape.Number
+                        && (v < band.Min || v > band.Max))
+                        return v.ToString("0.###", CultureInfo.InvariantCulture)
+                             + " is outside anything this field holds ("
+                             + band.Min.ToString("0.###", CultureInfo.InvariantCulture) + " to "
+                             + band.Max.ToString("0.###", CultureInfo.InvariantCulture) + "). Check the number.";
+                    cleaned = v.ToString("0.####", CultureInfo.InvariantCulture);
+                    return null;
+                }
+                case MemoryValueKind.GearOrder:
+                {
+                    var parts = s.Split(new[] { ',', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    var gears = new List<string>();
+                    foreach (string p in parts)
+                    {
+                        if (!int.TryParse(p.Trim(), NumberStyles.AllowLeadingSign,
+                                          CultureInfo.InvariantCulture, out int g))
+                            return "The gear sequence has \"" + p.Trim() + "\" in it, which is not a gear "
+                                 + "number. Write the gears you are about to drive in order, separated by "
+                                 + "commas, like 1,2,3,4,3,2.";
+                        gears.Add(g.ToString(CultureInfo.InvariantCulture));
+                    }
+                    if (gears.Count < 2)
+                        return "One gear is not a sequence. It takes at least two, and six is what leaves "
+                             + "almost nothing.";
+                    cleaned = string.Join(",", gears);
+                    return null;
+                }
+                default:
+                    return null;
+            }
+        }
+    }
+
     // ---- the catalog --------------------------------------------------------
 
     /// <summary>One field of the map: what it is called, what it should read
@@ -273,12 +515,25 @@ namespace TrueforceForAll.Plugin
         public readonly string Kind;
         public readonly MemorySanity Sanity;
         public readonly string What;
+
+        /// <summary>What sort of value this field carries, which decides whether
+        /// its row offers a box to type it into at all.</summary>
+        public readonly MemoryValueKind ValueKind;
+
+        /// <summary>What to write in the box, said for THIS field rather than
+        /// for its kind. "as it is spelled on screen" is right for a car name and
+        /// useless for a redline.</summary>
+        public readonly string ValueHint;
+
         private readonly MemoryEliminationAction[] _actions;
 
         public MemoryFieldDef(string key, string name, string kind, MemorySanity sanity, string what,
+                              MemoryValueKind valueKind, string valueHint,
                               params MemoryEliminationAction[] actions)
         {
             Key = key; Name = name; Kind = kind; Sanity = sanity; What = what;
+            ValueKind = valueKind;
+            ValueHint = string.IsNullOrWhiteSpace(valueHint) ? MemoryValueKinds.Example(valueKind) : valueHint;
             _actions = actions ?? new MemoryEliminationAction[0];
         }
 
@@ -306,42 +561,65 @@ namespace TrueforceForAll.Plugin
     /// screen come first, and they happen to be the cheapest to find as well.</summary>
     public static class MemoryFields
     {
-        public const string CarName  = "car-name";
-        public const string Redline  = "redline";
-        public const string Gear     = "gear";
-        public const string Rpm      = "rpm";
-        public const string Speed    = "speed";
-        public const string LapTime  = "lap-time";
-        public const string TimeLeft = "time-left";
+        public const string CarName    = "car-name";
+        public const string PlayerName = "player-name";
+        public const string Redline    = "redline";
+        public const string Gear       = "gear";
+        public const string Rpm        = "rpm";
+        public const string Speed      = "speed";
+        public const string LapTime    = "lap-time";
+        public const string TimeLeft   = "time-left";
 
         private static readonly MemoryFieldDef[] BuiltInList =
         {
             new MemoryFieldDef(Rpm, "Revs", "float32", MemorySanity.Number(0, 30000),
-                "Engine speed. Drives the rev lights, the engine effects and the rev limiter.",
+                "Engine speed. Drives the rev lights, the engine effects and the rev limiter. "
+                + "Found from a recorded drive, not by typing and not by a stationary script: this cabinet "
+                + "cannot rev in neutral, so record a session and shift a lot, up and down, and hold full "
+                + "throttle to the limiter. The analysis finds the value that jumps at every shift press while "
+                + "the pedal stays put, which nothing that merely follows the pedal can imitate, and that stops "
+                + "at the same ceiling every time the limiter is hit.",
+                MemoryValueKind.None, null,
                 MemoryEliminationActions.Shift, MemoryEliminationActions.RevHard, MemoryEliminationActions.SitStill),
 
             new MemoryFieldDef(LapTime, "Lap time", "float32", MemorySanity.Number(0, 10000000),
                 "The running lap or session time. Goes on the wheel's screen, and it costs no driving to find: it moves on its own.",
+                MemoryValueKind.Displayed, null,
                 MemoryEliminationActions.ClockRuns, MemoryEliminationActions.Paused),
 
             new MemoryFieldDef(TimeLeft, "Time remaining", "float32", MemorySanity.Number(0, 10000000),
                 "The countdown an arcade cabinet runs on. Goes on the wheel's screen.",
+                MemoryValueKind.Displayed, null,
                 MemoryEliminationActions.ClockRuns, MemoryEliminationActions.Paused),
 
             new MemoryFieldDef(CarName, "Car name", "utf16", MemorySanity.Text(2),
                 "The car as the game displays it. Finding it is the doorway to everything else the game stores per car.",
+                MemoryValueKind.Text, "the car, as it is spelled on screen",
                 MemoryEliminationActions.ChangeCar, MemoryEliminationActions.SitStill),
+
+            // The owner asked for this one by name, and it is arguably the
+            // better probe of the two. A name the PLAYER TYPED has to be stored
+            // as characters somewhere, because the game had to build it letter
+            // by letter as they entered it; a car name can be baked into a
+            // texture and never exist as text at all.
+            new MemoryFieldDef(PlayerName, "Player name", "utf16", MemorySanity.Text(2),
+                "The name you entered, as the game shows it. Often the easiest thing in memory to find: a name you typed has to be stored as characters, where a car name can be a picture. Finding it proves the search works, and what points at it is the player record.",
+                MemoryValueKind.Text, "your name, exactly as you entered it",
+                MemoryEliminationActions.ItChanges, MemoryEliminationActions.SitStill),
 
             new MemoryFieldDef(Redline, "Redline", "int32", MemorySanity.Number(50, 40000),
                 "Where the rev lights should go red. Per car, so changing car is what confirms it.",
+                MemoryValueKind.Static, "7400",
                 MemoryEliminationActions.ChangeCar, MemoryEliminationActions.SitStill),
 
             new MemoryFieldDef(Gear, "Gear", "int32", MemorySanity.Number(-2, 12),
                 "The gear the car is in. Shift effects, and the ratio relation that helps confirm revs and speed.",
+                MemoryValueKind.GearOrder, "1,2,3,4,3,2",
                 MemoryEliminationActions.Shift, MemoryEliminationActions.HoldGear, MemoryEliminationActions.SitStill),
 
             new MemoryFieldDef(Speed, "Speed", "float32", MemorySanity.Number(0, 2000),
                 "Road speed. Speed-scaled effects, and it falls out of the revs and the gear once those are known.",
+                MemoryValueKind.Displayed, null,
                 MemoryEliminationActions.DriveOff, MemoryEliminationActions.SitStill),
         };
 
@@ -357,10 +635,21 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>The definition for a field the operator added, which has no
         /// entry in the catalog. It gets no sanity band, because we do not know
-        /// what it holds, and both generic actions.</summary>
+        /// what it holds, and both generic actions.
+        ///
+        /// The KIND is the operator's, chosen when they added the field, and it
+        /// is the only thing here that is not a default: it decides whether the
+        /// row offers a box to type a value into, and a field added as text
+        /// searches in the same sweep as the built-in ones.</summary>
+        public static MemoryFieldDef Custom(string key, string name, MemoryValueKind kind)
+            => new MemoryFieldDef(key, string.IsNullOrEmpty(name) ? key : name,
+                                  kind == MemoryValueKind.Text ? "utf16" : "int32",
+                                  MemorySanity.None(), "A field you added.", kind, null);
+
+        /// <summary>A custom field with nothing typed for it, which is what an
+        /// older map file loads back as.</summary>
         public static MemoryFieldDef Custom(string key, string name)
-            => new MemoryFieldDef(key, string.IsNullOrEmpty(name) ? key : name, "int32",
-                                  MemorySanity.None(), "A field you added.");
+            => Custom(key, name, MemoryValueKind.None);
 
         /// <summary>A key from a typed name. Lower case, spaces to hyphens, and
         /// nothing that would make a bad file name, because a custom key ends up
@@ -774,6 +1063,27 @@ namespace TrueforceForAll.Plugin
         /// have to be edited to map something nobody thought of.</summary>
         [JsonProperty("custom")] public bool Custom { get; set; }
 
+        /// <summary>What this field's value IS, right now, in the operator's own
+        /// words: the car on screen, the name they entered, the redline off the
+        /// dial. Empty is the ordinary state and never an error; it means this
+        /// field is simply not part of the next search.
+        ///
+        /// It lives on the FIELD rather than in a search box of its own, which
+        /// is the whole of this round: one box per field means one action can
+        /// search all of them at once and give each its own candidates, where a
+        /// single shared box meant one needle and one run per value.
+        ///
+        /// Saved with the map. A car name goes stale the moment the car changes
+        /// and a player name never does, and the operator is better placed than
+        /// this code to know which is which.</summary>
+        [JsonProperty("known")] public string KnownValue { get; set; }
+
+        /// <summary>The kind of value a CUSTOM field carries, as chosen when it
+        /// was added. Ignored for a built-in, whose kind belongs to the catalog:
+        /// a map file that could redefine the car name as a gear order would be
+        /// a file that can break the catalog.</summary>
+        [JsonProperty("valueKind")] public string ValueKindWord { get; set; }
+
         [JsonProperty("entry")] public MemoryMapEntry Entry { get; set; }
 
         [JsonProperty("candidates")] public List<MemoryFieldCandidate> Candidates { get; set; }
@@ -803,9 +1113,290 @@ namespace TrueforceForAll.Plugin
             get
             {
                 if (_def == null)
-                    _def = (Custom ? null : MemoryFields.ByKey(Key)) ?? MemoryFields.Custom(Key, Name);
+                    _def = (Custom ? null : MemoryFields.ByKey(Key))
+                        ?? MemoryFields.Custom(Key, Name, MemoryValueKinds.FromWord(ValueKindWord));
                 return _def;
             }
+        }
+
+        /// <summary>What kind of value this field carries. The catalog decides
+        /// for a built-in and the operator decided for a custom one.</summary>
+        [JsonIgnore] public MemoryValueKind ValueKind => Def.ValueKind;
+
+        /// <summary>True when this field has something to search for. The empty
+        /// case is not an error and is not reported as one anywhere.</summary>
+        [JsonIgnore] public bool HasKnownValue => !string.IsNullOrWhiteSpace(KnownValue);
+
+        /// <summary>Throw the cached definition away, after the kind changed.
+        /// Only a custom field can do that, and only before it has been
+        /// searched for.</summary>
+        internal void ForgetDef() { _def = null; }
+    }
+
+    // ---- one search, every field that has a value ---------------------------
+
+    /// <summary>One text needle and the field it belongs to.</summary>
+    public sealed class MemoryNeedle
+    {
+        public string FieldKey;
+        public string FieldName;
+        public string Text;
+    }
+
+    /// <summary>What ONE search would do, worked out from the map alone.
+    ///
+    /// The point of this type is that the search is planned in one place and
+    /// described in one place, so the sentence the operator reads before they
+    /// press the button is built from the same object that fills in the command
+    /// line. The old shape had the plan text and the argument builder reading
+    /// the same boxes separately, and they drifted: the plan said the gear
+    /// sequence would be searched when the mode meant it would not.
+    ///
+    /// Everything here is derived. Nothing decides policy except two facts about
+    /// the scanner: text needles are repeatable and a fixed number is not.</summary>
+    public sealed class MemoryFieldSearch
+    {
+        /// <summary>Every text value that is filled in, in map order, each with
+        /// the field it came from so its hits can be given back to it.</summary>
+        public readonly List<MemoryNeedle> Needles = new List<MemoryNeedle>();
+
+        /// <summary>The one fixed number that will be searched for, and the
+        /// field it belongs to.</summary>
+        public string StaticFieldKey;
+        public string StaticFieldName;
+        public double StaticValue;
+        public bool HasStatic;
+
+        /// <summary>Fields with a fixed number filled in that this run cannot
+        /// carry, because the scanner takes one. Named rather than dropped: the
+        /// operator typed them and would otherwise wait for an answer that was
+        /// never being looked for.</summary>
+        public readonly List<string> StaticNotThisRun = new List<string>();
+
+        /// <summary>The declared gear order, when one is filled in.</summary>
+        public string GearFieldKey;
+        public string GearFieldName;
+        public string GearSequence;
+
+        /// <summary>Needles past the scanner's own ceiling. Same rule: named,
+        /// not dropped.</summary>
+        public readonly List<string> NeedlesNotThisRun = new List<string>();
+
+        /// <summary>Fields whose text is byte for byte what an earlier field
+        /// already asked for. One search cannot have its hits split between two
+        /// rows, so the earlier row keeps them and this one is named rather than
+        /// left waiting for an answer that is sitting on another row.</summary>
+        public readonly List<string> SameTextAsAnotherField = new List<string>();
+
+        /// <summary>Fields whose value cannot be used, and why.</summary>
+        public readonly List<string> Problems = new List<string>();
+
+        public bool AnyText => Needles.Count > 0;
+
+        /// <summary>What a run that carried SEVERAL texts really ended as, or
+        /// null when the scanner's own one-line meaning for the code is right.
+        ///
+        /// The scanner's exit code is the WORST needle's outcome, deliberately.
+        /// A run that found the car and did not find the driver exits 11, and 11
+        /// on its own reads as "not found: nothing did what it was told to do".
+        /// With one needle that sentence is true. With three it is a lie about
+        /// the two that are on the map, and it is the kind of lie that makes an
+        /// operator throw away a good answer.
+        ///
+        /// Out here rather than in the tab because it is the sentence that
+        /// decides whether a run is believed, and a sentence nothing can test is
+        /// a sentence that drifts.</summary>
+        public static string OutcomeLine(int exitCode, int needles, IList<string> filledFieldNames)
+        {
+            if (needles < 2) return null;
+            if (exitCode != 10 && exitCode != 11) return null;
+
+            var sb = new StringBuilder();
+            sb.Append("Finished. Exit code ").Append(exitCode.ToString(CultureInfo.InvariantCulture))
+              .Append(" is the WORST of the ").Append(needles.ToString(CultureInfo.InvariantCulture))
+              .Append(" values searched for, not a verdict on the run: ");
+            sb.Append(exitCode == 11
+                ? "at least one of them is not in memory as text."
+                : "at least one of them turned up in more than one place, which is normal for a name.");
+            if (filledFieldNames != null && filledFieldNames.Count > 0)
+                sb.Append("  What was found landed on ").Append(string.Join(", ", filledFieldNames))
+                  .Append(". A row that is still empty is one that was looked for and not found, and that "
+                        + "is an answer: its text is a picture or a table index, not characters.");
+            else
+                sb.Append("  Nothing landed on the map, so none of them is stored as text the way it is "
+                        + "spelled on screen. Check the spelling first: this search is byte-exact and "
+                        + "case sensitive.");
+            return sb.ToString();
+        }
+
+        /// <summary>Whether some field already asked for this exact text. Case
+        /// SENSITIVE, matching the scanner: "AE86 Trueno" and "ae86 trueno" are
+        /// two different searches over there and both are worth running.</summary>
+        public bool HasNeedleText(string text)
+        {
+            foreach (var n in Needles)
+                if (string.Equals(n.Text, text, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        /// <summary>True when there is anything at all to search for. False is
+        /// not an error: it is a map nobody has filled a value into yet.</summary>
+        public bool Any => Needles.Count > 0 || HasStatic || !string.IsNullOrEmpty(GearSequence);
+
+        /// <summary>True when there is something to search for that needs NOBODY
+        /// AT THE WHEEL. This is what the one action can do on its own.
+        ///
+        /// A gear order is the exception and it is not a detail: the scanner
+        /// asks for those gears one at a time and waits for the operator to
+        /// select each one, so a run carrying nothing else would sit there
+        /// waiting for a person who thought they had pressed a search button.
+        /// The driving run is where a gear order belongs.</summary>
+        public bool AnyWithoutDriving => Needles.Count > 0 || HasStatic;
+
+        /// <summary>What this search will do, in the words the row uses. One
+        /// sentence per thing, so a value left blank cannot be mistaken for one
+        /// that is about to be looked for.</summary>
+        public string Describe()
+        {
+            var sb = new StringBuilder();
+            if (Needles.Count == 0) sb.Append("No text to search for: no field has any typed in.");
+            else
+            {
+                sb.Append(Needles.Count == 1 ? "One text search: " : Needles.Count.ToString(CultureInfo.InvariantCulture)
+                        + " text searches in ONE sweep of memory, which costs about what one costs: ");
+                for (int i = 0; i < Needles.Count; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    sb.Append(Needles[i].FieldName).Append(" = \"").Append(Needles[i].Text).Append('"');
+                }
+                sb.Append(". Each one's hits go to its own field.");
+            }
+            if (HasStatic)
+                sb.Append("  The fixed number ")
+                  .Append(StaticValue.ToString("0.####", CultureInfo.InvariantCulture))
+                  .Append(" for ").Append(StaticFieldName).Append('.');
+            if (StaticNotThisRun.Count > 0)
+                sb.Append("  NOT this run: ").Append(string.Join(", ", StaticNotThisRun))
+                  .Append(". The scanner searches one fixed number at a time, so clear the one above or "
+                        + "run them one after the other.");
+            if (!string.IsNullOrEmpty(GearSequence))
+                sb.Append("  The gear order ").Append(GearSequence)
+                  .Append(" is declared, and it is searched for by the driving run rather than this one: "
+                        + "the scanner asks you for those gears one at a time and waits for you at the wheel.");
+            if (NeedlesNotThisRun.Count > 0)
+                sb.Append("  NOT this run: ").Append(string.Join(", ", NeedlesNotThisRun))
+                  .Append(". The scanner takes ")
+                  .Append(MemoryValueKinds.MaxTextNeedles.ToString(CultureInfo.InvariantCulture))
+                  .Append(" text searches at once.");
+            if (SameTextAsAnotherField.Count > 0)
+                sb.Append("  Searched once, not twice: ")
+                  .Append(string.Join(", ", SameTextAsAnotherField))
+                  .Append(" ask for text another row already asked for, so the hits land on that row. "
+                        + "Change the spelling if they are really different things.");
+            foreach (string p in Problems) sb.Append("  ").Append(p);
+            return sb.ToString();
+        }
+    }
+
+    /// <summary>Which field a finding belongs to.
+    ///
+    /// One sweep now carries several needles, so "the field the tab is pointed
+    /// at" is no longer an answer: a run searching for the car and the driver
+    /// returns both, and putting all of it on one field would undo the whole
+    /// point of searching them together.
+    ///
+    /// The scanner attributes each hit by echoing back the exact text that
+    /// produced it, which is the only thing that works. Arrival order breaks the
+    /// first time a needle finds nothing, and matching on the address is
+    /// circular. Everything below is what to do when that attribution is absent,
+    /// which happens for the two searches that have no needle at all (a redline
+    /// and a gear) and for a scanner too old to send one.</summary>
+    public sealed class MemoryFindingRouter
+    {
+        // BYTE FOR BYTE, not case folded. The scanner's text search is case
+        // sensitive on purpose, so it can return a hit for "AE86 Trueno" and a
+        // hit for "ae86 trueno" in the same run and they are different answers
+        // about different bytes. A case folding dictionary here maps both onto
+        // whichever field was registered last, which is not a near miss: it
+        // hands one field the other field's answer, and a wrong candidate looks
+        // exactly like a right one.
+        private readonly Dictionary<string, string> _byNeedle =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _byRole =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private string _soleTextField;
+        private int _textFields;
+
+        /// <summary>Where anything unattributed goes. The field the tab is
+        /// pointed at, as before, so a run that found something never drops
+        /// it.</summary>
+        public string Fallback { get; set; }
+
+        /// <summary>How many findings could not be attributed and went to the
+        /// fallback. Counted so the tab can say so: a pile of findings on the
+        /// wrong field looks exactly like a field that really did match.</summary>
+        public int Unattributed { get; private set; }
+
+        public void ForNeedle(string text, string fieldKey)
+        {
+            string t = (text ?? "").Trim();
+            if (t.Length == 0 || string.IsNullOrEmpty(fieldKey)) return;
+            // FIRST registration wins. Two rows carrying the same text byte for
+            // byte are ONE search over there, so its hits cannot be split
+            // between them; the plan drops the second and says so, and this is
+            // the belt to that pair of braces. Overwriting instead would give
+            // the answer to whichever row happened to be lower down the map.
+            if (_byNeedle.ContainsKey(t)) return;
+            _byNeedle[t] = fieldKey;
+            _textFields++;
+            _soleTextField = _textFields == 1 ? fieldKey : null;
+        }
+
+        /// <summary>A search with no needle of its own: "redline" and "gear",
+        /// which are the words the scanner labels those findings with.</summary>
+        public void ForRole(string role, string fieldKey)
+        {
+            if (string.IsNullOrWhiteSpace(role) || string.IsNullOrEmpty(fieldKey)) return;
+            _byRole[role.Trim()] = fieldKey;
+        }
+
+        /// <summary>The field one finding belongs to, or the fallback.</summary>
+        public string Route(string needle, string label, string type)
+        {
+            // 1. The scanner said which needle produced it. Nothing else can
+            //    beat this, and in particular a label must not: a player name
+            //    and a car name come back through the same code path with the
+            //    same "car-name" label, and the needle is the only thing that
+            //    tells them apart.
+            string n = (needle ?? "").Trim();
+            if (n.Length > 0 && _byNeedle.TryGetValue(n, out string byNeedle)) return byNeedle;
+
+            string lab = (label ?? "").Trim().ToLowerInvariant();
+
+            // 2. A search that has no needle at all. Its label is the role.
+            foreach (var pair in _byRole)
+                if (lab.IndexOf(pair.Key.ToLowerInvariant(), StringComparison.Ordinal) >= 0)
+                    return pair.Value;
+
+            // 3. A scanner too old to send an attribution, in the one case where
+            //    the answer is not ambiguous: one text needle went out, so every
+            //    string hit and everything pointing at one belongs to it.
+            if (n.Length == 0 && _soleTextField != null && LooksLikeText(lab, type))
+                return _soleTextField;
+
+            Unattributed++;
+            return Fallback;
+        }
+
+        /// <summary>A finding from a text search, by its label or its type. The
+        /// pointer rows count: what points AT the name is the whole reason the
+        /// name was worth finding.</summary>
+        private static bool LooksLikeText(string label, string type)
+        {
+            string t = (type ?? "").Trim().ToLowerInvariant();
+            if (t == "string" || t == "ptr32" || t == "ptr64") return true;
+            return label.IndexOf("name", StringComparison.Ordinal) >= 0
+                || label.IndexOf("table-pointer", StringComparison.Ordinal) >= 0;
         }
     }
 
@@ -955,23 +1546,161 @@ namespace TrueforceForAll.Plugin
 
         public MemoryField Selected => Find(SelectedKey);
 
-        /// <summary>Add a field the catalog does not have. Returns null when it
-        /// is there, or the reason it is not.</summary>
-        public string AddCustomField(string name, out MemoryField field)
+        /// <summary>Add a field the catalog does not have, saying what sort of
+        /// value it carries and, optionally, what that value is right now.
+        /// Returns null when it is there, or the reason it is not.
+        ///
+        /// The value is taken in the SAME call as the name because that is the
+        /// whole of this round: adding a field to the map means naming it and
+        /// saying what it reads, and a field added and then filled in from
+        /// somewhere else is the two-place design this replaced.</summary>
+        public string AddCustomField(string name, MemoryValueKind kind, string knownValue,
+                                     out MemoryField field)
         {
             field = null;
             string key = MemoryFields.KeyFromName(name);
             if (key == null) return "Give the field a name first.";
             var existing = Find(key);
-            if (existing != null) { field = existing; return null; }
+            if (existing != null)
+            {
+                field = existing;
+                // Naming an existing field again is a correction, not a
+                // mistake: the value it was given is taken, and the kind only
+                // moves for a custom field, because a built-in's kind belongs to
+                // the catalog.
+                if (existing.Custom && kind != existing.ValueKind)
+                {
+                    existing.ValueKindWord = MemoryValueKinds.ToWord(kind);
+                    existing.ForgetDef();
+                    existing.KnownValue = null;
+                }
+                return string.IsNullOrWhiteSpace(knownValue) ? null : SetKnownValue(key, knownValue);
+            }
             field = new MemoryField
             {
                 Key = key,
                 Name = MemoryWatchList.CleanLabel(name),
                 Custom = true,
+                ValueKindWord = MemoryValueKinds.ToWord(kind),
             };
             _fields.Add(field);
+            if (string.IsNullOrWhiteSpace(knownValue)) return null;
+            string problem = SetKnownValue(key, knownValue);
+            // The field still lands even when the value did not: the operator
+            // asked for a row, and refusing the row as well would make them type
+            // the name again to keep it.
+            return problem;
+        }
+
+        /// <summary>The older two-argument form, which adds a field with nothing
+        /// typed for it.</summary>
+        public string AddCustomField(string name, out MemoryField field)
+            => AddCustomField(name, MemoryValueKind.None, null, out field);
+
+        // ---- what a field's value is -----------------------------------------
+
+        /// <summary>Write down what this field reads right now. Returns null
+        /// when it landed, or the reason it did not.
+        ///
+        /// Clearing is always allowed and is never an error: a field with no
+        /// value is simply not part of the next search.</summary>
+        public string SetKnownValue(string fieldKey, string raw)
+        {
+            var field = Find(fieldKey);
+            if (field == null) return "There is no field called \"" + (fieldKey ?? "") + "\".";
+            string s = (raw ?? "").Trim();
+            if (s.Length == 0) { field.KnownValue = null; return null; }
+            string problem = MemoryValueKinds.Check(field.ValueKind, s, field.Def.Sanity, out string cleaned);
+            if (problem != null) return problem;
+            field.KnownValue = cleaned;
             return null;
+        }
+
+        /// <summary>The first thing wrong with any field's value, or null. This
+        /// is what stops a run: a value that cannot be sent has to be said out
+        /// loud before anybody drives, not dropped silently from a command
+        /// line.</summary>
+        public string FirstValueProblem()
+        {
+            foreach (var f in _fields)
+            {
+                if (!f.HasKnownValue) continue;
+                string problem = MemoryValueKinds.Check(f.ValueKind, f.KnownValue, f.Def.Sanity, out _);
+                if (problem != null) return (f.Name ?? f.Key) + ": " + problem;
+            }
+            return null;
+        }
+
+        /// <summary>Everything one search would look for, gathered from the
+        /// fields themselves. This is the one action: every field that has a
+        /// value filled in takes part, and one that has not is simply left out.
+        ///
+        /// A field that is already CONFIRMED is left out as well, whatever it
+        /// has typed in it. The answer is in the map; searching for it again
+        /// would fill a confirmed field with a hundred candidates and hide the
+        /// row that was already right.</summary>
+        public MemoryFieldSearch PlanSearch()
+        {
+            var plan = new MemoryFieldSearch();
+            foreach (var f in _fields)
+            {
+                if (!f.HasKnownValue) continue;
+                if (f.Entry != null) continue;
+                string problem = MemoryValueKinds.Check(f.ValueKind, f.KnownValue, f.Def.Sanity, out string cleaned);
+                if (problem != null)
+                {
+                    plan.Problems.Add((f.Name ?? f.Key) + ": " + problem);
+                    continue;
+                }
+                switch (f.ValueKind)
+                {
+                    case MemoryValueKind.Text:
+                        if (plan.Needles.Count >= MemoryValueKinds.MaxTextNeedles)
+                        { plan.NeedlesNotThisRun.Add(f.Name ?? f.Key); break; }
+                        // Byte for byte, because that is what the scanner
+                        // compares. Two rows asking for the same text are one
+                        // search, and its hits belong to the row that asked
+                        // first; a second copy on the command line would double
+                        // the pointer-follow work and answer nobody.
+                        if (plan.HasNeedleText(cleaned))
+                        { plan.SameTextAsAnotherField.Add(f.Name ?? f.Key); break; }
+                        plan.Needles.Add(new MemoryNeedle
+                        {
+                            FieldKey = f.Key,
+                            FieldName = f.Name ?? f.Key,
+                            Text = cleaned,
+                        });
+                        break;
+                    case MemoryValueKind.Static:
+                        if (plan.HasStatic) { plan.StaticNotThisRun.Add(f.Name ?? f.Key); break; }
+                        plan.HasStatic = true;
+                        plan.StaticFieldKey = f.Key;
+                        plan.StaticFieldName = f.Name ?? f.Key;
+                        MemorySanity.TryNumber(cleaned, out double v);
+                        plan.StaticValue = v;
+                        break;
+                    case MemoryValueKind.GearOrder:
+                        if (!string.IsNullOrEmpty(plan.GearSequence)) break;
+                        plan.GearFieldKey = f.Key;
+                        plan.GearFieldName = f.Name ?? f.Key;
+                        plan.GearSequence = cleaned;
+                        break;
+                }
+            }
+            return plan;
+        }
+
+        /// <summary>The router for a run of that plan: which field each finding
+        /// belongs to. Built from the plan rather than from the map, so a value
+        /// edited after the run started cannot move where its findings land.</summary>
+        public static MemoryFindingRouter RouterFor(MemoryFieldSearch plan, string fallbackKey)
+        {
+            var router = new MemoryFindingRouter { Fallback = fallbackKey };
+            if (plan == null) return router;
+            foreach (var n in plan.Needles) router.ForNeedle(n.Text, n.FieldKey);
+            if (plan.HasStatic) router.ForRole("redline", plan.StaticFieldKey);
+            if (!string.IsNullOrEmpty(plan.GearFieldKey)) router.ForRole("gear", plan.GearFieldKey);
+            return router;
         }
 
         public bool RemoveCustomField(string key)
@@ -1160,16 +1889,49 @@ namespace TrueforceForAll.Plugin
                 if (!seen.Add(e.Addr)) continue;
                 list.Add(new MemoryFieldCandidate { Addr = e.Addr, Kind = e.Kind, Len = e.Len, Note = e.Label });
             }
-            foreach (var f in _fields)
-            {
-                if (f.Candidates == null) continue;
-                foreach (var c in f.Candidates)
+            // THE SELECTED FIELD FIRST, then round robin across the rest.
+            //
+            // Taken in plain field order, the first field's two hundred
+            // candidates spend the whole budget and the player name typed on the
+            // row below it is read at zero rows: its candidates are on the map,
+            // look exactly like everyone else's, and cannot be ruled in or out
+            // by any round, because nothing is reading them. One press now fills
+            // several fields at once, so that is no longer a rare shape. It is
+            // the same failure the scanner fixed in its anchor budget, in the
+            // half that hands out the other scarce list.
+            //
+            // Round robin alone would fix that and cost something real: an
+            // elimination round runs against the SELECTED field, and one that
+            // can only judge half its candidates takes twice as many rounds. So
+            // the field being worked on is served in full first, and the budget
+            // follows the operator's attention as they move down the map.
+            var queues = new List<List<MemoryFieldCandidate>>();
+            var chosen = Find(SelectedKey);
+            if (chosen?.Candidates != null)
+                foreach (var c in chosen.Candidates)
                 {
                     if (string.IsNullOrWhiteSpace(c.Addr)) continue;
                     if (!seen.Add(c.Addr)) continue;
                     if (list.Count >= budget) { dropped++; continue; }
                     list.Add(c);
                 }
+            foreach (var f in _fields)
+                if (f.Candidates != null && f.Candidates.Count > 0 && !ReferenceEquals(f, chosen))
+                    queues.Add(f.Candidates);
+            for (int round = 0; queues.Count > 0; round++)
+            {
+                bool anyLeft = false;
+                foreach (var q in queues)
+                {
+                    if (round >= q.Count) continue;
+                    anyLeft = true;
+                    var c = q[round];
+                    if (string.IsNullOrWhiteSpace(c.Addr)) continue;
+                    if (!seen.Add(c.Addr)) continue;
+                    if (list.Count >= budget) { dropped++; continue; }
+                    list.Add(c);
+                }
+                if (!anyLeft) break;
             }
             return list;
         }
@@ -1802,6 +2564,34 @@ namespace TrueforceForAll.Plugin
                 }
             }
             catch (Exception ex) { problem = ex.Message; }
+            // A value the field's kind cannot carry is DROPPED here rather than
+            // loaded and left to block everything.
+            //
+            // The one action refuses to run while any row's value is unusable,
+            // which is right: a value silently left out of a search is a value
+            // the operator typed and then waited for. But a row whose kind has
+            // no search offers NO BOX, so a value that arrived on one of those
+            // (a hand-edited file, or a catalog that moved a field from text to
+            // clock-locked between versions) could not be cleared from the tab
+            // at all, and the button would stay dead with no way back.
+            //
+            // Dropping is the recoverable half of that trade: what is lost is
+            // one line of text the operator can retype, and what is kept is a
+            // tab that still works. Named, never quiet.
+            var dropped = new List<string>();
+            foreach (var f in _fields)
+            {
+                if (!f.HasKnownValue) continue;
+                if (MemoryValueKinds.Check(f.ValueKind, f.KnownValue, f.Def.Sanity, out _) == null) continue;
+                dropped.Add((f.Name ?? f.Key) + " (\"" + f.KnownValue + "\")");
+                f.KnownValue = null;
+            }
+            if (dropped.Count > 0)
+                problem = (problem == null ? "" : problem + "  ")
+                        + "The map file had a value on a row that cannot carry one, so it was not loaded: "
+                        + string.Join(", ", dropped)
+                        + ". Nothing else in the file was touched.";
+
             // EnsureBuiltIns rebuilds the address index on its way out, which is
             // what puts the candidates that came straight off the JSON into it.
             // They never went through AddCandidate, so nothing else would, and an
