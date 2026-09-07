@@ -15980,17 +15980,21 @@ namespace TrueforceForAll.Plugin
         {
             var st = Settings;
             if (st?.Arcade == null || !st.Arcade.Id8LeaderboardsEnabled) return;
-            if (filler == null || !filler.Verified) return;
+            // Gated on knowing the PROCESS, and nothing else. Not on a valid race sample, and not
+            // on the telemetry reader having verified itself either: both are only true once the
+            // game has built a session, which is to say once somebody is driving. The boards are
+            // read from the menus, where the reader reports "the game has not built its session
+            // yet" with verified=false, so either gate meant the boards were only ever written
+            // while racing. A player who started the game and walked straight to the leaderboards
+            // saw SEGA's placeholders, and since memory writes do not survive the process, that
+            // was true again after every restart.
+            //
+            // Nothing is lost by dropping the checks, because the leaderboard tables are not in
+            // the session. They hang off a static address, and Attach resolves them and runs
+            // LayoutLooksRight, which refuses to write unless all four tables match the analysed
+            // build. The fill validates itself; it never needed the telemetry reader's opinion.
+            if (filler == null || string.IsNullOrEmpty(filler.GameProcessName)) return;
 
-            // The fill is NOT gated on a valid race sample, and that was the bug. The boards are
-            // read from the menus, which is precisely when there is no race and Id8Sample.Valid is
-            // false: the reader reports "not in a race" and "the game has not built its session
-            // yet" with verified=true. Requiring Valid meant the boards were only ever written
-            // while driving, so a player who started the game and walked straight to the
-            // leaderboards saw SEGA's placeholders, and after any restart had to drive a lap
-            // before the real times came back. Memory writes do not survive the process, so that
-            // is every restart. Attaching and writing needs the process and a verified layout;
-            // it does not need anybody to be racing.
             if (_arcadeBoards == null)
                 _arcadeBoards = new ArcadeLeaderboardService(
                     () => Settings,
@@ -16167,7 +16171,7 @@ namespace TrueforceForAll.Plugin
             var pub = _teknoSource as FfbArcadePluginSource;
             if (pub == null) return;
             var t = ArcadeTuningPeek(_activeGame);
-            pub.SteeringHoldMs  = ClampArcadeHold(t.SteeringHoldMs);
+            pub.SteadyHoldMs    = ClampArcadeHold(t.SteeringHoldMs);
             pub.VibrationHoldMs = ClampArcadeHold(t.VibrationHoldMs);
         }
 
@@ -17691,11 +17695,41 @@ namespace TrueforceForAll.Plugin
             ArcadeGameTuning t;
             if (!s.Tuning.TryGetValue(key, out t) || t == null)
             {
-                t = new ArcadeGameTuning();
+                t = NewArcadeTuningFor(key);
                 s.Tuning[key] = t;
             }
             return t;
         }
+
+        /// <summary>A cabinet's opening tuning. Everything defaults to "do what
+        /// the game's own settings say" except where we have measured that those
+        /// settings are wrong for it.
+        ///
+        /// The one entry here is Initial D 8, and it is not a preference. The
+        /// cabinet commands a steering force of zero while the car slides, which
+        /// the reference plugin's decoder discards, so the previous force stands
+        /// until its length runs out. That game ships FeedbackLength=5000, so out
+        /// of the box the wheel keeps pushing for five seconds after the game said
+        /// to stop. Measured from the cabinet's own IO block, 2026-09-07: 937
+        /// readings across one lapse, every one of them the steering opcode, 930
+        /// of them asking for zero.
+        ///
+        /// Deliberately a table rather than a rule. Ninety other cabinets go
+        /// through this path and none of them have been measured, so they keep
+        /// deferring to whatever their own author chose.</summary>
+        private static ArcadeGameTuning NewArcadeTuningFor(string key)
+        {
+            var t = new ArcadeGameTuning();
+            if (string.Equals(key, "Arcade ID8", StringComparison.OrdinalIgnoreCase))
+                t.SteeringHoldMs = ArcadeFaithfulHoldMs;
+            return t;
+        }
+
+        /// <summary>The two feels the arcade panel offers, in milliseconds of
+        /// steady-force hold. Faithful releases as soon as the cabinet stops
+        /// asking; Weighted carries the last force across the gaps.</summary>
+        internal const int ArcadeFaithfulHoldMs = 50;
+        internal const int ArcadeWeightedHoldMs = 2000;
 
         private void SwapTelemetrySource(string game, bool silent = false)
         {
@@ -17850,7 +17884,8 @@ namespace TrueforceForAll.Plugin
                                 InvertConstantDirection = tune.InvertDirection,
                                 AcceptPublishedDamper = tune.AcceptPublishedDamper,
                                 MinForce01 = (Settings?.Arcade?.MinForcePercent ?? 0) / 100.0,
-                                SteeringHoldMs  = ClampArcadeHold(tune.SteeringHoldMs),
+                                // Stored under its original name; see ArcadeGameTuning.
+                                SteadyHoldMs    = ClampArcadeHold(tune.SteeringHoldMs),
                                 VibrationHoldMs = ClampArcadeHold(tune.VibrationHoldMs),
                             };
                             pub.Start();
