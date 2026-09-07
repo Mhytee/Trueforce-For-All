@@ -191,13 +191,11 @@ namespace TrueforceForAll.Plugin
                     Dictionary<int, Id8LeaderboardEntry> tBest = TeknoParrotCarBests(tp, course, dir);
                     if (HaveDataFor(s.Arcade.Id8OnlineBoardSource, haveCommunity, haveTekno))
                     {
-                        cars += WritePerCar(Id8Board.OnlinePerCar, s.Arcade.Id8OnlineBoardSource, course, dir, cBest, tBest, lBest);
-                        BrandFiller(Id8Board.OnlinePerCar, course, dir);
+                        cars += WritePerCarRanked(Id8Board.OnlinePerCar, s.Arcade.Id8OnlineBoardSource, course, dir, cBest, tBest, lBest);
                     }
                     if (HaveDataFor(s.Arcade.Id8ShopBoardSource, haveCommunity, haveTekno))
                     {
-                        cars += WritePerCar(Id8Board.ShopPerCar, s.Arcade.Id8ShopBoardSource, course, dir, cBest, tBest, lBest);
-                        BrandFiller(Id8Board.ShopPerCar, course, dir);
+                        cars += WritePerCarRanked(Id8Board.ShopPerCar, s.Arcade.Id8ShopBoardSource, course, dir, cBest, tBest, lBest);
                     }
                     boards++;
                 }
@@ -309,10 +307,11 @@ namespace TrueforceForAll.Plugin
 
                             bool ours = Id8Leaderboard.IsOurs(had);
                             bool cannotBeALap = !Id8Leaderboard.IsPlausibleLap(had.GoalMs);
+                            bool probe = IsProbeMarker(Id8Name.Decode(had.RawName));
 
                             // A row carrying somebody's card id and a believable time is theirs.
                             // Leave it alone; that is the whole contract.
-                            if (!ours && !cannotBeALap)
+                            if (!ours && !cannotBeALap && !probe)
                             {
                                 // Anything left standing carries a card id and a believable time,
                                 // so it is somebody's record. Counted, with a few named, because
@@ -320,7 +319,7 @@ namespace TrueforceForAll.Plugin
                                 // those rows are not ours by the player-id test and we need to see
                                 // one rather than guess again.
                                 kept++;
-                                if (keptSample.Count < 6)
+                                if (keptSample.Count < 64)
                                     keptSample.Add($"{Id8Name.Decode(had.RawName)} {had.GoalMs}ms " +
                                                    $"pid={had.PlayerId} car={had.CarId} on {board} c{course}d{dir}s{slot}");
                                 continue;
@@ -342,10 +341,31 @@ namespace TrueforceForAll.Plugin
             _log?.Invoke($"[TF4ALL] Arcade: swept the boards, cleared {cleared} of ours, " +
                          $"removed {removed} unusable, left {kept} real record(s) alone");
             if (keptSample.Count > 0)
-                _log?.Invoke("[TF4ALL] Arcade: records left in place: " + string.Join(" | ", keptSample));
+                foreach (string line in keptSample)
+                    _log?.Invoke("[TF4ALL] Arcade: kept " + line);
             if (removed > 0)
-                _log?.Invoke($"[TF4ALL] Arcade: removed {removed} stored record(s) that cannot be a lap " +
+                _log?.Invoke($"[TF4ALL] Arcade: removed {removed} stored record(s) that are probe markers " +
+                             $"or cannot be a lap " +
                              $"(under {Id8Leaderboard.MinPlausibleMs / 1000}s). Originals saved to {_removedPath}");
+        }
+
+        /// <summary>Rows written by the probe that worked out which table was which.
+        ///
+        /// They cannot be recognised the way our normal writes can. The probe stamped them with
+        /// the cabinet's own card id, so the player-id test sees them as genuine, and it chose
+        /// times like 61000 that sit just above any sane floor. The only thing left that separates
+        /// them from a real record is the name, which the probe generated to a fixed shape:
+        /// ANYA-01, ANYB-01, PERA-01, PERB-01, being the any-car and per-car boards A and B.
+        ///
+        /// Matching on a name is a blunt instrument and it is used here precisely because nothing
+        /// sharper exists. The shape is narrow enough that a real handle will not collide with it,
+        /// and anything it does remove is written to the removals file first. Names the player has
+        /// actually used, SPURGE among them, do not match and are left alone.</summary>
+        private static bool IsProbeMarker(string decodedName)
+        {
+            if (string.IsNullOrEmpty(decodedName)) return false;
+            return System.Text.RegularExpressions.Regex.IsMatch(
+                decodedName.Trim(), @"^(ANY|PER)[A-Z]-[0-9]+$");
         }
 
         /// <summary>Append a record we are about to destroy to a file that is never overwritten.
@@ -392,6 +412,98 @@ namespace TrueforceForAll.Plugin
                 int slot = Id8CarTable.SlotForCarId(carId);
                 if (slot >= 0) yield return slot;
             }
+        }
+
+        /// <summary>Write a per-car board as a RANKING: fastest car first.
+        ///
+        /// The page is only a position, not a car. That was established the hard way: while the
+        /// car id was being written as zero, every page displayed an AE86 Trueno, which cannot
+        /// happen if the page decides the car. So the order is ours, and a board whose whole
+        /// purpose is "the best time in each car" is far more use sorted by time than left in the
+        /// game's internal car order.
+        ///
+        /// EVERY existing real record is folded in first, whatever the source setting says. This
+        /// board is written slot by slot no longer: it is rebuilt end to end, so a record left out
+        /// of the set is a record destroyed. The player's own times are not ours to drop because
+        /// they picked Community on this board.
+        ///
+        /// One row per car, keeping the fastest, then ranked, then the remaining pages filled with
+        /// our placeholder so the board reads consistently rather than trailing off into SEGA.</summary>
+        private int WritePerCarRanked(Id8Board board, Id8BoardSource source, int courseId, int direction,
+                                      Dictionary<int, Id8LeaderboardEntry> community,
+                                      Dictionary<int, Id8LeaderboardEntry> teknoParrot,
+                                      Dictionary<int, Id8LeaderboardEntry> local)
+        {
+            var bests = new Dictionary<int, Id8LeaderboardEntry>();
+
+            // Whatever is already on the board and carries a card id is somebody's record. It goes
+            // in before anything else so the pools can only beat it, never erase it.
+            foreach (int slot in CarSlots())
+            {
+                if (!_writer.TryReadRecord(board, courseId, direction, slot, out Id8LeaderboardRecord had))
+                    continue;
+                if (had.IsFiller || Id8Leaderboard.IsOurs(had)) continue;
+                if (!Id8Leaderboard.IsPlausibleLap(had.GoalMs)) continue;
+                Absorb(bests, new Dictionary<int, Id8LeaderboardEntry>
+                {
+                    [had.CarId] = new Id8LeaderboardEntry
+                    {
+                        Username = Id8Name.Decode(had.RawName),
+                        CarId = had.CarId,
+                        GoalMs = had.GoalMs,
+                        Section1 = had.Section1,
+                        Section2 = had.Section2,
+                        Section3 = had.Section3,
+                        UnixTime = had.UnixTime,
+                    },
+                });
+            }
+
+            if (source == Id8BoardSource.Community || source == Id8BoardSource.Merged)
+                Absorb(bests, community);
+            if (source == Id8BoardSource.TeknoParrot || source == Id8BoardSource.Merged)
+                Absorb(bests, teknoParrot);
+            if (Id8Leaderboard.KeepsLocalRecords(source))
+                Absorb(bests, local);
+
+            var ranked = new List<Id8LeaderboardEntry>();
+            foreach (var kv in bests)
+            {
+                Id8LeaderboardEntry e = kv.Value;
+                if (e == null || !Id8Leaderboard.IsPlausibleLap(e.GoalMs)) continue;
+                if (Id8Name.Encode(Id8Name.Sanitize(e.Username)) == null) continue;
+                if (e.CarId <= 0 && kv.Key > 0) e.CarId = kv.Key;   // the key is the car
+                ranked.Add(e);
+            }
+            ranked.Sort((x, y) => x.GoalMs.CompareTo(y.GoalMs));
+
+            int written = 0, page = 0;
+            Id8LeaderboardRecord blank = Id8Leaderboard.DefaultRow();
+            foreach (int slot in CarSlots())
+            {
+                Id8LeaderboardRecord row;
+                if (page < ranked.Count)
+                {
+                    Id8LeaderboardEntry e = ranked[page];
+                    row = new Id8LeaderboardRecord
+                    {
+                        RawName = Id8Name.Encode(Id8Name.Sanitize(e.Username)),
+                        Reserved = Id8LeaderboardRecord.ReservedFor(e.CarId),
+                        Flags = Id8LeaderboardRecord.FlagReal,
+                        UnixTime = e.UnixTime,
+                        Section1 = e.Section1,
+                        Section2 = e.Section2,
+                        Section3 = e.Section3,
+                        GoalMs = e.GoalMs,
+                    };
+                }
+                else row = blank;
+
+                if (_writer.WriteRecord(board, courseId, direction, slot, row) && page < ranked.Count)
+                    written++;
+                page++;
+            }
+            return written;
         }
 
         /// <summary>Replace the game's placeholder with ours on a per-car board we are filling.
