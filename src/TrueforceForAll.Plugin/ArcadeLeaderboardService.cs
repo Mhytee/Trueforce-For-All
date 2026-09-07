@@ -349,7 +349,7 @@ namespace TrueforceForAll.Plugin
             if (!s.Arcade.Id8SubmitTimesEnabled) return;
 
             await _client.SubmitAsync(GameKey, run.CourseId, run.Direction, run.CarId, run.GoalMs,
-                                      run.Section1, run.Section2, run.Section3, null,
+                                      run.Sections, null,
                                       PluginVersion(), ct).ConfigureAwait(false);
         }
 

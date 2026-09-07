@@ -186,9 +186,13 @@ namespace TrueforceForAll.Plugin
         /// this can be called for every completed lap without the caller tracking bests.</summary>
         public async Task<bool> SubmitAsync(
             string game, int courseId, int direction, int carId, int goalMs,
-            int section1, int section2, int section3, int? tuningLevel, string pluginVersion,
+            int[] sections, int? tuningLevel, string pluginVersion,
             CancellationToken ct)
         {
+            // The whole array, not the first three. Courses have different section counts and the
+            // time is their sum, so sending three of four silently dropped a 48 second split and
+            // stored a total nothing on the row added up to.
+            int[] s = sections ?? new int[0];
             string payload = JsonConvert.SerializeObject(new Dictionary<string, object>
             {
                 { "p_game", game },
@@ -196,11 +200,13 @@ namespace TrueforceForAll.Plugin
                 { "p_direction", direction },
                 { "p_car_id", carId },
                 { "p_goal_ms", goalMs },
-                { "p_section1_ms", section1 > 0 ? (int?)section1 : null },
-                { "p_section2_ms", section2 > 0 ? (int?)section2 : null },
-                { "p_section3_ms", section3 > 0 ? (int?)section3 : null },
+                // The three legacy columns stay populated for readers that predate the array.
+                { "p_section1_ms", s.Length > 0 ? (int?)s[0] : null },
+                { "p_section2_ms", s.Length > 1 ? (int?)s[1] : null },
+                { "p_section3_ms", s.Length > 2 ? (int?)s[2] : null },
                 { "p_tuning_level", tuningLevel },
                 { "p_plugin_version", pluginVersion },
+                { "p_sections_ms", s.Length > 0 ? s : null },
             });
 
             var (ok, body) = await PostAsync("/rest/v1/rpc/submit_arcade_lap_time", payload, ct).ConfigureAwait(false);

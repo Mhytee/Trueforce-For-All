@@ -28,7 +28,18 @@ namespace TrueforceForAll.Core
         /// <summary>The official time: the sum of the section times.</summary>
         public int GoalMs;
 
-        public int Section1, Section2, Section3;
+        /// <summary>Every section time, in order. The whole array, because a course can have more
+        /// than three: the first Momiji run submitted had four, and the fourth (48803 ms) was
+        /// silently dropped by carrying only three.</summary>
+        public int[] Sections;
+
+        /// <summary>The first three sections, for the columns that only hold three. Derived, so
+        /// they cannot drift from <see cref="Sections"/>.</summary>
+        public int Section1 { get { return At(0); } }
+        public int Section2 { get { return At(1); } }
+        public int Section3 { get { return At(2); } }
+
+        private int At(int i) { return Sections != null && Sections.Length > i ? Sections[i] : 0; }
 
         /// <summary>The elapsed clock, carried only so a log line can show both. It is a few
         /// milliseconds under <see cref="GoalMs"/> and is NOT what gets submitted.</summary>
@@ -71,6 +82,11 @@ namespace TrueforceForAll.Core
             if (s.CarId < 0) return null;
             if (s.SectionSumMs < MinPlausibleMs || s.SectionSumMs >= MaxPlausibleMs) return null;
 
+            // Deliberately BEFORE the latch, and returning without setting it. A short array means
+            // the last split has not landed yet, which is a "not ready" not a "no": the very next
+            // poll normally has it, and consuming the run here would throw the real time away.
+            if (!SectionsLookComplete(s.SectionSumMs, s.FinishTimeMs)) return null;
+
             // Same run still on screen.
             if (!_armed && s.CourseId == _lastCourse && s.Direction == _lastDirection
                         && s.CarId == _lastCar && s.SectionSumMs == _lastGoal)
@@ -89,11 +105,41 @@ namespace TrueforceForAll.Core
                 Direction = s.Direction,
                 CarId = s.CarId,
                 GoalMs = s.SectionSumMs,
-                Section1 = t.Length > 0 ? t[0] : 0,
-                Section2 = t.Length > 1 ? t[1] : 0,
-                Section3 = t.Length > 2 ? t[2] : 0,
+                Sections = (int[])t.Clone(),
                 ClockMs = s.FinishTimeMs,
             };
+        }
+
+        /// <summary>How far the section sum may sit under the elapsed clock and still be a whole
+        /// run.
+        ///
+        /// The two are near-identical by construction: measured on the cabinet, a run whose clock
+        /// read 202914 summed to 202918, four milliseconds ABOVE. A second is three orders of
+        /// magnitude more slack than that, and still nowhere near a missing section, which is tens
+        /// of seconds.</summary>
+        public const int SectionSumSlackMs = 1000;
+
+        /// <summary>True when the section array looks complete for this run.
+        ///
+        /// The reader takes section entries until it meets a zero, with no knowledge of how many
+        /// the course actually has, and this class is fed at about 7 Hz on a race that reads
+        /// finished for hundreds of consecutive polls. So there is a window, one poll wide, where
+        /// the goal has been reached but the final split has not landed yet. The array is then
+        /// SHORT but perfectly self-consistent: it sums cleanly, it passes every plausibility
+        /// bound, and it is tens of seconds too fast.
+        ///
+        /// That is the worst possible shape for a leaderboard. It upserts as a personal best the
+        /// player can never beat, and the correct time arriving moments later simply loses to it,
+        /// so an honest player ends up with a permanent fake record and no way to remove it.
+        ///
+        /// The elapsed clock is the cross-check the sections cannot fake, because it comes from a
+        /// different field written once at the goal.</summary>
+        public static bool SectionsLookComplete(int sectionSumMs, int clockMs)
+        {
+            // No clock to check against: accept rather than reject. A missing cross-check is not
+            // evidence of a bad run, and refusing here would silently drop honest laps.
+            if (clockMs <= 0) return true;
+            return sectionSumMs >= clockMs - SectionSumSlackMs;
         }
 
         /// <summary>Forget the last run, so a repeat of it would be reported again. For when the
