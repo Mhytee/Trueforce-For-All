@@ -118,6 +118,8 @@ namespace TrueforceForAll.Plugin
             if (_filled && !force) return;
             _filled = true;
 
+            ClearOurRows();
+
             Dictionary<int, List<Id8LeaderboardEntry>> community = null;
             if (NeedsCommunity(s))
                 community = await _client.GetAllBoardsAsync(GameKey, Id8Leaderboard.Ranks, ct)
@@ -257,6 +259,60 @@ namespace TrueforceForAll.Plugin
         ///
         /// Existing rows are left alone unless we have something faster, so a car the community has
         /// no time for keeps whatever the game had.</summary>
+        /// <summary>Put back everything we ever wrote, before writing anything new.
+        ///
+        /// Our writes persist: the game saves the board, so rows from previous sessions are still
+        /// there at startup. Without this, three things go wrong and all of them are invisible.
+        /// Probe rows written while working the feature out survive indefinitely on boards nothing
+        /// snapshots. A per-car time we wrote once can never be displaced by a slower but current
+        /// one. And a source the player has since switched away from leaves its rows behind, so a
+        /// board set to Community keeps showing TeknoParrot names forever.
+        ///
+        /// Only rows carrying our zero player id are touched. The player's own records, which the
+        /// cabinet stamps with their card id, are left exactly as they are: this is a reset of our
+        /// own output, not of their save.</summary>
+        private void ClearOurRows()
+        {
+            var boards = new[] { Id8Board.OnlineTopTen, Id8Board.ShopTopTen,
+                                 Id8Board.OnlinePerCar, Id8Board.ShopPerCar };
+            int cleared = 0;
+            Id8LeaderboardRecord blank = Id8Leaderboard.DefaultRow();
+
+            for (int course = 0; course <= 15; course++)
+                for (int dir = 0; dir <= 1; dir++)
+                    foreach (Id8Board board in boards)
+                    {
+                        // Per-car boards are addressed by the car's slot, so walk the car table
+                        // rather than a range: those are exactly the slots we could ever have
+                        // written, and the writer refuses anything outside the table anyway.
+                        bool perCar = board == Id8Board.OnlinePerCar || board == Id8Board.ShopPerCar;
+                        foreach (int slot in perCar ? CarSlots() : RankSlots())
+                        {
+                            if (!_writer.TryReadRecord(board, course, dir, slot, out Id8LeaderboardRecord had))
+                                continue;
+                            if (had.IsFiller || !Id8Leaderboard.IsOurs(had)) continue;
+                            if (_writer.WriteRecord(board, course, dir, slot, blank)) cleared++;
+                        }
+                    }
+
+            if (cleared > 0)
+                _log?.Invoke($"[TF4ALL] Arcade: cleared {cleared} row(s) we had written previously");
+        }
+
+        private static IEnumerable<int> RankSlots()
+        {
+            for (int i = 0; i < Id8Leaderboard.Ranks; i++) yield return i;
+        }
+
+        private static IEnumerable<int> CarSlots()
+        {
+            foreach (int carId in Id8CarTable.CarIdsInSlotOrder())
+            {
+                int slot = Id8CarTable.SlotForCarId(carId);
+                if (slot >= 0) yield return slot;
+            }
+        }
+
         private int WritePerCar(Id8Board board, Id8BoardSource source, int courseId, int direction,
                                 Dictionary<int, Id8LeaderboardEntry> community,
                                 Dictionary<int, Id8LeaderboardEntry> teknoParrot,
@@ -284,11 +340,16 @@ namespace TrueforceForAll.Plugin
                 byte[] enc = Id8Name.Encode(name);
                 if (enc == null || e.GoalMs <= 0) continue;
 
-                // Never replace a real record with a slower one. On the shop board that row may be
-                // the player's own, and demoting somebody's genuine best to show a community time
-                // would be the wrong trade.
+                // Never replace THE PLAYER'S real record with a slower one: demoting somebody's
+                // genuine best to show a community time would be the wrong trade.
+                //
+                // A row we wrote ourselves gets no such protection, and that distinction is the
+                // whole point. Our writes persist in the save, so without it a community time we
+                // put here once could never be displaced by a later, slower, but current one, and
+                // the per-car boards would silently freeze at whatever the fastest thing we ever
+                // saw was, long after it left the source.
                 if (_writer.TryReadRecord(board, courseId, direction, slot, out Id8LeaderboardRecord had)
-                    && !had.IsFiller && had.GoalMs <= e.GoalMs)
+                    && !had.IsFiller && !Id8Leaderboard.IsOurs(had) && had.GoalMs <= e.GoalMs)
                     continue;
 
                 var row = new Id8LeaderboardRecord

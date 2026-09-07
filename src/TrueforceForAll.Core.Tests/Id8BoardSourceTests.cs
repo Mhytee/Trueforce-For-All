@@ -105,13 +105,56 @@ namespace TrueforceForAll.Core.Tests
     
         // ---- Local, and what each source does with rows already on the board ----
 
+        /// <summary>A record the CABINET wrote, which is what a local record is.
+        ///
+        /// PlayerId matters and used to be omitted here. The game stamps a genuine record with the
+        /// player's card id, while every row we write leaves it zero, and that zero is how the
+        /// merge now recognises its own previous output instead of folding it back in as if the
+        /// player had driven it. A fixture without a player id was modelling a real record while
+        /// leaving out the field that makes it real. The value is the one observed on a live save.</summary>
+        private const uint CabinetCardId = 5553014;
+
         private static Id8LeaderboardRecord Real(string name, int ms) => new Id8LeaderboardRecord
         {
             RawName = Id8Name.Encode(Id8Name.Sanitize(name)),
             Reserved = new byte[] { 0, 0, Id8LeaderboardRecord.ConstantAt16 },
             Flags = Id8LeaderboardRecord.FlagReal,
+            PlayerId = CabinetCardId,
             GoalMs = ms,
         };
+
+        /// <summary>A row WE wrote in an earlier session and the game then saved. Indistinguishable
+        /// from a real one except for the missing player id, which is the entire point.</summary>
+        private static Id8LeaderboardRecord OursFromLastTime(string name, int ms) =>
+            new Id8LeaderboardRecord
+            {
+                RawName = Id8Name.Encode(Id8Name.Sanitize(name)),
+                Reserved = new byte[] { 0, 0, Id8LeaderboardRecord.ConstantAt16 },
+                Flags = Id8LeaderboardRecord.FlagReal,
+                PlayerId = 0,
+                GoalMs = ms,
+            };
+
+        [Fact]
+        public void ARowWeWroteIsNotReadBackAsALocalRecord()
+        {
+            // The bug this pins: our writes persist in the save, so without the player id test the
+            // merge reads its own output back as the player's own record and folds it in forever.
+            // A probe row written while working the feature out survived exactly this way.
+            var board = new List<Id8LeaderboardRecord>
+            {
+                Real("LocalGuy", 133000),
+                OursFromLastTime("anyA", 120000),
+                Id8Leaderboard.DefaultRow(),
+            };
+
+            var local = Id8Leaderboard.LocalRecordsFrom(board);
+
+            Assert.Single(local);
+            Assert.Equal("LOCALGUY", Id8Name.Decode(local[0].RawName));
+            Assert.True(Id8Leaderboard.IsOurs(OursFromLastTime("anyA", 120000)));
+            Assert.False(Id8Leaderboard.IsOurs(Real("LocalGuy", 133000)));
+        }
 
         private static List<Id8LeaderboardRecord> ExistingBoard() => new List<Id8LeaderboardRecord>
         {

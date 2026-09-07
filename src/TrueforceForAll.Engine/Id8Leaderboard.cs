@@ -423,8 +423,28 @@ namespace TrueforceForAll.Core
             var real = new List<Id8LeaderboardRecord>();
             if (snapshot != null)
                 foreach (Id8LeaderboardRecord r in snapshot)
-                    if (!r.IsFiller) real.Add(r);
+                    if (!r.IsFiller && !IsOurs(r)) real.Add(r);
             return real;
+        }
+
+        /// <summary>Whether this row is one WE wrote, rather than one the game recorded.
+        ///
+        /// The game stamps a player id on a genuine record. Every row this class builds leaves it
+        /// zero, because we have no cabinet id to put there, so a zero is our signature.
+        ///
+        /// This matters because our writes PERSIST: the game saves the board, so a row we put on
+        /// screen one session is still there the next. Without this test the merge reads its own
+        /// output back as "the player's local records" and folds it in again, so community and
+        /// TeknoParrot names accumulate as if the player had set them, and stale times can never be
+        /// displaced. Measured on a real save: all 18 genuine records carried player id 5553014
+        /// while every row we had written carried 0.
+        ///
+        /// The failure direction is deliberate. If a cabinet ever records a genuine best with a
+        /// zero player id, we would decline to merge it as a local record, which costs that player
+        /// a display nicety. Getting it the other way round corrupts the boards permanently.</summary>
+        public static bool IsOurs(Id8LeaderboardRecord r)
+        {
+            return r.PlayerId == 0;
         }
 
         /// <summary>Everything a board write needs: pick the pool, then decide what happens to the

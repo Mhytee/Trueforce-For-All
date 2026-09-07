@@ -15982,9 +15982,15 @@ namespace TrueforceForAll.Plugin
             if (st?.Arcade == null || !st.Arcade.Id8LeaderboardsEnabled) return;
             if (filler == null || !filler.Verified) return;
 
-            Id8Sample s = filler.Last;
-            if (!s.Valid) return;
-
+            // The fill is NOT gated on a valid race sample, and that was the bug. The boards are
+            // read from the menus, which is precisely when there is no race and Id8Sample.Valid is
+            // false: the reader reports "not in a race" and "the game has not built its session
+            // yet" with verified=true. Requiring Valid meant the boards were only ever written
+            // while driving, so a player who started the game and walked straight to the
+            // leaderboards saw SEGA's placeholders, and after any restart had to drive a lap
+            // before the real times came back. Memory writes do not survive the process, so that
+            // is every restart. Attaching and writing needs the process and a verified layout;
+            // it does not need anybody to be racing.
             if (_arcadeBoards == null)
                 _arcadeBoards = new ArcadeLeaderboardService(
                     () => Settings,
@@ -16008,6 +16014,12 @@ namespace TrueforceForAll.Plugin
                     finally { Interlocked.Exchange(ref _arcadeBoardBusy, 0); }
                 });
             }
+
+            // The run watcher, unlike the fill, genuinely does need a live race sample: it is
+            // watching for a finished lap. This is the guard that used to sit at the top and stop
+            // the fill as well.
+            Id8Sample s = filler.Last;
+            if (!s.Valid) return;
 
             Id8FinishedRun run = _arcadeRuns.Observe(s, s.GameMode);
             if (run != null)
