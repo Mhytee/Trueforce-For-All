@@ -129,6 +129,14 @@ namespace TrueforceForAll.Plugin
 
             Dictionary<string, LeaderboardBoard> tp = NeedsTeknoParrot(s) ? TeknoParrotBoards() : null;
 
+            // Said once here rather than 32 times in the loop.
+            bool haveCommunity = community != null;
+            bool haveTekno = tp != null;
+            if (!haveCommunity && Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.Community))
+                _log?.Invoke("[TF4ALL] Arcade: no community rows this fill, leaving those boards as the game had them");
+            if (!haveTekno && Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.TeknoParrot))
+                _log?.Invoke("[TF4ALL] Arcade: no TeknoParrot rows this fill, leaving those boards as the game had them");
+
             int boards = 0, cars = 0;
             for (int course = 0; course <= 15; course++)
                 for (int dir = 0; dir <= 1; dir++)
@@ -163,8 +171,10 @@ namespace TrueforceForAll.Plugin
                     community?.TryGetValue(slot, out cRows);
                     List<Id8LeaderboardEntry> tRows = TeknoParrotRowsFrom(tp, course, dir);
 
-                    Write(Id8Board.OnlineTopTen, s.Arcade.Id8OnlineBoardSource, course, dir, cRows, tRows, local);
-                    Write(Id8Board.ShopTopTen, s.Arcade.Id8ShopBoardSource, course, dir, cRows, tRows, local);
+                    if (HaveDataFor(s.Arcade.Id8OnlineBoardSource, haveCommunity, haveTekno))
+                        Write(Id8Board.OnlineTopTen, s.Arcade.Id8OnlineBoardSource, course, dir, cRows, tRows, local);
+                    if (HaveDataFor(s.Arcade.Id8ShopBoardSource, haveCommunity, haveTekno))
+                        Write(Id8Board.ShopTopTen, s.Arcade.Id8ShopBoardSource, course, dir, cRows, tRows, local);
 
                     // Per-car boards hold one record per car rather than a ranking, so they are
                     // written slot by slot. Only community data can fill these: TeknoParrot names a
@@ -309,16 +319,46 @@ namespace TrueforceForAll.Plugin
                          $"for course {courseId} dir {direction}");
         }
 
+        // Both gated on CommunityEnabled, the master "Enable community features (online)" switch.
+        // PRIVACY.md promises that switch stops every online feature, and these two are the only
+        // places this class reaches the network for board data: our backend and teknoparrot.com.
+        // Without the gate the boards kept fetching with community features off, which is the one
+        // promise a privacy switch cannot break.
+        //
+        // Local still fills with it off, and correctly so: "My own times" is read out of the game's
+        // own save and sends nothing.
+
         private static bool NeedsCommunity(TrueforceSettings s) =>
-            Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.Community) ||
-            Uses(s.Arcade.Id8ShopBoardSource, Id8BoardSource.Community);
+            s.CommunityEnabled &&
+            (Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.Community) ||
+             Uses(s.Arcade.Id8ShopBoardSource, Id8BoardSource.Community));
 
         private static bool NeedsTeknoParrot(TrueforceSettings s) =>
-            Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.TeknoParrot) ||
-            Uses(s.Arcade.Id8ShopBoardSource, Id8BoardSource.TeknoParrot);
+            s.CommunityEnabled &&
+            (Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.TeknoParrot) ||
+             Uses(s.Arcade.Id8ShopBoardSource, Id8BoardSource.TeknoParrot));
 
         private static bool Uses(Id8BoardSource source, Id8BoardSource pool) =>
             source == pool || source == Id8BoardSource.Merged;
+
+        /// <summary>Whether a board's chosen source has anything to write with.
+        ///
+        /// A source whose pool never arrived must leave the board ALONE rather than write an empty
+        /// one. Community and TeknoParrot build with keepExisting false, so Merge over a null pool
+        /// returns nothing but filler: a failed fetch, or community features being switched off,
+        /// would wipe the board the player was reading and replace it with rows of TF4ALL. Merged
+        /// and Local keep what is there and are safe either way, but they go through the same test
+        /// so there is one rule rather than two.</summary>
+        private static bool HaveDataFor(Id8BoardSource source, bool haveCommunity, bool haveTekno)
+        {
+            switch (source)
+            {
+                case Id8BoardSource.Community:   return haveCommunity;
+                case Id8BoardSource.TeknoParrot: return haveTekno;
+                case Id8BoardSource.Merged:      return haveCommunity || haveTekno;
+                default:                         return true;   // Local: the snapshot is always there.
+            }
+        }
 
         /// <summary>The parsed site boards, fetched or from cache. Taken once per fill rather
         /// than per board: the cache read is cheap but the log line is not, and 32 identical
@@ -346,6 +386,7 @@ namespace TrueforceForAll.Plugin
         {
             var s = _settings();
             if (run == null || s?.Arcade == null) return;
+            if (!s.CommunityEnabled) return;   // The master switch outranks the per-feature one.
             if (!s.Arcade.Id8SubmitTimesEnabled) return;
 
             await _client.SubmitAsync(GameKey, run.CourseId, run.Direction, run.CarId, run.GoalMs,

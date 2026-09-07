@@ -430,6 +430,13 @@ verify_jwt = true
 [functions.backup-retention-gc]
 verify_jwt = true
 
+# Weekly leaderboard digest, called only by pg_cron with the Vault service_role
+# JWT. It also gates on the service_role claim inside the function, but the
+# gateway check is what keeps an anon-key holder from reading the week (which
+# names people) before the in-function check ever runs.
+[functions.arcade-digest]
+verify_jwt = true
+
 # Called by the report_flags after-insert trigger, which sends the Vault
 # service_role JWT (same as pg_cron), so this stays gated like the rest.
 [functions.report-notify]

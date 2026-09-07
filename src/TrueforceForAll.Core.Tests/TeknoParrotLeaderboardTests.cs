@@ -1,10 +1,17 @@
 // Parser tests for the TeknoParrot leaderboard page.
 //
 // The markup here is copied verbatim from a real fetch of the Initial D 8 board, because a parser
-// tested against markup invented by its own author only proves the author is consistent. The rows
-// below are the actual top two of Akagi Downhill plus a hand-trimmed second board, so the shapes
-// are theirs: the nested spans in the date cell, the entity-escaped ampersand in the details link,
-// and the empty video cell that sits between the time and the date.
+// tested against markup invented by its own author only proves the author is consistent. Every
+// structural quirk is theirs: the nested spans in the date cell, the entity-escaped ampersand in
+// the details link, and the empty video cell that sits between the time and the date.
+//
+// The PLAYER NAMES are not theirs, deliberately. Real handles from the public board stood here
+// until 2026-09-07. Two reasons they had to go, and the second is the one that settles it. A
+// leaderboard is a third party's to publish and not ours to copy into a repository that is going
+// to be public. And the fixture had already drifted: row two paired a real player's real entry id
+// with a time they never set, so it read as a record of theirs while asserting something they did
+// not do. Placeholders cannot drift like that. The times, dates and entry ids are untouched
+// because they are what the parser is actually asserting on.
 
 using System;
 using TrueforceForAll.Core;
