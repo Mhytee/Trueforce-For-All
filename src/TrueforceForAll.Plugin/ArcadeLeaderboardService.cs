@@ -477,8 +477,18 @@ namespace TrueforceForAll.Plugin
             }
             ranked.Sort((x, y) => x.GoalMs.CompareTo(y.GoalMs));
 
-            int written = 0, page = 0;
-            Id8LeaderboardRecord blank = Id8Leaderboard.DefaultRow();
+            // The tail is not "no car", it is the cars nobody has driven here yet. A placeholder
+            // built from DefaultRow carries car id 0, so branding every unused page with one made
+            // all 49 of them claim to be an AE86 Trueno, which is how the ranking change put the
+            // Truenos back. Each leftover page now names its own car, so the board reads as the
+            // ranked times first and then, honestly, every car still waiting for one.
+            var claimed = new HashSet<int>();
+            foreach (Id8LeaderboardEntry e in ranked) claimed.Add(e.CarId);
+            var unclaimed = new List<int>();
+            foreach (int carId in Id8CarTable.CarIdsInSlotOrder())
+                if (!claimed.Contains(carId)) unclaimed.Add(carId);
+
+            int written = 0, page = 0, spare = 0;
             foreach (int slot in CarSlots())
             {
                 Id8LeaderboardRecord row;
@@ -497,7 +507,12 @@ namespace TrueforceForAll.Plugin
                         GoalMs = e.GoalMs,
                     };
                 }
-                else row = blank;
+                else
+                {
+                    row = Id8Leaderboard.DefaultRow();
+                    if (spare < unclaimed.Count)
+                        row.Reserved = Id8LeaderboardRecord.ReservedFor(unclaimed[spare++]);
+                }
 
                 if (_writer.WriteRecord(board, courseId, direction, slot, row) && page < ranked.Count)
                     written++;
