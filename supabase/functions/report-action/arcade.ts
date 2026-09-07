@@ -166,7 +166,16 @@ function optInt(raw: string | undefined): number | null {
   return Number.isSafeInteger(n) ? n : null;
 }
 
+/** "Only you can see this". Discord sends a BOOLEAN option as true/false, which optionMap
+ *  stringifies, so compare against the string. Defaults to public: a leaderboard is a thing people
+ *  are supposed to see, and a private-by-default board would quietly stop the commands doing the
+ *  one job the digest is also trying to do. */
+function privateFlag(opts: Map<string, string>): number {
+  return opts.get("private") === "true" ? EPHEMERAL : 0;
+}
+
 async function cmdBoard(opts: Map<string, string>) {
+  const flags = privateFlag(opts);
   const course = optInt(opts.get("course"));
   const dir = optInt(opts.get("direction"));
   const carRaw = opts.get("car");
@@ -198,11 +207,11 @@ async function cmdBoard(opts: Map<string, string>) {
         title: `${where} · ${carName}`,
         description: "Nobody has set a time in this car here yet. Someone has to be first.",
         color: 0xE5C04A,
-      });
+      }, flags);
     }
     const lines = rows.map((r: any) =>
       String(r.rank).padStart(2) + "  " + padName(r.author) + "  " + lap(r.goal_ms).padStart(8));
-    return embed({ title: `${where} · ${carName}`, color: 0xE5C04A, fields: codeFields("Times", lines) });
+    return embed({ title: `${where} · ${carName}`, color: 0xE5C04A, fields: codeFields("Times", lines) }, flags);
   }
 
   // No car: both boards, because they are the two the cabinet itself shows.
@@ -222,7 +231,7 @@ async function cmdBoard(opts: Map<string, string>) {
       title: where,
       description: "No times on this board yet. Drive it with TF4ALL open and it is yours.",
       color: 0xE5C04A,
-    });
+    }, flags);
   }
 
   const byId = new Map(carRows.map((c: any) => [c.car_id, c]));
@@ -257,15 +266,16 @@ async function cmdBoard(opts: Map<string, string>) {
       ...codeFields("Any Car", anyLines),
       ...codeFields(`Per car (${per.length} of ${carRows.length} cars)`, perLines),
     ],
-  });
+  }, flags);
 }
 
-async function cmdRanking() {
+async function cmdRanking(opts: Map<string, string>) {
+  const flags = privateFlag(opts);
   const rows = await callRpc("get_arcade_overall_ranking", { p_game: GAME, p_limit: 10 });
   if (rows === null) return ephemeralText("Could not read the ranking right now.");
   if (!rows.length) {
     return embed({ title: "Overall ranking", color: 0xE5C04A,
-      description: "Nobody has set a time yet. Someone has to be first." });
+      description: "Nobody has set a time yet. Someone has to be first." }, flags);
   }
   const lines = rows.map((r: any) =>
     `**${r.rank}.** ${esc(r.author)} · ${r.points} pts` +
@@ -279,7 +289,7 @@ async function cmdRanking() {
     // that board (`b.players >= 2`), so an uncontested car is worth nothing.
     footer: { text: "Course record 25, car record 5 for up to 10 cars, a top ten place 11 minus " +
                     "its rank. A car record counts once someone else has driven that car there." },
-  });
+  }, flags);
 }
 
 async function cmdMe(discordId: string) {
@@ -417,7 +427,7 @@ export async function handleArcade(body: any): Promise<Response> {
 
     switch (name) {
       case "board":   return await cmdBoard(optionMap(sub));
-      case "ranking": return await cmdRanking();
+      case "ranking": return await cmdRanking(optionMap(sub));
       case "me": {
         const id = body?.member?.user?.id || body?.user?.id || "";
         return id ? await cmdMe(String(id)) : ephemeralText("I could not read your Discord id.");

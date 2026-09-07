@@ -74,6 +74,50 @@ const CARS: Record<number, string> = {
   2052: "ROADSTER C-SPEC (NA8C Kai)", 2053: "NSX-R GT (NA2)",
 };
 
+// ---- slash command registration --------------------------------------------
+//
+// A maintenance operation rather than part of the weekly post, but it lives here because this is
+// the only arcade function holding the bot token behind a service_role gate, and because the
+// definitions have to be re-PUT every time they change. ?op=register is idempotent: the PUT
+// replaces the whole guild command set, so running it twice leaves exactly one copy.
+//
+// Both ids are public. The application id IS the bot's user id, which anyone in the server can
+// read, and the guild id likewise; neither is a credential, so neither is a secret.
+const APP_ID   = "1514823225656213574";
+const GUILD_ID = "1513932714913566812";
+
+// GUILD scoped, not global. Guild commands appear the instant they are registered, where global
+// ones take up to an hour to propagate, and this is a community server's command rather than
+// something other servers should see.
+//
+// Option types: 1 SUB_COMMAND, 3 STRING, 5 BOOLEAN. course and car MUST be STRING with
+// autocomplete, because the handler emits string values; registering them as INTEGER leaves the
+// picker permanently empty while the command still works if you type a raw id, which is the most
+// confusing possible failure. direction is static choices, never autocomplete, because the handler
+// only autocompletes course and car. Required options must precede optional ones or the PUT 400s.
+const COMMANDS = [{
+  name: "id8",
+  description: "Initial D: Arcade Stage 8 Infinity leaderboards",
+  options: [
+    {
+      type: 1, name: "board", description: "Show a course leaderboard",
+      options: [
+        { type: 3, name: "course", description: "Which course", required: true, autocomplete: true },
+        { type: 3, name: "direction", description: "Which way", required: true,
+          choices: [{ name: "Downhill", value: "0" }, { name: "Hill climb", value: "1" }] },
+        { type: 3, name: "car", description: "Show one car's board instead", required: false, autocomplete: true },
+        { type: 5, name: "private", description: "Only you see the reply", required: false },
+      ],
+    },
+    { type: 1, name: "me", description: "Your own record (only you see this)" },
+    {
+      type: 1, name: "ranking", description: "The overall ranking",
+      options: [{ type: 5, name: "private", description: "Only you see the reply", required: false }],
+    },
+    { type: 1, name: "digest", description: "Preview this week's digest (moderators, only you see it)" },
+  ],
+}];
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status, headers: { "Content-Type": "application/json" },
@@ -246,6 +290,31 @@ Deno.serve(async (req) => {
   // message appearing in front of the whole server, and the first proof that it is WRONG is nothing
   // appearing at all a week later. Returns whether each secret is present, never its value, and
   // asks Discord to describe the channel so a wrong id or an invisible channel shows up here.
+  // ?op=register replaces the guild's command set with COMMANDS above. Safe to re-run.
+  if (op === "register") {
+    if (!BOT_TOKEN) return json({ error: "DISCORD_BOT_TOKEN not set" }, 400);
+    try {
+      const r = await fetch(
+        `https://discord.com/api/v10/applications/${APP_ID}/guilds/${GUILD_ID}/commands`,
+        { method: "PUT",
+          headers: { Authorization: `Bot ${BOT_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify(COMMANDS) });
+      const text = await r.text();
+      if (!r.ok) {
+        // 403 here almost always means the bot was invited with the "bot" scope but not
+        // "applications.commands", which is fixed by re-inviting rather than by a new token.
+        console.error(`[arcade-digest] register ${r.status}: ${text.slice(0, 400)}`);
+        return json({ ok: false, status: r.status, detail: text.slice(0, 400) }, 502);
+      }
+      const registered = JSON.parse(text);
+      return json({ ok: true, registered: registered.map((c: any) =>
+        ({ id: c.id, name: c.name, options: (c.options ?? []).map((o: any) => o.name) })) });
+    } catch (e) {
+      console.error(`[arcade-digest] register threw: ${e}`);
+      return json({ error: "discord unreachable" }, 502);
+    }
+  }
+
   if (op === "check") {
     const out: any = {
       ok: true,
