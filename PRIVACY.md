@@ -33,6 +33,9 @@ use and points at the off switch. By default the plugin:
   raw.githubusercontent.com, and the answer is cached on this PC for a
   week);
 - submits car data you tune (see Community car data below);
+- fills the in-game leaderboards in Initial D: Arcade Stage 8 Infinity
+  while that game is running, which fetches community times and
+  TeknoParrot's public board (see Arcade leaderboards below);
 - fetches the in-app message of the day and checks GitHub for updates.
 
 All of it stops with the "Enable community features (online)" switch in
@@ -90,6 +93,40 @@ anonymous aggregate: nobody sees who submitted or confirmed a fact.
   cannot be listed by data export or removed by account deletion; there
   is nothing tying it to an account.
 
+### Arcade leaderboards (Initial D: Arcade Stage 8 Infinity)
+
+Two separate things, both under "Arcade leaderboards" in Settings, and both
+off entirely when community features are off.
+
+**Filling the game's boards** is on by default and needs no account. The
+game's leaderboards have been empty since SEGA's servers shut down, so the
+plugin puts real times on them. That direction sends nothing about you: it
+downloads times and draws them on your screen. Records already in your own
+save are read so they can be ranked alongside the rest; they are shown,
+never uploaded.
+
+Some of those times come from TeknoParrot's public high-score page. The
+plugin keeps a copy of that public board on this PC and refreshes it about
+daily, so those players' names sit in a local cache file until it is
+replaced.
+
+**Sending your times** needs you signed in, is on by default once you are,
+and shows a notice the first time with a button to turn it off. When you
+finish a Time Attack run the plugin submits the course and direction, the
+car and its tuning level, the finished time and its section times, the
+plugin version, and your account id and username. Only runs you drive with
+the plugin watching are sent.
+
+Your username is public here, which is the point of a leaderboard. It shows
+on other players' in-game boards (the game's name field is nine characters
+wide, so longer names are shortened to fit) and in a weekly summary posted
+to the community Discord server. That summary names people in plain text
+with mentions switched off, and it never connects a Trueforce For All
+username to a Discord account.
+
+Deleting your account deletes your times. Leaderboard events that mention
+you (you taking a record, or losing one) stay, with your name removed.
+
 ### Cloud backup (supporters)
 
 Your settings file is stored in your account's private storage slot. No
@@ -140,6 +177,7 @@ Settings.
 | Discord | Receives role grants and moderation-channel messages described above. |
 | Patreon | Confirms supporter status when you link, and provides the campaign's patron roster for the supporters wall. |
 | GitHub | Serves update checks, downloads, and this repository. |
+| TeknoParrot | Serves the public Initial D: Arcade Stage 8 Infinity high-score page the plugin reads to fill that game's boards. Sees the request like any web request; no account information is sent. |
 
 There is no advertising, no analytics, no crash reporting, and no sale or
 sharing of data beyond the services listed above.
@@ -154,6 +192,7 @@ sharing of data beyond the services listed above.
 | Votes and car facts | Signed-in ones anonymized on account deletion (attribution replaced, hashed IP redacted); signed-out car facts are unattributed from the start |
 | Hashed IPs on your content | While the content row lives; redacted on account deletion |
 | Cloud backup | While supported, plus 2 years after supporter status lapses; deleted on account deletion (removal completes within about a day) |
+| Arcade lap times | Until you delete the account; leaderboard events naming you survive but lose your name |
 | Device ban records | For the ban duration; permanent bans persist |
 | Platform logs (Supabase, Resend) | A limited period, per those providers |
 
@@ -162,14 +201,15 @@ sharing of data beyond the services listed above.
 All in the plugin's Account tab:
 
 - **Export my data**: a JSON file with your email, profile, uploads, votes,
-  submissions, download history, sessions (including their device codes),
-  linked accounts, supporter status, reports you have filed, and any
-  moderation notices.
+  submissions, arcade lap times, download history, sessions (including their
+  device codes), linked accounts, supporter status, reports you have filed,
+  and any moderation notices.
 - **Delete account**: removes the account, email, sessions, links, download
   history, and cloud backup. Presets you shared stay published (people who
   downloaded them keep them) but your name comes off them; copies people
   already downloaded keep the name they had at download time. Your votes
-  and car facts are anonymized and their hashed IPs redacted.
+  and car facts are anonymized and their hashed IPs redacted, and your
+  arcade lap times are deleted.
 - **Session list**: revoke any device, or sign out everywhere else.
 - **Unlink** Discord or Patreon at any time.
 
