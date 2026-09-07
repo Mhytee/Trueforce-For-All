@@ -1,121 +1,135 @@
-# discord-role-sync takes 96 seconds per run, and nothing can tell you
+# discord-role-sync took 142 seconds because it never asked what roles a member already had
 
-Handoff for a separate session. Found 2026-09-07 while working on the arcade leaderboards; it is
-unrelated to that work and is a live bug in something already shipped.
+Found 2026-09-07 while working on the arcade leaderboards. Diagnosed and fixed the same day.
 
-Nothing here has been fixed. No code has been changed for this issue.
+Status: FIXED. `supabase/functions/discord-role-sync/index.ts` plus
+`supabase/migrations/0116_cron_http_timeouts.sql`.
 
-## Symptom
+## What it actually was
 
-`discord-role-sync` runs every 15 minutes and takes **96 seconds on average**, for **11 linked
-Discord users**. Roughly one run in six reaches ~150 seconds, which is Supabase's edge function
-wall-clock ceiling, and is therefore killed partway through its work.
+`op=sync` built, for every linked member, an `add` list and a `remove` list that between them
+covered every managed role. `remove` was `managed.filter(id => !desired.has(id))`, so
+`add.length + remove.length` was exactly `managed.length` for every member no matter what they had
+earned. It then awaited one Discord PUT or DELETE per entry, having never asked Discord what roles
+the member currently held, so it could not tell a no-op from a real change.
 
-Measured, consistent across 12 hours, not a spike:
+11 linked members times 13 managed roles is 143 sequential writes, every 15 minutes, forever.
+
+Measured cost of a Discord role write from this function is about 0.9 seconds gross of retry
+sleeps, in both sizes of run we have:
+
+| run | members | writes | wall clock | per write |
+|---|---|---|---|---|
+| `?op=sync&user=<uid>` | 1 | 13 | 11,723 ms | 902 ms |
+| `?op=sync` (full sweep) | 11 | 143 | 140,097 ms | 980 ms |
+
+143 times 0.9 s is the whole of the runtime. The fix is one read per member and writes only for
+real differences, which is 11 reads and normally zero writes.
+
+## What the first writeup got wrong
+
+Recorded because the wrong numbers are what produced the wrong hypothesis.
+
+1. **"96 seconds on average" blended two different jobs.** Two cron jobs hit the same function id.
+   Split by query string over 24 hours: `?op=sync` averaged 142,537 ms across 95 runs, and
+   `?op=entitlements` averaged 5,418 ms across 48. There was never a 96 second run.
+2. **"6 invocations an hour, something else triggers it too" was not the plugin.** It is 4
+   role-sync on `*/15` plus 2 entitlement-sync on `*/30`, both pointed at `discord-role-sync`.
+3. **"Roughly one run in six is killed at the ceiling" was two errors cancelling out.** Every
+   `op=sync` run was slow, not one in six: 84 of 95 exceeded 140 s and the fastest ever seen was
+   131.7 s. But they were not being killed. 94 of 95 returned 200 with a complete body; exactly one
+   returned 504. The sweep was finishing with about 8 seconds to spare.
+4. **`compute_member_metrics` was never a suspect worth keeping.** `explain analyze` puts it at
+   56.7 ms for 40 rows.
+5. **The retry sleep is a contributor, not the mechanism.** Both measured runs contain 429s, so
+   neither number is clean of retry sleeps, and the 902 vs 980 ms/write gap between them is n=1
+   against n=1. What rules the sleep out as the main cause is the scale: at ~8 abandoned writes
+   per sweep the retries can account for tens of seconds, not 142. The bulk is 143 plain
+   sequential round trips. A saturated rate-limit bucket would also predict a 13 write burst
+   costing far less per write than a 143 write one, and it does not.
+
+## What was really invisible
+
+At least 72 of the 95 sweeps silently abandoned about 8 of their 143 writes.
+
+`discord()` retries a 429 once, then returns status 429, which becomes a string in `errors`. Nobody
+ever saw that array: pg_net hung up after its default 5000 ms and discarded the body, and the
+function wrote nothing to its own console. The count is recoverable from the response sizes in
+`function_edge_logs`: 72 of 95 runs returned an identical 517 byte body against a 95 byte body for
+a clean run, and each error string is about 54 bytes. Size cannot say which status, though. Every
+non-404 failure lands in `errors` as a three digit code, so 403 and 500 look exactly like 429 from
+here, and 72 byte-identical bodies fit a standing permission failure on the same roles just as well
+as they fit rate limiting. The only error string actually read was a 429, from the single-user run.
+The new `console.log` settles it on the first deployed sweep.
+
+So the honest severity was never "role sync is broken" and never "it is fine". It was: uniformly 30
+times slower than it needed to be, sitting 8 seconds from the ceiling, dropping a handful of role
+changes every run, and structurally unable to tell anyone.
+
+## The fix
+
+**Function.** Read each planned member once with `GET /guilds/{id}/members/{discord_id}`, then guard
+the two existing write loops: skip the PUT when the member already holds the role, skip the DELETE
+when they do not.
+
+The guards are applied to `p.add` and `p.remove` exactly as they were already built. That is
+load-bearing. The write set can then only shrink relative to the old behaviour, which is what makes
+the change safe to ship without a dry run. Rebuilding the diff from the member's actual role array
+instead would sweep in the three Patreon tier roles, `op=entitlements` would read no tier role, call
+`set_supporter(p_on => false)`, and start the two year backup retention timer on paying supporters.
+For the same reason a failed member read skips the member rather than treating them as holding
+nothing.
+
+Also in the function: a 10 s deadline and one `retry-after` aware retry on the member read now that
+it is the hot path, a `console.log` of the run summary so the next person has a signal that pg_net
+cannot throw away, one line per run recording the member read's actual rate limit headers, and a
+bound of 5 rows per run on the orphan sweep, which is still 13 blind writes per queued row.
+
+`applied: 0` with everything in `unchanged` is the healthy steady state now. It is not a regression.
+
+**Migration 0116.** `timeout_milliseconds := 30000` on the five `tf4all-*` jobs that omitted it, so
+`net._http_response` stops recording a timeout for every run regardless of outcome.
+`tf4all-arcade-digest` already had it. `tf4all-report-card-sweep` was left alone on purpose: its
+command is a nested dollar quoted `do` block and retyping it to change one argument is a worse risk
+than the blindness it buys. Three of the nine the original writeup listed (`tf4all-ban-reaper`,
+`tf4all-motd-milestones`, `tf4all-motd-stats`) are plain SQL with no `net.http_post`, so that list
+was too long.
+
+30000 is deliberately not raised toward the 150 s edge ceiling. The pg_net worker holds a Postgres
+transaction open until the slowest request in its batch resolves.
+
+## Result, measured
+
+Function deployed as version 23, then 0116 applied, in that order. A full sweep immediately after:
 
 ```
-hour    invocations   avg_ms    runs over 145s
-09:00        6         96,222         0
-08:00        6         95,365         1
-07:00        6         97,230         1
-06:00        6         96,024         1
-05:00        6         96,392         0
+141,114 ms  ->  4,862 ms
+{"dryRun":false,"scope":"all","members":40,"linked":11,"applied":0,"removed":0,
+ "unchanged":117,"notInGuild":2,"skipped":0,"orphansCleared":0,"orphansMore":false,"errors":[]}
 ```
 
-Note **6 invocations an hour**, not the 4 a `*/15` schedule implies. Something else triggers it too.
-The plugin can: `AchievementClient` POSTs `/functions/v1/discord-role-sync?op=sync` from the Account
-tab, and that path is user-initiated.
+117 is 9 members times 13 roles, so every role on every reachable member was already correct and
+nothing needed writing. `errors` is empty, so the roughly 8 abandoned writes a run are gone with the
+writes that produced them.
 
-## Why nobody noticed
+The run also surfaced something the old code could not report: **`notInGuild: 2`**. Two of the 11
+linked accounts have left the Discord server, and each was absorbing 13 pointless writes a sweep.
+They are not a fault, and nothing needs doing about them, but they were invisible before.
 
-Three separate things make a healthy run and a killed run look identical:
+The rate limit line settles the question the old code could only guess at:
 
-1. **The cron job reports success.** `cron.job_run_details` shows `tf4all-role-sync` with 0 failures
-   in 8358 runs. All it measures is that `net.http_post` queued the request.
-2. **pg_net gives up after 5 seconds.** `0046_schedule_crons.sql` never passes
-   `timeout_milliseconds`, so it uses the 5000 ms default. Every response is recorded as a timeout
-   regardless of what the function did.
-3. **The function keeps running** after the caller disconnects, so most runs probably do finish.
-
-So the only health signal anyone has is guaranteed to say "timeout" whether things are fine or not.
-
-## Reproduce
-
-Function id `1b06d50d-b367-40be-a927-7520fe0aadfb` is `discord-role-sync`.
-
-```sql
--- Execution time, via the MCP query_logs tool (ClickHouse, not Postgres):
-select toStartOfHour(timestamp) as hour, count(*) as invocations,
-       round(avg(toFloat64OrNull(log_attributes['execution_time_ms'])), 0) as avg_ms,
-       countIf(toFloat64OrNull(log_attributes['execution_time_ms']) > 145000) as at_the_ceiling
-from logs
-where source = 'function_edge_logs'
-  and log_attributes['function_id'] = '1b06d50d-b367-40be-a927-7520fe0aadfb'
-group by hour order by hour desc
+```
+[role-sync] member-read limits bucket=e06f83c33559dfd4dc34f5666fdfa1d3 limit=5 remaining=4 reset-after=1.000
 ```
 
-```sql
--- The timeouts, in Postgres. Minutes 15 and 45 are role-sync ALONE: 12 of 12 timed out.
-select extract(minute from created)::int as minute, count(*) as n,
-       count(*) filter (where status_code is null) as timed_out,
-       count(*) filter (where status_code between 200 and 299) as ok
-from net._http_response group by 1 order by 1;
-```
+The member read route is 5 requests a second, so 11 reads has a floor of about 2.2 s. The measured
+4.9 s is that floor plus `compute_member_metrics`, the achievements query and boot. Room to grow a
+long way before this needs thinking about again.
 
-`net.http_request_queue` rows are reaped quickly, so joining a response back to its URL usually
-fails. Correlate by cron minute instead.
+## Still open, deliberately not in this change
 
-## Two separate problems
-
-### 1. The 5 second timeout is cosmetic, and cheap to fix
-
-`net.http_post` accepts `timeout_milliseconds` (pg_net 0.20.3 confirmed on this project) and
-`0046_schedule_crons.sql` omits it. Passing something like 30000 restores a real health signal.
-
-This does not make anything faster. It only stops the monitoring lying.
-
-Worth applying to every `tf4all-*` job, since they all inherit the same 5 s default: role-sync,
-entitlement-sync, backup-gc, backup-warn, patreon-supporters, motd-milestones, motd-stats,
-ban-reaper, report-card-sweep.
-
-### 2. The 96 seconds is the real bug, and is not diagnosed
-
-`supabase/functions/discord-role-sync/index.ts`, 253 lines. Eleven users should take a second or
-two. Candidate causes, none confirmed:
-
-- **Line 145, the supporter loop.** One `discordGet(/guilds/{id}/members/{discord_id})` per linked
-  user, plus an `rpc/set_supporter` per user, all sequential and awaited.
-- **Lines 220-227, the role application loop.** Nested `for` over plan entries and then over each
-  role to add and remove, one awaited Discord PUT or DELETE per role. Sequential.
-- **Line 38-40, the retry helper.** On HTTP 429 it sleeps `retry-after` up to 5 seconds and retries
-  once. If Discord is rate limiting the sequential calls above, each one can add up to 5 seconds,
-  and the arithmetic gets to 96 seconds quickly.
-
-The rate-limit sleep interacting with sequential per-user, per-role calls is the most likely story,
-but it has NOT been verified. Check the function's own console output for 429s before assuming.
-
-`compute_member_metrics` (line 178) is also worth timing directly; it is a single RPC but its cost
-is unknown from here.
-
-## Useful context
-
-- 132 rows in `auth.users`, 107 in `profiles`, **11 in `discord_links`**, 13 achievements.
-- The function is `verify_jwt = true` and gates in-function on `service_role` or `authenticated`;
-  an authenticated caller can only sync themselves (`claims.sub`).
-- It runs DRY-RUN and returns a plan when `DISCORD_BOT_TOKEN` or `DISCORD_GUILD_ID` are unset, so it
-  can be exercised safely without touching the guild.
-- `discord-role-sync` is at version 22 and is actively maintained; check whether a recent version
-  introduced the slowdown before rewriting anything.
-
-## Suggested order
-
-1. Add `timeout_milliseconds` so the health signal is real. Small, safe, independent.
-2. Read the function's own logs for 429s to confirm or kill the rate-limit theory.
-3. Only then change the loops. Batching or parallelising Discord calls has its own rate-limit
-   consequences, so measure first.
-
-## What NOT to conclude
-
-"Role sync is broken" is too strong. Most runs finish inside the ceiling and probably apply roles
-correctly. What is certain is that roughly one run in six is cut off, and that nobody could tell the
-difference either way. Fix the visibility before judging the severity.
+`managed` is built from enabled achievements only, so disabling an achievement, or clearing its
+`discord_role_id`, strands that role on every member holding it. The role leaves the removal set at
+the same moment it stops being granted, so nothing ever takes it back off. Latent today because all
+13 achievements are enabled and all carry a role id. Fixing it widens the removal set, which is the
+one direction this change must not move in, so it wants its own commit and its own dry run.
