@@ -485,12 +485,24 @@ namespace TrueforceForAll.Core
             return order.Select(k => best[k]).OrderBy(e => e.GoalMs).Take(Ranks).ToList();
         }
 
-        /// <summary>A SEGA-style filler row, for topping a board up to ten.</summary>
+        /// <summary>The name on a filler row.
+        ///
+        /// The game ships these as SEGA, and a board rarely has ten real times, so most of what a
+        /// player sees is filler. Naming ours puts the plugin on the boards it filled, next to the
+        /// times rather than above them, which is the only place we can put text in this game at
+        /// all: the screen's own labels are pre-rendered images, not strings.
+        ///
+        /// It stays a placeholder in every other respect. The time is still the six-minute sentinel
+        /// and the flag is still the game's own "this is filler" value, so nothing here invents a
+        /// result or displaces one.</summary>
+        public const string FillerName = "TF4ALL";
+
+        /// <summary>A filler row, for topping a board up to ten.</summary>
         public static Id8LeaderboardRecord DefaultRow()
         {
             return new Id8LeaderboardRecord
             {
-                RawName = Id8Name.Encode("SEGA"),
+                RawName = Id8Name.Encode(FillerName),
                 Reserved = new byte[] { 0, 0, Id8LeaderboardRecord.ConstantAt16 },
                 Flags = Id8LeaderboardRecord.FlagDefault,
                 PlayerId = 0,

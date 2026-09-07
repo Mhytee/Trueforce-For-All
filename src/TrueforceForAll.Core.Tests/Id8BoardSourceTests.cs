@@ -245,5 +245,50 @@ namespace TrueforceForAll.Core.Tests
             Assert.DoesNotContain("LOCALGUY",
                 rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)));
         }
+    
+        // ---- filler rows carry our name, and are still filler ----
+
+        /// <summary>The whole risk of naming the filler rows: if one stopped counting as filler it
+        /// would be treated as somebody's real record. It would survive as a "local record", it
+        /// would occupy a rank on a merged board, and the per-car guard that refuses to replace a
+        /// real time with a slower one would refuse to overwrite it. A six minute placeholder would
+        /// then sit on the board permanently, above nothing and below everyone.</summary>
+        [Fact]
+        public void ARenamedFillerRowIsStillFiller()
+        {
+            Id8LeaderboardRecord filler = Id8Leaderboard.DefaultRow();
+            Assert.True(filler.IsFiller);
+            Assert.Equal(Id8LeaderboardRecord.FlagDefault, filler.Flags);
+            Assert.Equal(Id8LeaderboardRecord.DefaultGoalMs, filler.GoalMs);
+        }
+
+        [Fact]
+        public void FillerRowsCarryOurName()
+        {
+            Assert.Equal("TF4ALL", Id8Name.Decode(Id8Leaderboard.DefaultRow().RawName));
+            Assert.Equal(Id8Leaderboard.FillerName, Id8Name.Decode(Id8Leaderboard.DefaultRow().RawName));
+        }
+
+        /// <summary>A board we filled and then read back must not treat our own filler as the
+        /// player's records. This is the path a second fill takes.</summary>
+        [Fact]
+        public void OurFillerIsNotMistakenForALocalRecordOnARefill()
+        {
+            var boardWeWrote = new List<Id8LeaderboardRecord> { Real("LocalGuy", 133000) };
+            for (int i = 0; i < 9; i++) boardWeWrote.Add(Id8Leaderboard.DefaultRow());
+
+            var local = Id8Leaderboard.LocalRecordsFrom(boardWeWrote);
+            Assert.Single(local);
+            Assert.Equal("LOCALGUY", Id8Name.Decode(local[0].RawName));
+        }
+
+        /// <summary>The name has to fit the field, or it would be truncated on screen.</summary>
+        [Fact]
+        public void TheFillerNameFitsTheRecord()
+        {
+            byte[] enc = Id8Name.Encode(Id8Leaderboard.FillerName);
+            Assert.NotNull(enc);
+            Assert.True(enc.Length < Id8LeaderboardRecord.NameBytes);
+        }
     }
 }
