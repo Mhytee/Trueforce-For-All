@@ -2,6 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // tweetnacl, not Web Crypto: Ed25519 in the edge runtime's crypto.subtle has
 // been unreliable; tweetnacl is the proven path for Discord interaction sigs.
 import nacl from "https://esm.sh/tweetnacl@1.0.3";
+// Slash commands live here too, because a Discord application has exactly ONE interactions
+// endpoint URL and this is it. See arcade.ts. The two are disjoint by interaction type and share
+// nothing but the signature check above them.
+import { handleArcade } from "./arcade.ts";
 
 // Discord interactions endpoint. NO Supabase JWT (verify_jwt = false); auth is
 // the Ed25519 signature against DISCORD_APP_PUBLIC_KEY. Answers the PING.
@@ -69,7 +73,7 @@ const TARGET_TABLE: Record<string, string> = {
   preset: "presets", game_preset: "game_presets", custom_engine: "custom_engines", pack: "packs",
 };
 
-const PING = 1, MESSAGE_COMPONENT = 3, MODAL_SUBMIT = 5;
+const PING = 1, APPLICATION_COMMAND = 2, MESSAGE_COMPONENT = 3, AUTOCOMPLETE = 4, MODAL_SUBMIT = 5;
 const PONG = 1, CHANNEL_MESSAGE = 4, UPDATE_MESSAGE = 7, MODAL = 9;
 const EPHEMERAL = 64;
 const ONE_DAY = 86400 * 1000;
@@ -202,6 +206,12 @@ Deno.serve(async (req) => {
     const tail = !res.notified ? " (no account to notify)" : appealable ? " (uploader notified, can appeal)" : " (uploader notified, final, no appeal)";
     await editCardById(reportId, 0xD9534F, `Removed by ${modName(body.member)}${appealable ? "" : " (final)"}${tail}`);
     return ephemeral(appealable ? "Removed. The uploader was notified and can appeal." : "Removed (final). The uploader was notified; no appeal allowed.");
+  }
+
+  // Slash commands and their autocomplete. Routed BEFORE the catch-all PONG below, which would
+  // otherwise swallow them silently and leave the command looking broken in the client.
+  if (body?.type === APPLICATION_COMMAND || body?.type === AUTOCOMPLETE) {
+    return await handleArcade(body);
   }
 
   if (body?.type !== MESSAGE_COMPONENT) return json({ type: PONG });
