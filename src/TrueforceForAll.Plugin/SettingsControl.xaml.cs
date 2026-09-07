@@ -850,6 +850,8 @@ namespace TrueforceForAll.Plugin
                     // null guard and would have stopped refreshing entirely if
                     // that unrelated control were ever absent.
                     RefreshArcadePanel(_plugin.ActiveGameIsArcade);
+                    // Settings-tab expander, so it is filled in whether or not a cabinet is running.
+                    RefreshArcadeLeaderboardControls();
 
                     // Scale and invert reconcile a TAPPED value with the wheel,
                     // and the device drops both only while the reshape is armed
@@ -1475,7 +1477,12 @@ namespace TrueforceForAll.Plugin
                 // games whose carIds are already descriptive (AC) or for cars
                 // not in the catalog.
                 string game = _plugin.ActiveGame;
-                HeaderGameText.Text = string.IsNullOrEmpty(game) ? "(none)" : game;
+                // Shown by its real title where there is one. An arcade cabinet's identity is
+                // TeknoParrot's short profile code ("Arcade ID8") because that string is the
+                // preset key and the car-folder name, and it cannot be prettied up without
+                // re-filing a user's tuning. The header is free to say the title instead.
+                HeaderGameText.Text = string.IsNullOrEmpty(game)
+                    ? "(none)" : _plugin.ArcadeDisplayName(game);
                 // The iRacing notice now fires from the plugin on first sight of the
                 // game, so it reaches people who never open this panel. All this does
                 // is offer it a window to sit on when the panel IS open; the plugin's
@@ -14155,6 +14162,19 @@ namespace TrueforceForAll.Plugin
             // own DirectInput position; result lands in the synthesized gain.
             // ARCADEFX [OFF]: name the live arcade effects in the log, so which
             // effect carries which feel is read off a run instead of inferred.
+            // ID8SCAN [text]: search the running cabinet for a known string and log what
+            // surrounds every hit. Defaults to SEGA, the placeholder name filling the online
+            // leaderboard while the cabinet has no network, so the hits map the row layout.
+            // Read-only, one shot, and it takes a few seconds.
+            if (code.Equals("ID8SCAN", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("ID8SCAN ", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                string arg = code.Length > 8 ? code.Substring(8).Trim() : null;
+                string msg = _plugin.StartArcadeMemorySearch(arg);
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                return;
+            }
             if (code.Equals("ARCADEFX", StringComparison.OrdinalIgnoreCase)
                 || code.StartsWith("ARCADEFX ", StringComparison.OrdinalIgnoreCase))
             {
@@ -14162,6 +14182,26 @@ namespace TrueforceForAll.Plugin
                 bool on = code.IndexOf("OFF", StringComparison.OrdinalIgnoreCase) < 0;
                 string msg = _plugin.SetArcadeEffectTrace(on);
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                return;
+            }
+            // MENUFX [OFF]: knock the wheel as an arcade cabinet's menus are used. A cabinet has
+            // no keyboard and its menus are driven from the wheel, so the wheel is where the
+            // feedback belongs. Persisted, unlike the developer codes, because it is a preference
+            // rather than a tool.
+            if (code.Equals("MENUFX", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("MENUFX ", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                bool on = code.IndexOf("OFF", StringComparison.OrdinalIgnoreCase) < 0;
+                if (_plugin?.Settings?.Arcade != null)
+                {
+                    _plugin.Settings.Arcade.MenuHaptics = on;
+                    try { _plugin.PersistSettings(); } catch { }
+                }
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "Menu knocks on. A thud when you confirm, a tick as you move through the options."
+                        : "Menu knocks off.";
                 return;
             }
             if (code.Equals("DAMPCAL", StringComparison.OrdinalIgnoreCase)

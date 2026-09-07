@@ -163,6 +163,7 @@ namespace TrueforceForAll.Plugin
             "AbsClick", "PitLimiter", "Drs", "Collision", "RevLimiter", "Airborne",
             "AxleSlip", "KerbThump", "LockupJudder", "ImplementThud",
             // Per-game/car data + the custom-engine library (lives in settings, not files).
+            "MenuHaptics", "MinForcePercent",
             "GameEnabled", "GameModes", "AudioCaptureExeOverrides", "CarFacts", "CarFactsSelection",
             "CustomEngines", "SharingAuthor",
             // Active-slot download tracking. Travels with the preset files it tracks.

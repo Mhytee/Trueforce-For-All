@@ -2724,33 +2724,69 @@
                            Margin="0,0,0,8" Text=""/>
 
                 <Grid Margin="0,0,0,2">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Minimum force:" Style="{StaticResource LabelText}"
-                               ToolTip="Raises the floor under the cabinet's steering force so the lightest commands are still felt. A command asking for nothing is still nothing, so this cannot make the wheel hum at rest."/>
-                    <TextBox Grid.Column="1" x:Name="ArcadeMinForceBox" VerticalAlignment="Center"
-                             LostFocus="ArcadeMinForce_LostFocus" KeyDown="ArcadeMinForce_KeyDown"
-                             ToolTip="Raises the floor under the cabinet's steering force so the lightest commands are still felt. A command asking for nothing is still nothing, so this cannot make the wheel hum at rest."/>
-                    <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0"
-                               Opacity="0.75" FontSize="11" Text="percent"/>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Weak force lift:" Style="{StaticResource LabelText}"
+                               ToolTip="Raises the quiet forces without touching the loud ones, for a cabinet whose output is too light on a strong wheel."/>
+                    <Slider     Grid.Column="1" x:Name="ArcadeMinForceSlider" Minimum="0" Maximum="60" SmallChange="1" LargeChange="5"
+                                TickFrequency="10" ValueChanged="ArcadeMinForceSlider_ValueChanged" VerticalAlignment="Center"
+                                ToolTip="Raises the quiet forces without touching the loud ones, for a cabinet whose output is too light on a strong wheel."/>
+                    <Border Visibility="{Binding Visibility, ElementName=ArcadeMinForceBox}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ArcadeMinForceBox" Text="0" LostFocus="ArcadeMinForce_LostFocus" KeyDown="ArcadeMinForce_KeyDown"/></Border>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="The better way to feel the light forces. It lifts every non-zero command by a fixed amount and leaves the shape of everything above it alone, where Power mode bends the whole curve and lifts the smallest hardest. Start around 8 and walk it up until the light forces arrive."/>
+                           Text="Percent. Lifts the quiet forces, leaves the loud ones alone."/>
 
                 <Grid Margin="0,0,0,2">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Hold time:" Style="{StaticResource LabelText}"
-                               ToolTip="How long one command keeps acting when the game stops sending. Initial D ships 5000 ms, which effectively holds until replaced; other cabinets ship 80 ms and fade almost at once."/>
-                    <TextBox Grid.Column="1" x:Name="ArcadeHoldMsBox" VerticalAlignment="Center"
-                             LostFocus="ArcadeHoldMs_LostFocus" KeyDown="ArcadeHoldMs_KeyDown"
-                             ToolTip="How long one command keeps acting when the game stops sending. Initial D ships 5000 ms, which effectively holds until replaced; other cabinets ship 80 ms and fade almost at once."/>
-                    <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0"
-                               Opacity="0.75" FontSize="11" Text="milliseconds"/>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Waveform strength:" Style="{StaticResource LabelText}"
+                               ToolTip="Scales only the buzz and rumble this cabinet plays. The steering force is left alone, so a wheel set strong enough for the steering can still have a quieter buzz."/>
+                    <Slider     Grid.Column="1" x:Name="ArcadeWaveGainSlider" Minimum="0" Maximum="200" SmallChange="5" LargeChange="25"
+                                TickFrequency="50" ValueChanged="ArcadeWaveGainSlider_ValueChanged" VerticalAlignment="Center"
+                                ToolTip="Scales only the buzz and rumble this cabinet plays. The steering force is left alone, so a wheel set strong enough for the steering can still have a quieter buzz."/>
+                    <Border Visibility="{Binding Visibility, ElementName=ArcadeWaveGainBox}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ArcadeWaveGainBox" Text="100" LostFocus="ArcadeWaveGain_LostFocus" KeyDown="ArcadeWaveGain_KeyDown"/></Border>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Longer holds a force through gaps in what the cabinet sends. Shorter lets it fade the moment the game goes quiet."/>
+                           Text="Percent. The buzz and rumble only; the steering force keeps its own strength."/>
+
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Force linger:" Style="{StaticResource LabelText}"
+                               ToolTip="How long the steering force and the spring keep acting after the game stops sending them. Rumble and friction set their own and ignore this."/>
+                    <Slider     Grid.Column="1" x:Name="ArcadeHoldMsSlider" Minimum="50" Maximum="5000" SmallChange="50" LargeChange="250"
+                                TickFrequency="1000" ValueChanged="ArcadeHoldMsSlider_ValueChanged" VerticalAlignment="Center"
+                                ToolTip="How long the steering force and the spring keep acting after the game stops sending them. Rumble and friction set their own and ignore this."/>
+                    <Border Visibility="{Binding Visibility, ElementName=ArcadeHoldMsBox}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ArcadeHoldMsBox" Text="0" LostFocus="ArcadeHoldMs_LostFocus" KeyDown="ArcadeHoldMs_KeyDown"/></Border>
+                </Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="Milliseconds, the game's own setting. Reaches the steering force and the spring; the buzz and the friction carry their own. The two below override it per effect."/>
+
+
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Steering hold:" Style="{StaticResource LabelText}"
+                               ToolTip="How long the steering force keeps acting after the cabinet stops sending it. 0 follows Force linger above."/>
+                    <Slider     Grid.Column="1" x:Name="ArcadeSteerHoldSlider" Minimum="0" Maximum="10000" SmallChange="50" LargeChange="500"
+                                TickFrequency="2000" ValueChanged="ArcadeSteerHoldSlider_ValueChanged" VerticalAlignment="Center"
+                                ToolTip="How long the steering force keeps acting after the cabinet stops sending it. 0 follows Force linger above."/>
+                    <Border Visibility="{Binding Visibility, ElementName=ArcadeSteerHoldBox}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ArcadeSteerHoldBox" Text="0" LostFocus="ArcadeSteerHold_LostFocus" KeyDown="ArcadeSteerHold_KeyDown"/></Border>
+                </Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="Milliseconds, steering force only. 0 follows Force linger. The longest gap measured in Initial D 8 is about 6100 ms, so anything past that holds through every gap the game leaves."/>
+
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Vibration hold:" Style="{StaticResource LabelText}"
+                               ToolTip="How long the buzz keeps playing after the cabinet stops sending it. 0 follows the length the game asks for, which is one cycle."/>
+                    <Slider     Grid.Column="1" x:Name="ArcadeVibHoldSlider" Minimum="0" Maximum="500" SmallChange="10" LargeChange="50"
+                                TickFrequency="100" ValueChanged="ArcadeVibHoldSlider_ValueChanged" VerticalAlignment="Center"
+                                ToolTip="How long the buzz keeps playing after the cabinet stops sending it. 0 follows the length the game asks for, which is one cycle."/>
+                    <Border Visibility="{Binding Visibility, ElementName=ArcadeVibHoldBox}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ArcadeVibHoldBox" Text="0" LostFocus="ArcadeVibHold_LostFocus" KeyDown="ArcadeVibHold_KeyDown"/></Border>
+                </Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="Milliseconds, buzz only. 0 plays each cycle as sent; raise it to smooth a stuttery buzz."/>
 
                 <TextBlock x:Name="ArcadeTuningFooter" Style="{StaticResource HelpText}" Margin="0,0,0,4"
                            Text="These take effect straight away, without restarting the game. FFB scale and smoothing are the controls above, and each cabinet keeps its own."/>
+
             </StackPanel>
 
             <!-- The Mode B controls. Always visible; the Enable box greys out and the
@@ -4732,6 +4768,58 @@
                  prompt) still fire, but this is the standing home for both. FS
                  rows are built in SettingsControl.Guides.cs from the same folder
                  the install writes to, so what this says is what the game finds. -->
+            <!-- Arcade leaderboards. On the Settings tab rather than beside the FFB controls
+                 because these are global: one choice for the cabinet, not something a preset
+                 carries. The FFB tab's arcade panel is per-cabinet tuning, which these are not. -->
+            <Expander x:Name="ArcadeLeaderboardExpander" IsExpanded="False" Margin="0,0,0,8">
+                <Expander.Header>
+                    <TextBlock Text="Arcade leaderboards" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <!-- Initial D 8 only: it is the one cabinet whose boards we know how to
+                         fill. The controls stay visible with it not running, because this is a
+                         standing preference rather than something to set mid-session. -->
+                    <CheckBox x:Name="ArcadeLeaderboardsCheck" Margin="0,0,0,4"
+                              Checked="ArcadeLeaderboards_Changed" Unchecked="ArcadeLeaderboards_Changed"
+                              Content="Fill Initial D 8's in-game leaderboards"/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                               Text="The game's boards have been empty since SEGA's servers shut down: every row says SEGA and six minutes flat. This puts real names and times on them. Your own records are never overwritten, and are backed up before anything is written."/>
+
+                    <StackPanel x:Name="ArcadeLeaderboardOptions">
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="Online board shows"/>
+                            <ComboBox Grid.Column="1" x:Name="ArcadeOnlineSourceCombo" Width="170" VerticalAlignment="Center"
+                                      SelectionChanged="ArcadeBoardSource_Changed">
+                                <ComboBoxItem Content="Everyone (merged)" Tag="Merged"/>
+                                <ComboBoxItem Content="Trueforce For All" Tag="Community"/>
+                                <ComboBoxItem Content="TeknoParrot" Tag="TeknoParrot"/>
+                                <ComboBoxItem Content="My own times" Tag="Local"/>
+                            </ComboBox>
+                        </Grid>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="Shop board shows"/>
+                            <ComboBox Grid.Column="1" x:Name="ArcadeShopSourceCombo" Width="170" VerticalAlignment="Center"
+                                      SelectionChanged="ArcadeBoardSource_Changed">
+                                <ComboBoxItem Content="Everyone (merged)" Tag="Merged"/>
+                                <ComboBoxItem Content="Trueforce For All" Tag="Community"/>
+                                <ComboBoxItem Content="TeknoParrot" Tag="TeknoParrot"/>
+                                <ComboBoxItem Content="My own times" Tag="Local"/>
+                            </ComboBox>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="Two boards, so they can show different things. Leaving one on Everyone and the other on Trueforce For All lets you read where you stand against everybody and among Trueforce users at the same time."/>
+
+                        <CheckBox x:Name="ArcadeSubmitTimesCheck" Margin="0,0,0,4"
+                                  Checked="ArcadeSubmitTimes_Changed" Unchecked="ArcadeSubmitTimes_Changed"
+                                  Content="Send my finished Time Attack runs to the leaderboard"/>
+                        <TextBlock x:Name="ArcadeSubmitTimesHelp" Style="{StaticResource HelpText}" Margin="0,0,0,4" TextWrapping="Wrap"
+                                   Text="Sent under your Trueforce For All username, so it needs you signed in. Only runs you finish are sent; records already in your save are never uploaded."/>
+                    </StackPanel>
+                </StackPanel>
+            </Expander>
+
             <Expander x:Name="FsModExpander" IsExpanded="False" Margin="0,0,0,8"
                       Expanded="FsModExpander_Expanded">
                 <Expander.Header>

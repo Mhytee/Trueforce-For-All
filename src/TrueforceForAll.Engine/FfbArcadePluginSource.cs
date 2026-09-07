@@ -1,4 +1,4 @@
-// Reads the RENDERED force feedback a publishing build of FFBArcadePlugin would
+﻿// Reads the RENDERED force feedback a publishing build of FFBArcadePlugin would
 // have sent to the wheel, out of its shared block.
 //
 // WHAT MAKES THIS DIFFERENT FROM THE DIRECT READER. TeknoParrotJvsTelemetrySource
@@ -80,6 +80,23 @@ namespace TrueforceForAll.Core
 
         private const long FfbTimestampMask = 0xffff_ffff_ffffL;
 
+        // How long the steering force takes to release once it lapses, instead of
+        // being cut.
+        //
+        // Measured on the rig 2026-09-07: this game leaves gaps of 5017 ms and
+        // 6067 ms with no steering command at all, during long drifts and with the
+        // input held steady. No hold length is right for a gap that size. Holding
+        // longer means several more seconds of a stale force that stopped matching
+        // the corner, and dropping at the end of the hold is a cliff. The cliff is
+        // what "it cut all force" is: the wheel carries a full force for five
+        // seconds and then has none in a single frame.
+        //
+        // Releasing over a third of a second is neither. The wheel goes light the
+        // way it would if the game had wound the force down itself, and the hold
+        // becomes a question of taste rather than the thing standing between the
+        // driver and a jolt.
+        private const double SteeringReleaseMs = 350.0;
+
         public string MapName { get; set; } = DefaultMapName;
 
         /// <summary>Scales every published value into device force. The publisher's
@@ -95,6 +112,24 @@ namespace TrueforceForAll.Core
         /// menu forces feel reversed" was read as the constant when the race force
         /// is the constant, and the wrong half got flipped.</summary>
         public bool TraceEffects { get; set; }
+
+        /// <summary>How long the steering force keeps acting after the cabinet
+        /// stops sending it, in milliseconds. 0 means "however long the publisher
+        /// stamped on it", which is that game's FeedbackLength.
+        ///
+        /// Split from the waveform hold below because the two want opposite
+        /// things and the reference plugin gives them one number. Measured here
+        /// 2026-09-06: the constant arrives with FeedbackLength, while a sine
+        /// arrives with its own PERIOD (6 ms and 49 ms on the rig), so the one
+        /// setting a user can reach already governs only half of what its name
+        /// suggests. Raising it to hold the steering through a burst of buzz also
+        /// lengthens the spring, and nothing at all reaches the buzz.</summary>
+        public int SteeringHoldMs { get; set; }
+
+        /// <summary>The same for the waveform effects: sine, triangle and both
+        /// sawtooths. 0 leaves them at the length the game asks for, which for
+        /// this protocol is a single cycle.</summary>
+        public int VibrationHoldMs { get; set; }
 
         private string _lastTrace;
         private int _traceLines;
@@ -264,6 +299,7 @@ namespace TrueforceForAll.Core
             _readerBeacon = null;
             Interlocked.Exchange(ref _ffbPacked, 0);
             _snap = null;
+            _liftSmoothed = 0;
             _live = false;
             _loggedOpen = false;
             _loggedStale = false;
@@ -459,7 +495,12 @@ namespace TrueforceForAll.Core
 
             if (!live)
             {
+                // No release here: the block going quiet is the game leaving, and
+                // a wheel that fades on the way out would be reproducing a force
+                // whose source is already gone.
                 Interlocked.Exchange(ref _ffbPacked, 0);
+                _releaseFrom = 0.0;
+                _releasing = false;
                 _snap = null;
                 EmitLivenessFrame();
                 return true;
@@ -485,12 +526,16 @@ namespace TrueforceForAll.Core
 
             long now = _sw.ElapsedTicks;
             bool haveConstant = false;
+            uint constantStamp = 0;
 
             for (int i = 0; i < SlotCount; i++)
             {
                 int b = HeaderBytes + i * SlotBytes;
                 uint kind = U32(b + SKind);
                 if (kind == 0) continue;
+                // Read before the running and expiry tests, both of which skip the
+                // slot we most want to time.
+                if (kind == KConstant) constantStamp = U32(b + SUpdatedFrame);
                 if (U32(b + SRunning) == 0) continue;      // downloaded but never started
                 if (Expired(b, frame)) continue;
 
@@ -577,10 +622,35 @@ namespace TrueforceForAll.Core
                     _scratch.Set(ArcadeTrigger.Rumble(rlow / 65535.0, rhigh / 65535.0));
             }
 
+            SampleCabinetWord(constantStamp);
+            NoteConstantLapsed(haveConstant, frame);
+
             if (haveConstant)
             {
+                _releaseFrom = _scratch.Constant.Strength;
+                _releasing = false;
                 Interlocked.Exchange(ref _ffbPacked,
                     PackFfb(ToLsb(_scratch.Constant.Strength), now & FfbTimestampMask));
+            }
+            else if (_releaseFrom != 0.0)
+            {
+                if (!_releasing) { _releasing = true; _releaseStartTicks = now; }
+                double sinceMs = (now - _releaseStartTicks) * 1000.0 / Stopwatch.Frequency;
+                double k = ReleaseScale(sinceMs, SteeringReleaseMs);
+                if (k <= 0.0)
+                {
+                    _releaseFrom = 0.0;
+                    _releasing = false;
+                    Interlocked.Exchange(ref _ffbPacked, 0);
+                }
+                else
+                {
+                    // Through ToLsb, not around it, so the weak-force lift winds
+                    // down with the force rather than sitting on top of a fading
+                    // one and becoming the whole signal at the end.
+                    Interlocked.Exchange(ref _ffbPacked,
+                        PackFfb(ToLsb(_releaseFrom * k), now & FfbTimestampMask));
+                }
             }
             else
             {
@@ -607,10 +677,207 @@ namespace TrueforceForAll.Core
         {
             uint length = U32(slotBase + SLength);
             NoteSlotLength(slotBase, length);
+            // Infinite and unset stay as they are whatever the overrides say. The
+            // default centering spring and the friction arrive that way, and an
+            // override that expired them would delete an effect the game holds on
+            // purpose. Only a slot that already had a finite length is rescaled.
             if (length == SdlInfinity || length == 0) return false;
+            length = HeldLength(length, U32(slotBase + SKind), SteeringHoldMs, VibrationHoldMs);
             uint updated = U32(slotBase + SUpdatedFrame);
             double sinceMs = (frame >= updated ? frame - updated : 0) * FramePeriodMs;
             return sinceMs > length;
+        }
+
+        /// <summary>Which hold applies to a slot, or 0 to leave the published
+        /// length alone. Conditions are deliberately absent: the spring and the
+        /// friction stay on whatever the game asked for, so the two controls that
+        /// exist each own one thing and nothing owns a slot twice.</summary>
+        /// <summary>Says how long a gap in the steering command actually was, on
+        /// the reading where the wheel goes slack.
+        ///
+        /// This is the measurement behind the Steering hold slider. The cabinet
+        /// sends one command per frame and a waveform frame displaces a steering
+        /// frame, so the steering force lapses whenever a run of waveform frames
+        /// outlasts its hold. How long a hold is enough is therefore a question
+        /// about THIS game's frame runs, and guessing at it from feel takes a rig
+        /// session per guess. The number printed here answers it in one lap.
+        ///
+        /// Bounded hard: one line a second and forty a session, because the whole
+        /// point is a fault that repeats.</summary>
+        private void NoteConstantLapsed(bool haveConstant, uint frame)
+        {
+            if (haveConstant) { _constantWasLive = true; return; }
+            if (!_constantWasLive) return;
+            _constantWasLive = false;
+
+            if (_lapseLines >= 40) return;
+            long ms = _sw.ElapsedMilliseconds;
+            if (_lastLapseMs != 0 && ms - _lastLapseMs < 1000) return;
+            _lastLapseMs = ms;
+            _lapseLines++;
+
+            for (int i = 0; i < SlotCount; i++)
+            {
+                int b = HeaderBytes + i * SlotBytes;
+                if (U32(b + SKind) != KConstant) continue;
+                uint updated = U32(b + SUpdatedFrame);
+                double ageMs = (frame >= updated ? frame - updated : 0) * FramePeriodMs;
+                Log("the steering force just lapsed: " + ageMs.ToString("0")
+                    + " ms since the cabinet last sent one, against a hold of "
+                    + (SteeringHoldMs > 0
+                        ? SteeringHoldMs + " ms (Steering hold)"
+                        : U32(b + SLength) + " ms (the game's own Force linger)")
+                    + ". The wheel is slack until the next steering command. A hold longer than "
+                    + "the gap printed here would have carried it through."
+                    + CabinetWordSummary());
+                return;
+            }
+        }
+
+        private bool _constantWasLive;
+        private long _lastLapseMs;
+        private int  _lapseLines;
+
+        // WATCHING THE CABINET DIRECTLY, READ ONLY.
+        //
+        // Everything else in this file reads what the reference plugin PRODUCED.
+        // That cannot answer the question that matters here, because a command the
+        // game sent and that plugin discarded looks exactly like a command the game
+        // never sent: in both cases no slot is updated and the force goes stale.
+        //
+        // The cabinet's own IO block says which. It is a separate 64 byte mapping
+        // that TeknoParrot writes and both plugins read, so opening it read only
+        // alongside disturbs nothing. For this protocol the command is int slot 2,
+        // and its bytes are opcode in [2], direction in [1], magnitude in [0].
+        //
+        // The specific suspicion: the reference decoder guards its steering opcode
+        // with (ffb[0] > 0x00 && ffb[0] < 0x80), and those two excluded values are
+        // exactly where zero force lands in each direction. If the game commands
+        // zero while the car slides, that command is dropped and the wheel keeps a
+        // stale force until it times out. This says whether that is happening.
+        //
+        // One honest limit, stated where it will be read: the slot holds a value,
+        // not a stream of writes, and nothing clears it between frames. So this
+        // counts values and changes, never individual writes, and cannot tell a
+        // game that rewrote the same word from one that wrote nothing.
+        private const int CabinetFfbSlot = 2;
+
+        private static readonly string[] MapNamesJvs =
+        {
+            "TeknoParrot_JvsState",
+            "Local\\TeknoParrot_JvsState",
+            "Global\\TeknoParrot_JvsState",
+        };
+
+        private MemoryMappedFile _jvsMmf;
+        private MemoryMappedViewAccessor _jvsView;
+        private long _jvsNextTryMs;
+        private uint _jvsWindowStamp, _jvsLastWord;
+        private int _jvsSamples, _jvsChanges, _jvsZeroMagFrames;
+        private readonly int[] _jvsOpcodes = new int[256];
+
+        private bool JvsReady()
+        {
+            if (_jvsView != null) return true;
+            long ms = _sw.ElapsedMilliseconds;
+            if (ms < _jvsNextTryMs) return false;
+            _jvsNextTryMs = ms + 2000;
+            for (int i = 0; i < MapNamesJvs.Length; i++)
+            {
+                try
+                {
+                    var mmf = MemoryMappedFile.OpenExisting(
+                        MapNamesJvs[i], MemoryMappedFileRights.Read);
+                    _jvsView = mmf.CreateViewAccessor(0, 64, MemoryMappedFileAccess.Read);
+                    _jvsMmf = mmf;
+                    Log("also watching the cabinet's own IO block, read only, so a command the "
+                        + "reference plugin discarded can be told apart from one the game "
+                        + "never sent.");
+                    return true;
+                }
+                catch { }
+            }
+            return false;
+        }
+
+        /// <summary>One reading of the cabinet word, counted against the window
+        /// since the steering command was last refreshed. The window resets on
+        /// every refresh, so whatever it holds when a lapse fires describes exactly
+        /// the gap that lapsed.</summary>
+        private void SampleCabinetWord(uint constantStamp)
+        {
+            if (!JvsReady()) return;
+
+            uint w;
+            try { w = _jvsView.ReadUInt32(CabinetFfbSlot * 4); }
+            catch { return; }
+
+            if (constantStamp != _jvsWindowStamp)
+            {
+                _jvsWindowStamp = constantStamp;
+                _jvsSamples = 0;
+                _jvsChanges = 0;
+                _jvsZeroMagFrames = 0;
+                Array.Clear(_jvsOpcodes, 0, _jvsOpcodes.Length);
+            }
+
+            _jvsSamples++;
+            if (w != _jvsLastWord) { _jvsChanges++; _jvsLastWord = w; }
+
+            byte opcode = (byte)(w >> 16), magnitude = (byte)w;
+            _jvsOpcodes[opcode]++;
+            // The two values the reference guard throws away, which are where zero
+            // force lands: 0x80 for a force from the left, 0x00 for one from the right.
+            if (opcode == 0x04 && (magnitude == 0x00 || magnitude == 0x80)) _jvsZeroMagFrames++;
+        }
+
+        /// <summary>What the cabinet was saying during the gap that just lapsed.</summary>
+        private string CabinetWordSummary()
+        {
+            if (_jvsView == null)
+                return " The cabinet IO block is not open, so what the game commanded during "
+                     + "that gap is not known.";
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append(" Cabinet IO over that gap: ").Append(_jvsSamples).Append(" readings, ")
+              .Append(_jvsChanges).Append(" value changes, opcodes");
+            bool any = false;
+            for (int op = 0; op < 256; op++)
+            {
+                if (_jvsOpcodes[op] == 0) continue;
+                sb.Append(any ? ", " : " ").Append("0x").Append(op.ToString("x2"))
+                  .Append(" x").Append(_jvsOpcodes[op]);
+                any = true;
+            }
+            if (!any) sb.Append(" none");
+            sb.Append(". Readings where the game asked for a steering force of zero, which the "
+                    + "reference plugin discards: ").Append(_jvsZeroMagFrames);
+            sb.Append(". Last word 0x").Append(_jvsLastWord.ToString("x8")).Append(".");
+            return sb.ToString();
+        }
+
+        /// <summary>How much of the lapsed force is left after a given time, 1
+        /// at the start of the release and 0 at its end. Linear: the release is
+        /// short enough that a curve would only be a different kind of guess, and
+        /// a straight line is the one shape whose end is unambiguous.</summary>
+        internal static double ReleaseScale(double sinceMs, double releaseMs)
+        {
+            if (releaseMs <= 0.0 || sinceMs >= releaseMs) return 0.0;
+            if (sinceMs <= 0.0) return 1.0;
+            return 1.0 - sinceMs / releaseMs;
+        }
+
+        private double _releaseFrom;
+        private bool _releasing;
+        private long _releaseStartTicks;
+
+        internal static uint HeldLength(uint published, uint kind, int steerHoldMs, int vibHoldMs)
+        {
+            int over = kind == KConstant ? steerHoldMs
+                     : (kind == KSine || kind == KTriangle || kind == KSawUp || kind == KSawDown)
+                       ? vibHoldMs
+                       : 0;
+            return over > 0 ? (uint)over : published;
         }
 
         private static ArcadeFfbState Copy(ArcadeFfbState s) => new ArcadeFfbState
@@ -719,6 +986,86 @@ namespace TrueforceForAll.Core
                         System.Globalization.CultureInfo.InvariantCulture)).Append(')');
         }
 
+        /// <summary>A floor under the steering force, faded in across the first fraction of travel
+        /// so it does not step at centre. 0 disables it.
+        ///
+        /// The reference plugin has its own MinForce and it is the thing that feels wrong here: it
+        /// computes level = strength * (MaxForce - MinForce) + MinForce and gates that on the
+        /// command being above a hair of nothing, with the sign carried separately. So a force
+        /// crossing centre goes from plus the floor, to zero, to minus the floor, and with a floor
+        /// of 20 that is a 40 point jump out of 100. Raising or lowering it moves the notch rather
+        /// than removing it.
+        ///
+        /// This one is the same idea without the step: the floor ramps in over a band tied to its own
+        /// size, so centre is genuinely zero and everything past the band is lifted. Set the
+        /// reference plugin's own MinForce to 0 when using this, or both apply.</summary>
+        public double MinForce01 { get; set; }
+
+        /// <summary>The ramp the floor comes in over, as a fraction of the floor itself, with a
+        /// hard minimum so a small floor still gets a gentle edge.
+        ///
+        /// This is the anti-oscillation control, and it is the only one needed. Near zero the
+        /// transform's gain is floor/band + (1 - floor), so a narrow band means enormous gain on
+        /// tiny signals: at a floor of 0.20 over a band of 0.03 that is seven and a half times, and
+        /// a loop with that much gain rings. Tying the band to the floor bounds the gain a little
+        /// above two whatever the floor is set to, while leaving the lift on real forces untouched,
+        /// which is the whole point of the setting.</summary>
+        private const double FloorBandOfFloor = 0.75;
+        private const double FloorBandMin = 0.08;
+
+        /// <summary>How quickly the lift follows a change, as a fraction per poll at the 500 Hz
+        /// tick. This is what actually stops the oscillation, and it works because no static curve
+        /// can.
+        ///
+        /// The curve has to have gain above one near zero or it does not lift weak forces, which is
+        /// the entire point of the setting; and gain above one in a loop with lag can ring. Those
+        /// are in direct conflict and widening the ramp only trades one for the other.
+        ///
+        /// What separates them is not size but FREQUENCY. A force worth lifting is sustained for as
+        /// long as the corner lasts. An oscillation reverses several times a second. Smoothing the
+        /// LIFT alone, and leaving the game's own force untouched, lets the first through at full
+        /// strength while the second averages toward nothing and stops feeding the loop.
+        ///
+        /// About a 130 ms time constant. Measured against a reversal at eight times a second,
+        /// which is what the ring looked like: at 40 ms the lift still followed it to four fifths
+        /// of full and kept feeding the loop, and at 130 ms it reaches barely a third. The cost is
+        /// that a lift takes about that long to build, which is right anyway. A transient strong
+        /// enough to matter needs no lift; only a sustained light force does.</summary>
+        private const double LiftFollowPerPoll = 0.015;
+
+        private double _liftSmoothed;
+
+        /// <summary>Apply the floor. Odd about zero, continuous through it, and monotonic, so the
+        /// wheel never reverses or jumps as the force changes sign.</summary>
+        /// <summary>Lift the weak forces without raising the strong ones.
+        ///
+        /// This is a TUNING control, not a friction workaround. These cabinets send forces that are
+        /// simply too light on a strong wheel, and the useful thing is to raise the bottom of the
+        /// range while leaving the top where it is, so the quiet moments can be felt without the
+        /// loud ones getting louder. Everything past the ramp is lifted by the floor and then
+        /// compressed into what is left below full scale, which is what keeps the top reachable.
+        ///
+        /// The ramp near zero does two jobs. It keeps centre continuous, so the force does not step
+        /// as it changes sign. And it bounds the gain on tiny signals, which is what stops the wheel
+        /// oscillating: a floor applied too abruptly turns a small command into a large push, the
+        /// wheel moves, the game answers the other way, and the loop sustains itself. The gain near
+        /// zero is floor/band + (1 - floor), so tying the band to the floor holds it near two
+        /// whatever the floor is set to. The lift on real forces is untouched by any of that.</summary>
+        internal static double ApplyMinForce(double f, double min01)
+        {
+            if (min01 <= 0.0 || f == 0.0) return f;
+            if (min01 > 0.95) min01 = 0.95;
+
+            double band = min01 * FloorBandOfFloor;
+            if (band < FloorBandMin) band = FloorBandMin;
+
+            double mag = Math.Abs(f);
+            double lift = min01 * (mag >= band ? 1.0 : mag / band);
+            double outMag = lift + mag * (1.0 - min01);
+            if (outMag > 1.0) outMag = 1.0;
+            return f < 0 ? -outMag : outMag;
+        }
+
         internal short ToLsb(double signed01)
         {
             // The constant is RIGHT as authored. This was flipped once on a wrong
@@ -729,7 +1076,15 @@ namespace TrueforceForAll.Core
             // half that worked and left the half that did not.
             //
             // InvertConstantDirection stays as the per-cabinet override.
-            double f = signed01 * ForceScale;
+            // The lift is smoothed, the game's own force is not. See LiftFollowPerPoll: this is
+            // the part that stops the wheel ringing around centre, and it cannot be done inside the
+            // curve because the curve has no memory of what the force was doing a moment ago.
+            double raw = signed01;
+            double lift = ApplyMinForce(raw, MinForce01) - raw;
+            _liftSmoothed += (lift - _liftSmoothed) * LiftFollowPerPoll;
+            double f = (raw + _liftSmoothed) * ForceScale;
+            if (f > 1.0) f = 1.0;
+            else if (f < -1.0) f = -1.0;
             if (InvertConstantDirection) f = -f;
             double scaled = Math.Round(f * 32767.0);
             if (scaled > 32767.0) return 32767;
@@ -751,6 +1106,10 @@ namespace TrueforceForAll.Core
             try { if (_mmf != null) _mmf.Dispose(); } catch { }
             _view = null;
             _mmf = null;
+            try { if (_jvsView != null) _jvsView.Dispose(); } catch { }
+            try { if (_jvsMmf != null) _jvsMmf.Dispose(); } catch { }
+            _jvsView = null;
+            _jvsMmf = null;
         }
 
         private void Log(string msg)

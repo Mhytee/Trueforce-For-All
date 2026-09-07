@@ -2611,6 +2611,62 @@ namespace TrueforceForAll.Plugin
         /// <summary>Master switch for the whole process-detected arcade path.</summary>
         public bool Enabled { get; set; } = true;
 
+        /// <summary>Fill Initial D 8's in-game leaderboards from real times instead of leaving
+        /// them on SEGA's built-in filler rows.
+        ///
+        /// The boards the game shows are plain arrays in its own memory, four of them, reachable
+        /// from a fixed pointer chain. SEGA's servers filled them and have been dead for years, so
+        /// every row a player sees is the shipped placeholder: name SEGA, time six minutes flat.
+        /// Writing those arrays puts real names and times on the ranking screens, on the Time
+        /// Attack result, and on the store time shown while driving.
+        ///
+        /// On by default: the boards are dead placeholders otherwise, and nothing here changes how
+        /// the car drives. The player's own SelfBest records are never touched, so their personal
+        /// best detection keeps working exactly as it did.</summary>
+        public bool Id8LeaderboardsEnabled { get; set; } = true;
+
+        /// <summary>What fills the game's ONLINE board.
+        ///
+        /// Defaults to TeknoParrot, whose public board is the closest thing ID8 has to the
+        /// nationwide ranking SEGA used to serve. The online board is also the safe one to own:
+        /// the game never writes it, and it is initialised from the exe rather than the player's
+        /// save, so what we put there is transient and a restart clears it.
+        ///
+        /// Defaults to Merged rather than TeknoParrot alone: "online" reads best as everyone, and
+        /// pairing it with a tf4all-only shop board is what lets a player see both standings at
+        /// once without changing a setting.</summary>
+        public Id8BoardSource Id8OnlineBoardSource { get; set; } = Id8BoardSource.Merged;
+
+        /// <summary>What fills the game's SHOP board.
+        ///
+        /// Defaults to the Trueforce For All community, which matches the fiction: online is the
+        /// wider world, the shop is the cabinet you play at.
+        ///
+        /// The two sources are deliberately swappable, and either board can be set to Merged. That
+        /// is what makes the pair useful rather than redundant: Community on one and Merged on the
+        /// other lets a player read "where am I among tf4all users" and "where am I against
+        /// everyone" without leaving the game.
+        ///
+        /// Note this board IS loaded from the player's save, so writes here can persist. The
+        /// original rows are backed up before the first write so the board can be put back.</summary>
+        public Id8BoardSource Id8ShopBoardSource { get; set; } = Id8BoardSource.Community;
+
+        /// <summary>Send this player's finished Time Attack runs to the community leaderboard.
+        ///
+        /// On by default, but gated on being signed in: the server rejects an anonymous submission
+        /// outright, and the name on a board is read from the account rather than sent by the
+        /// client, so there is no such thing as an unattributed row.
+        ///
+        /// Only runs observed as the game finishes them are sent. Records already sitting in the
+        /// save are never submitted: a time in a save file carries no proof of who set it, the save
+        /// is editable, and this plugin writes to that board itself, so harvesting it would feed
+        /// community times back in as though the player had driven them.</summary>
+        public bool Id8SubmitTimesEnabled { get; set; } = true;
+
+        /// <summary>Whether the one-off notice explaining the above has been shown. Not a
+        /// preference: it exists so the notice appears once rather than every launch.</summary>
+        public bool Id8SubmitNoticeShown { get; set; } = false;
+
         /// <summary>Process name (no .exe, case-insensitive) to the game identity
         /// to run under, which is what binds a preset to that cabinet.
         ///
@@ -2642,6 +2698,26 @@ namespace TrueforceForAll.Plugin
         /// ourselves, because it covers roughly ninety games rather than the
         /// dozen we have written decoders for.</summary>
         public string PublisherMapName { get; set; } = "";
+
+        /// <summary>A floor under the cabinet's steering force, as a percentage of full scale, so
+        /// the light forces can be felt through a wheel's own stiction. Ours, not the reference
+        /// plugin's.
+        ///
+        /// Theirs computes level = strength * (MaxForce - MinForce) + MinForce and gates it on the
+        /// command being above a hair of nothing, with the sign carried separately, so a force
+        /// crossing centre steps from plus the floor to zero to minus the floor. At a floor of 20
+        /// that is a 40 point jump out of 100, felt as a notch at centre, and changing the number
+        /// moves the notch rather than removing it. Ours fades the floor in across the first few
+        /// percent of travel, so centre is genuinely zero and everything past it is lifted.
+        ///
+        /// Set the reference plugin's own MinForce to 0 when using this, or both apply.</summary>
+        public int MinForcePercent { get; set; } = 0;
+
+        /// <summary>Knock the wheel as the cabinet's menus are used: a full thud when a choice is
+        /// confirmed and a light tick while moving through the options. An arcade cabinet has no
+        /// keyboard and its menus are driven from the wheel, so the wheel is where the feedback
+        /// belongs. Off by default, like every other effect that was not asked for.</summary>
+        public bool MenuHaptics { get; set; } = false;
 
         /// <summary>Where TeknoParrot is installed. Filled in automatically when we
         /// can find it; set by hand when it lives somewhere unusual. Its
@@ -2704,6 +2780,34 @@ namespace TrueforceForAll.Plugin
         /// It is rendered through our own damper gain, calibrated on the effects
         /// bench, so a commanded coefficient becomes the torque it should.</summary>
         public bool AcceptPublishedDamper { get; set; } = true;
+
+        /// <summary>Scales only the waveform effects this cabinet commands: the
+        /// sines, triangles and sawtooths it plays as buzz and rumble. 1.0 is
+        /// whatever the cabinet asked for, 0 silences them, 2.0 doubles them.
+        ///
+        /// Separate from <see cref="ForceScale"/> because the buzz and the
+        /// steering force are two different signals that want two different
+        /// amounts. A wheel set strong enough for the steering to feel right
+        /// makes the same cabinet's buzz too loud, and one number cannot lower
+        /// the second without also lowering the first.
+        ///
+        /// Per cabinet, like everything else here: how loud a given game's
+        /// waveforms arrive is a property of that game's protocol.</summary>
+        public double WaveformGain { get; set; } = 1.0;
+
+        /// <summary>Overrides how long this cabinet's steering force keeps acting
+        /// after it stops being sent, in milliseconds. 0 follows the game's own
+        /// FeedbackLength, which is the behaviour without this set.
+        ///
+        /// Worth having separately because that one setting reaches the steering
+        /// force AND the spring but never the waveforms, so it cannot be raised
+        /// to stop the wheel going slack during a buzz without dragging the
+        /// spring along with it.</summary>
+        public int SteeringHoldMs { get; set; }
+
+        /// <summary>The same for the waveform effects. 0 follows the length the
+        /// game asks for, which in these protocols is a single cycle.</summary>
+        public int VibrationHoldMs { get; set; }
     }
 
     public sealed class ForzaSettings

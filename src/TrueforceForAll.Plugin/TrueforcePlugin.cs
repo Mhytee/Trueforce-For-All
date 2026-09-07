@@ -2260,6 +2260,7 @@ namespace TrueforceForAll.Plugin
         public sealed class ArcadeModTarget
         {
             public string ProfileName;   // TeknoParrot's own profile id, e.g. ID8
+            public string FullName;      // TeknoParrot's GameNameInternal, e.g. Initial D: Arcade Stage 8 Infinity
             public string DisplayName;   // as a person would say it
             public string GameDir;       // where the game exe lives, and where the DLL goes
             public bool Is64Bit;
@@ -2353,6 +2354,7 @@ namespace TrueforceForAll.Plugin
                     var r = doc.Root;
                     if (r == null) continue;
                     string profileName = (string)r.Element("ProfileName");
+                    string fullName = (string)r.Element("GameNameInternal");
                     string gamePath = (string)r.Element("GamePath");
                     if (string.IsNullOrEmpty(gamePath)) continue;
 
@@ -2367,6 +2369,7 @@ namespace TrueforceForAll.Plugin
                     {
                         ProfileName = string.IsNullOrEmpty(profileName)
                             ? Path.GetFileNameWithoutExtension(f) : profileName,
+                        FullName = fullName,
                         GameDir = dir,
                         Is64Bit = is64,
                         ExeName = Path.GetFileNameWithoutExtension(gamePath),
@@ -6538,6 +6541,10 @@ namespace TrueforceForAll.Plugin
 
         public void DataUpdate(PluginManager pluginManager, ref GameData data)
         {
+            // SPIKE (2026-09-06): read back and unwind last tick's write into
+            // SimHub's own fields. First, so nothing below sees a spoof.
+            ArcadeBridgeSpikeRestore(pluginManager, data);
+
             _currentGameName = data?.GameRunning == true ? data.GameName : null;
             // Radar dots and proximity, from this frame's opponents.
             try { DashUpdateRadar(data); } catch { /* display only, never fatal */ }
@@ -6904,10 +6911,27 @@ namespace TrueforceForAll.Plugin
             //
             // A running SimHub game still wins outright. We only speak when
             // nothing of SimHub's is actually playing.
-            if (data?.GameRunning != true)
+            // A SimHub CUSTOM GAME for an arcade cabinet is the second case, and it
+            // arrives by the opposite door. Once such a profile exists SimHub DOES
+            // report a running game, so the test above stops firing and the identity
+            // becomes SimHub's "Custom_<guid>" code. That is the wrong name for us in
+            // three separate ways: it is the preset key, it is the car-folder name,
+            // and HasUsefulTelemetry reads false for anything carrying that prefix,
+            // so the panel would call a fully mapped cabinet telemetry-less.
+            //
+            // ArcadeGameName was built without the prefix for exactly these reasons.
+            // A user creating a game profile in SimHub must not silently re-file
+            // their tuning, so the cabinet identity wins over the code whenever the
+            // profile is describing the cabinet we are already reading.
+            bool simHubHasGame = data?.GameRunning == true;
+            bool customCode = simHubHasGame && gameName != null
+                && gameName.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase);
+            if (!simHubHasGame || customCode)
             {
                 string arcadeGame = DetectArcadeGameName();
-                if (!string.IsNullOrEmpty(arcadeGame)) gameName = arcadeGame;
+                if (!string.IsNullOrEmpty(arcadeGame)
+                    && (!customCode || CustomGameIsThisArcadeCabinet(gameName)))
+                    gameName = arcadeGame;
             }
             // Remember the last game SimHub named so the process-table rescue
             // (IsKnownGameProcessRunning) has a target to fuzzy-match against
@@ -7164,10 +7188,19 @@ namespace TrueforceForAll.Plugin
             // engine pin and the community lookups are all keyed on this one string. The code from
             // the game's own car table is the right key: it is stable across launches, unique per
             // car, and legible in the UI, which a raw ordinal would not be.
-            if (string.IsNullOrEmpty(carId) && ActiveGameIsArcade)
+            //
+            // NOT gated on carId being empty. Once a SimHub custom game profile exists for a
+            // cabinet, SimHub reports a running game and fabricates the same per-session
+            // "DC__<startup timestamp>" placeholder it invents for Farming Simulator. That is not
+            // a car, it is a different string every session, and while it sat here the cabinet's
+            // real car could never take the slot: the panel offered to auto-detect an engine for
+            // 'DC__260906032116' before a car had even been chosen, and every preset, car fact and
+            // community lookup would have keyed on a value that changes on every launch.
+            if (ActiveGameIsArcade)
             {
                 var arcadeCar = ArcadeCarNow();
                 if (arcadeCar != null) carId = "ID8_" + arcadeCar.Code;
+                else if (IsSimHubPlaceholderCarId(carId)) carId = null;   // no car chosen yet
             }
 
             // Runtime alias: a legacy Forza_<n> id arriving from any source
@@ -7481,6 +7514,10 @@ namespace TrueforceForAll.Plugin
                     ScheduleSettingsFlush();
                 }
             }
+
+            // SPIKE (2026-09-06): publish arcade telemetry into SimHub's own
+            // standard fields. Last, so every consumer above ran unspoofed.
+            ArcadeBridgeSpikeWrite(pluginManager, data);
         }
 
         /// <summary>OnFrame handler bound to whichever ITelemetrySource is
@@ -7535,6 +7572,22 @@ namespace TrueforceForAll.Plugin
             // Live RPM for the remote dash's rev strip (Dash.Rpm / Dash.RpmPct
             // in TrueforcePlugin.DashRemote.cs). Stashed post-enrichment so the
             // strip sees the same RPM the effects do.
+            // Menu knocks. Here rather than anywhere race-scoped, because the whole point is the
+            // moments when no race is running: an arcade source keeps emitting frames in its menus,
+            // which is what makes this reachable at all.
+            TickArcadeMenuHaptics();
+
+            // A cabinet meters its audio between races without being asked to, so the meter has to
+            // start when one appears. The mode-change path that normally syncs it does not run for
+            // a game arriving, so the moment the map proves out is the moment to ask again.
+            var arcadeForMeter = _arcadeMemory;
+            bool arcadeMapped = arcadeForMeter != null && arcadeForMeter.Verified;
+            if (arcadeMapped != _arcadeMeterSynced)
+            {
+                _arcadeMeterSynced = arcadeMapped;
+                try { SyncAudioOutputMeter(); } catch { }
+            }
+
             _dashLiveRpm = (float)frame.Rpms;
             // Gear and speed for the Drive tab's center readout, from the same
             // enriched frame. These come from whichever source is live, so a
@@ -8371,6 +8424,7 @@ namespace TrueforceForAll.Plugin
                             LastLapMs  = ArcadeLastLapOrDefault(_shLastLapMs),
                             BestLapMs  = ArcadeBestLapOrDefault(_shBestLapMs),
                             TechniqueText = ArcadeTechniqueText(),
+                            TechniqueIsImpact = _arcadeTechniqueIsImpact,
                             CountdownText      = ArcadeCountdownText(),
                             ResultText         = ArcadeResultText(),
                             BetweenRacesTop    = ArcadeBetweenRacesTop(),
@@ -15876,10 +15930,16 @@ namespace TrueforceForAll.Plugin
             var meter = _audioLeds;
             if (meter == null) return;
             var s = Settings;
+            // An arcade cabinet meters its audio between races whether or not either occasion was
+            // set to it, so the meter has to be running for one to be available. Costs nothing when
+            // no cabinet is live, because this only becomes true once one is.
+            bool arcadeWantsAudio = ActiveGameIsArcade
+                                 && _arcadeMemory != null && _arcadeMemory.Verified;
             bool wantAudio = s != null
                           && MasterMode != TrueforceMasterMode.Off
                           && (s.IdleLedMode == AmbientLedMode.AudioLevel
-                           || s.NoRevLedMode == AmbientLedMode.AudioLevel);
+                           || s.NoRevLedMode == AmbientLedMode.AudioLevel
+                           || arcadeWantsAudio);
             if (wantAudio)
             {
                 meter.Start();
@@ -15896,6 +15956,117 @@ namespace TrueforceForAll.Plugin
         /// <summary>Reads engine data out of an arcade game's own memory. Null until an arcade game
         /// is running. Read only; see Id8MemoryTelemetry for the anti-cheat boundary.</summary>
         private Id8FrameFiller _arcadeMemory;
+
+        /// <summary>Fills the game's own leaderboards and submits finished runs. Separate from
+        /// _arcadeMemory because that one is strictly read only and stays that way: this is the
+        /// only thing in the plugin that writes to a game's memory, and keeping the two apart is
+        /// what makes that boundary checkable rather than a claim.</summary>
+        private ArcadeLeaderboardService _arcadeBoards;
+
+        /// <summary>Raises each finished Time Attack run once. A finished race is visible for
+        /// hundreds of consecutive polls, so without this the same lap would submit repeatedly.</summary>
+        private readonly Id8RunWatcher _arcadeRuns = new Id8RunWatcher();
+
+        /// <summary>Guards against stacking overlapping network calls when the course changes
+        /// while a previous fill is still in flight.</summary>
+        private int _arcadeBoardBusy;
+
+        /// <summary>Fill the boards for whatever course is up, and submit a finished run.
+        ///
+        /// Both halves are fire-and-forget: they touch the network, and the telemetry frame must
+        /// not wait on that. Failure is silent by design here, because a leaderboard that cannot
+        /// be reached is not a reason to disturb the wheel.</summary>
+        private void StepArcadeLeaderboards(Id8FrameFiller filler)
+        {
+            var st = Settings;
+            if (st?.Arcade == null || !st.Arcade.Id8LeaderboardsEnabled) return;
+            if (filler == null || !filler.Verified) return;
+
+            Id8Sample s = filler.Last;
+            if (!s.Valid) return;
+
+            if (_arcadeBoards == null)
+                _arcadeBoards = new ArcadeLeaderboardService(
+                    () => Settings,
+                    msg => SimHub.Logging.Current.Info(msg),
+                    async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Attach lazily: the process is already known to the reader, and Attach is cheap and
+            // idempotent once it has succeeded.
+            Process game = FindArcadeProcess(filler.GameProcessName);
+            if (game == null || !_arcadeBoards.Attach(game)) return;
+
+            // Fill every board, not just the one being driven: the player browses the leaderboard
+            // menu for courses they have not touched, and those would otherwise still show SEGA's
+            // filler. The service latches this so it only actually runs once per attach.
+            if (Interlocked.CompareExchange(ref _arcadeBoardBusy, 1, 0) == 0)
+            {
+                Task.Run(async () =>
+                {
+                    try { await _arcadeBoards.FillAllAsync(CancellationToken.None).ConfigureAwait(false); }
+                    catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade board fill failed: " + ex.Message); }
+                    finally { Interlocked.Exchange(ref _arcadeBoardBusy, 0); }
+                });
+            }
+
+            Id8FinishedRun run = _arcadeRuns.Observe(s, s.GameMode);
+            if (run != null)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Arcade run finished: course {run.CourseId} dir {run.Direction} " +
+                    $"car {run.CarId} {run.GoalMs} ms (clock read {run.ClockMs})");
+                var toSend = run;
+                Task.Run(async () =>
+                {
+                    try { await _arcadeBoards.SubmitAsync(toSend, CancellationToken.None).ConfigureAwait(false); }
+                    catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade submit failed: " + ex.Message); }
+                });
+            }
+        }
+
+        /// <summary>Put the game's own shop board back, from the snapshot taken before we first
+        /// wrote to it. For the settings toggle going off: leaving our rows in place until the
+        /// player restarts the game would make "off" mean "off next time".</summary>
+        public void RestoreArcadeBoards()
+        {
+            try { _arcadeBoards?.RestoreShopBoards(); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade restore failed: " + ex.Message); }
+        }
+
+        /// <summary>Rewrite the boards for the course that is up now.
+        ///
+        /// The fill normally only runs when the course changes, so a source picked in the settings
+        /// mid-session would otherwise not appear until the player left the course and came back,
+        /// which reads as the setting not working.</summary>
+        public void RefillArcadeBoards()
+        {
+            var boards = _arcadeBoards;
+            var filler = _arcadeMemory;
+            if (boards == null || filler == null) return;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    // force: nothing about the game has changed, only the chosen source, so the
+                    // once-per-attach latch has to be overridden rather than worked around.
+                    await boards.FillAllAsync(CancellationToken.None, force: true).ConfigureAwait(false);
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade refill failed: " + ex.Message); }
+            });
+        }
+
+        /// <summary>The running arcade game, by the name the reader already matched.</summary>
+        private static Process FindArcadeProcess(string processName)
+        {
+            if (string.IsNullOrEmpty(processName)) return null;
+            try
+            {
+                Process[] all = Process.GetProcessesByName(processName);
+                return all.Length > 0 ? all[0] : null;
+            }
+            catch { return null; }
+        }
 
         /// <summary>The last lap time from the cabinet's own memory, else whatever SimHub had.
         /// SimHub has never heard of this game, so its lap fields sit at zero and the lap card
@@ -15935,7 +16106,8 @@ namespace TrueforceForAll.Plugin
             // this build, so the contact flag is the only real source for it.
             if (m.TakeWallHit())
             {
-                _arcadeTechniqueText = "WALL HIT";
+                _arcadeTechniqueText = m.LastHitWasCar ? "CONTACT" : "WALL HIT";
+                _arcadeTechniqueIsImpact = true;
                 _arcadeTechniqueUntil = Environment.TickCount + 1200;
             }
 
@@ -15951,6 +16123,7 @@ namespace TrueforceForAll.Plugin
                 {
                     // An award outranks a wall hit: it is rarer and the better news.
                     _arcadeTechniqueText = name;
+                    _arcadeTechniqueIsImpact = false;
                     _arcadeTechniqueUntil = Environment.TickCount + 2000;
                 }
             }
@@ -15966,6 +16139,67 @@ namespace TrueforceForAll.Plugin
 
         private int _arcadeTechniqueUntil;
         private string _arcadeTechniqueText;
+
+        /// <summary>Whether the technique on show is something that HURT rather than something
+        /// that scored. Carried as a flag beside the text rather than re-derived from it: the
+        /// display used to test the text against "WALL HIT" alone, so hitting another car came
+        /// out as "NICE CONTACT". Whoever names a new impact should not have to know that.</summary>
+        private bool _arcadeTechniqueIsImpact;
+
+        /// <summary>Push the floor setting down to the live arcade source. Called when it is
+        /// edited and whenever a source is created, since the source is rebuilt per game.</summary>
+        /// <summary>Push the active cabinet's per-effect holds at the running
+        /// source, so a slider is felt now rather than at the next launch.</summary>
+        public void ApplyArcadeHolds()
+        {
+            var pub = _teknoSource as FfbArcadePluginSource;
+            if (pub == null) return;
+            var t = ArcadeTuningPeek(_activeGame);
+            pub.SteeringHoldMs  = ClampArcadeHold(t.SteeringHoldMs);
+            pub.VibrationHoldMs = ClampArcadeHold(t.VibrationHoldMs);
+        }
+
+        /// <summary>0 means "leave the published length alone". Anything shorter
+        /// than one publisher frame cannot hold at all and would read as a control
+        /// that silences the effect, so it is lifted to one frame instead.</summary>
+        internal static int ClampArcadeHold(int ms)
+        {
+            if (ms <= 0) return 0;
+            if (ms < 16) return 16;
+            if (ms > 20000) return 20000;
+            return ms;
+        }
+
+        public void ApplyArcadeMinForce()
+        {
+            var pub = _teknoSource as FfbArcadePluginSource;
+            if (pub == null) return;
+            int pct = Settings?.Arcade?.MinForcePercent ?? 0;
+            pub.MinForce01 = pct <= 0 ? 0.0 : pct / 100.0;
+        }
+
+        /// <summary>Knock the wheel as the cabinet's menus are used. Called on the telemetry tick,
+        /// which is the only place that sees the reader.
+        ///
+        /// The two strengths are the same voice as a gear change, which is what makes it read as
+        /// mechanical rather than as a beep. A confirmation gets the full thud and moving through
+        /// the options gets a third of it.
+        ///
+        /// What counts as confirming is approximate. The cabinet keeps no cursor or selected-item
+        /// field anywhere we have mapped, so a change of screen stands in for it. Confirming
+        /// something that leaves you on the same screen therefore feels like a move rather than a
+        /// choice, which is the honest limit of what the game exposes.</summary>
+        private void TickArcadeMenuHaptics()
+        {
+            if (Settings?.Arcade?.MenuHaptics != true) return;
+            var m = _arcadeMemory;
+            if (m == null || !m.Verified) return;
+            int action = m.TakeMenuAction();
+            if (action == 0) return;
+            var gs = GearShift;
+            if (gs == null) return;
+            try { gs.PlayOneShot(action == 2 ? 1.0f : 0.33f); } catch { }
+        }
 
         /// <summary>The starting lights as text. The race clock runs negative before GO, so the
         /// number is simply how many whole seconds are left, and GO is held for the first moment
@@ -16022,6 +16256,7 @@ namespace TrueforceForAll.Plugin
             return _arcadeResultText;
         }
 
+        private bool _arcadeMeterSynced;
         private bool _arcadeResultLatched;
         private int _arcadeResultShownUntil;
         private string _arcadeResultText;
@@ -16061,7 +16296,10 @@ namespace TrueforceForAll.Plugin
             if (m == null) return null;
             var s = m.Last;
             if (s.InRace || !s.SessionValid) return null;
-            if (!ArcadeHasCard()) return "";
+            // Nobody has swiped in, so there is no driver to name and the attract line takes the
+            // row instead. It reads better up here than down in the car slot: the top row is where
+            // the eye starts, and leaving it blank above a message made the panel look half broken.
+            if (!ArcadeHasCard()) return ArcadeAttractWindow();
             // The panel draws ASCII only, and this is a Japanese game whose names are usually
             // katakana, so the romanised form is what can actually be read there. The unromanised
             // name still goes out on the Arcade.PlayerName property for dashes that can show it.
@@ -16078,7 +16316,9 @@ namespace TrueforceForAll.Plugin
             var s = m.Last;
             if (s.InRace || !s.SessionValid) return null;
 
-            if (!ArcadeHasCard()) return ArcadeAttractWindow();
+            // The attract line lives on the top row now, so this one stays empty until there is
+            // a real car to name.
+            if (!ArcadeHasCard()) return "";
 
             var car = s.GarageCar ?? s.Car;
             // The panel row is short, so the code beats the full name: a driver knows AE86T. No car
@@ -16119,6 +16359,11 @@ namespace TrueforceForAll.Plugin
                     _arcadeMemory = null;
                     try { stale.Dispose(); } catch { }
                 }
+                // The boards live in the game's memory, so when the game goes so does everything
+                // we knew about them. Detaching also drops the pre-write snapshot, which must be
+                // retaken fresh next launch rather than carried across.
+                try { _arcadeBoards?.Detach(); } catch { }
+                _arcadeRuns?.Reset();
                 return;
             }
 
@@ -16130,6 +16375,12 @@ namespace TrueforceForAll.Plugin
             }
             // The frame counter only paces the retry, so any monotonic tick will do.
             try { filler.Fill(ref frame, Environment.TickCount / 2); } catch { }
+
+            // Fill the game's leaderboards and submit a finished run. Deliberately after Fill, so
+            // it works from the sample this frame just produced, and deliberately wrapped: a
+            // leaderboard is a nicety and must never be able to take the telemetry path down.
+            try { StepArcadeLeaderboards(filler); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade leaderboards: " + ex.Message); }
         }
 
         /// <summary>Which output is being metered, or why none is, for the
@@ -16163,6 +16414,36 @@ namespace TrueforceForAll.Plugin
         {
             var s = Settings;
             if (s == null) return AmbientLedMode.Off;
+            // A mapped arcade cabinet answers this exactly rather than by latch: it says whether
+            // a race is running right now. The strip can therefore go back to the ambient choice
+            // between races, which is where the driver actually is when there is something to look
+            // at. Everywhere else the one-way latch stands, because a sim that has ever reported an
+            // engine will report one again and flicking the strip between two owners mid-session
+            // would be worse than holding it.
+            var arcadeMem = _arcadeMemory;
+            if (gamePlaying && arcadeMem != null && arcadeMem.Verified)
+            {
+                var arc = arcadeMem.Last;
+                if (arc.InRace) return AmbientLedMode.Off;   // the revs have the strip
+                if (arc.SessionValid)
+                {
+                    // Between races, and NEITHER of the two occasions describes it properly. The
+                    // no-revs one is about a game that never reports an engine, which this game
+                    // does; making it the only way in meant asking for the audio meter here forced
+                    // a claim about the game that is not true. The idle one is about a parked car,
+                    // which is closer but is separately suppressed for a live cabinet.
+                    //
+                    // So take whichever the owner has actually chosen, and when they have chosen
+                    // neither, meter the audio anyway. Between races a cabinet is showing menus and
+                    // attract screens with music playing over them, the strip has nothing else to
+                    // do, and asking someone to find a setting before the lights will move is a
+                    // toggle for its own sake. The revs take it straight back the moment a race
+                    // starts, so this cannot get in the way of driving.
+                    if (s.IdleLedMode != AmbientLedMode.Off) return s.IdleLedMode;
+                    if (s.NoRevLedMode != AmbientLedMode.Off) return s.NoRevLedMode;
+                    return AmbientLedMode.AudioLevel;
+                }
+            }
             if (gamePlaying && !_revDataSeen) return s.NoRevLedMode;
             // Asked before DashIdleElapsed, which is stateful and shared: with
             // the idle occasion switched off there is no reason to be driving
@@ -17110,7 +17391,10 @@ namespace TrueforceForAll.Plugin
                         {
                             if (string.Equals(Path.GetDirectoryName(rp), t.GameDir, StringComparison.OrdinalIgnoreCase)
                                 && string.Equals(Path.GetFileNameWithoutExtension(rp), t.ExeName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                _arcadeMatchedExe = t.ExeName;
                                 return ArcadeGameName(t.ProfileName);
+                            }
                         }
                     }
                 }
@@ -17137,11 +17421,184 @@ namespace TrueforceForAll.Plugin
                             + $"copy could not be told apart by path, so its tuning is filed under "
                             + $"'{ArcadeGameName(hit.ProfileName)}'.");
                     }
+                    _arcadeMatchedExe = hit.ExeName;
                     return ArcadeGameName(hit.ProfileName);
                 }
             }
             catch { }
+            _arcadeMatchedExe = null;
             return GenericArcadeGameName;
+        }
+
+        /// <summary>The executable that identified the running cabinet, or null when
+        /// none did. Kept so a SimHub custom game profile can be matched against the
+        /// cabinet it claims to describe rather than assumed to describe it.</summary>
+        private string _arcadeMatchedExe;
+
+        /// <summary>Is this SimHub custom game the arcade cabinet we are reading?
+        ///
+        /// Answered from the profile's own process names, which is the same list
+        /// SimHub detects the game with, against the executable that identified the
+        /// cabinet. Says YES when it cannot tell: an arcade block is already present
+        /// and a cabinet already identified by the time this is asked, so the two
+        /// being different games is far-fetched, and the cost of a wrong NO is a
+        /// user's tuning quietly re-filed under a guid.</summary>
+        private bool CustomGameIsThisArcadeCabinet(string gameCode)
+        {
+            var info = TryGetCustomGameInfo(gameCode);
+            if (info?.ProcessNames == null || info.ProcessNames.Length == 0) return true;
+
+            // The attached reader's own process is the best answer where there is
+            // one, because it names the exact executable we are reading memory from.
+            var filler = _arcadeMemory;
+            string proc = filler != null ? filler.GameProcessName : null;
+            if (string.IsNullOrEmpty(proc)) proc = _arcadeMatchedExe;
+            if (string.IsNullOrEmpty(proc)) return true;
+
+            foreach (string p in info.ProcessNames)
+            {
+                if (string.IsNullOrEmpty(p)) continue;
+                // Profiles are written with and without the extension, so compare
+                // the way SimHub's own detection has to.
+                string bare = p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                    ? p.Substring(0, p.Length - 4) : p;
+                if (string.Equals(bare, proc, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Is this SimHub's stand-in for a car rather than a car?
+        ///
+        /// SimHub fabricates "DC__" plus its own startup timestamp for a game it has no car
+        /// identity for, which is every custom game and Farming Simulator without our mod. It
+        /// looks like an id and behaves like noise: it differs every session, so anything keyed
+        /// on it (presets, car facts, engine pins, community lookups) can never resolve twice.
+        /// Farming Simulator still falls back to it, so this names the shape rather than banning
+        /// it, and each caller decides whether a placeholder is better than nothing.</summary>
+        private static bool IsSimHubPlaceholderCarId(string carId)
+        {
+            return !string.IsNullOrEmpty(carId)
+                && carId.StartsWith("DC__", StringComparison.Ordinal);
+        }
+
+        /// <summary>A comma or space separated list of numbers, skipping anything unreadable
+        /// rather than refusing the whole line over one typo.</summary>
+        private static double[] ParseNumberList(string text)
+        {
+            var found = new System.Collections.Generic.List<double>();
+            if (string.IsNullOrEmpty(text)) return found.ToArray();
+            foreach (string part in text.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                double v;
+                if (double.TryParse(part.Trim(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out v))
+                    found.Add(v);
+            }
+            return found.ToArray();
+        }
+
+        /// <summary>DIAGNOSTIC (2026-09-06): search the running cabinet for a known string and
+        /// log what surrounds every hit. Written to map the leaderboard, whose online board is
+        /// filled with SEGA placeholder rows while the cabinet has no network, which makes it a
+        /// repeated known string sitting in a table.
+        ///
+        /// Runs off the caller thread: a full address-space walk takes seconds and the access
+        /// code box is on the UI thread. Read-only throughout.</summary>
+        public string StartArcadeMemorySearch(string needle)
+        {
+            // Gated on being ATTACHED, not on the pointer chain having resolved. Verified means the
+            // telemetry map checked out, which needs a session and a race; a memory search needs
+            // only the process handle, and the leaderboard screen is exactly where the chain is not
+            // resolved and where we most want to look.
+            var filler = _arcadeMemory;
+            string attachedTo = filler == null ? null : filler.GameProcessName;
+            if (string.IsNullOrEmpty(attachedTo))
+                return "Not attached to an arcade cabinet right now"
+                     + (filler == null ? "" : ": " + filler.Status) + ".";
+            if (string.IsNullOrWhiteSpace(needle)) needle = "SEGA";
+
+            string text = needle.Trim();
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    // A leading # means a NUMBER: "#360000" searches for that value as an int,
+                    // a short, a float and a double at once, since how the game stores a duration
+                    // is precisely what we are trying to find out.
+                    string report;
+                    if (text.StartsWith("#", StringComparison.Ordinal))
+                    {
+                        // "#" alone searches the three ways six minutes could be stored:
+                        // milliseconds (the unit the game keeps its own race clock in), frames at
+                        // sixty a second (the unit it keeps yaw and speed delta in), and
+                        // centiseconds. A list is accepted too: "#360000,21600".
+                        string body = text.Substring(1).Trim();
+                        double[] values = body.Length == 0
+                            ? new double[] { 360000, 21600, 36000 }
+                            : ParseNumberList(body);
+                        report = values.Length == 0
+                            ? "could not read any numbers from " + body + "."
+                            : filler.ScanForNumbers(values, 256);
+                    }
+                    else if (text.StartsWith("~", StringComparison.Ordinal))
+                    {
+                        // "~139932" is a time in MILLISECONDS, searched as a range rather than a
+                        // value: milliseconds and centiseconds as integers, seconds as a float and
+                        // a double, and frames. An exact search for a known lap time found nothing,
+                        // which is what a duration accumulated in floating point looks like.
+                        double ms;
+                        report = double.TryParse(text.Substring(1).Trim(),
+                                     System.Globalization.NumberStyles.Float,
+                                     System.Globalization.CultureInfo.InvariantCulture, out ms)
+                            ? filler.ScanForTime(ms, 32)
+                            : "could not read a millisecond value from " + text.Substring(1) + ".";
+                    }
+                    else if (text.StartsWith("@", StringComparison.Ordinal))
+                    {
+                        // "@2,19,932" looks for those values sitting NEAR one another, which is how
+                        // a record holding minutes, seconds and milliseconds separately would look.
+                        // No single one of them is findable on its own; together they are rare.
+                        double[] parts = ParseNumberList(text.Substring(1));
+                        report = parts.Length < 2
+                            ? "give at least two values, like @2,19,932."
+                            : filler.ScanForCluster(parts, 64, 32);
+                    }
+                    else report = filler.ScanForString(text, 64);
+                    SimHub.Logging.Current.Info("[TF4ALL] ID8 search for '" + text + "': " + report);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] ID8 search for '" + text + "' failed: " + ex.Message);
+                }
+            });
+            return "Searching " + attachedTo + " for '" + text + "'. Watch the log; it takes a few seconds.";
+        }
+
+        /// <summary>How to SAY an arcade game identity, as opposed to how to file it.
+        ///
+        /// The identity is "Arcade " plus TeknoParrot's profile id, which is a short code
+        /// like ID8. That code is the preset key and the car-folder name, so it cannot be
+        /// prettied up without re-filing everything a user has tuned. TeknoParrot also
+        /// records the real title in GameNameInternal, and that is what belongs on screen.
+        ///
+        /// Returns the identity unchanged for anything that is not an arcade game, or when
+        /// no profile claims it, so a caller can use this for every game without asking.</summary>
+        public string ArcadeDisplayName(string gameIdentity)
+        {
+            if (string.IsNullOrEmpty(gameIdentity)
+                || !gameIdentity.StartsWith("Arcade ", StringComparison.Ordinal))
+                return gameIdentity;
+            try
+            {
+                foreach (var t in ArcadeModTargets())
+                {
+                    if (string.IsNullOrEmpty(t.FullName)) continue;
+                    if (string.Equals(ArcadeGameName(t.ProfileName), gameIdentity, StringComparison.Ordinal))
+                        return t.FullName;
+                }
+            }
+            catch { }
+            return gameIdentity;
         }
 
         /// <summary>The game identity for a TeknoParrot profile. Kept path-safe and
@@ -17177,6 +17634,7 @@ namespace TrueforceForAll.Plugin
         /// running, so a slider takes effect now rather than at the next launch.</summary>
         public void ApplyArcadeTuning()
         {
+            _arcadeWaveGainDirty = true;
             var src = _teknoSource as IArcadeForceSource;
             if (src == null) return;
             var t = ArcadeTuningPeek(_activeGame);
@@ -17379,6 +17837,9 @@ namespace TrueforceForAll.Plugin
                                 ForceScale = tune.ForceScale,
                                 InvertConstantDirection = tune.InvertDirection,
                                 AcceptPublishedDamper = tune.AcceptPublishedDamper,
+                                MinForce01 = (Settings?.Arcade?.MinForcePercent ?? 0) / 100.0,
+                                SteeringHoldMs  = ClampArcadeHold(tune.SteeringHoldMs),
+                                VibrationHoldMs = ClampArcadeHold(tune.VibrationHoldMs),
                             };
                             pub.Start();
                             _teknoSource = pub;
@@ -34797,6 +35258,97 @@ namespace TrueforceForAll.Plugin
         private const byte ArcadeDamperSlot   = 3;
         private const byte ArcadeFrictionSlot = 4;
 
+        // Per-cabinet scale for the waveform effects, cached because Evaluate
+        // runs on the pump thread and reaching into the settings dictionary
+        // there would allocate on every tick.
+        //
+        // Deliberately not folded into the cabinet's force scale. The buzz a
+        // cabinet commands and the steering force it commands are two different
+        // signals: a wheel set strong enough for the steering to feel right
+        // makes the same cabinet's waveforms too loud, and one number cannot
+        // bring the second down without taking the first with it.
+        private string _arcadeWaveGainGame;
+        private volatile bool _arcadeWaveGainDirty = true;
+        private float _arcadeWaveGain = 1f;
+
+        /// <summary>The active cabinet's waveform scale, reloaded when the game
+        /// changes or a slider marks it stale.</summary>
+        private float ArcadeWaveformGain()
+        {
+            if (_arcadeWaveGainDirty
+                || !string.Equals(_arcadeWaveGainGame, _activeGame, StringComparison.Ordinal))
+            {
+                double g = ArcadeTuningPeek(_activeGame).WaveformGain;
+                if (double.IsNaN(g) || g < 0.0) g = 0.0;
+                if (g > 2.0) g = 2.0;
+                _arcadeWaveGain = (float)g;
+                _arcadeWaveGainGame = _activeGame;
+                _arcadeWaveGainDirty = false;
+            }
+            return _arcadeWaveGain;
+        }
+
+        /// <summary>Make the next pump tick re-read the waveform scale, so a
+        /// slider is felt while it is being dragged.</summary>
+        public void InvalidateArcadeWaveformGain() { _arcadeWaveGainDirty = true; }
+
+        // Says, at most once every few seconds, when the cabinet starts a
+        // waveform and whether it had a steering force going at the same moment.
+        //
+        // A cabinet that drops its steering command while it buzzes reads on the
+        // wheel as "the wheel went limp and started humming", which looks like a
+        // fault and is usually the game doing exactly what it asked for. Our base
+        // force is the cabinet's constant and nothing else, so when the constant
+        // stops there is nothing left to hold the wheel. One line settles which
+        // of the two it was without another rig session guessing at it.
+        private bool _arcadeWaveWasPlaying;
+        private int  _arcadeWaveLastLogMs;
+
+        private void NoteArcadePeriodic(ArcadeFfbState st)
+        {
+            bool playing = st.Periodic.Present;
+            bool onset = playing && !_arcadeWaveWasPlaying;
+            _arcadeWaveWasPlaying = playing;
+            if (!onset) return;
+            int ms = Environment.TickCount;
+            if (_arcadeWaveLastLogMs != 0 && unchecked(ms - _arcadeWaveLastLogMs) < 3000) return;
+            _arcadeWaveLastLogMs = ms;
+            var p = st.Periodic;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Arcade waveform started: " + p.Kind
+                + ", magnitude " + p.Strength.ToString("0.000")
+                + ", period " + p.PeriodMs + " ms, our scale "
+                + ArcadeWaveformGain().ToString("0.00")
+                + ". Steering force at that moment: "
+                + (st.Constant.Present ? st.Constant.Strength.ToString("0.000") : "none")
+                + "." + Id8StateAtWaveform());
+        }
+
+        /// <summary>What the game itself was doing when the cabinet asked for a
+        /// waveform, for the log line above.
+        ///
+        /// The cabinet protocol carries one command per frame, so a waveform frame
+        /// says nothing about WHY. The game's own memory does: surface coarseness,
+        /// sideslip and a contact flag separate "this is the road surface" from
+        /// "this is the car sliding" from "this is a collision", and those are
+        /// three different answers to whether the limp feeling is a fault.
+        /// Returns an empty string when the reader is not live, which is every
+        /// cabinet other than Initial D 8.</summary>
+        private string Id8StateAtWaveform()
+        {
+            var f = _arcadeMemory;
+            if (f == null || !f.Verified) return "";
+            Id8Sample s = f.Last;
+            if (!s.Valid) return "";
+            return " Game state: " + s.SpeedKmh.ToString("0") + " km/h, surface "
+                 + s.SurfaceRumble.ToString("0.00") + ", sideslip "
+                 + s.SideslipDeg.ToString("0.0") + " deg, steer "
+                 + s.SteerNorm.ToString("0.00") + ", impact "
+                 + s.ImpactG.ToString("0.0") + " g"
+                 + (s.Airborne ? ", airborne" : "")
+                 + (s.WallHitStarted ? ", wall hit" : "") + ".";
+        }
+
         // The state object currently downloaded, compared by reference. The
         // source publishes a new instance only on a genuine change, so a
         // reference compare is both correct and free.
@@ -34876,7 +35428,7 @@ namespace TrueforceForAll.Plugin
             float f = _arcadeEngine.Evaluate(
                 mp, mv, ma, _damperGain, _inertiaGain,
                 now, Stopwatch.Frequency, out bool anyPlaying, _damperSign,
-                1f, _frictionGain, _periodicGain, _rampGain);
+                1f, _frictionGain, _periodicGain * ArcadeWaveformGain(), _rampGain);
             if (!anyPlaying && !_arcadeEngine.AnyPlaying) return force;
 
             if (!_arcadeRenderNoted)
@@ -34941,6 +35493,7 @@ namespace TrueforceForAll.Plugin
             RenderArcadeSlot(ArcadeDamperSlot,   st.Damper,   scale, now);
             RenderArcadeSlot(ArcadeFrictionSlot, st.Friction, scale, now);
             RenderArcadeSlot(ArcadePeriodicSlot, st.Periodic, scale, now);
+            NoteArcadePeriodic(st);
 
             // Constant and Rumble are deliberately not rendered here. The engine
             // refuses constants by design (the scalar path owns them) and the

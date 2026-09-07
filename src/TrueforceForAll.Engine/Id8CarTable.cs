@@ -75,35 +75,35 @@ namespace TrueforceForAll.Core
             { 10, new Id8Car(10, "ST205", "CELICA GT-FOUR (ST205)", 9000, 7000, 9000, 7000, 4, false, 5) },
             { 256, new Id8Car(256, "BNR32", "SKYLINE GT-R (BNR32)", 9000, 7500, 9000, 7500, 6, false, 5) },
             { 257, new Id8Car(257, "BNR34", "SKYLINE GT-R (BNR34)", 10000, 8000, 10000, 8000, 6, false, 6) },
-            { 258, new Id8Car(258, "S13K", "SILVIA K$u[0027]s (S13)", 9000, 7000, 9000, 7000, 4, false, 5) },
-            { 259, new Id8Car(259, "S14Q", "Silvia Q$u[0027]s (S14)", 9000, 7000, 9000, 7000, 4, false, 5) },
+            { 258, new Id8Car(258, "S13K", "SILVIA K's (S13)", 9000, 7000, 9000, 7000, 4, false, 5) },
+            { 259, new Id8Car(259, "S14Q", "Silvia Q's (S14)", 9000, 7000, 9000, 7000, 4, false, 5) },
             { 260, new Id8Car(260, "S15", "Silvia spec-R (S15)", 9000, 7000, 9000, 7000, 4, false, 6) },
-            { 261, new Id8Car(261, "RPS13", "180SX TYPE $u[2161] (RPS13)", 9000, 7500, 9000, 7500, 4, false, 5) },
+            { 261, new Id8Car(261, "RPS13", "180SX TYPE Ⅱ (RPS13)", 9000, 7500, 9000, 7500, 4, false, 5) },
             { 262, new Id8Car(262, "Z33", "FAIRLADY Z (Z33)", 9000, 7000, 9000, 7000, 6, false, 6) },
             { 263, new Id8Car(263, "R35", "GT-R NISMO (R35)", 9000, 7000, 9000, 7000, 6, false, 6) },
             { 264, new Id8Car(264, "ER34", "SKYLINE 25GT TURBO (ER34)", 9000, 7000, 9000, 7000, 6, false, 5) },
-            { 512, new Id8Car(512, "EG6", "Civic SiR$u[00B7]$u[2161] (EG6)", 10000, 8000, 10000, 8000, 4, false, 5) },
+            { 512, new Id8Car(512, "EG6", "Civic SiR·Ⅱ (EG6)", 10000, 8000, 10000, 8000, 4, false, 5) },
             { 513, new Id8Car(513, "EK9", "CIVIC TYPE R (EK9)", 10000, 8500, 10000, 8500, 4, false, 5) },
             { 514, new Id8Car(514, "DC2", "INTEGRA TYPE R (DC2)", 10000, 8500, 10000, 8500, 4, false, 5) },
             { 515, new Id8Car(515, "AP1", "S2000 (AP1)", 10000, 9000, 10000, 9000, 4, false, 6) },
             { 516, new Id8Car(516, "NA1", "NSX (NA1)", 10000, 8000, 10000, 8000, 6, false, 5) },
-            { 768, new Id8Car(768, "FC3S", "RX-7 ∞$u[2162] (FC3S)", 9000, 7000, 9000, 7000, 0, true, 5) },
+            { 768, new Id8Car(768, "FC3S", "RX-7 ∞Ⅲ (FC3S)", 9000, 7000, 9000, 7000, 0, true, 5) },
             { 769, new Id8Car(769, "FD3S", "RX-7 Type R (FD3S)", 9000, 7500, 9000, 7500, 0, true, 5) },
             { 770, new Id8Car(770, "SE3P", "RX-8 Type S (SE3P)", 10000, 9000, 10000, 9000, 0, true, 6) },
             { 771, new Id8Car(771, "NA6CE", "ROADSTER (NA6CE)", 9000, 7500, 9000, 7500, 4, false, 5) },
             { 772, new Id8Car(772, "NB8C", "ROADSTER RS (NB8C)", 9000, 7500, 9000, 7500, 4, false, 6) },
             { 773, new Id8Car(773, "FD3S6", "RX-7 Type RS (FD3S)", 9000, 7500, 9000, 7500, 0, true, 5) },
-            { 1024, new Id8Car(1024, "GC8S5", "IMPREZA STi Ver.$u[2164] (GC8)", 9000, 7500, 9000, 7500, 4, false, 5) },
+            { 1024, new Id8Car(1024, "GC8S5", "IMPREZA STi Ver.Ⅴ (GC8)", 9000, 7500, 9000, 7500, 4, false, 5) },
             { 1025, new Id8Car(1025, "GDBF", "IMPREZA STI (GDBF)", 10000, 8000, 10000, 8000, 4, false, 6) },
             { 1026, new Id8Car(1026, "GDBA", "IMPREZA STi (GDBA)", 10000, 8000, 10000, 8000, 4, false, 6) },
             { 1027, new Id8Car(1027, "ZC6", "BRZ S  (ZC6)", 9000, 7500, 9000, 7500, 4, false, 6) },
-            { 1280, new Id8Car(1280, "CE9A", "LANCER Evolution $u[2162] (CE9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
-            { 1281, new Id8Car(1281, "CN9A", "LANCER EVOLUTION $u[2163] (CN9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
-            { 1282, new Id8Car(1282, "CT9A9", "LANCER Evolution $u[2168] (CT9A)", 9000, 7000, 9000, 7000, 4, false, 6) },
-            { 1283, new Id8Car(1283, "CT9A7", "LANCER EVOLUTION $u[2166] (CT9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
-            { 1284, new Id8Car(1284, "CZ4A", "LANCER EVOLUTION $u[2169] (CZ4A)", 9000, 7000, 9000, 7000, 4, false, 6) },
-            { 1285, new Id8Car(1285, "CP9A5", "LANCER EVOLUTION $u[2164] (CP9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
-            { 1286, new Id8Car(1286, "CP9A6T", "LANCER EVOLUTION $u[2165] (CP9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
+            { 1280, new Id8Car(1280, "CE9A", "LANCER Evolution Ⅲ (CE9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
+            { 1281, new Id8Car(1281, "CN9A", "LANCER EVOLUTION Ⅳ (CN9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
+            { 1282, new Id8Car(1282, "CT9A9", "LANCER Evolution Ⅸ (CT9A)", 9000, 7000, 9000, 7000, 4, false, 6) },
+            { 1283, new Id8Car(1283, "CT9A7", "LANCER EVOLUTION Ⅶ (CT9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
+            { 1284, new Id8Car(1284, "CZ4A", "LANCER EVOLUTION Ⅹ (CZ4A)", 9000, 7000, 9000, 7000, 4, false, 6) },
+            { 1285, new Id8Car(1285, "CP9A5", "LANCER EVOLUTION Ⅴ (CP9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
+            { 1286, new Id8Car(1286, "CP9A6T", "LANCER EVOLUTION Ⅵ (CP9A)", 9000, 7000, 9000, 7000, 4, false, 5) },
             { 1536, new Id8Car(1536, "EA11R", "Cappuccino (EA11R)", 10000, 8500, 10000, 8500, 3, false, 5) },
             { 1792, new Id8Car(1792, "RPS13K", "SILEIGHTY", 9000, 7500, 9000, 7500, 4, false, 5) },
             { 2048, new Id8Car(2048, "FD3SC", "幻気-7 (FD3S)", 9000, 7500, 9000, 7500, 0, true, 5) },
@@ -121,6 +121,64 @@ namespace TrueforceForAll.Core
         {
             Id8Car c;
             return ById.TryGetValue(carId, out c) ? c : null;
+        }
+
+        /// <summary>Page index of a car on the per-car leaderboard tables, 0..49, or -1.
+        ///
+        /// A CarID is not a flat number: it is (maker &lt;&lt; 8) | member, with nine makers holding
+        /// 11, 9, 5, 6, 4, 7, 1, 1 and 6 cars. The leaderboard page is that flattened, so
+        ///
+        ///     slot = (cars in every earlier maker) + member
+        ///
+        /// which is exactly what the game computes at 0x00a01910: it takes the CarID as a
+        /// (group &lt;&lt; 8) | member word and prefix-sums a per-maker count table, the one at
+        /// [[0x013d30d8]+0x10] that a live probe read back as 11 9 5 6 4 7 1 1 6.
+        ///
+        /// MEASURED, not assumed. A competing map exists in the exe at 0x00ff8248 which disagrees
+        /// on four cars, and picking it would have put the Trueno 2door on slot 38 instead of 9.
+        /// Writing a stepped time into all 50 slots and reading the game's own list settled it:
+        /// the Trueno 2door came back 0:51.900, which is slot 9. Note the ranking screen DISPLAYS
+        /// cars in some other order entirely; that is a display concern and does not affect which
+        /// record a car reads.</summary>
+        public static int SlotForCarId(int carId)
+        {
+            int slot;
+            return SlotById.TryGetValue(carId, out slot) ? slot : -1;
+        }
+
+        /// <summary>Every CarID we know, in slot order.</summary>
+        public static System.Collections.Generic.IEnumerable<int> CarIdsInSlotOrder()
+        {
+            var ids = new System.Collections.Generic.List<int>(SlotById.Keys);
+            ids.Sort((a, b) => SlotById[a].CompareTo(SlotById[b]));
+            return ids;
+        }
+
+        private static readonly System.Collections.Generic.Dictionary<int, int> SlotById = BuildSlots();
+
+        private static System.Collections.Generic.Dictionary<int, int> BuildSlots()
+        {
+            // Group by maker, then lay the makers out in order. Built from the car table rather
+            // than hardcoded so that adding a car cannot leave the two disagreeing.
+            var byMaker = new System.Collections.Generic.SortedDictionary<
+                int, System.Collections.Generic.List<int>>();
+            foreach (int id in ById.Keys)
+            {
+                int maker = id >> 8;
+                System.Collections.Generic.List<int> list;
+                if (!byMaker.TryGetValue(maker, out list)) byMaker[maker] = list = new System.Collections.Generic.List<int>();
+                list.Add(id);
+            }
+
+            var slots = new System.Collections.Generic.Dictionary<int, int>();
+            int running = 0;
+            foreach (var kv in byMaker)
+            {
+                kv.Value.Sort();
+                foreach (int id in kv.Value) slots[id] = running + (id & 0xff);
+                running += kv.Value.Count;
+            }
+            return slots;
         }
     }
 }

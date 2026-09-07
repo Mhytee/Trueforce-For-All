@@ -108,6 +108,9 @@ namespace TrueforceForAll.Plugin
         /// own words for what you did well, so it reads as the cabinet talking rather than as a
         /// readout. Deliberately no haptic: it is a flourish, not a cue to act on.</summary>
         public string TechniqueText;
+        /// <summary>True when TechniqueText is an impact rather than an award, so the headline
+        /// commiserates instead of congratulating.</summary>
+        public bool TechniqueIsImpact;
 
         public bool ShiftFlashEnabled;
         public OledFlashStyle FlashStyle;
@@ -380,7 +383,7 @@ namespace TrueforceForAll.Plugin
                 // Below the lap card, which is news, and above the driving screen.
                 else if (!string.IsNullOrEmpty(ctx.TechniqueText))
                     setter = _channel.BuildFourRowCenter(
-                        ctx.TechniqueText == "WALL HIT" ? "OUCH" : "NICE", ctx.TechniqueText, "", "");
+                        ctx.TechniqueIsImpact ? "OUCH" : "NICE", ctx.TechniqueText, "", "");
                 // Between races there is no gear and no speed, so the driving screen would show two
                 // dashes. Ranked below the takeovers above, because a readout or a lap result is
                 // news and this is only context.
