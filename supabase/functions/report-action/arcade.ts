@@ -19,6 +19,10 @@
 // push this over, the fix is a deferred response (type 5) plus a webhook PATCH, not more
 // parallelism.
 
+// The digest embed, and the course/car/time helpers, shared with arcade-digest so a preview and
+// the posted message cannot drift apart. See _shared/id8.ts.
+import { buildEmbed, COURSES, courseName, lap, esc } from "../_shared/id8.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const MOD_ROLE_ID  = Deno.env.get("DISCORD_MOD_ROLE_ID") || "";
@@ -28,13 +32,6 @@ const GAME = "ID8";
 const PING = 1, APPLICATION_COMMAND = 2, AUTOCOMPLETE = 4;
 const PONG = 1, CHANNEL_MESSAGE = 4, AUTOCOMPLETE_RESULT = 8;
 const EPHEMERAL = 64;
-
-// The exe's own course table at 0x0121c9e0. Index is the course id the RPCs expect.
-const COURSES = [
-  "Lake Akina", "Myogi", "Akagi", "Akina", "Irohazaka", "Tsukuba", "Happogahara", "Nagao",
-  "Tsubaki Line", "Usui", "Sadamine", "Tsuchisaka", "Akina Snow", "Hakone", "Momiji Line",
-  "Nanamagari",
-];
 
 function json(b: unknown, s = 200): Response {
   return new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
@@ -70,18 +67,6 @@ async function restRows(path: string): Promise<any[]> {
   } catch (e) { console.error(`[arcade] GET ${path.split("?")[0]} threw: ${e}`); return []; }
 }
 
-/** 202918 -> "3:22.918", the cabinet's own format. */
-function lap(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return "-";
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
-}
-
-function courseName(id: number, dir: number): string {
-  return `${COURSES[id] ?? `course ${id}`} ${dir === 0 ? "downhill" : "hill climb"}`;
-}
-
 // The car list, from arcade_cars rather than a second hardcoded copy. That table exists precisely
 // so the allowlist that bounds submissions and the list that feeds autocomplete cannot disagree.
 // Cached in module scope because autocomplete fires on every keystroke and the list changes when a
@@ -112,17 +97,6 @@ const NAME_W = 14;
 function padName(s: string | null): string {
   const n = String(s ?? "?");
   return (n.length > NAME_W ? n.slice(0, NAME_W - 1) + "+" : n).padEnd(NAME_W);
-}
-
-/** Markdown escaping, for the one place a name is rendered OUTSIDE a code fence. The tables are
- *  safe without it because nothing inside ``` is formatting, but the ranking is prose, and
- *  usernames are [a-zA-Z0-9_]{3,32}: a leading or doubled underscore italicises or underlines the
- *  rest of the line. arcade-digest does exactly this on the identical line; the two now match.
- *  Truncate before escaping, never after, or a cut can leave a trailing backslash that escapes
- *  whatever follows it. */
-function esc(name: string | null): string {
-  if (!name) return "(anonymous)";
-  return name.slice(0, 32).replace(/([_*`~|\\])/g, "\\$1");
 }
 
 function ephemeralText(content: string) {
@@ -329,29 +303,24 @@ async function cmdMe(discordId: string) {
 
 /** The weekly message, exactly as it would post, shown only to the person who asked.
  *
- *  Calls arcade-digest with ?op=preview rather than rendering it again here. Two copies of that
- *  layout would drift the first time the copy changed, and the whole point of this command is to
- *  see what will actually go out. preview posts nothing and consumes nothing. */
+ *  Renders with the SAME buildEmbed the digest posts with, imported from _shared, so this is the
+ *  message rather than a lookalike of it.
+ *
+ *  It used to fetch arcade-digest?op=preview over HTTP. That failed with a 403, and the reason is
+ *  worth keeping: the edge runtime injects SUPABASE_SERVICE_ROLE_KEY as a new-style sb_secret_ key,
+ *  not a JWT, so a function-to-function call carries no role claim and a gate that reads claims
+ *  rejects its own project. PostgREST accepts that key perfectly well, which is why every other
+ *  command worked and only this one did not. Importing the renderer removes the call, the auth
+ *  problem, and a second cold start out of Discord's three second budget. */
 async function cmdDigest() {
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/arcade-digest?op=preview`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-      body: "{}",
-    });
-    if (!r.ok) return ephemeralText(`Could not render the digest (${r.status}).`);
-    const body = await r.json();
-    if (!body?.embed) return ephemeralText("The digest returned nothing to show.");
-    return json({ type: CHANNEL_MESSAGE, data: {
-      flags: EPHEMERAL,
-      content: "This is what the weekly digest would post right now. Nobody else can see this.",
-      embeds: [body.embed],
-      allowed_mentions: { parse: [] },
-    }});
-  } catch (e) {
-    console.error(`[arcade] digest preview threw: ${e}`);
-    return ephemeralText("Could not reach the digest function.");
-  }
+  const week = await callRpc("get_arcade_week", { p_game: GAME });
+  if (week === null) return ephemeralText("Could not read this week's numbers right now.");
+  return json({ type: CHANNEL_MESSAGE, data: {
+    flags: EPHEMERAL,
+    content: "This is what the weekly digest would post right now. Nobody else can see this.",
+    embeds: [buildEmbed(week)],
+    allowed_mentions: { parse: [] },
+  }});
 }
 
 // ---- autocomplete ----------------------------------------------------------
