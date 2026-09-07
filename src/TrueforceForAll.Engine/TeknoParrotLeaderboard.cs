@@ -262,6 +262,11 @@ namespace TrueforceForAll.Core
                 outList.Add(new Id8LeaderboardEntry
                 {
                     Username = e.Player,
+                    // Their car is free text, so it goes through the same matcher the per-car
+                    // path uses. An unmatched string leaves 0, which the game reads as the AE86
+                    // Trueno; that is wrong but it is the pre-existing behaviour for every row,
+                    // and the matcher resolved all 1762 rows when it was measured.
+                    CarId = Id8CarNameMatch.CarIdFor(e.Car),
                     GoalMs = (int)ms,
                     UnixTime = stamp,
                 });

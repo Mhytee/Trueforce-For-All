@@ -119,10 +119,32 @@ namespace TrueforceForAll.Core
         public int Section1, Section2, Section3;
         public int GoalMs;
 
-        /// <summary>Everything at +0x14 and +0x15 plus the byte at +0x16, kept verbatim so a
-        /// record can be written back without inventing values for fields nobody has explained.
-        /// </summary>
+        /// <summary>Bytes +0x14, +0x15 and +0x16. The first two are the CAR, the third is the
+        /// constant 0x09. Kept as a blob because it is written back verbatim; read it through
+        /// <see cref="CarId"/> rather than by index.</summary>
         public byte[] Reserved;   // 3 bytes: +0x14, +0x15, +0x16
+
+        /// <summary>The car this time was set in, as the game stores it: a little-endian u16 at
+        /// +0x14, and the same CarID the rest of the plugin uses, (maker &lt;&lt; 8) | member.
+        ///
+        /// These two bytes were read as opaque "reserved" until a real save settled it. Of one
+        /// player's eighteen records, seventeen held [0, 0] and one held [0, 4]. Zero is the AE86
+        /// Trueno and 0x0400 is 1024, the GC8 Impreza, which is exactly the one course that player
+        /// had driven in something else. Nothing else in the 48 bytes can hold a car.
+        ///
+        /// It matters because the any-car board shows a car beside every row. Writing zero here,
+        /// which is what building the blob as { 0, 0, 0x09 } did, made every row we wrote display
+        /// as a Trueno regardless of what was actually driven.</summary>
+        public int CarId
+        {
+            get { return Reserved != null && Reserved.Length >= 2 ? (Reserved[0] | (Reserved[1] << 8)) : 0; }
+        }
+
+        /// <summary>Build the +0x14..+0x16 blob for a car, so no caller has to know the layout.</summary>
+        public static byte[] ReservedFor(int carId)
+        {
+            return new byte[] { (byte)(carId & 0xff), (byte)((carId >> 8) & 0xff), ConstantAt16 };
+        }
 
         /// <summary>True for a row the game shipped as filler rather than one somebody set.
         /// Both tests matter: the flag is the game's own marker, and the six minute goal catches
@@ -264,6 +286,10 @@ namespace TrueforceForAll.Core
     public sealed class Id8LeaderboardEntry
     {
         public string Username;
+
+        /// <summary>CarID, (maker &lt;&lt; 8) | member. The any-car board displays a car beside
+        /// every row, so a pool entry has to carry one or the row shows the wrong car.</summary>
+        public int CarId;
         public int GoalMs;
         public int Section1, Section2, Section3;
 
@@ -315,13 +341,13 @@ namespace TrueforceForAll.Core
                 foreach (Id8LeaderboardRecord r in existing)
                 {
                     if (r.IsFiller) filler.Add(r);
-                    else if (keepExisting) real.Add(r);
+                    else if (keepExisting && IsPlausibleLap(r.GoalMs)) real.Add(r);
                 }
 
             if (incoming != null)
                 foreach (Id8LeaderboardEntry e in incoming)
                 {
-                    if (e == null || e.GoalMs <= 0) continue;
+                    if (e == null || !IsPlausibleLap(e.GoalMs)) continue;
                     string name = Id8Name.Sanitize(e.Username);
                     byte[] enc = Id8Name.Encode(name);
                     if (enc == null) continue;
@@ -329,7 +355,7 @@ namespace TrueforceForAll.Core
                     real.Add(new Id8LeaderboardRecord
                     {
                         RawName = enc,
-                        Reserved = new byte[] { 0, 0, Id8LeaderboardRecord.ConstantAt16 },
+                        Reserved = Id8LeaderboardRecord.ReservedFor(e.CarId),
                         Flags = Id8LeaderboardRecord.FlagReal,
                         PlayerId = 0,
                         UnixTime = e.UnixTime,
@@ -344,12 +370,12 @@ namespace TrueforceForAll.Core
             // existing rows ahead of incoming ones.
             var ordered = real.OrderBy(r => r.GoalMs).Take(Ranks).ToList();
 
-            int f = 0;
+            // Always OUR filler, never the game's. Reusing the existing rows first meant a board
+            // with ten SEGA placeholders stayed entirely SEGA, and a board with one real row
+            // showed SEGA at ranks one to nine with TF4ALL appearing only at rank ten. The point
+            // of naming the filler was that a player can tell which boards we are feeding.
             while (ordered.Count < Ranks)
-            {
-                ordered.Add(f < filler.Count ? filler[f] : DefaultRow());
-                f++;
-            }
+                ordered.Add(DefaultRow());
             return ordered.ToArray();
         }
 
@@ -423,7 +449,7 @@ namespace TrueforceForAll.Core
             var real = new List<Id8LeaderboardRecord>();
             if (snapshot != null)
                 foreach (Id8LeaderboardRecord r in snapshot)
-                    if (!r.IsFiller && !IsOurs(r)) real.Add(r);
+                    if (!r.IsFiller && !IsOurs(r) && IsPlausibleLap(r.GoalMs)) real.Add(r);
             return real;
         }
 
@@ -445,6 +471,28 @@ namespace TrueforceForAll.Core
         public static bool IsOurs(Id8LeaderboardRecord r)
         {
             return r.PlayerId == 0;
+        }
+
+        /// <summary>The floor below which a stored value cannot be a completed course.
+        ///
+        /// Not every non-filler row in the game's table is a lap time. A real save carried an Akina
+        /// downhill entry of exactly 41.000, three times faster than anything ever driven, and the
+        /// only one of that player's eighteen records with no milliseconds on it. Merged onto the
+        /// board it put them first by over a minute, ahead of a genuine 2:0x.
+        ///
+        /// 60 seconds is deliberately far below anything reachable rather than tuned close to it.
+        /// Across all 1765 entries TeknoParrot publishes, the fastest lap ever recorded on any
+        /// course in either direction is 2:06.845, so this leaves more than a minute of headroom
+        /// for a future record while still rejecting a value three times faster than the sport.
+        ///
+        /// This is a sanity test on data we READ, not an anti-cheat measure. A submission is
+        /// checked server side; this exists so a partial run, a sentinel, or whatever else the
+        /// game leaves in that table cannot be displayed as somebody's record.</summary>
+        public const int MinPlausibleMs = 60000;
+
+        public static bool IsPlausibleLap(int goalMs)
+        {
+            return goalMs >= MinPlausibleMs && goalMs < Id8LeaderboardRecord.DefaultGoalMs;
         }
 
         /// <summary>Everything a board write needs: pick the pool, then decide what happens to the
@@ -479,6 +527,7 @@ namespace TrueforceForAll.Core
                 withLocal.Add(new Id8LeaderboardEntry
                 {
                     Username = Id8Name.Decode(r.RawName),
+                    CarId = r.CarId,
                     GoalMs = r.GoalMs,
                     Section1 = r.Section1,
                     Section2 = r.Section2,

@@ -82,6 +82,17 @@ namespace TrueforceForAll.Core
             if (s.CarId < 0) return null;
             if (s.SectionSumMs < MinPlausibleMs || s.SectionSumMs >= MaxPlausibleMs) return null;
 
+            // The player has to have CROSSED THE GOAL. Nothing above establishes that, and the
+            // section check below cannot: a run abandoned after the first checkpoint has a section
+            // sum that agrees with the clock exactly, because both stopped at the same moment.
+            //
+            // This is not hypothetical. A Usui run ending after one section was submitted as a
+            // completed lap of 1:38.458, on a course whose fastest ever recorded time is 2:38.472,
+            // and it took the course record with a single section against the two, three and four
+            // that every genuine submission carries. ReachedGoal is false for it, and false for a
+            // timeout, which is the other ending that is not a lap.
+            if (!s.ReachedGoal) return null;
+
             // Deliberately BEFORE the latch, and returning without setting it. A short array means
             // the last split has not landed yet, which is a "not ready" not a "no": the very next
             // poll normally has it, and consuming the run here would throw the real time away.

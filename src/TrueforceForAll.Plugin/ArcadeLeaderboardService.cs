@@ -39,6 +39,10 @@ namespace TrueforceForAll.Plugin
         private readonly TeknoParrotLeaderboardCache _tpCache;
         private readonly string _backupPath;
 
+        /// <summary>Where a record we destroy is written down before it goes. Only ever
+        /// touched for a row carrying a real card id, which is the player's own data.</summary>
+        private readonly string _removedPath;
+
         private Id8LeaderboardWriter _writer;
 
         /// <summary>Every board is filled once per attach, not once per course.</summary>
@@ -64,6 +68,7 @@ namespace TrueforceForAll.Plugin
 
             string dir = Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-Arcade");
             _backupPath = Path.Combine(dir, "id8-shop-board-backup.json");
+            _removedPath = Path.Combine(dir, "id8-removed-records.json");
             _tpCache = new TeknoParrotLeaderboardCache(
                 Path.Combine(dir, "teknoparrot-id8.json"), FetchPage);
         }
@@ -184,8 +189,16 @@ namespace TrueforceForAll.Plugin
                     Dictionary<int, Id8LeaderboardEntry> cBest = null;
                     carBests?.TryGetValue(slot, out cBest);
                     Dictionary<int, Id8LeaderboardEntry> tBest = TeknoParrotCarBests(tp, course, dir);
-                    cars += WritePerCar(Id8Board.OnlinePerCar, s.Arcade.Id8OnlineBoardSource, course, dir, cBest, tBest, lBest);
-                    cars += WritePerCar(Id8Board.ShopPerCar, s.Arcade.Id8ShopBoardSource, course, dir, cBest, tBest, lBest);
+                    if (HaveDataFor(s.Arcade.Id8OnlineBoardSource, haveCommunity, haveTekno))
+                    {
+                        cars += WritePerCar(Id8Board.OnlinePerCar, s.Arcade.Id8OnlineBoardSource, course, dir, cBest, tBest, lBest);
+                        BrandFiller(Id8Board.OnlinePerCar, course, dir);
+                    }
+                    if (HaveDataFor(s.Arcade.Id8ShopBoardSource, haveCommunity, haveTekno))
+                    {
+                        cars += WritePerCar(Id8Board.ShopPerCar, s.Arcade.Id8ShopBoardSource, course, dir, cBest, tBest, lBest);
+                        BrandFiller(Id8Board.ShopPerCar, course, dir);
+                    }
                     boards++;
                 }
 
@@ -214,6 +227,7 @@ namespace TrueforceForAll.Plugin
 
                 found[carId] = new Id8LeaderboardEntry
                 {
+                    CarId = carId,
                     Username = Id8Name.Decode(rec.RawName),
                     GoalMs = rec.GoalMs,
                     Section1 = rec.Section1,
@@ -275,7 +289,8 @@ namespace TrueforceForAll.Plugin
         {
             var boards = new[] { Id8Board.OnlineTopTen, Id8Board.ShopTopTen,
                                  Id8Board.OnlinePerCar, Id8Board.ShopPerCar };
-            int cleared = 0;
+            int cleared = 0, removed = 0, kept = 0;
+            var keptSample = new List<string>();
             Id8LeaderboardRecord blank = Id8Leaderboard.DefaultRow();
 
             for (int course = 0; course <= 15; course++)
@@ -290,13 +305,79 @@ namespace TrueforceForAll.Plugin
                         {
                             if (!_writer.TryReadRecord(board, course, dir, slot, out Id8LeaderboardRecord had))
                                 continue;
-                            if (had.IsFiller || !Id8Leaderboard.IsOurs(had)) continue;
-                            if (_writer.WriteRecord(board, course, dir, slot, blank)) cleared++;
+                            if (had.IsFiller) continue;
+
+                            bool ours = Id8Leaderboard.IsOurs(had);
+                            bool cannotBeALap = !Id8Leaderboard.IsPlausibleLap(had.GoalMs);
+
+                            // A row carrying somebody's card id and a believable time is theirs.
+                            // Leave it alone; that is the whole contract.
+                            if (!ours && !cannotBeALap)
+                            {
+                                // Anything left standing carries a card id and a believable time,
+                                // so it is somebody's record. Counted, with a few named, because
+                                // "the probe rows are still there" and "cleared 0" together mean
+                                // those rows are not ours by the player-id test and we need to see
+                                // one rather than guess again.
+                                kept++;
+                                if (keptSample.Count < 6)
+                                    keptSample.Add($"{Id8Name.Decode(had.RawName)} {had.GoalMs}ms " +
+                                                   $"pid={had.PlayerId} car={had.CarId} on {board} c{course}d{dir}s{slot}");
+                                continue;
+                            }
+
+                            // Removing a row with a real card id destroys save data, so write down
+                            // exactly what it was first. Ours we simply overwrite: it was never
+                            // theirs to lose.
+                            if (!ours)
+                            {
+                                RecordRemoval(board, course, dir, slot, had);
+                                removed++;
+                            }
+
+                            if (_writer.WriteRecord(board, course, dir, slot, blank) && ours) cleared++;
                         }
                     }
 
-            if (cleared > 0)
-                _log?.Invoke($"[TF4ALL] Arcade: cleared {cleared} row(s) we had written previously");
+            _log?.Invoke($"[TF4ALL] Arcade: swept the boards, cleared {cleared} of ours, " +
+                         $"removed {removed} unusable, left {kept} real record(s) alone");
+            if (keptSample.Count > 0)
+                _log?.Invoke("[TF4ALL] Arcade: records left in place: " + string.Join(" | ", keptSample));
+            if (removed > 0)
+                _log?.Invoke($"[TF4ALL] Arcade: removed {removed} stored record(s) that cannot be a lap " +
+                             $"(under {Id8Leaderboard.MinPlausibleMs / 1000}s). Originals saved to {_removedPath}");
+        }
+
+        /// <summary>Append a record we are about to destroy to a file that is never overwritten.
+        ///
+        /// This only ever runs for a row carrying a real card id, which is to say the player's own
+        /// save data. The shop top-ten backup does not cover it: that file holds one board, and an
+        /// unusable value can sit on any of the four. Keyed so the same slot is only recorded once,
+        /// for the same reason SaveBackup is: a second pass would otherwise overwrite the original
+        /// with whatever we had already put there.</summary>
+        private void RecordRemoval(Id8Board board, int courseId, int direction, int slot,
+                                   Id8LeaderboardRecord row)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(_removedPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                var all = File.Exists(_removedPath)
+                    ? Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, Id8LeaderboardRecord>>(
+                          File.ReadAllText(_removedPath)) ?? new Dictionary<string, Id8LeaderboardRecord>()
+                    : new Dictionary<string, Id8LeaderboardRecord>();
+
+                string key = $"{board}:{courseId}:{direction}:{slot}";
+                if (all.ContainsKey(key)) return;
+
+                all[key] = row;
+                File.WriteAllText(_removedPath, Newtonsoft.Json.JsonConvert.SerializeObject(all));
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke("[TF4ALL] Arcade: could not record the removal: " + ex.Message);
+            }
         }
 
         private static IEnumerable<int> RankSlots()
@@ -310,6 +391,30 @@ namespace TrueforceForAll.Plugin
             {
                 int slot = Id8CarTable.SlotForCarId(carId);
                 if (slot >= 0) yield return slot;
+            }
+        }
+
+        /// <summary>Replace the game's placeholder with ours on a per-car board we are filling.
+        ///
+        /// The top-ten boards get our filler for free, because the merge rebuilds all ten rows. A
+        /// per-car board is written slot by slot, so a car nobody has a time for keeps SEGA's row,
+        /// and the same board ends up showing two different placeholders depending on whether that
+        /// particular car happened to be in the data. With TeknoParrot covering about 634 of the
+        /// 1600 slots, that is most of them.
+        ///
+        /// Only filler is touched, so a real record can never be lost here, and only on a board we
+        /// are actually filling: branding a board we then leave empty would claim credit for a
+        /// wipe.</summary>
+        private void BrandFiller(Id8Board board, int courseId, int direction)
+        {
+            Id8LeaderboardRecord blank = Id8Leaderboard.DefaultRow();
+            foreach (int slot in CarSlots())
+            {
+                if (!_writer.TryReadRecord(board, courseId, direction, slot, out Id8LeaderboardRecord had))
+                    continue;
+                if (!had.IsFiller) continue;
+                if (Id8Name.Decode(had.RawName) == Id8Leaderboard.FillerName) continue;   // already ours
+                _writer.WriteRecord(board, courseId, direction, slot, blank);
             }
         }
 
@@ -355,7 +460,8 @@ namespace TrueforceForAll.Plugin
                 var row = new Id8LeaderboardRecord
                 {
                     RawName = enc,
-                    Reserved = new byte[] { 0, 0, Id8LeaderboardRecord.ConstantAt16 },
+                    // kv.Key IS the car, so this board never has to guess.
+                    Reserved = Id8LeaderboardRecord.ReservedFor(kv.Key),
                     Flags = Id8LeaderboardRecord.FlagReal,
                     UnixTime = e.UnixTime,
                     Section1 = e.Section1,

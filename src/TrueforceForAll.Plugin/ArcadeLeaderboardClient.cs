@@ -70,6 +70,7 @@ namespace TrueforceForAll.Plugin
                     list.Add(new Id8LeaderboardEntry
                     {
                         Username = (string)row["author"],
+                        CarId = (int?)row["car_id"] ?? 0,
                         GoalMs = goal,
                         Section1 = (int?)row["section1_ms"] ?? 0,
                         Section2 = (int?)row["section2_ms"] ?? 0,
@@ -166,6 +167,7 @@ namespace TrueforceForAll.Plugin
                     cars[car] = new Id8LeaderboardEntry
                     {
                         Username = (string)row["author"],
+                        CarId = car,
                         GoalMs = goal,
                         Section1 = (int?)row["section1_ms"] ?? 0,
                         Section2 = (int?)row["section2_ms"] ?? 0,

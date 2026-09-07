@@ -15,6 +15,30 @@ namespace TrueforceForAll.Core.Tests
     {
         private const int TA = Id8RunWatcher.TimeAttackMode;
 
+
+        /// <summary>A run abandoned partway is not a lap, however tidy its numbers look.
+        ///
+        /// This is the real one that got through: a Usui run ending after the first checkpoint was
+        /// submitted as a completed 1:38.458, on a course whose fastest ever recorded time is
+        /// 2:38.472. The section check could not catch it, because the sections and the clock both
+        /// stopped at the same instant and therefore agreed exactly.</summary>
+        [Fact]
+        public void ARunThatNeverReachedTheGoalIsNotSubmitted()
+        {
+            var w = new Id8RunWatcher();
+            var s = Finished(course: 9, dir: 0, car: 0, s1: 98458, s2: 0, s3: 0, s4: 0);
+            s.SectionTimes = new[] { 98458 };
+            s.SectionSumMs = 98458;
+            s.FinishTimeMs = 98458;
+            s.ReachedGoal = false;
+
+            Assert.Null(w.Observe(s, TA));
+
+            // The identical run, having crossed the line, is a lap.
+            s.ReachedGoal = true;
+            Assert.NotNull(w.Observe(s, TA));
+        }
+
         private static Id8Sample Finished(int course = 3, int dir = 0, int car = 263,
                                           int s1 = 57203, int s2 = 41758, int s3 = 56995, int s4 = 46962)
         {
@@ -22,6 +46,10 @@ namespace TrueforceForAll.Core.Tests
             {
                 Valid = true,
                 EndReason = 0,
+                // A finished run is one that CROSSED THE GOAL. Omitting this modelled a run that
+                // ended some other way while calling itself Finished, which is exactly the gap
+                // that let an abandoned Usui run reach the leaderboard.
+                ReachedGoal = true,
                 CourseId = course,
                 Direction = dir,
                 CarId = car,

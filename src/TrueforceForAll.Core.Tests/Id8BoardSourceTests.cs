@@ -114,6 +114,51 @@ namespace TrueforceForAll.Core.Tests
         /// leaving out the field that makes it real. The value is the one observed on a live save.</summary>
         private const uint CabinetCardId = 5553014;
 
+        [Fact]
+        public void ARowKeepsTheCarItWasDrivenIn()
+        {
+            // Bytes 0x14..0x15 are the CarID, not padding. They were read as opaque "reserved"
+            // until a real save showed seventeen records at [0,0] and one at [0,4]: 0 is the AE86
+            // Trueno, 1024 is the GC8 Impreza, and that was the one course the player had driven
+            // in something else. Writing zero made every row we wrote display as a Trueno.
+            const int Gc8 = 1024;
+
+            var rows = Id8Leaderboard.Merge(
+                new List<Id8LeaderboardRecord> { Id8Leaderboard.DefaultRow() },
+                new List<Id8LeaderboardEntry>
+                {
+                    new Id8LeaderboardEntry { Username = "Driver", GoalMs = 150000, CarId = Gc8 },
+                },
+                keepExisting: false);
+
+            Assert.Equal(Gc8, rows[0].CarId);
+            Assert.Equal(new byte[] { 0x00, 0x04, Id8LeaderboardRecord.ConstantAt16 }, rows[0].Reserved);
+        }
+
+        [Fact]
+        public void ACarSurvivesTheTripThroughALocalRecord()
+        {
+            // The merge turns the player's own rows back into entries before ranking them. If the
+            // car is dropped on that hop, their own time comes back displayed as a Trueno.
+            var board = new List<Id8LeaderboardRecord>
+            {
+                new Id8LeaderboardRecord
+                {
+                    RawName = Id8Name.Encode(Id8Name.Sanitize("LocalGuy")),
+                    Reserved = Id8LeaderboardRecord.ReservedFor(769),   // FD3S
+                    Flags = Id8LeaderboardRecord.FlagReal,
+                    PlayerId = CabinetCardId,
+                    GoalMs = 140000,
+                },
+            };
+
+            var rows = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Merged, board, null, null, Id8Leaderboard.LocalRecordsFrom(board));
+
+            Assert.Equal(769, rows[0].CarId);
+        }
+
+
         private static Id8LeaderboardRecord Real(string name, int ms) => new Id8LeaderboardRecord
         {
             RawName = Id8Name.Encode(Id8Name.Sanitize(name)),
