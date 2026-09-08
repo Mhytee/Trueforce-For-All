@@ -549,10 +549,8 @@ namespace TrueforceForAll.Plugin
                 });
             }
 
-            if (source == Id8BoardSource.Community || source == Id8BoardSource.Merged)
-                Absorb(bests, community);
-            if (source == Id8BoardSource.TeknoParrot || source == Id8BoardSource.Merged)
-                Absorb(bests, teknoParrot);
+            if (Id8Leaderboard.UsesCommunity(source)) Absorb(bests, community);
+            if (Id8Leaderboard.UsesTeknoParrot(source)) Absorb(bests, teknoParrot);
             if (Id8Leaderboard.KeepsLocalRecords(source))
                 Absorb(bests, local);
 
@@ -704,10 +702,8 @@ namespace TrueforceForAll.Plugin
             // Pick the pools this source draws on, then take the faster of the two per car. Merged
             // means merged here as much as on the top-ten boards.
             var bests = new Dictionary<int, Id8LeaderboardEntry>();
-            if (source == Id8BoardSource.Community || source == Id8BoardSource.Merged)
-                Absorb(bests, community);
-            if (source == Id8BoardSource.TeknoParrot || source == Id8BoardSource.Merged)
-                Absorb(bests, teknoParrot);
+            if (Id8Leaderboard.UsesCommunity(source)) Absorb(bests, community);
+            if (Id8Leaderboard.UsesTeknoParrot(source)) Absorb(bests, teknoParrot);
             if (Id8Leaderboard.KeepsLocalRecords(source))
                 Absorb(bests, local);
             if (bests.Count == 0) return 0;
@@ -788,7 +784,9 @@ namespace TrueforceForAll.Plugin
              Uses(s.Arcade.Id8ShopBoardSource, Id8BoardSource.TeknoParrot));
 
         private static bool Uses(Id8BoardSource source, Id8BoardSource pool) =>
-            source == pool || source == Id8BoardSource.Merged;
+            pool == Id8BoardSource.Community
+                ? Id8Leaderboard.UsesCommunity(source)
+                : Id8Leaderboard.UsesTeknoParrot(source);
 
         /// <summary>Whether a board's chosen source has anything to write with.
         ///
@@ -802,10 +800,14 @@ namespace TrueforceForAll.Plugin
         {
             switch (source)
             {
-                case Id8BoardSource.Community:   return haveCommunity;
-                case Id8BoardSource.TeknoParrot: return haveTekno;
-                case Id8BoardSource.Merged:      return haveCommunity || haveTekno;
-                default:                         return true;   // Local: the snapshot is always there.
+                case Id8BoardSource.Community:         return haveCommunity;
+                case Id8BoardSource.TeknoParrot:       return haveTekno;
+                case Id8BoardSource.Merged:            return haveCommunity || haveTekno;
+                // It keeps local records too, so it always has something to write, but a board
+                // built from the player's rows alone after a failed fetch is a board that has
+                // quietly lost everyone else. Treated like Community: leave it untouched instead.
+                case Id8BoardSource.CommunityAndLocal: return haveCommunity;
+                default:                               return true;   // Local: the snapshot is always there.
             }
         }
 

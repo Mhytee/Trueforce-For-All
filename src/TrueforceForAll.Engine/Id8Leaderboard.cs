@@ -62,6 +62,18 @@ namespace TrueforceForAll.Core
         /// <summary>Everything available, ranked together: tf4all, TeknoParrot, and the player's
         /// own local records.</summary>
         Merged = 3,
+
+        /// <summary>The tf4all pool and the player's own records, without TeknoParrot.
+        ///
+        /// The board most people actually want to be on. TeknoParrot publishes times set on real
+        /// cabinets by people chasing world records, so Merged is dominated by times nobody in a
+        /// given server is going to beat, and a target you cannot reach is not a target. This is
+        /// "me and the people I am playing with", which is the question a server leaderboard is
+        /// for.
+        ///
+        /// Appended rather than inserted: these values are persisted in settings, so renumbering
+        /// the existing four would silently move every user's choice to a different board.</summary>
+        CommunityAndLocal = 4,
     }
 
     /// <summary>Which of the four leaderboard tables a write is aimed at.</summary>
@@ -413,10 +425,8 @@ namespace TrueforceForAll.Core
             IReadOnlyList<Id8LeaderboardEntry> teknoParrot)
         {
             var pool = new List<Id8LeaderboardEntry>();
-            if (source == Id8BoardSource.Community || source == Id8BoardSource.Merged)
-                if (community != null) pool.AddRange(community);
-            if (source == Id8BoardSource.TeknoParrot || source == Id8BoardSource.Merged)
-                if (teknoParrot != null) pool.AddRange(teknoParrot);
+            if (UsesCommunity(source) && community != null) pool.AddRange(community);
+            if (UsesTeknoParrot(source) && teknoParrot != null) pool.AddRange(teknoParrot);
             // Local contributes no external rows. It is expressed entirely by KeepsLocalRecords,
             // which tells the merge to preserve what was already on the board.
 
@@ -443,9 +453,29 @@ namespace TrueforceForAll.Core
         /// "Community" has to mean strictly tf4all or a player cannot use it to read their standing
         /// among tf4all users: quietly mixing their own local records in would make the board a
         /// different thing from the one they asked for.</summary>
+        /// <summary>Whether this source draws on the tf4all pool.
+        ///
+        /// Here rather than at each call site because there were five of them testing
+        /// `source == Community || source == Merged` by hand, and adding a fifth source meant
+        /// finding every one. One that got missed would not fail loudly: the board would simply
+        /// come up short of rows and look like a quiet backend.</summary>
+        public static bool UsesCommunity(Id8BoardSource source)
+        {
+            return source == Id8BoardSource.Community
+                || source == Id8BoardSource.Merged
+                || source == Id8BoardSource.CommunityAndLocal;
+        }
+
+        /// <summary>Whether this source draws on TeknoParrot's public board.</summary>
+        public static bool UsesTeknoParrot(Id8BoardSource source)
+        {
+            return source == Id8BoardSource.TeknoParrot || source == Id8BoardSource.Merged;
+        }
+
         public static bool KeepsLocalRecords(Id8BoardSource source)
         {
-            return source == Id8BoardSource.Local || source == Id8BoardSource.Merged;
+            return source == Id8BoardSource.Local || source == Id8BoardSource.Merged
+                || source == Id8BoardSource.CommunityAndLocal;
         }
 
         /// <summary>The player's own records out of a board snapshot: the rows somebody actually
