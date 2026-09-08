@@ -339,6 +339,79 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(5553014u, board[0].PlayerId);
         }
 
+        // ---- the player's own records are carried, never rebuilt, never displaced ----
+
+        [Fact]
+        public void ACarriedRecordGoesBackExactlyAsTheGameHadIt()
+        {
+            // Not a copy built from a name and a time. The cabinet spelled the name, chose the car,
+            // stamped the card id and recorded the splits, and all of it has to survive the trip.
+            Id8LeaderboardRecord theirs = Id8LeaderboardRecord.Read(RealRecord(), 0);
+
+            Id8LeaderboardRecord[] board = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Local,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                null, null,
+                new[] { theirs });
+
+            Assert.Equal(theirs.GoalMs, board[0].GoalMs);
+            Assert.Equal(theirs.PlayerId, board[0].PlayerId);
+            Assert.Equal(theirs.Section1, board[0].Section1);
+            Assert.Equal(theirs.Section2, board[0].Section2);
+            Assert.Equal(theirs.Section3, board[0].Section3);
+            Assert.Equal(theirs.UnixTime, board[0].UnixTime);
+            Assert.Equal(theirs.CarId, board[0].CarId);
+            Assert.Equal(Id8Name.Decode(theirs.RawName), Id8Name.Decode(board[0].RawName));
+        }
+
+        [Fact]
+        public void AFasterPoolCopyOfTheirOwnLapDoesNotDisplaceIt()
+        {
+            // The site and the cabinet disagree by milliseconds about the same lap. Taking the
+            // faster one put a row with no card id on the board, and the next sweep read that as
+            // one of ours and blanked it. Two of the owner's records were destroyed this way.
+            Id8LeaderboardRecord theirs = Id8LeaderboardRecord.Read(RealRecord(), 0);
+            var siteCopy = new Id8LeaderboardEntry
+            {
+                Username = "MHYTEE",
+                CarId = theirs.CarId,
+                GoalMs = theirs.GoalMs - 3,          // three thousandths faster
+            };
+
+            Id8LeaderboardRecord[] board = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Merged,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                new[] { siteCopy },
+                null,
+                new[] { theirs });
+
+            Assert.Equal(theirs.GoalMs, board[0].GoalMs);
+            Assert.Equal(5553014u, board[0].PlayerId);
+            Assert.False(Id8Leaderboard.IsOurs(board[0]));
+        }
+
+        [Fact]
+        public void ARecordOfTheirsIsNeverCutToMakeRoomForThePool()
+        {
+            // Ten slots and a field of thousands, on a board that persists into the save. A pool
+            // row we leave off is still on a server; theirs exists only here, so leaving it off is
+            // a deletion rather than a demotion.
+            Id8LeaderboardRecord slow = Id8LeaderboardRecord.Read(RealRecord(), 0);
+            var pool = Enumerable.Range(1, 30)
+                .Select(i => Entry("P" + i, 100000 + i * 100))   // all far faster than theirs
+                .ToArray();
+
+            Id8LeaderboardRecord[] board = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.TeknoParrot,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                null, pool,
+                new[] { slow });
+
+            Assert.Equal(10, board.Length);
+            Assert.Contains(board, r => r.PlayerId == 5553014u && r.GoalMs == slow.GoalMs);
+            Assert.Equal(slow.GoalMs, board[9].GoalMs);          // last rung, but present
+        }
+
         // ---- ladder climb: the two layouts of the same ten drivers ----
 
         /// <summary>A field deep enough that the top ten and the player's neighbourhood cannot

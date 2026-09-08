@@ -334,6 +334,19 @@ namespace TrueforceForAll.Core
         /// never had this problem because its merge carries the whole record through; the per-car
         /// path rebuilds the board out of entries and so has to carry the id itself.</summary>
         public uint PlayerId;
+
+        /// <summary>The record this entry was read off a board as, when it was.
+        ///
+        /// CARRIED, NOT REBUILT. Every way we have damaged a player's own record came from the same
+        /// place: rebuilding their row out of an entry instead of putting back the one the game
+        /// wrote. Rebuilding is what let us stamp the wrong id on it, rename it, and swap it for a
+        /// copy of the same lap three milliseconds different that the site happened to hold. When
+        /// this is set, Merge writes these forty-eight bytes verbatim: their name as the cabinet
+        /// spelled it, their car, their card id, their date and their splits.
+        ///
+        /// Null on every pool row, because there is nothing to carry: a community or TeknoParrot
+        /// entry is a time and a name and was never a record on this cabinet.</summary>
+        public Id8LeaderboardRecord? Carried;
     }
 
     public static class Id8Leaderboard
@@ -376,6 +389,10 @@ namespace TrueforceForAll.Core
             var filler = new List<Id8LeaderboardRecord>();
             var real = new List<Id8LeaderboardRecord>();
 
+            // The player's own rows, tracked apart so the cut at ten cannot drop one. The board
+            // PERSISTS into the save, so a row we leave off is not demoted, it is deleted.
+            var carried = new List<Id8LeaderboardRecord>();
+
             if (existing != null)
                 foreach (Id8LeaderboardRecord r in existing)
                 {
@@ -387,6 +404,15 @@ namespace TrueforceForAll.Core
                 foreach (Id8LeaderboardEntry e in incoming)
                 {
                     if (e == null || !IsPlausibleLap(e.GoalMs)) continue;
+
+                    // Put it back exactly as the game had it.
+                    if (e.Carried.HasValue)
+                    {
+                        real.Add(e.Carried.Value);
+                        carried.Add(e.Carried.Value);
+                        continue;
+                    }
+
                     string name = Id8Name.Sanitize(e.Username);
                     byte[] enc = Id8Name.Encode(name);
                     if (enc == null) continue;
@@ -418,6 +444,21 @@ namespace TrueforceForAll.Core
             // OrderBy is a stable sort, so equal times keep the order they went in, which puts
             // existing rows ahead of incoming ones.
             var ordered = real.OrderBy(r => r.GoalMs).Take(Ranks).ToList();
+
+            // NOTHING OF THEIRS IS EVER CUT. Ten slots against a field of thousands means somebody
+            // has to be left off, and it must never be the person whose save this is: their row
+            // exists only here, while every pool row we drop is still sitting on a server. A board
+            // whose tenth rung is their own slower record has deleted nothing.
+            foreach (Id8LeaderboardRecord c in carried)
+            {
+                if (ordered.Any(r => SameRow(r, c))) continue;
+                int drop = -1;
+                for (int i = ordered.Count - 1; i >= 0; i--)
+                    if (!carried.Any(x => SameRow(x, ordered[i]))) { drop = i; break; }
+                if (drop < 0) break;                      // every slot is already theirs
+                ordered[drop] = c;
+            }
+            ordered = ordered.OrderBy(r => r.GoalMs).ToList();
 
             // Always OUR filler, never the game's. Reusing the existing rows first meant a board
             // with ten SEGA placeholders stayed entirely SEGA, and a board with one real row
@@ -483,11 +524,6 @@ namespace TrueforceForAll.Core
                 string key = name + "\u0000" + e.CarId;
                 if (!best.TryGetValue(key, out Id8LeaderboardEntry held)) { best[key] = e; order.Add(key); }
                 else if (e.GoalMs < held.GoalMs) best[key] = e;
-                // Same time from two pools: keep the one that knows whose it is. A player's own row
-                // and the copy of it they submitted are the same lap, and the local one carries the
-                // cabinet's card id, which is what stops the next rebuild reading the row back as
-                // one of ours and dropping it.
-                else if (e.GoalMs == held.GoalMs && held.PlayerId == 0 && e.PlayerId != 0) best[key] = e;
             }
 
             // Sort by time. Ties keep insertion order, which puts the community pool first when
@@ -651,6 +687,7 @@ namespace TrueforceForAll.Core
                             Username = Id8Name.Decode(r.RawName),
                             CarId = r.CarId,
                             PlayerId = r.PlayerId,
+                            Carried = r,
                             GoalMs = r.GoalMs,
                             Section1 = r.Section1,
                             Section2 = r.Section2,
@@ -681,6 +718,7 @@ namespace TrueforceForAll.Core
                     Username = Id8Name.Decode(r.RawName),
                     CarId = r.CarId,
                     PlayerId = r.PlayerId,
+                    Carried = r,
                     GoalMs = r.GoalMs,
                     Section1 = r.Section1,
                     Section2 = r.Section2,
@@ -713,12 +751,15 @@ namespace TrueforceForAll.Core
                 if (name.Length == 0) continue;
                 string key = name + "\u0000" + e.CarId;
                 if (!best.TryGetValue(key, out Id8LeaderboardEntry held)) { best[key] = e; order.Add(key); }
+                // A GENUINE CABINET ROW BEATS A POOL COPY OF THE SAME DRIVER AND CAR, even when
+                // the pool copy is faster. This cabinet's save is the authority for this cabinet's
+                // board, and the two copies of one lap disagree by milliseconds: the site holds
+                // 215382 against the board's 215385. Preferring the faster meant the player's own
+                // record was replaced by a row carrying no card id, and the next sweep read that as
+                // one of ours and blanked it. Two of the owner's records went exactly that way.
+                else if (e.Carried.HasValue != held.Carried.HasValue)
+                { if (e.Carried.HasValue) best[key] = e; }
                 else if (e.GoalMs < held.GoalMs) best[key] = e;
-                // Same time from two pools: keep the one that knows whose it is. A player's own row
-                // and the copy of it they submitted are the same lap, and the local one carries the
-                // cabinet's card id, which is what stops the next rebuild reading the row back as
-                // one of ours and dropping it.
-                else if (e.GoalMs == held.GoalMs && held.PlayerId == 0 && e.PlayerId != 0) best[key] = e;
             }
             return order.Select(k => best[k]).OrderBy(e => e.GoalMs).ToList();
         }
@@ -787,6 +828,17 @@ namespace TrueforceForAll.Core
                 if (start > last) start = last;
             }
             return ranked.Skip(start).Take(size).ToList();
+        }
+
+        /// <summary>Whether two rows are the same record: time, driver and car together, which is
+        /// what the board's own unique key is. The card id is deliberately NOT part of it, because
+        /// telling a carried row from a rebuilt copy of itself is the whole point of asking.</summary>
+        private static bool SameRow(Id8LeaderboardRecord a, Id8LeaderboardRecord b)
+        {
+            if (a.GoalMs != b.GoalMs || a.CarId != b.CarId) return false;
+            return string.Equals(Id8Name.Sanitize(Id8Name.Decode(a.RawName)),
+                                 Id8Name.Sanitize(Id8Name.Decode(b.RawName)),
+                                 StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>The name on a filler row.
