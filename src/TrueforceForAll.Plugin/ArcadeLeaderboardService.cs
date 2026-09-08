@@ -786,8 +786,16 @@ namespace TrueforceForAll.Plugin
             // have no record here yet, and BuildBoard falls back to the ordinary top ten. That last
             // case is deliberate: a course you have never driven has nothing to climb from, so the
             // fastest times are the right thing to show.
+            // LADDER ALWAYS RANKS AGAINST EVERYONE. The source setting stops applying to a board in
+            // climb mode, because a ladder needs a full field and the merged one is the only field
+            // deep enough to have rungs: tf4all alone has a handful of entries per course, so a
+            // window onto it is the board it already shows. Now that the three pools genuinely
+            // rank as one, there is no reason to offer the choice.
+            bool ladder = _settings()?.Arcade?.Id8LadderClimbEnabled == true;
+            Id8BoardSource effective = ladder ? Id8BoardSource.Merged : source;
+
             string ladderFor = null;
-            if (_settings()?.Arcade?.Id8LadderClimbEnabled == true && Id8Leaderboard.SupportsLadder(source))
+            if (ladder)
                 foreach (Id8LeaderboardRecord r in local ?? (IReadOnlyList<Id8LeaderboardRecord>)new Id8LeaderboardRecord[0])
                 {
                     if (r.IsFiller) continue;
@@ -795,7 +803,7 @@ namespace TrueforceForAll.Plugin
                     if (!string.IsNullOrEmpty(n)) { ladderFor = n; break; }
                 }
 
-            var rows = Id8Leaderboard.BuildBoard(source, existing, community, tekno, local, ladderFor);
+            var rows = Id8Leaderboard.BuildBoard(effective, existing, community, tekno, local, ladderFor);
             int written = _writer.WriteBoard(board, courseId, direction, rows);
             _log?.Invoke($"[TF4ALL] Arcade {board} {source}: wrote {written}/{rows.Length} rows " +
                          $"for course {courseId} dir {direction}");
@@ -810,14 +818,19 @@ namespace TrueforceForAll.Plugin
         // Local still fills with it off, and correctly so: "My own times" is read out of the game's
         // own save and sends nothing.
 
+        // Climb mode ranks against the merged field whatever the source says, so it needs BOTH
+        // pools regardless. Without this the board would be built from whichever pool the setting
+        // happened to name and the ladder would be a window onto a fraction of the field.
         private static bool NeedsCommunity(TrueforceSettings s) =>
             s.CommunityEnabled &&
-            (Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.Community) ||
+            (s.Arcade.Id8LadderClimbEnabled ||
+             Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.Community) ||
              Uses(s.Arcade.Id8ShopBoardSource, Id8BoardSource.Community));
 
         private static bool NeedsTeknoParrot(TrueforceSettings s) =>
             s.CommunityEnabled &&
-            (Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.TeknoParrot) ||
+            (s.Arcade.Id8LadderClimbEnabled ||
+             Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.TeknoParrot) ||
              Uses(s.Arcade.Id8ShopBoardSource, Id8BoardSource.TeknoParrot));
 
         private static bool Uses(Id8BoardSource source, Id8BoardSource pool) =>

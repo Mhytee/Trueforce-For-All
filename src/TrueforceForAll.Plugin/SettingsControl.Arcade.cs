@@ -509,15 +509,11 @@ namespace TrueforceForAll.Plugin
 
             if (ArcadeLeaderboardsCheck != null) ArcadeLeaderboardsCheck.IsChecked = a.Id8LeaderboardsEnabled;
             if (ArcadeSubmitTimesCheck != null) ArcadeSubmitTimesCheck.IsChecked = a.Id8SubmitTimesEnabled;
+            // Always available now. It used to grey out unless a board was set to All or
+            // TeknoParrot, because a ladder needs a field with rungs in it. Climb mode no longer
+            // takes the source from the dropdown at all: it ranks against the merged field either
+            // way, so there is nothing left for the source to make it incompatible with.
             if (ArcadeLadderClimbCheck != null) ArcadeLadderClimbCheck.IsChecked = a.Id8LadderClimbEnabled;
-
-            // Greyed rather than hidden when neither board can use it. A control that vanishes reads
-            // as a bug; one that is visible and disabled says "this exists, but not for what you
-            // have chosen", which is the actual situation.
-            bool anyLadder = Id8Leaderboard.SupportsLadder(a.Id8OnlineBoardSource)
-                          || Id8Leaderboard.SupportsLadder(a.Id8ShopBoardSource);
-            if (ArcadeLadderClimbCheck != null) ArcadeLadderClimbCheck.IsEnabled = anyLadder;
-            if (ArcadeLadderClimbHelp != null) ArcadeLadderClimbHelp.Opacity = anyLadder ? 1.0 : 0.5;
             if (ArcadeLeaderboardOptions != null)
                 ArcadeLeaderboardOptions.IsEnabled = a.Id8LeaderboardsEnabled;
 

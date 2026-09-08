@@ -163,7 +163,14 @@ function scoped(name: string, scope: string, body: string): any {
  *  recent and renders as a stray hyphen on clients that do not have it, and an embed cannot be
  *  corrected once posted. */
 function bullets(lines: string[]): string {
-  return lines.map((l) => `• ${l}`).join("\n");
+  // A blank line BETWEEN entries, not just before the list. Bulleted lines packed one per row still
+  // read as a block, because the eye has nothing to rest on between them; the bullet marks where an
+  // entry starts but not where the last one ended. It costs height, which is the trade: a message
+  // people scan is worth more than a short one they skim past.
+  //
+  // An entry can be two lines of its own, an improvement and its rival, and those stay together
+  // because the split is applied between entries rather than inside them.
+  return lines.map((l) => `• ${l}`).join("\n\n");
 }
 
 /** The default scope for almost everything here.
