@@ -134,7 +134,16 @@ function ordinalise(n: number): string {
  *  and as a literal "-#" where it is not, and an embed nobody can fix after posting is the wrong
  *  place to bet on client support. */
 function scoped(name: string, scope: string, body: string): any {
-  return { name, value: `*${scope}*\n${body}`.slice(0, 1024) };
+  // Blank line under the subtext. Without it the scope reads as the first entry rather than as a
+  // label for the section, and five sections of that is the wall of text this became.
+  return { name, value: `*${scope}*\n\n${body}`.slice(0, 1024) };
+}
+
+/** One item in a section. A literal bullet rather than markdown "- ": list markdown in embeds is
+ *  recent and renders as a stray hyphen on clients that do not have it, and an embed cannot be
+ *  corrected once posted. */
+function bullets(lines: string[]): string {
+  return lines.map((l) => `• ${l}`).join("\n");
 }
 
 /** The default scope for almost everything here.
@@ -176,8 +185,7 @@ export function buildEmbed(week: any): any {
     // submission beats another tf4all time, so this has always been a local table; the worldwide
     // half is the World records section. Calling it just "Records changed hands" beside a worldwide
     // standing invited the wrong reading.
-    fields.push(scoped("Records changed hands", TF4ALL_SCOPE,
-                       lines.join("\n")));
+    fields.push(scoped("Records changed hands", TF4ALL_SCOPE, bullets(lines)));
   }
 
   // PROGRESS FIRST, because it is the only section that has something to say in an ordinary week.
@@ -186,18 +194,21 @@ export function buildEmbed(week: any): any {
   const gains: any[] = Array.isArray(week?.gains) ? week.gains : [];
   const moves: any[] = Array.isArray(week?.moves) ? week.moves : [];
   if (gains.length || moves.length) {
-    const lines: string[] = [];
+    const gainLines: string[] = [];
+    const moveLines: string[] = [];
     for (const g of gains.slice(0, 4)) {
       // The next rung, not a list of everyone passed. A run that overtakes six people is still one
       // line, and the only other name in it is the one still ahead, which is the useful one.
       // Nothing when there is no next rung. Saying "that is the fastest on the board" here repeats
       // what the world records section is about to say in full, and a summary that states the same
       // fact twice reads as padding.
+      // The rival on its own indented line. On one line the whole thing runs past 120 characters
+      // and wraps mid-sentence on a phone, which is most of why this section read as a wall.
       const next = g.next_ms
-        ? ` Current rival: **${lap(g.next_ms)}**${g.next_author ? ` by ${esc(g.next_author)}` : ""}.`
+        ? `\n↳ Current rival: **${lap(g.next_ms)}**${g.next_author ? ` by ${esc(g.next_author)}` : ""}`
         : "";
-      lines.push(`**${esc(g.actor)}** took **${gap(g.gain_ms)}** off ${courseName(g.course_id, g.direction)}, ` +
-                 `now **${lap(g.goal_ms)}**.` + next);
+      gainLines.push(`**${esc(g.actor)}** took **${gap(g.gain_ms)}** off ${courseName(g.course_id, g.direction)}, ` +
+                     `now **${lap(g.goal_ms)}**` + next);
     }
     // CLIMBS ONLY. A drop is a public message telling somebody they got worse, and it is often not
     // even their doing: the daily TeknoParrot sync can surface a driver who was always faster and
@@ -205,11 +216,14 @@ export function buildEmbed(week: any): any {
     // driven. We cannot tell that apart from being genuinely overtaken, so the honest thing is to
     // report the half we can stand behind.
     for (const m of moves.filter((x) => x.rank_then > x.rank_now).slice(0, 4)) {
-      lines.push(`**${esc(m.author)}** climbed from **${ordinalise(m.rank_then)}** to ` +
-                 `**${ordinalise(m.rank_now)}** of ${m.of} worldwide`);
+      moveLines.push(`**${esc(m.author)}** climbed from **${ordinalise(m.rank_then)}** to ` +
+                     `**${ordinalise(m.rank_now)}** of ${m.of} worldwide`);
     }
+    // Two groups, blank line between. Times off a lap and places climbed are different facts, and
+    // running them together was the section's other wall-of-text problem.
+    const parts = [gainLines.length ? bullets(gainLines) : "", moveLines.length ? bullets(moveLines) : ""];
     fields.push(scoped("Progress this week", TF4ALL_SCOPE,
-                       lines.join("\n").slice(0, 900)));
+                       parts.filter(Boolean).join("\n\n").slice(0, 900)));
   }
 
   // The ladder itself moving. Reported because a target that shifts is news to anyone climbing
@@ -224,7 +238,7 @@ export function buildEmbed(week: any): any {
     fields.push(scoped("World records", "Between both the TF4ALL and TeknoParrot leaderboards",
       // "Took it from" wherever somebody actually lost it, matching the crown lines, because that
       // is the sentence a record changing hands deserves.
-      wrs.slice(0, 5).map((w) => {
+      bullets(wrs.slice(0, 5).map((w) => {
         const where = courseName(w.course_id, w.direction);
         // Not "the first". A missing predecessor means we could not identify one, usually because
         // the runner-up's row carries no date, and that is not the same as there never having been
@@ -235,7 +249,7 @@ export function buildEmbed(week: any): any {
         const by = w.prev_ms && w.prev_ms > w.goal_ms ? `, ${gap(w.prev_ms - w.goal_ms)} faster` : "";
         return `**${esc(w.author)}** took the world record on ${where} from ` +
                `${esc(w.prev_author)} with **${lap(w.goal_ms)}**${by}`;
-      }).join("\n").slice(0, 900)));
+      })).slice(0, 900)));
   }
 
   if (top.length) {
@@ -254,18 +268,20 @@ export function buildEmbed(week: any): any {
   const held: any[] = Array.isArray(week?.unclaimed?.held) ? week.unclaimed.held : [];
   const undriven: number = week?.unclaimed?.undriven ?? 0;
   if (held.length || undriven) {
-    const lines: string[] = [];
+    const openLines: string[] = [];
     if (held.length) {
       const h = held[0];
       // No "nobody else here has driven it" tail and no "here" on the list: the subtext under the
       // title already says both, and a section that restates its own heading on every line reads
       // as padding. The worldwide rank stays, because that is the part the subtext cannot carry
       // and the part that turns a held board into a target.
-      lines.push(`**${esc(h.author)}** holds ${courseName(h.course_id, h.direction)} at **${lap(h.goal_ms)}**` +
-                 (h.world_rank && h.world_of ? `, ${ordinalise(h.world_rank)} of ${h.world_of} worldwide` : ""));
-      const rest = held.slice(1, 4).map((x) =>
-        `${courseName(x.course_id, x.direction)} **${lap(x.goal_ms)}**`);
-      if (rest.length) lines.push(`Also open: ${rest.join(" · ")}`);
+      openLines.push(`**${esc(h.author)}** holds ${courseName(h.course_id, h.direction)} at **${lap(h.goal_ms)}**` +
+                     (h.world_rank && h.world_of ? `, ${ordinalise(h.world_rank)} of ${h.world_of} worldwide` : ""));
+      // One board per bullet rather than three run together on a "Also open:" line. Three courses
+      // and three times in one sentence is the densest thing in the message.
+      for (const x of held.slice(1, 4)) {
+        openLines.push(`${courseName(x.course_id, x.direction)} · **${lap(x.goal_ms)}**`);
+      }
     }
 
     // TOTALS, NOT A REMAINDER. "and 14 more" next to "14 of the 32 have no time" was arithmetically
@@ -286,13 +302,15 @@ export function buildEmbed(week: any): any {
     } else if (undriven) {
       tail.push(`**${undriven}** of the 32 have no time at all`);
     }
-    if (tail.length) lines.push(tail.join(" · ") + ".");
+    // The totals are a footnote to the list, not another entry in it, so they sit unbulleted below
+    // a blank line rather than reading as a fourth open board.
+    const summary = tail.length ? `\n\n${tail.join(" · ")}.` : "";
     // Scope only. "Boards nobody else here has driven" described the first kind of line and was
     // flatly contradicted by it: the very next line names somebody holding one. The section carries
     // two different things, boards held by exactly one driver and boards driven by nobody, and no
     // single sentence covers both without lying about one of them. The lines say what they are.
     fields.push(scoped("Open for a challenge", TF4ALL_SCOPE,
-                       lines.join("\n").slice(0, 900)));
+                       (bullets(openLines) + summary).slice(0, 900)));
   }
 
   // The call to action, now purely the invitation. The leader line that used to sit here restated
