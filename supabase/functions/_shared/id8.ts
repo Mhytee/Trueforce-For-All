@@ -137,6 +137,16 @@ function scoped(name: string, scope: string, body: string): any {
   return { name, value: `*${scope}*\n${body}`.slice(0, 1024) };
 }
 
+/** The default scope for almost everything here.
+ *
+ *  NOT "in this server". These boards cover every TF4ALL user who has submitted a time, whether or
+ *  not they are in this Discord, and saying otherwise excluded most of the people on them.
+ *
+ *  Deliberately identical on every section that uses it. A uniform label teaches a reader what the
+ *  default is, so the one section that says something else stands out on sight rather than having
+ *  to be read for. */
+const TF4ALL_SCOPE = "Among TF4ALL drivers";
+
 export function buildEmbed(week: any): any {
   const steals: any[] = Array.isArray(week?.steals) ? week.steals : [];
   const top: any[] = Array.isArray(week?.top) ? week.top : [];
@@ -166,7 +176,7 @@ export function buildEmbed(week: any): any {
     // submission beats another tf4all time, so this has always been a local table; the worldwide
     // half is the World records section. Calling it just "Records changed hands" beside a worldwide
     // standing invited the wrong reading.
-    fields.push(scoped("Records changed hands", "Among Trueforce For All drivers here",
+    fields.push(scoped("Records changed hands", TF4ALL_SCOPE,
                        lines.join("\n")));
   }
 
@@ -184,7 +194,7 @@ export function buildEmbed(week: any): any {
       // what the world records section is about to say in full, and a summary that states the same
       // fact twice reads as padding.
       const next = g.next_ms
-        ? ` Next up: **${lap(g.next_ms)}**${g.next_author ? ` by ${esc(g.next_author)}` : ""}.`
+        ? ` Current rival: **${lap(g.next_ms)}**${g.next_author ? ` by ${esc(g.next_author)}` : ""}.`
         : "";
       lines.push(`**${esc(g.actor)}** took **${gap(g.gain_ms)}** off ${courseName(g.course_id, g.direction)}, ` +
                  `now **${lap(g.goal_ms)}**.` + next);
@@ -198,7 +208,7 @@ export function buildEmbed(week: any): any {
       lines.push(`**${esc(m.author)}** climbed from **${ordinalise(m.rank_then)}** to ` +
                  `**${ordinalise(m.rank_now)}** of ${m.of} worldwide`);
     }
-    fields.push(scoped("Progress this week", "Drivers in this server",
+    fields.push(scoped("Progress this week", TF4ALL_SCOPE,
                        lines.join("\n").slice(0, 900)));
   }
 
@@ -211,7 +221,7 @@ export function buildEmbed(week: any): any {
   // when something happened is not evidence that it happened recently.
   const wrs: any[] = Array.isArray(week?.world_records) ? week.world_records : [];
   if (wrs.length) {
-    fields.push(scoped("World records", "Across everyone, TeknoParrot included",
+    fields.push(scoped("World records", "Between both the TF4ALL and TeknoParrot leaderboards",
       // "Took it from" wherever somebody actually lost it, matching the crown lines, because that
       // is the sentence a record changing hands deserves.
       wrs.slice(0, 5).map((w) => {
@@ -231,7 +241,7 @@ export function buildEmbed(week: any): any {
   if (top.length) {
     // The worldwide number sits inside the row as the interesting fact, rather than competing with
     // the header for what the section is about.
-    fields.push(scoped("Top ranked players", "In this server",
+    fields.push(scoped("Top ranked players", TF4ALL_SCOPE,
       top.map((t) =>
         `**${t.rank}.** ${esc(t.author)} · ${t.points} pts` +
         (t.merged_rank && t.merged_of ? ` · **${ordinalise(t.merged_rank)} of ${t.merged_of}** worldwide` : "")
@@ -267,12 +277,12 @@ export function buildEmbed(week: any): any {
     // count, which is the healthy case and the one this section is trying to bring about.
     const tail: string[] = [];
     if (held.length) {
-      tail.push(`**${held.length}** board${held.length === 1 ? " is" : "s are"} held by a single driver here`);
+      tail.push(`**${held.length}** board${held.length === 1 ? " is" : "s are"} held by a single TF4ALL driver`);
     }
     if (undriven >= 32) {
       // "32 of the 32" is arithmetic where a sentence belongs. Only reachable through the
       // moderator preview, since a server with no times anywhere never posts.
-      tail.push("no board here has a time yet");
+      tail.push("no TF4ALL driver has set a time yet");
     } else if (undriven) {
       tail.push(`**${undriven}** of the 32 have no time at all`);
     }
@@ -281,7 +291,7 @@ export function buildEmbed(week: any): any {
     // flatly contradicted by it: the very next line names somebody holding one. The section carries
     // two different things, boards held by exactly one driver and boards driven by nobody, and no
     // single sentence covers both without lying about one of them. The lines say what they are.
-    fields.push(scoped("Open for a challenge", "In this server",
+    fields.push(scoped("Open for a challenge", TF4ALL_SCOPE,
                        lines.join("\n").slice(0, 900)));
   }
 
