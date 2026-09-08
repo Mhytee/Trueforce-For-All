@@ -100,6 +100,19 @@ namespace TrueforceForAll.Core
         /// <summary>The screen changed, which outside a race is what confirming a choice does.</summary>
         public bool SceneChanged;
 
+        /// <summary>Which screen the game is on. 5 is the race; the rest are not yet identified.
+        ///
+        /// Exposed so the plugin can tell a race from everything else without re-reading memory.
+        /// Rewriting the leaderboards the instant a run finishes lands DURING the results, which is
+        /// the one moment the player is reading what they just did; the boards should change when
+        /// they leave it.
+        ///
+        /// No initialiser: Id8Sample is a struct, so it defaults to 0. That reads as "not the race",
+        /// which is the safe direction here. A deferred rewrite that fires slightly early because
+        /// the scene could not be read costs nothing; one that never fires would leave the player
+        /// looking at a target they have already beaten.</summary>
+        public int SceneId;
+
         /// <summary>True while the game's own clock is frozen, which is its pause. Read rather
         /// than inferred from focus or from telemetry going quiet, both of which guess.</summary>
         public bool Paused;
@@ -639,7 +652,10 @@ namespace TrueforceForAll.Core
         private const uint InputPtrVa2 = 0x013a8758;   // the cabinet's input record
         private const int InputButtons = 0x4;          // bitmask
         private const int InputButtons2 = 0x17;        // a second bitmask
-        private const int RaceSceneId = 5;
+        /// <summary>The race scene. Public because the plugin needs to tell "in a race" from
+        /// "anywhere else" to time a board rewrite, and re-deriving that constant there would be a
+        /// second copy of a measured number.</summary>
+        public const int RaceSceneId = 5;
         private const int HudToMeter = 0x4c;
         private const int MeterTachoShown = 0x8;
         private const int CsThrottle = 0x228;
@@ -2624,6 +2640,7 @@ namespace TrueforceForAll.Core
             int sceneId;
             if (sceneMgr != 0 && I32(sceneMgr + SceneMgrToSceneId, out sceneId))
             {
+                s.SceneId = sceneId;
                 if (_haveScene && sceneId != _prevSceneId)
                 {
                     s.SceneChanged = true;

@@ -302,12 +302,19 @@ async function cmdMe(discordId: string) {
   // This used to render best_rank, which is the best finish on any ONE course, under the label
   // "overall". Winning a single course reported you as ranked 1 overall.
   const lines = [
-    `**${s.points} pts**, ranked **${s.overall_rank ?? "-"} of ${s.players_ranked ?? "-"}** overall`,
+    `**${s.points} pts**, ranked **${s.overall_rank ?? "-"} of ${s.players_ranked ?? "-"}** among Trueforce For All`,
     `${s.course_crowns} course record${s.course_crowns === 1 ? "" : "s"} · ` +
       `${s.car_crowns} car record${s.car_crowns === 1 ? "" : "s"} · ` +
       `${s.course_top_ten} top ten place${s.course_top_ten === 1 ? "" : "s"}`,
     `On ${s.boards_entered} of 32 boards, in ${s.cars_driven} car${s.cars_driven === 1 ? "" : "s"}`,
   ];
+  // The whole field, TeknoParrot's cabinets included. On a young server the tf4all number is
+  // "1 of 1" and says nothing; this one is where you actually stand among people who play this
+  // game, which is the number worth chasing. Absent only if their board could not be read.
+  if (s.merged_rank && s.merged_players) {
+    lines.splice(1, 0,
+      `**${s.merged_rank} of ${s.merged_players}** overall, counting TeknoParrot's cabinets`);
+  }
   // Only worth saying to somebody who has not won one. To a player with course records it is
   // noise, and to a player with none it is the encouraging number: fourth is not nowhere.
   if (!s.course_crowns && s.best_course_finish) {
