@@ -623,7 +623,17 @@ namespace TrueforceForAll.Core
             return Merge(existing, Dedupe(withLocal), false);
         }
 
-        /// <summary>Collapse rows that would display as the same name, keeping the faster.</summary>
+        /// <summary>Collapse rows that are the same RECORD, keeping the faster, and take the ten
+        /// fastest.
+        ///
+        /// Same person in the same car is one record; the table's unique key says so. Same person
+        /// in a different car is a different record and keeps its own place, which is what lets one
+        /// driver hold several ranks on a course nobody else has driven.
+        ///
+        /// This keyed on the name alone, which was the last place a driver was collapsed to a
+        /// single time. Combine had already been fixed and the board still showed one row, because
+        /// a board that keeps local records comes through HERE instead: the by-car screen showed
+        /// the owner's GT-R while the any-car board still showed only their AE86.</summary>
         private static IReadOnlyList<Id8LeaderboardEntry> Dedupe(IReadOnlyList<Id8LeaderboardEntry> pool)
         {
             var best = new Dictionary<string, Id8LeaderboardEntry>(StringComparer.OrdinalIgnoreCase);
@@ -631,8 +641,9 @@ namespace TrueforceForAll.Core
             foreach (Id8LeaderboardEntry e in pool)
             {
                 if (e == null || e.GoalMs <= 0) continue;
-                string key = Id8Name.Sanitize(e.Username);
-                if (key.Length == 0) continue;
+                string name = Id8Name.Sanitize(e.Username);
+                if (name.Length == 0) continue;
+                string key = name + " " + e.CarId;
                 if (!best.TryGetValue(key, out Id8LeaderboardEntry held)) { best[key] = e; order.Add(key); }
                 else if (e.GoalMs < held.GoalMs) best[key] = e;
             }

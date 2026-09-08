@@ -270,6 +270,48 @@ namespace TrueforceForAll.Core.Tests
             Assert.DoesNotContain("LOCALGUY", names);
         }
 
+        /// <summary>One driver, several cars, and the board is a TIME board so each one earns a
+        /// place. The rig showed this the long way round: the by-car screen had the owner's GT-R
+        /// while the any-car board still showed only their AE86, because a board that keeps local
+        /// records goes through Dedupe, and Dedupe keyed on the name alone.</summary>
+        [Theory]
+        [InlineData(Id8BoardSource.Merged)]
+        [InlineData(Id8BoardSource.CommunityAndLocal)]
+        public void OneDriverInSeveralCarsTakesSeveralPlaces(Id8BoardSource source)
+        {
+            var pool = new List<Id8LeaderboardEntry>
+            {
+                new Id8LeaderboardEntry { Username = "Mhytee", CarId = 0,   GoalMs = 142781 },
+                new Id8LeaderboardEntry { Username = "Mhytee", CarId = 263, GoalMs = 151684 },
+            };
+
+            var rows = Id8Leaderboard.BuildBoard(source, ExistingBoard(), pool, null,
+                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()),
+                                                 boardPersists: true);
+            var mine = rows.Where(r => !r.IsFiller && Id8Name.Decode(r.RawName) == "MHYTEE")
+                           .Select(r => r.GoalMs).ToList();
+            Assert.Equal(new[] { 142781, 151684 }, mine);
+        }
+
+        /// <summary>The same car twice is the same record, not a second place. The table's unique
+        /// key is (game, course, direction, car_id, user_id), so only the faster survives.</summary>
+        [Fact]
+        public void TheSameCarTwiceIsStillOneRecord()
+        {
+            var pool = new List<Id8LeaderboardEntry>
+            {
+                new Id8LeaderboardEntry { Username = "Mhytee", CarId = 263, GoalMs = 151684 },
+                new Id8LeaderboardEntry { Username = "Mhytee", CarId = 263, GoalMs = 158000 },
+            };
+
+            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Merged, ExistingBoard(), pool, null,
+                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()),
+                                                 boardPersists: true);
+            var mine = rows.Where(r => !r.IsFiller && Id8Name.Decode(r.RawName) == "MHYTEE")
+                           .Select(r => r.GoalMs).ToList();
+            Assert.Equal(new[] { 151684 }, mine);
+        }
+
         /// <summary>Merged is everything: both pools and the local record, ranked together.</summary>
         [Fact]
         public void MergedIncludesTheLocalRecordAlongsideBothPools()
