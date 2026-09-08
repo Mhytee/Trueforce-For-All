@@ -160,8 +160,16 @@ export function buildEmbed(week: any): any {
   if (gains.length || moves.length) {
     const lines: string[] = [];
     for (const g of gains.slice(0, 4)) {
+      // The next rung, not a list of everyone passed. A run that overtakes six people is still one
+      // line, and the only other name in it is the one still ahead, which is the useful one.
+      // Nothing when there is no next rung. Saying "that is the fastest on the board" here repeats
+      // what the world records section is about to say in full, and a summary that states the same
+      // fact twice reads as padding.
+      const next = g.next_ms
+        ? ` Next up: **${lap(g.next_ms)}**${g.next_author ? ` by ${esc(g.next_author)}` : ""}.`
+        : "";
       lines.push(`**${esc(g.actor)}** took **${gap(g.gain_ms)}** off ${courseName(g.course_id, g.direction)}, ` +
-                 `now **${lap(g.goal_ms)}**`);
+                 `now **${lap(g.goal_ms)}**.` + next);
     }
     // CLIMBS ONLY. A drop is a public message telling somebody they got worse, and it is often not
     // even their doing: the daily TeknoParrot sync can surface a driver who was always faster and
@@ -173,6 +181,23 @@ export function buildEmbed(week: any): any {
                  `**${ordinalise(m.rank_now)}** of ${m.of} worldwide`);
     }
     fields.push({ name: "Progress this week", value: lines.join("\n").slice(0, 1000) });
+  }
+
+  // The ladder itself moving. Reported because a target that shifts is news to anyone climbing
+  // toward it, and because one of these might one day be somebody here.
+  //
+  // Only records actually SET in the window. TeknoParrot rows carry the date the time was set, so a
+  // record can be told apart from one the daily sync merely read for the first time; announcing the
+  // latter as this week's news would be false. A row with no date is excluded, because not knowing
+  // when something happened is not evidence that it happened recently.
+  const wrs: any[] = Array.isArray(week?.world_records) ? week.world_records : [];
+  if (wrs.length) {
+    fields.push({
+      name: "New world records",
+      value: wrs.slice(0, 5).map((w) =>
+        `**${esc(w.author)}** set a new world record on ${courseName(w.course_id, w.direction)}: **${lap(w.goal_ms)}**`
+      ).join("\n").slice(0, 1000),
+    });
   }
 
   if (top.length) {
