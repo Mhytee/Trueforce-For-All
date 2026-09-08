@@ -136,7 +136,15 @@ function ordinalise(n: number): string {
 function scoped(name: string, scope: string, body: string): any {
   // Blank line under the subtext. Without it the scope reads as the first entry rather than as a
   // label for the section, and five sections of that is the wall of text this became.
-  return { name, value: `*${scope}*\n\n${body}`.slice(0, 1024) };
+  //
+  // And a trailing zero-width space on its own line, which is the only way to put air between
+  // consecutive embed fields: Discord stacks them tight, so the last line of one section sits hard
+  // against the bold title of the next and the two read as one block. An empty string will not do
+  // it, since Discord trims trailing whitespace; the character has to be there but invisible.
+  //
+  // Budget 1015 rather than 1024 to leave room for it, because the cap is enforced on the final
+  // value and a section truncated to exactly 1024 would lose the spacer it needs most.
+  return { name, value: `*${scope}*\n\n${body}`.slice(0, 1015) + "\n\u200b" };
 }
 
 /** One item in a section. A literal bullet rather than markdown "- ": list markdown in embeds is
