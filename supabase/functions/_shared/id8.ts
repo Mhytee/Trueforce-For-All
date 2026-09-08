@@ -264,7 +264,11 @@ export function buildEmbed(week: any): any {
       // A different fact from the ones above: not held by one person, driven by nobody at all.
       lines.push(`**${undriven}** of the 32 boards have no time from anyone here.`);
     }
-    fields.push(scoped("Open for a challenge", "Boards nobody else here has driven",
+    // Scope only. "Boards nobody else here has driven" described the first kind of line and was
+    // flatly contradicted by it: the very next line names somebody holding one. The section carries
+    // two different things, boards held by exactly one driver and boards driven by nobody, and no
+    // single sentence covers both without lying about one of them. The lines say what they are.
+    fields.push(scoped("Open for a challenge", "In this server",
                        lines.join("\n").slice(0, 900)));
   }
 
