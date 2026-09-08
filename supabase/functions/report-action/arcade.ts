@@ -21,7 +21,7 @@
 
 // The digest embed, and the course/car/time helpers, shared with arcade-digest so a preview and
 // the posted message cannot drift apart. See _shared/id8.ts.
-import { buildEmbed, COURSES, courseName, lap, esc } from "../_shared/id8.ts";
+import { buildEmbed, COURSES, courseName, lap, esc, GAME_NAME } from "../_shared/id8.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -288,7 +288,7 @@ async function cmdMe(discordId: string) {
   const s = rows[0];
   if (!s || !s.boards_entered) {
     return json({ type: CHANNEL_MESSAGE, data: { flags: EPHEMERAL, embeds: [{
-      title: "Your Initial D 8 record",
+      title: `Your ${GAME_NAME} record`,
       color: 0xE5C04A,
       description: "No times yet. Finish a Time Attack run with TF4ALL open and you are on the boards.",
     }], allowed_mentions: { parse: [] } }});
@@ -308,10 +308,19 @@ async function cmdMe(discordId: string) {
   // says nothing, while the other one is where you stand among people who actually play this game.
   const standing: string[] = [];
   if (s.merged_rank && s.merged_players) {
-    standing.push(`**${s.merged_rank} of ${s.merged_players}** · everyone here, TeknoParrot included`);
+    standing.push(`**${s.merged_rank} of ${s.merged_players}** · Worldwide (TF4ALL + TeknoParrot leaderboards)`);
   }
-  standing.push(`**${s.overall_rank ?? "-"} of ${s.players_ranked ?? "-"}** · Trueforce For All only, ${s.points} pts`);
+  standing.push(`**${s.overall_rank ?? "-"} of ${s.players_ranked ?? "-"}** · Among TF4ALL users, ${s.points} pts`);
   fields.push({ name: "Where you stand", value: standing.join("\n") });
+
+  // The worldwide counterpart to the tf4all line below. Without it "18 first times" has nothing to
+  // be measured against, and the tf4all numbers on a one-driver server flatter in a way the
+  // worldwide ones do not: 18 unchallenged firsts here, best finish 17th out there.
+  const wide: string[] = [];
+  if (s.merged_crowns) wide.push(`**${s.merged_crowns}** course record${s.merged_crowns === 1 ? "" : "s"}`);
+  if (s.merged_top_ten) wide.push(`**${s.merged_top_ten}** top ten place${s.merged_top_ten === 1 ? "" : "s"}`);
+  if (s.merged_best_finish) wide.push(`best finish **${ordinal(s.merged_best_finish)}**`);
+  if (wide.length) fields.push({ name: "Worldwide", value: wide.join(" · ") });
 
   // AN UNCONTESTED WIN IS NOT A WIN, and the scoring already says so: beating nobody is worth
   // nothing. Calling it a "record" directly above a score that prices it at zero reads as a bot
@@ -330,7 +339,7 @@ async function cmdMe(discordId: string) {
   // Only worth saying to somebody with no wins at all. To a driver with records it is noise; to one
   // with none it is the encouraging number, because fourth is not nowhere.
   if (!crowns && s.best_course_finish) bits.push(`best finish ${ordinal(s.best_course_finish)}`);
-  if (bits.length) fields.push({ name: "Among Trueforce For All", value: bits.join(" · ") });
+  if (bits.length) fields.push({ name: "Among TF4ALL users", value: bits.join(" · ") });
 
   const driving = [
     `On **${s.boards_entered}** of 32 boards, in **${s.cars_driven}** car${s.cars_driven === 1 ? "" : "s"}`,
@@ -339,7 +348,7 @@ async function cmdMe(discordId: string) {
   fields.push({ name: "Driving", value: driving.join("\n") });
 
   return json({ type: CHANNEL_MESSAGE, data: { flags: EPHEMERAL, embeds: [{
-    title: `${s.author}, in Initial D 8`,
+    title: `${s.author}, in ${GAME_NAME}`,
     color: 0xE5C04A,
     fields,
   }], allowed_mentions: { parse: [] } }});

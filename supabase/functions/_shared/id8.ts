@@ -18,6 +18,11 @@
 // because Discord renders footer text as plain text: a link there would not be one.
 const INFO_URL = "https://github.com/Mhytee/Trueforce-For-All";
 
+/** The game's full title, as SEGA writes it. Here rather than typed at each surface, because the
+ *  digest and /id8 me both say it and a shortened "Initial D 8" in one of them reads as a different
+ *  product. */
+export const GAME_NAME = "Initial D: Arcade Stage 8 Infinity";
+
 export const COURSES = [
   "Lake Akina", "Myogi", "Akagi", "Akina", "Irohazaka", "Tsukuba", "Happogahara", "Nagao",
   "Tsubaki Line", "Usui", "Sadamine", "Tsuchisaka", "Akina Snow", "Hakone", "Momiji Line",
