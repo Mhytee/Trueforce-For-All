@@ -185,11 +185,14 @@ namespace TrueforceForAll.Plugin
         /// because it compares against what was actually written.</summary>
         private int _writeBusy;
 
-        public async Task FillAllAsync(CancellationToken ct, bool force = false)
+        /// <returns>False when another write held the boards and this one was dropped, so a
+        /// caller that owed a rewrite still owes it.</returns>
+        public async Task<bool> FillAllAsync(CancellationToken ct, bool force = false)
         {
-            if (Interlocked.CompareExchange(ref _writeBusy, 1, 0) != 0) return;
+            if (Interlocked.CompareExchange(ref _writeBusy, 1, 0) != 0) return false;
             try { await FillAllCoreAsync(ct, force).ConfigureAwait(false); }
             finally { Interlocked.Exchange(ref _writeBusy, 0); }
+            return true;
         }
 
         private async Task FillAllCoreAsync(CancellationToken ct, bool force)
@@ -931,6 +934,31 @@ namespace TrueforceForAll.Plugin
             var rows = Id8Leaderboard.BuildBoard(effective, existing, community, tekno, local,
                                                  ladderFor, _ladderView);
             int written = _writer.WriteBoard(board, courseId, direction, rows);
+
+            // DIAGNOSTIC (2026-09-08). The rig showed the in-race target two rungs up rather than
+            // one, while the leaderboard screen a minute earlier had the right driver directly
+            // above. The window maths says those two cannot disagree, so this prints what was
+            // actually put on the board rather than what the arithmetic says should be there.
+            if (ladder && ladderFor != null)
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append("[TF4ALL] Arcade ladder course ").Append(courseId).Append(" dir ")
+                  .Append(direction).Append(" as ").Append(ladderFor).Append(" [")
+                  .Append(_ladderView).Append("]:");
+                for (int i = 0; i < rows.Length && i < 4; i++)
+                {
+                    string nm = rows[i].IsFiller ? "(filler)" : Id8Name.Decode(rows[i].RawName);
+                    sb.Append(' ').Append(i + 1).Append('=').Append(nm).Append('/')
+                      .Append(rows[i].GoalMs).Append("/id").Append(rows[i].PlayerId);
+                }
+                for (int i = 0; i < rows.Length; i++)
+                    if (!rows[i].IsFiller &&
+                        string.Equals(Id8Name.Sanitize(Id8Name.Decode(rows[i].RawName)),
+                                      Id8Name.Sanitize(ladderFor), StringComparison.OrdinalIgnoreCase))
+                    { sb.Append("  <- they are row ").Append(i + 1); break; }
+                _log?.Invoke(sb.ToString());
+            }
+
             if (!quiet)
                 _log?.Invoke($"[TF4ALL] Arcade {board} {source}: wrote {written}/{rows.Length} rows " +
                              $"for course {courseId} dir {direction}");
@@ -1113,6 +1141,18 @@ namespace TrueforceForAll.Plugin
 
             // Same gate as a fill, because this writes the same boards.
             if (Interlocked.CompareExchange(ref _writeBusy, 1, 0) != 0) return false;
+
+            // SET BEFORE THE LOOP, because Write reads it to decide what to build.
+            //
+            // This was moved to after the loop so that a swap which threw halfway would not be
+            // recorded as done. That was right about the failure case and wrong about everything
+            // else: the whole loop then built the layout being LEFT, and the new one was recorded
+            // the instant afterwards. On the rig every entry to the select screen wrote standings
+            // and announced target, so the game read row one of the reading board and sent the
+            // player after a driver four rungs up. Put back on failure instead, which keeps the
+            // retry without lying to the writer.
+            Id8LadderView had = _ladderView;
+            _ladderView = view;
             try
             {
 
@@ -1135,13 +1175,11 @@ namespace TrueforceForAll.Plugin
                     done++;
                 }
 
-            // Claimed only now, with the boards actually holding it. Setting it up front meant a
-            // swap that threw halfway was still recorded as done and was never tried again.
-            _ladderView = view;
             _log?.Invoke($"[TF4ALL] Arcade ladder: {view} layout across {done} shop board(s)");
             return done > 0;
 
             }
+            catch { _ladderView = had; throw; }
             finally { Interlocked.Exchange(ref _writeBusy, 0); }
         }
 

@@ -49,19 +49,42 @@ namespace TrueforceForAll.Plugin
 {
     public sealed partial class TrueforcePlugin
     {
-        /// <summary>The session and race pair from the last sample, and how many samples running
-        /// it has looked like that.
+        /// <summary>The attract screen, measured on the rig 2026-09-08.
         ///
-        /// A FAILED MEMORY READ IS INDISTINGUISHABLE FROM THE SESSION ENDING. Id8Sample is a struct
-        /// and a failed read leaves its fields at zero, so one unlucky read of the session root
-        /// reads exactly like the player walking away, and the boards would be rewritten twice for
-        /// nothing. Acting only on a reading that has held for a while costs about half a second at
-        /// each real transition, against a menu window of about thirty.</summary>
-        private bool _arcadeSessionWas, _arcadeRaceWas;
-        private int _arcadeStateHeld;
+        /// One pass gave the whole vocabulary: 1 is attract, 2 is the mode and course select, 0 is
+        /// loading, 5 is the race. The leaderboard is reached with an arrow FROM attract and does
+        /// not change the scene, so the whole of the reading is scene 1, which is exactly the span
+        /// the standings layout is for.
+        ///
+        /// KEYED ON THE POSITIVE VALUE ON PURPOSE. A failed memory read leaves the field at zero,
+        /// and zero is loading, so a bad read can move the board to Target, which is harmless and
+        /// self-correcting, and can never fake attract.</summary>
+        private const int Id8AttractSceneId = 1;
 
-        /// <summary>How many samples a reading has to hold before the boards are rewritten.</summary>
-        private const int ArcadeLadderSettleSamples = 20;
+        /// <summary>The scene from the last sample, and how many samples running it has held.
+        ///
+        /// Short, because this has to WIN A RACE against the select screen. The game reads the
+        /// shop time as that screen builds, so every sample spent settling is a sample in which the
+        /// wrong row can be copied. Measured: three and a half seconds of settling was enough for
+        /// the target to be taken from the standings layout, four rungs too far up.</summary>
+        private int _arcadeSceneWas = -1;
+        private int _arcadeSceneHeld;
+
+        /// <summary>How many samples a scene has to hold before the boards are rewritten.</summary>
+        private const int ArcadeLadderSettleSamples = 3;
+
+        /// <summary>Its OWN latch, deliberately not the one the fill uses.
+        ///
+        /// The fill is dispatched from the same per-frame step, a few lines earlier, and takes that
+        /// latch EVERY frame even when it is about to do nothing because the boards are already
+        /// filled. So the layout swap, running second, lost the race most frames and only landed
+        /// when it happened to win: measured on the rig at eight seconds off one entry to the
+        /// select screen and thirty-seven off the next, which is how the game came to read the
+        /// standings layout and hand the player a target four rungs up.
+        ///
+        /// Two latches are safe because the service serialises the writes themselves, and a swap
+        /// that loses THAT is simply asked for again on the next frame.</summary>
+        private int _arcadeLadderBusy;
 
         /// <summary>Menu-state work, and the reason it runs OUTSIDE the validity guard.
         ///
@@ -76,23 +99,30 @@ namespace TrueforceForAll.Plugin
 
             if (!boards.Attached) return;
 
-            // Settle first. Both tests below key on fields that read as zero when a memory read
-            // fails, so a single bad read would otherwise look like the player walking away.
-            if (s.SessionValid != _arcadeSessionWas || s.InRace != _arcadeRaceWas)
-            {
-                _arcadeSessionWas = s.SessionValid;
-                _arcadeRaceWas = s.InRace;
-                _arcadeStateHeld = 1;
-                return;
-            }
-            if (_arcadeStateHeld < ArcadeLadderSettleSamples) { _arcadeStateHeld++; return; }
+            // Attract is the ONLY place the reading layout belongs; everywhere else the board is
+            // about to be read by the game rather than by a person.
+            //
+            // This was keyed on "a session exists but no race does", which is a true statement
+            // about being in the menus and arrives too late to be useful: the session appears at
+            // the same moment the select screen does, so the swap and the screen were racing, and
+            // on the rig the screen won by three and a half seconds. The scene changes as they
+            // LEAVE ATTRACT, before any of the select flow is built, which is the whole difference.
+            Id8LadderView want = s.SceneId == Id8AttractSceneId
+                ? Id8LadderView.Standings
+                : Id8LadderView.Target;
 
-            // A session with no race is a person in the menus. No session at all is the cabinet
-            // idling at attract. In a race, which includes the attract demo, leave the boards be:
-            // the HUD has already taken its copy and nothing on screen is going to read them.
-            Id8LadderView want = boards.LadderView;
-            if (s.SessionValid && !s.InRace) want = Id8LadderView.Target;
-            else if (!s.SessionValid) want = Id8LadderView.Standings;
+            if (s.SceneId != _arcadeSceneWas) { _arcadeSceneWas = s.SceneId; _arcadeSceneHeld = 1; }
+            else if (_arcadeSceneHeld < ArcadeLadderSettleSamples) _arcadeSceneHeld++;
+
+            // SETTLING IS ONLY FOR THE WAY BACK. Leaving attract is a race against a screen the
+            // game is building right then, and every sample spent confirming is a sample in which
+            // the wrong row can be copied, so Target goes on the FIRST sample that says so. Costing
+            // nothing: the worst a stray reading can do in that direction is aim a board nobody is
+            // looking at, and the next sample puts it back.
+            //
+            // Returning to Standings has the whole attract loop to happen in and is the direction
+            // that can actually spoil something, so it waits to be sure.
+            if (want == Id8LadderView.Standings && _arcadeSceneHeld < ArcadeLadderSettleSamples) return;
 
             // THE RACE RECORD GOING AWAY is what "they left the results screen" looks like. The
             // race record and the car state both stay readable through the results, the earnings
@@ -111,11 +141,7 @@ namespace TrueforceForAll.Plugin
             // told the game restarted.
             if (!refillNow && want == boards.LadderView) return;
 
-            if (Interlocked.CompareExchange(ref _arcadeBoardBusy, 1, 0) != 0) return;
-
-            // Cleared only once the work is DISPATCHED, not on the decision, so a refill that lost
-            // the latch to the opening fill is still owed on the next sample.
-            if (refillNow) boards.ClearRefillOwed();
+            if (Interlocked.CompareExchange(ref _arcadeLadderBusy, 1, 0) != 0) return;
 
             Task.Run(() =>
             {
@@ -128,8 +154,13 @@ namespace TrueforceForAll.Plugin
                         // rather than swapped afterwards: the fill writes every board once and
                         // there is no reason to write the shop boards a second time.
                         boards.SetLadderView(want);
-                        boards.FillAllAsync(CancellationToken.None, force: true)
-                              .GetAwaiter().GetResult();
+
+                        // Cleared only once the rebuild has actually HAPPENED. Clearing on dispatch
+                        // meant a rebuild dropped by a write already in flight was forgotten, and
+                        // the lap they had just driven never reached the boards at all.
+                        if (boards.FillAllAsync(CancellationToken.None, force: true)
+                                  .GetAwaiter().GetResult())
+                            boards.ClearRefillOwed();
                     }
                     else
                     {
@@ -140,7 +171,7 @@ namespace TrueforceForAll.Plugin
                 {
                     SimHub.Logging.Current.Info("[TF4ALL] Arcade ladder layout failed: " + ex.Message);
                 }
-                finally { Interlocked.Exchange(ref _arcadeBoardBusy, 0); }
+                finally { Interlocked.Exchange(ref _arcadeLadderBusy, 0); }
             });
         }
     }
