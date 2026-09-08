@@ -455,6 +455,9 @@ namespace TrueforceForAll.Plugin
                         Section2 = had.Section2,
                         Section3 = had.Section3,
                         UnixTime = had.UnixTime,
+                        // Carried, or writing this row back would re-stamp it as ours and the next
+                        // sweep would delete somebody's real record as if we had put it there.
+                        PlayerId = had.PlayerId,
                     },
                 });
             }
@@ -498,6 +501,9 @@ namespace TrueforceForAll.Plugin
                     RawName = Id8Name.Encode(Id8Name.Sanitize(e.Username)),
                     Reserved = Id8LeaderboardRecord.ReservedFor(e.CarId),
                     Flags = Id8LeaderboardRecord.FlagReal,
+                    // 0 for anything out of the pools, which is our signature. A record folded in
+                    // off the board keeps the card id it arrived with, so it stays theirs.
+                    PlayerId = e.PlayerId,
                     UnixTime = e.UnixTime,
                     Section1 = e.Section1,
                     Section2 = e.Section2,

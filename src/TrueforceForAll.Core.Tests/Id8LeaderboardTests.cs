@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using TrueforceForAll.Core;
 using Xunit;
@@ -89,23 +89,23 @@ namespace TrueforceForAll.Core.Tests
         [Fact]
         public void EncodeAndDecodeAreInverse()
         {
-            const string s = "TF4ALL-01";
+            const string s = "TF4ALL-1";
             Assert.Equal(s, Id8Name.Decode(Id8Name.Encode(s)));
         }
 
         [Theory]
         [InlineData("mhytee", "MHYTEE")]
-        [InlineData("VeryLongUsername", "VERYLONGU")]        // 9 characters, no more
-        [InlineData("Ryosuke.Takahashi", "RYOSUKETA")]       // the dot is dropped, then truncated
+        [InlineData("VeryLongUsername", "VERYLONG")]         // 8 characters, no more
+        [InlineData("Ryosuke.Takahashi", "RYOSUKET")]        // the dot is dropped, then truncated
         [InlineData("naïve", "NAVE")]                        // unmappable dropped, not substituted
         [InlineData("...", Id8Name.Fallback)]                // nothing left, so the fallback
         [InlineData("", Id8Name.Fallback)]
         [InlineData(null, Id8Name.Fallback)]
         [InlineData("  spaced", "SPACED")]                   // no leading space
         // profiles.username is ^[a-zA-Z0-9_]{3,32}$, so underscores are legal and must survive.
-        [InlineData("drift_king", "DRIFT_KIN")]
+        [InlineData("drift_king", "DRIFT_KI")]
         [InlineData("a_b", "A_B")]
-        public void SanitizeTruncatesToWhatTheFieldHolds(string input, string expected)
+        public void SanitizeTruncatesToWhatTheScreenHolds(string input, string expected)
         {
             Assert.Equal(expected, Id8Name.Sanitize(input));
         }
@@ -126,6 +126,16 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(s, Id8Name.Decode(enc));
         }
 
+        /// <summary>The boundary itself, pinned because it moved once: nine characters
+        /// fit the field but ran into the time column on screen, so eight is the limit and
+        /// eight must still work.</summary>
+        [Fact]
+        public void ANameAtTheLimitStillEncodes()
+        {
+            Assert.Equal(8, Id8Name.MaxChars);
+            Assert.NotNull(Id8Name.Encode("EIGHTCHR"));
+        }
+
         [Fact]
         public void EverySanitizedNameEncodes()
         {
@@ -134,9 +144,11 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void EncodeRefusesANameTooLongForTheField()
+        public void EncodeRefusesANameTooLongForTheScreen()
         {
-            Assert.Null(Id8Name.Encode("TENCHARSXX"));   // 10 characters, the field holds 9
+            // Nine still fits the FIELD but not the layout, and Encode enforces the
+            // display limit, so this is refused a character earlier than the bytes require.
+            Assert.Null(Id8Name.Encode("NINECHARS"));
         }
 
         [Fact]

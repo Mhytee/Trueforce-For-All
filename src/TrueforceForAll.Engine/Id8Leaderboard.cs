@@ -206,8 +206,15 @@ namespace TrueforceForAll.Core
     /// and unlike every real record in the table.</summary>
     public static class Id8Name
     {
-        /// <summary>Two bytes per character, and one character of the field is the terminator.</summary>
-        public const int MaxChars = (Id8LeaderboardRecord.NameBytes / 2) - 1;   // 9
+        /// <summary>What the FIELD holds: two bytes per character, with one character
+        /// of it spent on the terminator.</summary>
+        public const int FieldChars = (Id8LeaderboardRecord.NameBytes / 2) - 1;   // 9
+
+        /// <summary>What actually fits on SCREEN, which is one character less than the
+        /// field allows. At the full nine the name runs into the time column and covers
+        /// it (rig, 2026-09-07). The field is not the constraint here, the layout is,
+        /// so this is kept as its own number rather than folded into the maths above.</summary>
+        public const int MaxChars = FieldChars - 1;   // 8
 
         /// <summary>Used when a name has nothing left after sanitising.</summary>
         public const string Fallback = "RACER";
@@ -295,6 +302,16 @@ namespace TrueforceForAll.Core
 
         /// <summary>Seconds since the unix epoch, for the record's date field.</summary>
         public uint UnixTime;
+
+        /// <summary>The cabinet card id of whoever set this, or 0.
+        ///
+        /// Non-zero only on an entry built FROM a record already on the board, and it exists so that
+        /// record can be written back as what it is. PlayerId 0 is our own write signature, so
+        /// dropping the id here re-stamps somebody's genuine record as ours, and the next sweep
+        /// deletes it as if we had put it there, without even logging a removal. The top-ten path
+        /// never had this problem because its merge carries the whole record through; the per-car
+        /// path rebuilds the board out of entries and so has to carry the id itself.</summary>
+        public uint PlayerId;
     }
 
     public static class Id8Leaderboard
