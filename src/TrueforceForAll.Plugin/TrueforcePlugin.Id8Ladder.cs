@@ -61,6 +61,17 @@ namespace TrueforceForAll.Plugin
         /// self-correcting, and can never fake attract.</summary>
         private const int Id8AttractSceneId = 1;
 
+        /// <summary>Loading, and also what a failed read looks like, which here is the same
+        /// answer: do not move the boards on it.
+        ///
+        /// It sits between every other screen, including for the minute or so after a run, and it
+        /// is where the game boots. Treating it as "not attract", and so as a reason to aim the
+        /// board at a target, meant a fresh launch re-aimed the boards before the cabinet had
+        /// reached its attract screen. The shop boards persist into the save, so that layout is
+        /// what the next launch shows until we attach: the owner relaunched and found himself
+        /// second on his own leaderboard.</summary>
+        private const int Id8LoadingSceneId = 0;
+
         /// <summary>The scene from the last sample, and how many samples running it has held.
         ///
         /// Short, because this has to WIN A RACE against the select screen. The game reads the
@@ -107,9 +118,9 @@ namespace TrueforceForAll.Plugin
             // the same moment the select screen does, so the swap and the screen were racing, and
             // on the rig the screen won by three and a half seconds. The scene changes as they
             // LEAVE ATTRACT, before any of the select flow is built, which is the whole difference.
-            Id8LadderView want = s.SceneId == Id8AttractSceneId
-                ? Id8LadderView.Standings
-                : Id8LadderView.Target;
+            Id8LadderView want = boards.LadderView;
+            if (s.SceneId == Id8AttractSceneId) want = Id8LadderView.Standings;
+            else if (s.SceneId != Id8LoadingSceneId) want = Id8LadderView.Target;
 
             if (s.SceneId != _arcadeSceneWas) { _arcadeSceneWas = s.SceneId; _arcadeSceneHeld = 1; }
             else if (_arcadeSceneHeld < ArcadeLadderSettleSamples) _arcadeSceneHeld++;
