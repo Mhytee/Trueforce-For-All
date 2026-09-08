@@ -2528,9 +2528,21 @@ namespace TrueforceForAll.Plugin
         // file, our build re-reads it when it changes, and its own GUI edits the
         // same keys the same way. One file, one truth, and nothing to drift.
 
+        /// <summary>Is the arcade path available at all on this install?
+        ///
+        /// Off unless the ARCADE access code has been typed; see ArcadeSettings.Enabled for why
+        /// the whole path is shelved. Every arcade entry point asks this, so there is exactly one
+        /// thing to turn back on: cabinet identity, both force sources, the memory map, the
+        /// leaderboards and the SimHub bridge.</summary>
+        public bool ArcadeUnlocked => Settings?.Arcade?.Enabled == true;
+
         /// <summary>True while an emulated arcade cabinet is the active game.
-        /// Drives the FFB tab's arcade panel.</summary>
-        public bool ActiveGameIsArcade => IsArcadeGameName(_activeGame);
+        /// Drives the FFB tab's arcade panel.
+        ///
+        /// Reads false while the path is locked, which is what keeps the arcade panel, the
+        /// ID8 memory telemetry, the cabinet car id and the arcade invert behaviour off a
+        /// shipping build without each of them needing its own check.</summary>
+        public bool ActiveGameIsArcade => ArcadeUnlocked && IsArcadeGameName(_activeGame);
 
         /// <summary>The arcade cabinet matching the active game, or null.</summary>
         public ArcadeModTarget ActiveArcadeTarget()
@@ -6926,7 +6938,11 @@ namespace TrueforceForAll.Plugin
             bool simHubHasGame = data?.GameRunning == true;
             bool customCode = simHubHasGame && gameName != null
                 && gameName.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase);
-            if (!simHubHasGame || customCode)
+            // ArcadeUnlocked first, and it gates the NAMING rather than only the consumers:
+            // renaming the active game to a cabinet re-keys presets, car folders and car facts,
+            // so a locked build must never do it. With this off, _activeGame never becomes an
+            // arcade name and IsArcadeGameName is false everywhere downstream by construction.
+            if (ArcadeUnlocked && (!simHubHasGame || customCode))
             {
                 string arcadeGame = DetectArcadeGameName();
 
@@ -18073,7 +18089,10 @@ namespace TrueforceForAll.Plugin
                 }
                 if (_fsPipeSource != null) newSource = _fsPipeSource;
             }
-            else if (IsArcadeGameName(game))
+            // Belt and braces against the naming gate above: a user is free to call a SimHub
+            // profile "InitialD8" by hand, and a locked build must not build an arcade source
+            // for it.
+            else if (ArcadeUnlocked && IsArcadeGameName(game))
             {
                 // The arcade reader opens TeknoParrot's cabinet IO block lazily on
                 // its own thread, so unlike the AC source it never throws from

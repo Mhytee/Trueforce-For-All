@@ -437,6 +437,10 @@ namespace TrueforceForAll.Plugin
         private void ArcadeBridgeSpikeWrite(PluginManager pluginManager, GameData data)
         {
             if (data == null) return;
+            // Shelved with the rest of the arcade path. This one writes into SimHub's OWN
+            // standard fields, so leaving it live on a locked build would let a spike speak
+            // for a path nothing else is running.
+            if (!ArcadeUnlocked) return;
 
             // A SimHub CUSTOM GAME is the case we now want to write into, and
             // the reason the first attempt could not work. A custom game gives

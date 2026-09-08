@@ -2608,8 +2608,26 @@ namespace TrueforceForAll.Plugin
     /// reads or writes the game's memory.</summary>
     public sealed class ArcadeSettings
     {
-        /// <summary>Master switch for the whole process-detected arcade path.</summary>
-        public bool Enabled { get; set; } = true;
+        /// <summary>Master switch for the whole process-detected arcade path: the cabinet
+        /// identity, both arcade force sources, the Initial D 8 memory map, its leaderboards
+        /// and ladder, the arcade panel and the SimHub bridge.
+        ///
+        /// SHELVED 2026-09-08, which is why this is off. The arcade work was built against
+        /// TeknoParrot, and TeknoParrot turns out not to be how most people run Initial D 8:
+        /// the other route is micetools plus a server emulator, which fills the game's own
+        /// leaderboards from a real server and renders force feedback itself. Neither of those
+        /// makes the work wrong, but both change what it should do, and answering that needs a
+        /// rig session on that stack rather than a guess. Shipping it on in the meantime would
+        /// mean shipping a leaderboard writer that fights a live server, so it waits.
+        ///
+        /// The ARCADE access code turns it back on and persists. When this is revisited the
+        /// switch is the natural place for the TeknoParrot / micetools mode choice to live,
+        /// since every arcade entry point already asks it.
+        ///
+        /// Deliberately NOT in BackupProjection.ArcadePortableFields: an unlock is a fact about
+        /// this machine's testing, like the manual device picker, and a restore should not
+        /// silently re-enable a shelved path on a PC that never asked for it.</summary>
+        public bool Enabled { get; set; }
 
         /// <summary>Fill Initial D 8's in-game leaderboards from real times instead of leaving
         /// them on SEGA's built-in filler rows.

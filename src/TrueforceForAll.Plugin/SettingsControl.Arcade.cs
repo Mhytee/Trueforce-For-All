@@ -507,6 +507,15 @@ namespace TrueforceForAll.Plugin
             var a = _plugin?.Settings?.Arcade;
             if (a == null) return;
 
+            // Shelved with the rest of the arcade path. These controls are deliberately visible
+            // with no cabinet running, since they are a standing preference rather than something
+            // set mid-session, so "no cabinet" cannot hide them and the lock has to. An expander
+            // offering to fill a cabinet's leaderboards is noise on a build that never reads one.
+            bool unlocked = _plugin.ArcadeUnlocked;
+            if (ArcadeLeaderboardExpander != null)
+                ArcadeLeaderboardExpander.Visibility = unlocked ? Visibility.Visible : Visibility.Collapsed;
+            if (!unlocked) return;
+
             if (ArcadeLeaderboardsCheck != null) ArcadeLeaderboardsCheck.IsChecked = a.Id8LeaderboardsEnabled;
             if (ArcadeSubmitTimesCheck != null) ArcadeSubmitTimesCheck.IsChecked = a.Id8SubmitTimesEnabled;
             // Always available now. It used to grey out unless a board was set to All or
