@@ -430,14 +430,31 @@ namespace TrueforceForAll.Core
             // Local contributes no external rows. It is expressed entirely by KeepsLocalRecords,
             // which tells the merge to preserve what was already on the board.
 
+            // THE TEN FASTEST TIMES. Not the ten fastest people.
+            //
+            // One row per person is the usual leaderboard shape and it was what this did, keeping
+            // each driver's single best. On a server with one driver that left nine of the ten
+            // ranks showing TF4ALL filler while real times sat unshown, so the board read as broken
+            // rather than as new.
+            //
+            // The fix is not to rank people and then backfill, which is what I tried first: putting
+            // somebody above a time that actually beat them, because they happen to be a different
+            // person, is a board that states something untrue. This is a time-attack board. It
+            // ranks times.
+            //
+            // Deduped per person per CAR, which is not a tie-break dodge: the table's own unique key
+            // is (game, course, direction, car_id, user_id), so a second slower run in the same car
+            // is the same record, not a second one. Different cars are different records and each
+            // earns its own place.
             var best = new Dictionary<string, Id8LeaderboardEntry>(StringComparer.OrdinalIgnoreCase);
             var order = new List<string>();
             foreach (Id8LeaderboardEntry e in pool)
             {
                 if (e == null || e.GoalMs <= 0) continue;
-                string key = Id8Name.Sanitize(e.Username);
-                if (key.Length == 0) continue;
+                string name = Id8Name.Sanitize(e.Username);
+                if (name.Length == 0) continue;
 
+                string key = name + " " + e.CarId;
                 if (!best.TryGetValue(key, out Id8LeaderboardEntry held)) { best[key] = e; order.Add(key); }
                 else if (e.GoalMs < held.GoalMs) best[key] = e;
             }

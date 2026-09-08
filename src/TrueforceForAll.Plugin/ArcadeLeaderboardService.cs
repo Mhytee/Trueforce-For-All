@@ -240,7 +240,19 @@ namespace TrueforceForAll.Plugin
                         // trailing bytes, so restoring from them would rebuild an approximation.
                         _preWriteShopCars[slot] = ReadShopCarRecords(course, dir);
                     }
-                    Dictionary<int, Id8LeaderboardEntry> lBest = _preWriteShopCars[slot];
+                    // Re-read, every fill, not just the first. The snapshot is what the board
+                    // looked like before we touched it and must stay that, but as the ONLY source
+                    // of the player's per-car records it also froze them at attach: set a record
+                    // mid-session and it could never appear, because the one place we looked was
+                    // taken before it existed. That is why a lap could be driven, stored by the
+                    // game, and still be missing from the board.
+                    //
+                    // Safe to read a board we have written to because IsOurs settles it: the game
+                    // stamps a card id on a record it sets and every row we write carries zero, so
+                    // ReadShopCarRecords keeps theirs and drops ours. Without that filter this
+                    // would feed last session's community rows back in as the player's own.
+                    var lBest = new Dictionary<int, Id8LeaderboardEntry>(_preWriteShopCars[slot]);
+                    Absorb(lBest, ReadShopCarRecords(course, dir));
 
                     List<Id8LeaderboardEntry> cRows = null;
                     community?.TryGetValue(slot, out cRows);
@@ -296,6 +308,7 @@ namespace TrueforceForAll.Plugin
                                            out Id8LeaderboardRecord rec))
                     continue;
                 if (rec.IsFiller) continue;
+                if (Id8Leaderboard.IsOurs(rec)) continue;   // our own write, not a record they set
 
                 int carId = rec.CarId;
                 if (Id8CarTable.Find(carId) == null) continue;   // not a car we can place
