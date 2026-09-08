@@ -124,16 +124,19 @@ namespace TrueforceForAll.Plugin
             // that can actually spoil something, so it waits to be sure.
             if (want == Id8LadderView.Standings && _arcadeSceneHeld < ArcadeLadderSettleSamples) return;
 
-            // THE RACE RECORD GOING AWAY is what "they left the results screen" looks like. The
-            // race record and the car state both stay readable through the results, the earnings
-            // and the continue screen, so this is the far side of all of it.
+            // THE RACE SCENE ENDING is what "the run is over" looks like. Measured on the rig:
+            // the goal at 02:33:19.569 and the scene left 5 ten seconds later at 02:33:29.552, so
+            // this lands after the new-record flourish rather than in the middle of it, and well
+            // before they are back at the stage select.
             //
-            // The scene number is NOT the test, although it looks like the obvious one. The game
-            // leaves scene 5 at the GOAL, not at the end of the results: on the rig the old
-            // scene-based rewrite started twenty-two milliseconds after the run-finished line, in
-            // the middle of the new-record flourish, which is precisely the moment its own comment
-            // says it was written to avoid.
-            bool refillNow = boards.RefillOwed && !s.InRace;
+            // It was keyed on the race RECORD going away, which was wrong in the other direction.
+            // That record outlives the results, the earnings, the continue screen, the stage select
+            // AND the start of the next run: on the rig it never came back at all, so the rebuild
+            // simply did not happen and the player finished a run three seconds faster with the
+            // ladder still aimed where it was. The record going is session end, not run end.
+            bool refillNow = boards.RefillOwed
+                          && s.SceneId != Id8MemoryTelemetry.RaceSceneId
+                          && _arcadeSceneHeld >= ArcadeLadderSettleSamples;
 
             // Against the layout the boards are ACTUALLY holding, not one we remember asking
             // for. A swap that could not run is retried by itself on the next sample, and a game
