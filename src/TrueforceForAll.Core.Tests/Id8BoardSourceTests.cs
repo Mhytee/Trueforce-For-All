@@ -277,6 +277,31 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(new[] { 151684 }, mine);
         }
 
+        /// <summary>Local on the ONLINE board writes the player's own records onto it.
+        ///
+        /// That board is exe filler on every row, because the game only ever maintains the shop
+        /// tables, so its own existing rows offer nothing. The records come from the shop snapshot
+        /// instead, which is what the fill passes. I claimed in review that this choice did nothing
+        /// on the online board and was wrong, so it is pinned rather than argued about.</summary>
+        [Fact]
+        public void LocalPutsThePlayersRecordsOnABoardTheGameNeverWrites()
+        {
+            var onlineIsAllFiller = new List<Id8LeaderboardRecord>
+            {
+                Id8Leaderboard.DefaultRow(), Id8Leaderboard.DefaultRow(), Id8Leaderboard.DefaultRow(),
+            };
+            // Two CARS, deliberately. The first draft of this test used the same car twice and
+            // failed, which was the dedupe being right: same person same car is one record.
+            var ae86 = Real("Mhytee", 139932);
+            var gtr = Real("Mhytee", 151684);
+            gtr.Reserved = Id8LeaderboardRecord.ReservedFor(263);
+            var mine = Id8Leaderboard.LocalRecordsFrom(new List<Id8LeaderboardRecord> { ae86, gtr });
+
+            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Local, onlineIsAllFiller, null, null, mine);
+            var times = rows.Where(r => !r.IsFiller).Select(r => r.GoalMs).ToList();
+            Assert.Equal(new[] { 139932, 151684 }, times);
+        }
+
         /// <summary>Merged is everything: both pools and the local record, ranked together.</summary>
         [Fact]
         public void MergedIncludesTheLocalRecordAlongsideBothPools()

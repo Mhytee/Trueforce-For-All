@@ -225,8 +225,11 @@ async function cmdBoard(opts: Map<string, string>) {
     if (!full) return "?";
     const short = shortCar(full);
     if ((shortCounts.get(short) ?? 0) < 2) return short;
-    const chassis = /(([^)]*))s*$/.exec(full);
-    return chassis ? `${short} ${chassis[1]}` : short;
+    // The backslashes matter. Without them this reads as a group containing a group, then a
+    // literal "s", and it matches with an EMPTY capture: both Skylines came out as
+    // "SKYLINE GT-R " with a trailing space, which is the collision this exists to prevent.
+    const chassis = /\(([^)]*)\)\s*$/.exec(full);
+    return chassis && chassis[1] ? `${short} ${chassis[1]}` : short;
   };
   const carW = Math.max(...per.map((p: any) => label(p.car_id).length));
   const perLines = per.map((p: any) =>
@@ -266,6 +269,12 @@ async function cmdRanking(opts: Map<string, string>) {
   }, flags);
 }
 
+function ordinal(n: number): string {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
 async function cmdMe(discordId: string) {
   // The only place this function joins a Discord identity to a TF4ALL one, and it does it for the
   // person asking about themselves, into an ephemeral reply nobody else sees.
@@ -286,13 +295,24 @@ async function cmdMe(discordId: string) {
   }
   const carRows = await cars();
   const fav = carRows.find((c: any) => c.car_id === s.favourite_car_id);
+  // "N of M", not a bare number. A rank means nothing without the size of the field, and this is
+  // the answer to the question people actually ask: where am I. Everybody with a time has one,
+  // including the person who is last, which is the point of showing it at all.
+  //
+  // This used to render best_rank, which is the best finish on any ONE course, under the label
+  // "overall". Winning a single course reported you as ranked 1 overall.
   const lines = [
-    `**${s.points} pts**, ranked **${s.best_rank ?? "-"}** overall`,
+    `**${s.points} pts**, ranked **${s.overall_rank ?? "-"} of ${s.players_ranked ?? "-"}** overall`,
     `${s.course_crowns} course record${s.course_crowns === 1 ? "" : "s"} · ` +
       `${s.car_crowns} car record${s.car_crowns === 1 ? "" : "s"} · ` +
       `${s.course_top_ten} top ten place${s.course_top_ten === 1 ? "" : "s"}`,
     `On ${s.boards_entered} of 32 boards, in ${s.cars_driven} car${s.cars_driven === 1 ? "" : "s"}`,
   ];
+  // Only worth saying to somebody who has not won one. To a player with course records it is
+  // noise, and to a player with none it is the encouraging number: fourth is not nowhere.
+  if (!s.course_crowns && s.best_course_finish) {
+    lines.push(`Best finish on a course: ${ordinal(s.best_course_finish)}`);
+  }
   if (fav) lines.push(`Most driven: ${fav.name} (${s.favourite_car_runs} run${s.favourite_car_runs === 1 ? "" : "s"})`);
   return json({ type: CHANNEL_MESSAGE, data: { flags: EPHEMERAL, embeds: [{
     title: `${s.author}, in Initial D 8`,

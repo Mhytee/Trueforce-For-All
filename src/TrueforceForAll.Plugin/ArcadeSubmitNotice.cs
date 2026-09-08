@@ -33,7 +33,7 @@ namespace TrueforceForAll.Plugin
                 "community board under your TF4ALL username, so other players see it in the game." +
                 Environment.NewLine + Environment.NewLine +
                 "Only runs you actually finish are sent, and only while you are signed in. You can " +
-                "change this any time under Arcade cabinets.",
+                "change this any time under Arcade leaderboards on the Settings tab.",
                 DialogKind.Confirm,
                 "OK, submit my times",
                 "Don't submit my times",
