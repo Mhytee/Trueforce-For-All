@@ -1,4 +1,4 @@
-﻿// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
+// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
 //
 // A backup must reproduce a user's setup on a SECOND PC. The live settings blob
 // mixes three kinds of field:
@@ -182,9 +182,6 @@ namespace TrueforceForAll.Plugin
             "BuiltinPresetsFolder", "UserImportsFolder", "UserLibraryFolder",
             // Ring sizes are a property of this machine's CPU/scheduler.
             "Performance",
-            // Which arcade dumps are installed, and what their executables are
-            // called, is a property of this machine's setup.
-            "Arcade",
             // Identity / security: the auth session and the install-local slot keying.
             "AuthSession", "UserSlots", "ActiveSlotKey", "LegacyDataOwnerEmail",
             // "Remember my email" prefill: a per-PC sign-in convenience, not a portable choice.
@@ -283,6 +280,26 @@ namespace TrueforceForAll.Plugin
         // forwarded copy), not a machine address like BindAddress/Forward*.
         public static readonly string[] ForzaPortableFields = { "Enabled", "Port", "ForwardGapBridge" };
 
+        // Arcade is the second PARTIAL field, and for the same reason as Forza. Which arcade dumps
+        // are installed and what their executables are called is a property of THIS machine, and
+        // carrying a PC1 path onto PC2 would point the plugin at a game that is not there. But the
+        // Initial D 8 leaderboard preferences underneath are taste, not machine facts: whether the
+        // boards are filled at all, which pool each of the two boards shows, and whether finished
+        // runs are sent. Those are exactly the kind of choice the backup exists to carry, and they
+        // sat behind the whole-object machine-local classification only because that classification
+        // predates them and its justification speaks only about dumps and exe names.
+        public const string PartialArcade = "Arcade";
+
+        // Id8SubmitNoticeShown is deliberately NOT here. It records that the one-time disclosure
+        // about publishing a username has been displayed ON THIS PC, and submission is refused
+        // until it has been. Carrying it would mean a restore onto a new machine silently skips
+        // the notice and starts publishing, which is the one thing the latch exists to prevent.
+        public static readonly string[] ArcadePortableFields =
+        {
+            "Id8LeaderboardsEnabled", "Id8OnlineBoardSource", "Id8ShopBoardSource",
+            "Id8SubmitTimesEnabled",
+        };
+
         /// <summary>The wheel-specific tuning keys (Mode B feel, learned grip
         /// calibration, and the LED color trim): a subset of Portable that
         /// ApplySettings WITHHOLDS when the cross-wheel policy is not Always and
@@ -371,6 +388,14 @@ namespace TrueforceForAll.Plugin
                     if (f[sub] != null) forza[sub] = f[sub];
             }
 
+            JObject arcade = null;
+            if (full[PartialArcade] is JObject a)
+            {
+                arcade = new JObject();
+                foreach (var sub in ArcadePortableFields)
+                    if (a[sub] != null) arcade[sub] = a[sub];
+            }
+
             return new BackupEnvelope
             {
                 SchemaVersion = SchemaVersion,
@@ -382,6 +407,7 @@ namespace TrueforceForAll.Plugin
                     ? null : settings.LastUsedWheel.Trim(),
                 Settings = portable,
                 Forza = forza,
+                Arcade = arcade,
                 Library = new Dictionary<string, BackupFile>(StringComparer.OrdinalIgnoreCase),
             };
         }
@@ -471,6 +497,24 @@ namespace TrueforceForAll.Plugin
                 catch { }
             }
 
+            // Arcade: merge only the leaderboard preferences, so PC2's installed dumps, its exe
+            // names and its own disclosure latch survive. Populated through the serializer rather
+            // than field by field because two of the four are enums, and a hand-written cast would
+            // be the thing that rots when a fifth is added.
+            if (env.Arcade != null && live.Arcade != null)
+            {
+                try
+                {
+                    var filteredArcade = new JObject();
+                    foreach (var sub in ArcadePortableFields)
+                        if (env.Arcade[sub] != null) filteredArcade[sub] = env.Arcade[sub];
+                    if (filteredArcade.Count > 0)
+                        using (var reader = filteredArcade.CreateReader())
+                            CreateSerializer().Populate(reader, live.Arcade);
+                }
+                catch { }
+            }
+
             return result;
         }
 
@@ -527,6 +571,7 @@ namespace TrueforceForAll.Plugin
             classified.UnionWith(MachineLocal);
             classified.UnionWith(Excluded);
             classified.Add(PartialForza);
+            classified.Add(PartialArcade);
 
             var missing = new List<string>();
             foreach (var p in typeof(TrueforceSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -541,7 +586,7 @@ namespace TrueforceForAll.Plugin
         /// copy/paste edit). Returns the offending names (empty = healthy).</summary>
         public static IReadOnlyList<string> FindDoubleClassifiedFields()
         {
-            return Portable.Concat(MachineLocal).Concat(Excluded).Concat(new[] { PartialForza })
+            return Portable.Concat(MachineLocal).Concat(Excluded).Concat(new[] { PartialForza, PartialArcade })
                 .GroupBy(x => x, StringComparer.Ordinal)
                 .Where(g => g.Count() > 1)
                 .Select(g => g.Key)
@@ -587,6 +632,11 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Forza's portable fields only ({Enabled, Port}), or null.</summary>
         public JObject Forza { get; set; }
+
+        /// <summary>Arcade's portable fields only (the Initial D 8 leaderboard preferences), or
+        /// null. Absent from every envelope written before this existed, which restores as "leave
+        /// this PC's arcade settings alone" and is the right behaviour for an old backup.</summary>
+        public JObject Arcade { get; set; }
 
         /// <summary>Preset-library files: relative path under the user library root ->
         /// file text + last-modified time. Filled by the library-bundling step;
