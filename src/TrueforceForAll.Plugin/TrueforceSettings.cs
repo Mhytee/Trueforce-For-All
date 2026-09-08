@@ -2667,6 +2667,20 @@ namespace TrueforceForAll.Plugin
         /// preference: it exists so the notice appears once rather than every launch.</summary>
         public bool Id8SubmitNoticeShown { get; set; } = false;
 
+        /// <summary>Show the times around YOUR place on the board, instead of the fastest ten.
+        ///
+        /// TeknoParrot publishes about 1765 times, so the top ten is ten world records: a board you
+        /// never appear on and a target nobody reaches. With this on, the board is the ten times
+        /// around yours, so the next one up is a lap away rather than a fantasy, and the in-race
+        /// time to beat follows it.
+        ///
+        /// Only does anything on All or TeknoParrot. A ladder needs rungs, and tf4all alone has too
+        /// few entries per course for a window to differ from the board it already shows.
+        ///
+        /// Off by default. It changes what a leaderboard MEANS, from "the best there is" to "where
+        /// you are", and that should be a thing somebody chooses rather than finds.</summary>
+        public bool Id8LadderClimbEnabled { get; set; } = false;
+
         /// <summary>Process name (no .exe, case-insensitive) to the game identity
         /// to run under, which is what binds a preset to that cabinet.
         ///
@@ -2795,14 +2809,13 @@ namespace TrueforceForAll.Plugin
         /// waveforms arrive is a property of that game's protocol.</summary>
         public double WaveformGain { get; set; } = 1.0;
 
-        /// <summary>Overrides how long this cabinet's steering force keeps acting
-        /// after it stops being sent, in milliseconds. 0 follows the game's own
-        /// FeedbackLength, which is the behaviour without this set.
+        /// <summary>Overrides how long this cabinet's STEADY forces keep acting
+        /// after they stop being sent, in milliseconds: the constant, the spring,
+        /// the damper and the friction. 0 follows the game's own FeedbackLength.
         ///
-        /// Worth having separately because that one setting reaches the steering
-        /// force AND the spring but never the waveforms, so it cannot be raised
-        /// to stop the wheel going slack during a buzz without dragging the
-        /// spring along with it.</summary>
+        /// The name is the one it was stored under before it grew to cover the
+        /// conditions, and it is kept so that upgrading does not silently discard
+        /// a value somebody had already tuned. The UI calls it what it is.</summary>
         public int SteeringHoldMs { get; set; }
 
         /// <summary>The same for the waveform effects. 0 follows the length the

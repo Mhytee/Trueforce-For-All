@@ -582,8 +582,41 @@ namespace TrueforceForAll.Core
             IReadOnlyList<Id8LeaderboardRecord> existing,
             IReadOnlyList<Id8LeaderboardEntry> community,
             IReadOnlyList<Id8LeaderboardEntry> teknoParrot,
-            IReadOnlyList<Id8LeaderboardRecord> localRecords = null)
+            IReadOnlyList<Id8LeaderboardRecord> localRecords = null,
+            string ladderFor = null,
+            int ladderPlaceAt = 5)
         {
+            // LADDER CLIMB. A window of the field around the player instead of its top.
+            //
+            // It has to bypass the normal merge rather than feed into it, because Merge re-sorts
+            // what it is given and keeps the fastest ten, which would throw the window away and put
+            // the world records straight back. So the window is handed over as the whole incoming
+            // set with keepExisting false: everything that belongs on the board is already in it,
+            // including the player, who was folded in before the window was cut.
+            if (ladderFor != null && SupportsLadder(source))
+            {
+                var wide = new List<Id8LeaderboardEntry>(
+                    Combine(source, community, teknoParrot, int.MaxValue));
+                if (localRecords != null)
+                    foreach (Id8LeaderboardRecord r in localRecords)
+                    {
+                        if (r.IsFiller) continue;
+                        wide.Add(new Id8LeaderboardEntry
+                        {
+                            Username = Id8Name.Decode(r.RawName),
+                            CarId = r.CarId,
+                            GoalMs = r.GoalMs,
+                            Section1 = r.Section1,
+                            Section2 = r.Section2,
+                            Section3 = r.Section3,
+                            UnixTime = r.UnixTime,
+                        });
+                    }
+                return Merge(existing,
+                             LadderWindow(Dedupe(wide), ladderFor, Ranks, ladderPlaceAt),
+                             keepExisting: false);
+            }
+
             bool keep = KeepsLocalRecords(source);
             var incoming = Combine(source, community, teknoParrot);
 

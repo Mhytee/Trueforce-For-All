@@ -509,6 +509,15 @@ namespace TrueforceForAll.Plugin
 
             if (ArcadeLeaderboardsCheck != null) ArcadeLeaderboardsCheck.IsChecked = a.Id8LeaderboardsEnabled;
             if (ArcadeSubmitTimesCheck != null) ArcadeSubmitTimesCheck.IsChecked = a.Id8SubmitTimesEnabled;
+            if (ArcadeLadderClimbCheck != null) ArcadeLadderClimbCheck.IsChecked = a.Id8LadderClimbEnabled;
+
+            // Greyed rather than hidden when neither board can use it. A control that vanishes reads
+            // as a bug; one that is visible and disabled says "this exists, but not for what you
+            // have chosen", which is the actual situation.
+            bool anyLadder = Id8Leaderboard.SupportsLadder(a.Id8OnlineBoardSource)
+                          || Id8Leaderboard.SupportsLadder(a.Id8ShopBoardSource);
+            if (ArcadeLadderClimbCheck != null) ArcadeLadderClimbCheck.IsEnabled = anyLadder;
+            if (ArcadeLadderClimbHelp != null) ArcadeLadderClimbHelp.Opacity = anyLadder ? 1.0 : 0.5;
             if (ArcadeLeaderboardOptions != null)
                 ArcadeLeaderboardOptions.IsEnabled = a.Id8LeaderboardsEnabled;
 
@@ -544,6 +553,17 @@ namespace TrueforceForAll.Plugin
             _plugin.PersistSettings();
         }
 
+        private void ArcadeLadderClimb_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings?.Arcade == null) return;
+            _plugin.Settings.Arcade.Id8LadderClimbEnabled = ArcadeLadderClimbCheck?.IsChecked == true;
+            _plugin.PersistSettings();
+
+            // Same reason the source combos refill: the boards are written once per attach, so a
+            // change made mid-session would otherwise not show until the player left the course.
+            _plugin.RefillArcadeBoards();
+        }
+
         private void ArcadeSubmitTimes_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings?.Arcade == null) return;
@@ -566,6 +586,11 @@ namespace TrueforceForAll.Plugin
             a.Id8OnlineBoardSource = TagToSource(ArcadeOnlineSourceCombo, a.Id8OnlineBoardSource);
             a.Id8ShopBoardSource = TagToSource(ArcadeShopSourceCombo, a.Id8ShopBoardSource);
             _plugin.PersistSettings();
+
+            // Whether ladder climb can do anything depends on the source just chosen.
+            bool prior = _suppressEvents;
+            _suppressEvents = true;
+            try { RefreshArcadeLeaderboardControls(); } finally { _suppressEvents = prior; }
 
             // The boards are only rewritten when the course changes, so a source picked mid-session
             // would otherwise not show until the player left the course and came back.

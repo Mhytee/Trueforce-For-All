@@ -767,7 +767,27 @@ namespace TrueforceForAll.Plugin
                            IReadOnlyList<Id8LeaderboardRecord> local)
         {
             var existing = _writer.ReadBoard(board, courseId, direction);
-            var rows = Id8Leaderboard.BuildBoard(source, existing, community, tekno, local);
+            // LADDER CLIMB. Centre the board on the player rather than on the world records.
+            //
+            // The name has to be the one that appears in the POOL, and that is the cabinet name off
+            // their own records, not their tf4all username: a TeknoParrot row is filed under
+            // whatever the cabinet called them. Their own rows are folded into the same ranked set
+            // before the window is cut, so matching on that name finds them wherever they sit.
+            //
+            // Null when the feature is off, when the source has no field to climb, or when they
+            // have no record here yet, and BuildBoard falls back to the ordinary top ten. That last
+            // case is deliberate: a course you have never driven has nothing to climb from, so the
+            // fastest times are the right thing to show.
+            string ladderFor = null;
+            if (_settings()?.Arcade?.Id8LadderClimbEnabled == true && Id8Leaderboard.SupportsLadder(source))
+                foreach (Id8LeaderboardRecord r in local ?? (IReadOnlyList<Id8LeaderboardRecord>)new Id8LeaderboardRecord[0])
+                {
+                    if (r.IsFiller) continue;
+                    string n = Id8Name.Decode(r.RawName);
+                    if (!string.IsNullOrEmpty(n)) { ladderFor = n; break; }
+                }
+
+            var rows = Id8Leaderboard.BuildBoard(source, existing, community, tekno, local, ladderFor);
             int written = _writer.WriteBoard(board, courseId, direction, rows);
             _log?.Invoke($"[TF4ALL] Arcade {board} {source}: wrote {written}/{rows.Length} rows " +
                          $"for course {courseId} dir {direction}");

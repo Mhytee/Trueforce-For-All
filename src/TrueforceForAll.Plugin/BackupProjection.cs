@@ -297,7 +297,7 @@ namespace TrueforceForAll.Plugin
         public static readonly string[] ArcadePortableFields =
         {
             "Id8LeaderboardsEnabled", "Id8OnlineBoardSource", "Id8ShopBoardSource",
-            "Id8SubmitTimesEnabled",
+            "Id8SubmitTimesEnabled", "Id8LadderClimbEnabled",
         };
 
         /// <summary>The wheel-specific tuning keys (Mode B feel, learned grip
