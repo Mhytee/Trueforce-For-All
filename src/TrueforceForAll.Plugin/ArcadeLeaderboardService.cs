@@ -204,6 +204,28 @@ namespace TrueforceForAll.Plugin
                     IReadOnlyList<Id8LeaderboardRecord> local =
                         Id8Leaderboard.LocalRecordsFrom(_preWriteShop[slot]);
 
+                    // RECOVERY. The on-disk backup was write-only for its whole life: it was
+                    // faithfully recorded before the first write of every session and no code ever
+                    // read it back, so it could not help the one situation it existed for.
+                    //
+                    // It matters now because records HAVE been lost. Choosing Community on the shop
+                    // board used to rebuild it without the player's rows, and on a board that loads
+                    // from the save that deleted them. The owner's file holds 17 records at player
+                    // id 5553014 that the live board no longer had.
+                    //
+                    // Folded in as another source of local records rather than written straight
+                    // back, so they take their place on time like everything else, and a genuine
+                    // row still on the board wins over a stale copy of itself. SaveBackup only ever
+                    // records a slot once, so this cannot be poisoned by a later snapshot that
+                    // already contains our own writes.
+                    IReadOnlyList<Id8LeaderboardRecord> archived = ArchivedRecordsFor(slot);
+                    if (archived.Count > 0)
+                    {
+                        var both = new List<Id8LeaderboardRecord>(local);
+                        both.AddRange(archived);
+                        local = both;
+                    }
+
                     // And the shop PER-CAR board, for the same reason: it is the only place the
                     // player's own per-car records exist, and the online per-car board is SEGA
                     // filler on every page. Without this, Merged on the online per-car board would
@@ -736,7 +758,11 @@ namespace TrueforceForAll.Plugin
                            IReadOnlyList<Id8LeaderboardRecord> local)
         {
             var existing = _writer.ReadBoard(board, courseId, direction);
-            var rows = Id8Leaderboard.BuildBoard(source, existing, community, tekno, local);
+            // The shop board loads from the save, so its rebuild must not drop the player's own
+            // rows however the source is set. The online board is rebuilt from the exe every
+            // launch, so there the source can mean strictly what it says.
+            bool persists = board == Id8Board.ShopTopTen || board == Id8Board.ShopPerCar;
+            var rows = Id8Leaderboard.BuildBoard(source, existing, community, tekno, local, persists);
             int written = _writer.WriteBoard(board, courseId, direction, rows);
             _log?.Invoke($"[TF4ALL] Arcade {board} {source}: wrote {written}/{rows.Length} rows " +
                          $"for course {courseId} dir {direction}");
@@ -868,6 +894,43 @@ namespace TrueforceForAll.Plugin
             var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
             return v == null ? "" : $"{v.Major}.{v.Minor}.{v.Build}";
         }
+
+        /// <summary>The player's genuine records for one board out of the on-disk backup, or none.
+        ///
+        /// Read once and cached, because the file does not change while we are running: SaveBackup
+        /// writes a slot the first time it is seen and never again.</summary>
+        private IReadOnlyList<Id8LeaderboardRecord> ArchivedRecordsFor(int slot)
+        {
+            if (_archive == null)
+            {
+                _archive = new Dictionary<int, Id8LeaderboardRecord[]>();
+                try
+                {
+                    if (File.Exists(_backupPath))
+                    {
+                        var all = Newtonsoft.Json.JsonConvert
+                            .DeserializeObject<Dictionary<string, Id8LeaderboardRecord[]>>(
+                                File.ReadAllText(_backupPath));
+                        if (all != null)
+                            foreach (var kv in all)
+                                if (int.TryParse(kv.Key, out int k) && kv.Value != null)
+                                    _archive[k] = kv.Value;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // A backup we cannot read is not a reason to fail a fill. It only costs the
+                    // recovery, and the live board is still the primary source.
+                    _log?.Invoke("[TF4ALL] Arcade board backup could not be read: " + ex.Message);
+                }
+            }
+
+            return _archive.TryGetValue(slot, out Id8LeaderboardRecord[] rows)
+                ? Id8Leaderboard.LocalRecordsFrom(rows)
+                : (IReadOnlyList<Id8LeaderboardRecord>)new Id8LeaderboardRecord[0];
+        }
+
+        private Dictionary<int, Id8LeaderboardRecord[]> _archive;
 
         private void SaveBackup(int slot, Id8LeaderboardRecord[] rows)
         {

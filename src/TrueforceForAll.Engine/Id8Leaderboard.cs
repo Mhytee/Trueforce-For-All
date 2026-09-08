@@ -527,10 +527,31 @@ namespace TrueforceForAll.Core
             IReadOnlyList<Id8LeaderboardRecord> existing,
             IReadOnlyList<Id8LeaderboardEntry> community,
             IReadOnlyList<Id8LeaderboardEntry> teknoParrot,
-            IReadOnlyList<Id8LeaderboardRecord> localRecords = null)
+            IReadOnlyList<Id8LeaderboardRecord> localRecords = null,
+            bool boardPersists = false)
         {
             bool keep = KeepsLocalRecords(source);
             var incoming = Combine(source, community, teknoParrot);
+
+            // A BOARD THAT PERSISTS IS THE SAVE, SO A ROW WE DECLINE TO SHOW IS A ROW WE DELETE.
+            //
+            // Community and TeknoParrot mean strictly that pool, and on a board the game rebuilds
+            // from the exe every launch that is exactly right: nothing is lost by leaving the
+            // player out. The shop boards are different. They load from the save and we rewrite
+            // them end to end, so choosing Community there did not narrow a view, it destroyed the
+            // player's records. Measured on the owner's machine: 17 records at player id 5553014
+            // in the pre-write backup, and every sweep afterwards reporting "left 0 real record(s)
+            // alone".
+            //
+            // So on a persisting board the player's own rows are folded into the POOL, the same way
+            // Merged already does it, rather than the source being allowed to drop them. They still
+            // have to earn their position on time. What the source chooses is who they are ranked
+            // against, which is the question it was always meant to answer.
+            //
+            // LocalRecordsFrom has already stripped our own writes, so this cannot feed last
+            // session's community rows back in as though the player had set them.
+            if (boardPersists && !keep && localRecords != null)
+                keep = true;
 
             if (!keep || localRecords == null)
                 return Merge(existing, incoming, keep);

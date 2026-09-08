@@ -241,6 +241,35 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(new[] { "RIVAL1", "MHYTEE" }, names);
         }
 
+        /// <summary>The same board, but the one that loads from the save. Community still means
+        /// the tf4all pool, and the player is still ranked against it on time, but they cannot be
+        /// dropped: this board IS the save, so a row we decline to show is a row we delete. The
+        /// owner lost 17 records to exactly this before it was found.</summary>
+        [Theory]
+        [InlineData(Id8BoardSource.Community)]
+        [InlineData(Id8BoardSource.TeknoParrot)]
+        public void APersistingBoardNeverDropsThePlayersOwnRecord(Id8BoardSource source)
+        {
+            var rows = Id8Leaderboard.BuildBoard(source, ExistingBoard(), Community, Tekno,
+                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()),
+                                                 boardPersists: true);
+            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
+            Assert.Contains("LOCALGUY", names);
+        }
+
+        /// <summary>And the board the game rebuilds from the exe every launch is unchanged, because
+        /// nothing is lost by leaving the player off it. The two must not be conflated: making
+        /// every board protective would quietly turn Community into Merged everywhere.</summary>
+        [Fact]
+        public void ATransientBoardStillMeansStrictlyTheSourceChosen()
+        {
+            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Community, ExistingBoard(), Community, Tekno,
+                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()),
+                                                 boardPersists: false);
+            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
+            Assert.DoesNotContain("LOCALGUY", names);
+        }
+
         /// <summary>Merged is everything: both pools and the local record, ranked together.</summary>
         [Fact]
         public void MergedIncludesTheLocalRecordAlongsideBothPools()
