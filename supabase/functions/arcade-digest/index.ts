@@ -71,7 +71,14 @@ const COMMANDS = [{
       type: 1, name: "ranking", description: "The overall ranking",
       options: [{ type: 5, name: "private", description: "Only you see the reply", required: false }],
     },
-    { type: 1, name: "digest", description: "Preview this week's digest (moderators, only you see it)" },
+    {
+      type: 1, name: "digest", description: "Preview this week's digest (moderators, only you see it)",
+      // A layout check. The real week on a young server fills two sections, so it cannot show
+      // whether the full message reads well; this renders every section populated, through the
+      // same buildEmbed, so what you see is what a busy week would actually look like.
+      options: [{ type: 5, name: "sample", description: "Show a busy week instead of the real one",
+                  required: false }],
+    },
   ],
 }];
 

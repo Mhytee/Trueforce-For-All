@@ -379,7 +379,67 @@ async function cmdMe(discordId: string) {
  *  rejects its own project. PostgREST accepts that key perfectly well, which is why every other
  *  command worked and only this one did not. Importing the renderer removes the call, the auth
  *  problem, and a second cold start out of Discord's three second budget. */
-async function cmdDigest() {
+/** A busy week, invented, for checking the layout in a real Discord client.
+ *
+ *  The live week on a young server fills two sections, which cannot tell you whether the full
+ *  message reads well: whether five sections is too many, whether the scope subtexts land, whether
+ *  anything wraps badly on a phone. This is every section populated at once, rendered through the
+ *  SAME buildEmbed, so it is the layout rather than a picture of it.
+ *
+ *  Obviously fictional names on purpose. A sample using real drivers and plausible times could be
+ *  screenshotted out of context and read as a real result. */
+const SAMPLE_WEEK = {
+  times_set: 47, drivers: 4, boards_with_times: 26,
+  steals: [
+    { scope: "course", course_id: 3, direction: 0, actor: "SampleDriver", victim: "SampleRival",
+      goal_ms: 148200, previous_ms: 151900, car_id: 0 },
+    { scope: "car", course_id: 0, direction: 0, actor: "SampleRival", victim: "SampleDriver",
+      goal_ms: 141050, previous_ms: 142400, car_id: 515 },
+  ],
+  gains: [
+    { actor: "SampleDriver", course_id: 0, direction: 0, car_id: 0, goal_ms: 135700,
+      previous_ms: 139932, gain_ms: 4232, next_ms: 131053, next_author: "SampleAce" },
+    { actor: "SampleRival", course_id: 9, direction: 0, car_id: 515, goal_ms: 197400,
+      previous_ms: 200695, gain_ms: 3295, next_ms: null, next_author: null },
+    { actor: "SampleThird", course_id: 5, direction: 0, car_id: 516, goal_ms: 213100,
+      previous_ms: 215385, gain_ms: 2285, next_ms: 211900, next_author: "SampleRival" },
+  ],
+  moves: [
+    { author: "SampleRival", rank_then: 58, rank_now: 41, of: 207 },
+    { author: "SampleDriver", rank_then: 71, rank_now: 65, of: 207 },
+  ],
+  world_records: [
+    { author: "SampleRival", course_id: 9, direction: 0, goal_ms: 197400, is_tf4all: true,
+      prev_author: "SampleAce", prev_ms: 199100 },
+    { author: "SampleAce", course_id: 3, direction: 0, goal_ms: 145900, is_tf4all: false,
+      prev_author: null, prev_ms: null },
+  ],
+  top: [
+    { rank: 1, author: "SampleRival", points: 2140, course_crowns: 6, merged_rank: 41, merged_of: 207 },
+    { rank: 2, author: "SampleDriver", points: 1980, course_crowns: 5, merged_rank: 46, merged_of: 207 },
+    { rank: 3, author: "SampleThird", points: 1610, course_crowns: 3, merged_rank: 65, merged_of: 207 },
+    { rank: 4, author: "SampleFourth", points: 1450, course_crowns: 2, merged_rank: 49, merged_of: 207 },
+  ],
+  unclaimed: {
+    held: [
+      { author: "SampleThird", course_id: 12, direction: 0, goal_ms: 231400, world_rank: 22, world_of: 42 },
+      { author: "SampleDriver", course_id: 8, direction: 1, goal_ms: 244383, world_rank: 26, world_of: 29 },
+    ],
+    undriven: 6,
+  },
+};
+
+async function cmdDigest(opts: Map<string, string>) {
+  if (opts.get("sample") === "true") {
+    return json({ type: CHANNEL_MESSAGE, data: {
+      flags: EPHEMERAL,
+      content: "SAMPLE, not real data. A busy week with every section filled, so the layout can be " +
+               "checked. Nobody else can see this.",
+      embeds: [buildEmbed(SAMPLE_WEEK)],
+      allowed_mentions: { parse: [] },
+    }});
+  }
+
   const week = await callRpc("get_arcade_week", { p_game: GAME });
   if (week === null) return ephemeralText("Could not read this week's numbers right now.");
   return json({ type: CHANNEL_MESSAGE, data: {
@@ -470,7 +530,7 @@ export async function handleArcade(body: any): Promise<Response> {
       }
       case "digest":
         if (!isMod(body.member)) return ephemeralText("That one is for moderators.");
-        return await cmdDigest();
+        return await cmdDigest(optionMap(sub));
       default:
         return ephemeralText("Unrecognised command.");
     }
