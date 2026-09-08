@@ -92,6 +92,60 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal("Mhytee", w[2].Username);
         }
 
+        /// <summary>"All" is one ranked field, not three lists shown in turn.
+        ///
+        /// This is the test that would have caught the two bugs that made ladder climb a no-op:
+        /// Combine ignored its own `take` and always returned ten, and the community fetch asked for
+        /// ten rows. The window was therefore cut from a list already truncated to the top ten, so
+        /// it WAS the top ten, and the feature looked like it worked.</summary>
+        [Fact]
+        public void AllBlendsCommunityTeknoParrotAndYourOwnIntoOneLadder()
+        {
+            // A deep TeknoParrot field, a few tf4all names scattered through it by time, and the
+            // player's own record sitting between them.
+            var tekno = new List<Id8LeaderboardEntry>();
+            for (int i = 1; i <= 200; i++)
+                tekno.Add(new Id8LeaderboardEntry { Username = "TP" + i, CarId = 0, GoalMs = 120000 + i * 100 });
+
+            var community = new List<Id8LeaderboardEntry>
+            {
+                new Id8LeaderboardEntry { Username = "Tf4a", CarId = 0, GoalMs = 124950 },   // ~50th
+                new Id8LeaderboardEntry { Username = "Tf4b", CarId = 0, GoalMs = 125150 },   // ~52nd
+            };
+            var mine = new List<Id8LeaderboardRecord> { Real("Mhytee", 125050) };            // ~51st
+
+            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Merged, ExistingBoard(),
+                                                 community, tekno,
+                                                 Id8Leaderboard.LocalRecordsFrom(mine), "Mhytee");
+            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
+
+            // The player is on the board at all, which the top ten could never have shown.
+            Assert.Contains("MHYTEE", names);
+            // And their immediate neighbours from the OTHER two pools are there with them.
+            Assert.Contains("TF4A", names);
+            Assert.Contains("TF4B", names);
+            Assert.Contains(names, n => n.StartsWith("TP"));
+            // Ranked as one field: strictly ascending by time, whichever pool a row came from.
+            var times = rows.Where(r => !r.IsFiller).Select(r => r.GoalMs).ToList();
+            Assert.Equal(times.OrderBy(t => t).ToList(), times);
+            // Nowhere near the front, which is the whole point.
+            Assert.DoesNotContain("TP1", names);
+        }
+
+        private static List<Id8LeaderboardRecord> ExistingBoard() => new List<Id8LeaderboardRecord>
+        {
+            Id8Leaderboard.DefaultRow(), Id8Leaderboard.DefaultRow(),
+        };
+
+        private static Id8LeaderboardRecord Real(string name, int ms) => new Id8LeaderboardRecord
+        {
+            RawName = Id8Name.Encode(Id8Name.Sanitize(name)),
+            Reserved = new byte[] { 0, 0, Id8LeaderboardRecord.ConstantAt16 },
+            Flags = Id8LeaderboardRecord.FlagReal,
+            PlayerId = 5553014,
+            GoalMs = ms,
+        };
+
         /// <summary>A ladder needs rungs. tf4all alone does not have them yet, and Local is a board
         /// of one person by definition.</summary>
         [Theory]

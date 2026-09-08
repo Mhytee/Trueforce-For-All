@@ -155,8 +155,16 @@ namespace TrueforceForAll.Plugin
 
             Dictionary<int, List<Id8LeaderboardEntry>> community = null;
             if (NeedsCommunity(s))
-                community = await _client.GetAllBoardsAsync(GameKey, Id8Leaderboard.Ranks, ct)
+            {
+                // Deeper when a ladder is being drawn, because the window is cut from the whole
+                // field and the player may be nowhere near the front. Ten is right for a board that
+                // only ever shows its top ten, and asking for 200 on every fill would multiply the
+                // payload by twenty for the boards that never use it.
+                int depth = s.Arcade.Id8LadderClimbEnabled
+                    ? Id8Leaderboard.LadderDepth : Id8Leaderboard.Ranks;
+                community = await _client.GetAllBoardsAsync(GameKey, depth, ct)
                                          .ConfigureAwait(false);
+            }
 
             Dictionary<int, Dictionary<int, Id8LeaderboardEntry>> carBests = null;
             if (NeedsCommunity(s))

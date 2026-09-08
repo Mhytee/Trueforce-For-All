@@ -456,8 +456,17 @@ namespace TrueforceForAll.Core
 
             // Sort by time. Ties keep insertion order, which puts the community pool first when
             // both are present, because it was added first.
-            return order.Select(k => best[k]).OrderBy(e => e.GoalMs).Take(Ranks).ToList();
+            //
+            // `take`, not Ranks. This ignored its own parameter and always returned ten, which made
+            // ladder climb a no-op in the least visible way possible: the window was cut from the
+            // top ten, so it WAS the top ten, and the feature looked like it was working.
+            return order.Select(k => best[k]).OrderBy(e => e.GoalMs).Take(Math.Max(1, take)).ToList();
         }
+
+        /// <summary>How deep to fetch a pool when the window has to be cut from the whole field
+        /// rather than its top. Ten fills a board; a ladder needs everything around the player, and
+        /// they may be nowhere near the front.</summary>
+        public const int LadderDepth = 200;
 
         /// <summary>Whether this source keeps the real rows already on the board.
         ///
