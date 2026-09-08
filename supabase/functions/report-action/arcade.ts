@@ -295,36 +295,53 @@ async function cmdMe(discordId: string) {
   }
   const carRows = await cars();
   const fav = carRows.find((c: any) => c.car_id === s.favourite_car_id);
-  // "N of M", not a bare number. A rank means nothing without the size of the field, and this is
-  // the answer to the question people actually ask: where am I. Everybody with a time has one,
-  // including the person who is last, which is the point of showing it at all.
+  // FIELDS, not one paragraph. The previous version put "65 of 204 overall" and "18 course
+  // records" on adjacent lines with nothing saying the second was tf4all only, so it read as
+  // though the records were overall too. A field NAME states the scope structurally, instead of
+  // asking the reader to infer it from where a line happens to sit.
+  const fields: any[] = [];
+
+  // "N of M", never a bare number: a rank means nothing without the size of the field. Everybody
+  // with a time has one, including whoever is last, which is the point of showing it at all.
   //
-  // This used to render best_rank, which is the best finish on any ONE course, under the label
-  // "overall". Winning a single course reported you as ranked 1 overall.
-  const lines = [
-    `**${s.points} pts**, ranked **${s.overall_rank ?? "-"} of ${s.players_ranked ?? "-"}** among Trueforce For All`,
-    `${s.course_crowns} course record${s.course_crowns === 1 ? "" : "s"} · ` +
-      `${s.car_crowns} car record${s.car_crowns === 1 ? "" : "s"} · ` +
-      `${s.course_top_ten} top ten place${s.course_top_ten === 1 ? "" : "s"}`,
-    `On ${s.boards_entered} of 32 boards, in ${s.cars_driven} car${s.cars_driven === 1 ? "" : "s"}`,
-  ];
-  // The whole field, TeknoParrot's cabinets included. On a young server the tf4all number is
-  // "1 of 1" and says nothing; this one is where you actually stand among people who play this
-  // game, which is the number worth chasing. Absent only if their board could not be read.
+  // The merged line goes first deliberately. On a young server the tf4all number is "1 of 1" and
+  // says nothing, while the other one is where you stand among people who actually play this game.
+  const standing: string[] = [];
   if (s.merged_rank && s.merged_players) {
-    lines.splice(1, 0,
-      `**${s.merged_rank} of ${s.merged_players}** overall, counting TeknoParrot's cabinets`);
+    standing.push(`**${s.merged_rank} of ${s.merged_players}** · everyone here, TeknoParrot included`);
   }
-  // Only worth saying to somebody who has not won one. To a player with course records it is
-  // noise, and to a player with none it is the encouraging number: fourth is not nowhere.
-  if (!s.course_crowns && s.best_course_finish) {
-    lines.push(`Best finish on a course: ${ordinal(s.best_course_finish)}`);
+  standing.push(`**${s.overall_rank ?? "-"} of ${s.players_ranked ?? "-"}** · Trueforce For All only, ${s.points} pts`);
+  fields.push({ name: "Where you stand", value: standing.join("\n") });
+
+  // AN UNCONTESTED WIN IS NOT A WIN, and the scoring already says so: beating nobody is worth
+  // nothing. Calling it a "record" directly above a score that prices it at zero reads as a bot
+  // contradicting itself. Read as a first time it is both true and an invitation, which is the
+  // more useful thing for a board nobody has challenged yet.
+  const crowns = s.course_crowns ?? 0;
+  const contested = s.course_crowns_contested ?? 0;
+  const unchallenged = Math.max(0, crowns - contested);
+  const bits: string[] = [];
+  if (contested) bits.push(`**${contested}** course record${contested === 1 ? "" : "s"}`);
+  if (unchallenged) {
+    bits.push(`**${unchallenged}** first time${unchallenged === 1 ? "" : "s"} nobody has challenged yet`);
   }
-  if (fav) lines.push(`Most driven: ${fav.name} (${s.favourite_car_runs} run${s.favourite_car_runs === 1 ? "" : "s"})`);
+  if (s.car_crowns) bits.push(`**${s.car_crowns}** car record${s.car_crowns === 1 ? "" : "s"}`);
+  if (s.course_top_ten) bits.push(`**${s.course_top_ten}** top ten place${s.course_top_ten === 1 ? "" : "s"}`);
+  // Only worth saying to somebody with no wins at all. To a driver with records it is noise; to one
+  // with none it is the encouraging number, because fourth is not nowhere.
+  if (!crowns && s.best_course_finish) bits.push(`best finish ${ordinal(s.best_course_finish)}`);
+  if (bits.length) fields.push({ name: "Among Trueforce For All", value: bits.join(" · ") });
+
+  const driving = [
+    `On **${s.boards_entered}** of 32 boards, in **${s.cars_driven}** car${s.cars_driven === 1 ? "" : "s"}`,
+  ];
+  if (fav) driving.push(`Most driven: ${fav.name}, ${s.favourite_car_runs} run${s.favourite_car_runs === 1 ? "" : "s"}`);
+  fields.push({ name: "Driving", value: driving.join("\n") });
+
   return json({ type: CHANNEL_MESSAGE, data: { flags: EPHEMERAL, embeds: [{
     title: `${s.author}, in Initial D 8`,
     color: 0xE5C04A,
-    description: lines.join("\n"),
+    fields,
   }], allowed_mentions: { parse: [] } }});
 }
 
