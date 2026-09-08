@@ -124,6 +124,19 @@ function ordinalise(n: number): string {
   return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 }
 
+/** A field whose first line says what the section covers.
+ *
+ *  Scope kept cramming itself into the titles, which turned headers into sentences: "Records
+ *  changed hands, in this server" reads as a caption, not a heading. A short italic line under the
+ *  title says the same thing and leaves the title a title.
+ *
+ *  Italics rather than Discord's -# subtext: that renders smaller and greyer where it is supported
+ *  and as a literal "-#" where it is not, and an embed nobody can fix after posting is the wrong
+ *  place to bet on client support. */
+function scoped(name: string, scope: string, body: string): any {
+  return { name, value: `*${scope}*\n${body}`.slice(0, 1024) };
+}
+
 export function buildEmbed(week: any): any {
   const steals: any[] = Array.isArray(week?.steals) ? week.steals : [];
   const top: any[] = Array.isArray(week?.top) ? week.top : [];
@@ -153,7 +166,8 @@ export function buildEmbed(week: any): any {
     // submission beats another tf4all time, so this has always been a local table; the worldwide
     // half is the World records section. Calling it just "Records changed hands" beside a worldwide
     // standing invited the wrong reading.
-    fields.push({ name: "Records changed hands, in this server", value: lines.join("\n") });
+    fields.push(scoped("Records changed hands", "Among Trueforce For All drivers here",
+                       lines.join("\n")));
   }
 
   // PROGRESS FIRST, because it is the only section that has something to say in an ordinary week.
@@ -184,7 +198,8 @@ export function buildEmbed(week: any): any {
       lines.push(`**${esc(m.author)}** climbed from **${ordinalise(m.rank_then)}** to ` +
                  `**${ordinalise(m.rank_now)}** of ${m.of} worldwide`);
     }
-    fields.push({ name: "Progress this week", value: lines.join("\n").slice(0, 1000) });
+    fields.push(scoped("Progress this week", "Drivers in this server",
+                       lines.join("\n").slice(0, 900)));
   }
 
   // The ladder itself moving. Reported because a target that shifts is news to anyone climbing
@@ -196,12 +211,10 @@ export function buildEmbed(week: any): any {
   // when something happened is not evidence that it happened recently.
   const wrs: any[] = Array.isArray(week?.world_records) ? week.world_records : [];
   if (wrs.length) {
-    fields.push({
-      name: "World records",
+    fields.push(scoped("World records", "Across everyone, TeknoParrot included",
       // "Took it from" wherever somebody actually lost it, matching the crown lines, because that
-      // is the sentence a record changing hands deserves. "Set the first" where the board had no
-      // dated predecessor: claiming a victim there would invent a defeat that never happened.
-      value: wrs.slice(0, 5).map((w) => {
+      // is the sentence a record changing hands deserves.
+      wrs.slice(0, 5).map((w) => {
         const where = courseName(w.course_id, w.direction);
         // Not "the first". A missing predecessor means we could not identify one, usually because
         // the runner-up's row carries no date, and that is not the same as there never having been
@@ -212,21 +225,17 @@ export function buildEmbed(week: any): any {
         const by = w.prev_ms && w.prev_ms > w.goal_ms ? `, ${gap(w.prev_ms - w.goal_ms)} faster` : "";
         return `**${esc(w.author)}** took the world record on ${where} from ` +
                `${esc(w.prev_author)} with **${lap(w.goal_ms)}**${by}`;
-      }).join("\n").slice(0, 1000),
-    });
+      }).join("\n").slice(0, 900)));
   }
 
   if (top.length) {
-    fields.push({
-      // NAMED SCOPE. "Overall ranking" invited the reading that this was a worldwide table; it is
-      // the people in this Discord. The worldwide number then sits inside the row as the
-      // interesting fact rather than competing with the header for what the section means.
-      name: "Top ranked players in this server",
-      value: top.map((t) =>
+    // The worldwide number sits inside the row as the interesting fact, rather than competing with
+    // the header for what the section is about.
+    fields.push(scoped("Top ranked players", "In this server",
+      top.map((t) =>
         `**${t.rank}.** ${esc(t.author)} · ${t.points} pts` +
         (t.merged_rank && t.merged_of ? ` · **${ordinalise(t.merged_rank)} of ${t.merged_of}** worldwide` : "")
-      ).join("\n").slice(0, 1000),
-    });
+      ).join("\n").slice(0, 900)));
   }
 
   // The invitation. Every line says "here" on purpose: these boards are unclaimed IN THIS SERVER,
@@ -238,20 +247,25 @@ export function buildEmbed(week: any): any {
     const lines: string[] = [];
     if (held.length) {
       const h = held[0];
+      // No "nobody else here has driven it" tail and no "here" on the list: the subtext under the
+      // title already says both, and a section that restates its own heading on every line reads
+      // as padding. The worldwide rank stays, because that is the part the subtext cannot carry
+      // and the part that turns a held board into a target.
       lines.push(`**${esc(h.author)}** holds ${courseName(h.course_id, h.direction)} at **${lap(h.goal_ms)}**` +
-                 (h.world_rank && h.world_of ? `, ${ordinalise(h.world_rank)} of ${h.world_of} worldwide` : "") +
-                 `. Nobody else here has driven it.`);
+                 (h.world_rank && h.world_of ? `, ${ordinalise(h.world_rank)} of ${h.world_of} worldwide` : ""));
       const rest = held.slice(1, 4).map((x) =>
         `${courseName(x.course_id, x.direction)} **${lap(x.goal_ms)}**`);
       if (rest.length) {
         const more = held.length - 1 - rest.length;
-        lines.push(`Also unclaimed here: ${rest.join(" · ")}` + (more > 0 ? ` · and ${more} more` : ""));
+        lines.push(`Also open: ${rest.join(" · ")}` + (more > 0 ? ` · and ${more} more` : ""));
       }
     }
     if (undriven) {
-      lines.push(`Nobody in this server has driven **${undriven}** of the 32 boards.`);
+      // A different fact from the ones above: not held by one person, driven by nobody at all.
+      lines.push(`**${undriven}** of the 32 boards have no time from anyone here.`);
     }
-    fields.push({ name: "Open for a challenge, in this server", value: lines.join("\n").slice(0, 1000) });
+    fields.push(scoped("Open for a challenge", "Boards nobody else here has driven",
+                       lines.join("\n").slice(0, 900)));
   }
 
   // The call to action, now purely the invitation. The leader line that used to sit here restated
