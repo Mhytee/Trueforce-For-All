@@ -477,46 +477,50 @@ namespace TrueforceForAll.Plugin
             }
             ranked.Sort((x, y) => x.GoalMs.CompareTo(y.GoalMs));
 
-            // The tail is not "no car", it is the cars nobody has driven here yet. A placeholder
-            // built from DefaultRow carries car id 0, so branding every unused page with one made
-            // all 49 of them claim to be an AE86 Trueno, which is how the ranking change put the
-            // Truenos back. Each leftover page now names its own car, so the board reads as the
-            // ranked times first and then, honestly, every car still waiting for one.
+            // FASTEST FIRST, down a screen whose row order is fixed. The page a record sits on
+            // decides where it is drawn and the record's own car id decides what car name is
+            // printed on it, so the two are independent and the board can be ranked: put the
+            // fastest time on the page the screen draws first. That page is not page 0 in general.
+            // Id8CarTable.DisplayOrder is the measured sequence and carries the evidence.
+            //
+            // This is what made the earlier attempt look half sorted. Writing rank i to page i put
+            // the eleven fastest times on pages 0 to 10, which the screen draws first as a block,
+            // so the buckets came out in time order while their contents were shuffled.
+            int written = 0;
+            int pos = 0;
             var claimed = new HashSet<int>();
-            foreach (Id8LeaderboardEntry e in ranked) claimed.Add(e.CarId);
-            var unclaimed = new List<int>();
-            foreach (int carId in Id8CarTable.CarIdsInSlotOrder())
-                if (!claimed.Contains(carId)) unclaimed.Add(carId);
-
-            int written = 0, page = 0, spare = 0;
-            foreach (int slot in CarSlots())
+            foreach (Id8LeaderboardEntry e in ranked)
             {
-                Id8LeaderboardRecord row;
-                if (page < ranked.Count)
+                if (pos >= Id8CarTable.DisplayOrder.Length) break;
+                if (Id8CarTable.Find(e.CarId) == null) continue;   // a car the table does not know
+                var row = new Id8LeaderboardRecord
                 {
-                    Id8LeaderboardEntry e = ranked[page];
-                    row = new Id8LeaderboardRecord
-                    {
-                        RawName = Id8Name.Encode(Id8Name.Sanitize(e.Username)),
-                        Reserved = Id8LeaderboardRecord.ReservedFor(e.CarId),
-                        Flags = Id8LeaderboardRecord.FlagReal,
-                        UnixTime = e.UnixTime,
-                        Section1 = e.Section1,
-                        Section2 = e.Section2,
-                        Section3 = e.Section3,
-                        GoalMs = e.GoalMs,
-                    };
-                }
-                else
-                {
-                    row = Id8Leaderboard.DefaultRow();
-                    if (spare < unclaimed.Count)
-                        row.Reserved = Id8LeaderboardRecord.ReservedFor(unclaimed[spare++]);
-                }
-
-                if (_writer.WriteRecord(board, courseId, direction, slot, row) && page < ranked.Count)
+                    RawName = Id8Name.Encode(Id8Name.Sanitize(e.Username)),
+                    Reserved = Id8LeaderboardRecord.ReservedFor(e.CarId),
+                    Flags = Id8LeaderboardRecord.FlagReal,
+                    UnixTime = e.UnixTime,
+                    Section1 = e.Section1,
+                    Section2 = e.Section2,
+                    Section3 = e.Section3,
+                    GoalMs = e.GoalMs,
+                };
+                if (_writer.WriteRecord(board, courseId, direction, Id8CarTable.DisplayOrder[pos], row))
                     written++;
-                page++;
+                claimed.Add(e.CarId);
+                pos++;
+            }
+
+            // Then the cars nobody has a time on, in the game's own car order, each naming itself.
+            // Ranked rows are one per car, so every one of the 50 appears exactly once: the cars
+            // with times ranked, and the rest of the roster below them.
+            foreach (int carId in Id8CarTable.CarIdsInSlotOrder())
+            {
+                if (claimed.Contains(carId)) continue;
+                if (pos >= Id8CarTable.DisplayOrder.Length) break;
+                Id8LeaderboardRecord blank = Id8Leaderboard.DefaultRow();
+                blank.Reserved = Id8LeaderboardRecord.ReservedFor(carId);
+                _writer.WriteRecord(board, courseId, direction, Id8CarTable.DisplayOrder[pos], blank);
+                pos++;
             }
             return written;
         }

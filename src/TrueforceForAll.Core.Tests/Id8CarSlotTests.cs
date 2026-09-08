@@ -75,13 +75,59 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(-1, Id8CarTable.SlotForCarId(carId));
         }
 
-        /// <summary>Slot order is CarID order. The ranking screen displays cars in some other
-        /// order, which is a display concern and deliberately not modelled here.</summary>
+        /// <summary>Slot order is CarID order. The ranking screen draws those slots in a different
+        /// order again, which is <see cref="Id8CarTable.DisplayOrder"/>.</summary>
         [Fact]
         public void SlotOrderIsCarIdOrder()
         {
             var ids = Id8CarTable.CarIdsInSlotOrder().ToList();
             Assert.Equal(ids.OrderBy(i => i).ToList(), ids);
+        }
+
+        /// <summary>Every page exactly once. A by-car board is written by walking DisplayOrder and
+        /// dropping one record on each page it names, so a repeated entry would overwrite a row
+        /// already placed and a missing one would leave whatever was there before, which on a shop
+        /// board is a record from an earlier session.</summary>
+        [Fact]
+        public void DisplayOrderIsAPermutationOfEveryPage()
+        {
+            Assert.Equal(50, Id8CarTable.DisplayOrder.Length);
+            Assert.Equal(Enumerable.Range(0, 50), Id8CarTable.DisplayOrder.OrderBy(p => p));
+        }
+
+        /// <summary>The screen shuffles pages only WITHIN each maker's run of them: the measured
+        /// sequence takes 11 pages from maker 0's range, then 9 from maker 1's, and so on down the
+        /// prefix sum. Nothing depends on this, since the record carries its own car id and can name
+        /// any car on any page, but it is the reason the sequence looked like manufacturer grouping
+        /// and it would be worth knowing if a re-measure ever disagreed.</summary>
+        [Fact]
+        public void DisplayOrderNeverMovesAPageOutOfItsMakerRun()
+        {
+            int at = 0;
+            foreach (var run in Id8CarTable.CarIdsInSlotOrder().GroupBy(id => id >> 8))
+            {
+                int lo = run.Select(Id8CarTable.SlotForCarId).Min();
+                int hi = run.Select(Id8CarTable.SlotForCarId).Max();
+                foreach (int page in Id8CarTable.DisplayOrder.Skip(at).Take(run.Count()))
+                    Assert.InRange(page, lo, hi);
+                at += run.Count();
+            }
+            Assert.Equal(50, at);
+        }
+
+        /// <summary>The measurement itself, spot checked against the two readings that produced it.
+        /// The numbered-name probe read back page 9 in the second position, and the ranked write put
+        /// a Supra from page 9 ahead of a Silvia from page 7 despite the Silvia being four seconds
+        /// quicker. Both say the screen draws page 9 before page 1, and page 7 before page 3.</summary>
+        [Fact]
+        public void DisplayOrderMatchesWhatTheScreenReadBack()
+        {
+            var seen = Id8CarTable.DisplayOrder.Select((page, i) => new { page, i })
+                                               .ToDictionary(x => x.page, x => x.i);
+            Assert.Equal(0, seen[0]);
+            Assert.True(seen[9] < seen[1], "page 9 is drawn second, before page 1");
+            Assert.True(seen[7] < seen[3], "page 7 is drawn before page 3");
+            Assert.True(seen[7] > seen[9], "the Silvia's page comes after the Supra's");
         }
     }
 }

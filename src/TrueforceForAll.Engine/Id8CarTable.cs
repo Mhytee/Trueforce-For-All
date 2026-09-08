@@ -138,13 +138,43 @@ namespace TrueforceForAll.Core
         /// on four cars, and picking it would have put the Trueno 2door on slot 38 instead of 9.
         /// Writing a stepped time into all 50 slots and reading the game's own list settled it:
         /// the Trueno 2door came back 0:51.900, which is slot 9. Note the ranking screen DISPLAYS
-        /// cars in some other order entirely; that is a display concern and does not affect which
-        /// record a car reads.</summary>
+        /// pages in some other order entirely; see <see cref="DisplayOrder"/>. That is a display
+        /// concern and does not affect which record a car reads.</summary>
         public static int SlotForCarId(int carId)
         {
             int slot;
             return SlotById.TryGetValue(carId, out slot) ? slot : -1;
         }
+
+        /// <summary>The order the by-car ranking screen draws the 50 pages in. DisplayOrder[i] is
+        /// the page shown at position i, counting from the top of the list.
+        ///
+        /// MEASURED, and it decides everything about how a by-car board can be laid out, so it is
+        /// worth saying exactly what was measured. A probe wrote all 50 pages of one online board
+        /// with a name spelling out the page's own number and times two seconds apart, and the
+        /// screen read back in this sequence. The CAR IDS in those records were left scattered, so
+        /// page N was not holding car N: position therefore cannot be coming from the record's car.
+        /// A second, independent reading agrees. A run that wrote the fastest time to page 0, the
+        /// next to page 1 and so on put a Mazda RX-7 at the top with a Toyota Supra behind it, and
+        /// the Supra's 3:01.433 sat AHEAD of a Silvia's 2:57.758: pages 9 and 7, in this order.
+        ///
+        /// So position is a function of the page alone. Nothing about the screen is grouped by
+        /// manufacturer; what is grouped is this permutation, which shuffles pages only within the
+        /// 11, 9, 5, 6, 4, 7, 1, 1 and 6 that the maker prefix sum above lays out. Since the record
+        /// decides the name and the page decides the position, any car can be shown anywhere, and
+        /// a board can be ranked by writing the fastest time to DisplayOrder[0].</summary>
+        public static readonly int[] DisplayOrder =
+        {
+            0,  9,  1,  2,  7,  3,  5,  4, 10,  6,  8,
+            11, 12, 19, 18, 13, 14, 15, 16, 17,
+            20, 21, 22, 23, 24,
+            25, 26, 30, 27, 28, 29,
+            31, 33, 32, 34,
+            35, 36, 40, 41, 38, 37, 39,
+            42,
+            43,
+            47, 45, 49, 44, 46, 48,
+        };
 
         /// <summary>Every CarID we know, in slot order.</summary>
         public static System.Collections.Generic.IEnumerable<int> CarIdsInSlotOrder()
