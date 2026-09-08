@@ -59,6 +59,34 @@ namespace TrueforceForAll.Plugin
         private readonly Dictionary<int, Dictionary<int, Id8LeaderboardEntry>> _preWriteShopCars =
             new Dictionary<int, Dictionary<int, Id8LeaderboardEntry>>();
 
+        /// <summary>Every board as RAW BYTES, exactly as it was found, keyed (board, slot).
+        ///
+        /// This is what makes the four sources safe to try. A user has to be able to set Everyone,
+        /// look, set TeknoParrot, look, set their own times, then switch the whole thing off and be
+        /// left with the save they started with. Nothing less than the original bytes can promise
+        /// that: the decoded snapshots alongside this one hold the player's real rows for merging
+        /// and deliberately drop filler, so rebuilding a board from them would return an
+        /// approximation, and any byte of the 48 we do not model would be lost.
+        ///
+        /// Taken AFTER the sweep, which is what makes it correct on the second and later runs. The
+        /// shop boards persist into the save, so on relaunch they still carry what we wrote last
+        /// time; sweeping our own rows off first means what gets snapshotted is the game's state,
+        /// not ours.
+        ///
+        /// All four boards, not just the two that persist. The online pair is rebuilt from the exe
+        /// each launch, so leaving our rows there costs nothing permanent, but switching the
+        /// feature off should undo it on screen straight away rather than at the next restart.</summary>
+        private readonly Dictionary<long, byte[]> _preWriteBytes = new Dictionary<long, byte[]>();
+
+        private static long RawKey(Id8Board board, int slot) { return ((long)board << 32) | (uint)slot; }
+
+        /// <summary>The four tables, in one place, so a board cannot be missed from a sweep or a
+        /// snapshot by being left off a list written out by hand a second time.</summary>
+        internal static readonly Id8Board[] AllBoards =
+        {
+            Id8Board.OnlineTopTen, Id8Board.ShopTopTen, Id8Board.OnlinePerCar, Id8Board.ShopPerCar,
+        };
+
         public ArcadeLeaderboardService(Func<TrueforceSettings> settings, Action<string> log,
                                         Func<Task<string>> accessTokenProvider)
         {
@@ -152,6 +180,17 @@ namespace TrueforceForAll.Plugin
 
                     int slot = Id8Leaderboard.SlotIndex(course, dir);
 
+                    // The raw safety net, before anything is written to any of the four. Cheap:
+                    // 32 slots by 120 pages by 48 bytes is under 200 KB for the whole game, taken
+                    // once per board per session.
+                    foreach (Id8Board b in AllBoards)
+                    {
+                        long rk = RawKey(b, slot);
+                        if (_preWriteBytes.ContainsKey(rk)) continue;
+                        byte[] raw = _writer.SnapshotBoard(b, course, dir);
+                        if (raw != null) _preWriteBytes[rk] = raw;
+                    }
+
                     // Snapshot the shop board once, before anything is written to it. This is both
                     // the backup and the only trustworthy source of the player's own records.
                     if (!_preWriteShop.ContainsKey(slot))
@@ -171,7 +210,14 @@ namespace TrueforceForAll.Plugin
                     // leave the player off their own boards, exactly as it did on the top ten
                     // before the snapshot was passed through.
                     if (!_preWriteShopCars.ContainsKey(slot))
+                    {
+                        // Two snapshots of the same board because they answer different questions.
+                        // The decoded one is the player's records, for merging. The raw bytes are
+                        // for putting the board back byte for byte when the feature is switched
+                        // off, which decoded records cannot do: they carry no filler rows and no
+                        // trailing bytes, so restoring from them would rebuild an approximation.
                         _preWriteShopCars[slot] = ReadShopCarRecords(course, dir);
+                    }
                     Dictionary<int, Id8LeaderboardEntry> lBest = _preWriteShopCars[slot];
 
                     List<Id8LeaderboardEntry> cRows = null;
@@ -214,14 +260,30 @@ namespace TrueforceForAll.Plugin
         private Dictionary<int, Id8LeaderboardEntry> ReadShopCarRecords(int courseId, int direction)
         {
             var found = new Dictionary<int, Id8LeaderboardEntry>();
-            foreach (int carId in Id8CarTable.CarIdsInSlotOrder())
+
+            // THE RECORD SAYS WHICH CAR IT IS. The page does not, and has not since the board
+            // started being written in ranked order: a genuine AE86 time that placed twenty-sixth
+            // sits on page 25, and taking the car from the page would read it back as an RX-7.
+            // That misattribution then rides through the merge and gets written to the RX-7's
+            // ranking position, so the player's own record is not merely displayed wrong, it is
+            // relabelled in the save. Reading the car id out of the record, which is where the
+            // game keeps it, is correct under either layout.
+            foreach (int page in CarSlots())          // every page 0..49, once
             {
-                int page = Id8CarTable.SlotForCarId(carId);
-                if (page < 0) continue;
                 if (!_writer.TryReadRecord(Id8Board.ShopPerCar, courseId, direction, page,
                                            out Id8LeaderboardRecord rec))
                     continue;
                 if (rec.IsFiller) continue;
+
+                int carId = rec.CarId;
+                if (Id8CarTable.Find(carId) == null) continue;   // not a car we can place
+
+                // Two pages claiming the same car should not happen, but a half-written board is
+                // not worth losing a record over: keep the faster, which is the same rule the
+                // merge uses everywhere else.
+                if (found.TryGetValue(carId, out Id8LeaderboardEntry held)
+                    && held != null && held.GoalMs <= rec.GoalMs)
+                    continue;
 
                 found[carId] = new Id8LeaderboardEntry
                 {
@@ -232,6 +294,10 @@ namespace TrueforceForAll.Plugin
                     Section2 = rec.Section2,
                     Section3 = rec.Section3,
                     UnixTime = rec.UnixTime,
+                    // These rows are the player's own by definition, so the card id has to survive
+                    // the trip. Dropping it here would hand them back as ours on the next write and
+                    // the following sweep would delete them.
+                    PlayerId = rec.PlayerId,
                 };
             }
             return found;
@@ -285,8 +351,7 @@ namespace TrueforceForAll.Plugin
         /// own output, not of their save.</summary>
         private void ClearOurRows()
         {
-            var boards = new[] { Id8Board.OnlineTopTen, Id8Board.ShopTopTen,
-                                 Id8Board.OnlinePerCar, Id8Board.ShopPerCar };
+            var boards = AllBoards;
             int cleared = 0, removed = 0, kept = 0;
             var keptSample = new List<string>();
             Id8LeaderboardRecord blank = Id8Leaderboard.DefaultRow();
@@ -693,21 +758,55 @@ namespace TrueforceForAll.Plugin
             if (!s.CommunityEnabled) return;   // The master switch outranks the per-feature one.
             if (!s.Arcade.Id8SubmitTimesEnabled) return;
 
+            // NOTHING GOES OUT UNDER SOMEBODY'S NAME BEFORE THEY HAVE READ THE NOTICE.
+            //
+            // Submission is on by default, and the notice that discloses it can only appear while
+            // the settings panel is open AND an arcade game is the active game. ID8 runs full
+            // screen through TeknoParrot, so a player can drive for a whole session, publish their
+            // username to the community board and to the weekly Discord post, and never once have
+            // been shown the sentence that says so.
+            //
+            // Gating here rather than trying harder to show the dialog, because this is the side
+            // that has to fail closed: a notice that is hard to surface is a UI problem, but a name
+            // published without it is not recoverable. The run is simply not sent, and the next
+            // time the panel is opened with a cabinet running the notice appears and submission
+            // starts. Ticking the box by hand also counts as the disclosure being made.
+            if (!s.Arcade.Id8SubmitNoticeShown)
+            {
+                _log?.Invoke("[TF4ALL] Arcade: run not submitted, the submission notice has not " +
+                             "been shown yet. Open the settings panel while the cabinet is running.");
+                return;
+            }
+
             await _client.SubmitAsync(GameKey, run.CourseId, run.Direction, run.CarId, run.GoalMs,
                                       run.Sections, null,
                                       PluginVersion(), ct).ConfigureAwait(false);
         }
 
-        /// <summary>Put the shop board back exactly as it was found. For the toggle going off.</summary>
+        /// <summary>Put the shop boards back exactly as they were found. For the toggle going off.
+        ///
+        /// BOTH shop boards. Restoring only the top ten left the per-car board carrying our rows
+        /// after the user had switched the feature off, on the one board that persists to the save,
+        /// which made "off" mean "stop writing" rather than "undo". The snapshot needed to fix it
+        /// was already being taken; nothing was reading it.</summary>
         public void RestoreShopBoards()
         {
             if (_writer == null) return;
-            foreach (var kv in _preWriteShop)
+
+            int done = 0, failed = 0;
+            foreach (var kv in _preWriteBytes)
             {
-                int course = kv.Key / 2, dir = kv.Key % 2;
-                _writer.WriteBoard(Id8Board.ShopTopTen, course, dir, kv.Value);
+                var board = (Id8Board)(kv.Key >> 32);
+                int slot = (int)(kv.Key & 0xffffffffL);
+                if (_writer.RestoreBoard(board, slot / 2, slot % 2, kv.Value)) done++;
+                else failed++;
             }
-            _log?.Invoke($"[TF4ALL] Arcade: restored {_preWriteShop.Count} shop board(s)");
+
+            // The snapshots stay. Restoring is not "we are finished with the game", it is the
+            // toggle going off, and the toggle can come back on in the same session. Retaking them
+            // from a board we have written to is exactly the mistake the snapshot exists to avoid.
+            _log?.Invoke($"[TF4ALL] Arcade: restored {done} board(s) to how the game had them"
+                         + (failed > 0 ? $", {failed} could not be written" : ""));
         }
 
         private static string PluginVersion()

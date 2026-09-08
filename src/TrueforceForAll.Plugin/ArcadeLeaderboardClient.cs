@@ -122,10 +122,19 @@ namespace TrueforceForAll.Plugin
                     list.Add(new Id8LeaderboardEntry
                     {
                         Username = (string)row["author"],
+                        // The any-car board prints a car beside every row, and an entry with no
+                        // car id renders as car 0, the AE86 Trueno. Dropping this field here is
+                        // why every community row on the top-ten boards claimed to be a Trueno:
+                        // the RPC has returned car_id since 0109, and only this parser ignored it.
+                        CarId = (int?)row["car_id"] ?? 0,
                         GoalMs = goal,
                         Section1 = (int?)row["section1_ms"] ?? 0,
                         Section2 = (int?)row["section2_ms"] ?? 0,
                         Section3 = (int?)row["section3_ms"] ?? 0,
+                        // Null until a backend that returns set_at is deployed, and ToUnix maps
+                        // that to 0, which is what the rows carried before. So an older backend
+                        // costs the date and nothing else.
+                        UnixTime = ToUnix((string)row["set_at"]),
                     });
                 }
                 return bySlot;
