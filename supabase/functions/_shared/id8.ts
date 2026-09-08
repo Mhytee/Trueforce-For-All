@@ -149,7 +149,11 @@ export function buildEmbed(week: any): any {
       used += line.length + 1;
     }
     if (steals.length > lines.length) lines.push(`…and ${steals.length - lines.length} more`);
-    fields.push({ name: "Records changed hands", value: lines.join("\n") });
+    // SCOPE NAMED, like every other section. crown_taken only ever fires when one tf4all
+    // submission beats another tf4all time, so this has always been a local table; the worldwide
+    // half is the World records section. Calling it just "Records changed hands" beside a worldwide
+    // standing invited the wrong reading.
+    fields.push({ name: "Records changed hands, in this server", value: lines.join("\n") });
   }
 
   // PROGRESS FIRST, because it is the only section that has something to say in an ordinary week.
@@ -193,10 +197,22 @@ export function buildEmbed(week: any): any {
   const wrs: any[] = Array.isArray(week?.world_records) ? week.world_records : [];
   if (wrs.length) {
     fields.push({
-      name: "New world records",
-      value: wrs.slice(0, 5).map((w) =>
-        `**${esc(w.author)}** set a new world record on ${courseName(w.course_id, w.direction)}: **${lap(w.goal_ms)}**`
-      ).join("\n").slice(0, 1000),
+      name: "World records",
+      // "Took it from" wherever somebody actually lost it, matching the crown lines, because that
+      // is the sentence a record changing hands deserves. "Set the first" where the board had no
+      // dated predecessor: claiming a victim there would invent a defeat that never happened.
+      value: wrs.slice(0, 5).map((w) => {
+        const where = courseName(w.course_id, w.direction);
+        // Not "the first". A missing predecessor means we could not identify one, usually because
+        // the runner-up's row carries no date, and that is not the same as there never having been
+        // a record here. Claiming a first would be asserting something the data cannot support.
+        if (!w.prev_author) {
+          return `**${esc(w.author)}** set the world record on ${where}: **${lap(w.goal_ms)}**`;
+        }
+        const by = w.prev_ms && w.prev_ms > w.goal_ms ? `, ${gap(w.prev_ms - w.goal_ms)} faster` : "";
+        return `**${esc(w.author)}** took the world record on ${where} from ` +
+               `${esc(w.prev_author)} with **${lap(w.goal_ms)}**${by}`;
+      }).join("\n").slice(0, 1000),
     });
   }
 
