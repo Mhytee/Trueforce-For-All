@@ -271,5 +271,225 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0xb4, (int)Id8Board.OnlinePerCar);
             Assert.Equal(0xb8, (int)Id8Board.OnlineTopTen);
         }
+
+        [Fact]
+        public void APlayersOwnLapSurvivesBeingWrittenBackToTheBoard()
+        {
+            // The game stamps a card id on a record it sets, and IsOurs reads a zero there as our
+            // signature. We put their record back every time the board is rebuilt, and stamping our
+            // own zero over it disowned it: the next rebuild read the row as one of ours and
+            // dropped it, so a lap set mid-session lived for exactly one rewrite. Under climb mode
+            // that is a rewrite every time they walk back to the stage select.
+            Id8LeaderboardRecord theirs = Id8LeaderboardRecord.Read(RealRecord(), 0);
+            Assert.Equal(5553014u, theirs.PlayerId);
+            Assert.False(Id8Leaderboard.IsOurs(theirs));
+
+            Id8LeaderboardRecord[] board = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Local,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                null, null,
+                new[] { theirs });
+
+            Assert.Equal("MHYTEE", Id8Name.Decode(board[0].RawName));
+            Assert.Equal(5553014u, board[0].PlayerId);
+
+            // The rebuild after that reads the live board back as its source of local records,
+            // exactly as the service does, and has to still find them on it.
+            var again = Id8Leaderboard.LocalRecordsFrom(board);
+            Assert.Single(again);
+            Assert.Equal(theirs.GoalMs, again[0].GoalMs);
+        }
+
+        [Fact]
+        public void RowsWeInventedAreStillOursToSweep()
+        {
+            // The other half of the same rule: a community or TeknoParrot row carries no card id,
+            // so it must keep coming back as ours or the sweep would leave them behind forever.
+            Id8LeaderboardRecord[] board = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.TeknoParrot,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                null,
+                new[] { Entry("rival", 130000) },
+                null);
+
+            Assert.Equal("RIVAL", Id8Name.Decode(board[0].RawName));
+            Assert.True(Id8Leaderboard.IsOurs(board[0]));
+            Assert.Empty(Id8Leaderboard.LocalRecordsFrom(board));
+        }
+
+        [Fact]
+        public void TheOwnedCopyWinsWhenTheSameLapArrivesFromTwoPools()
+        {
+            // Their own row and the copy they submitted are the same lap at the same time. Keeping
+            // the submitted one would put a zero id back on the board and lose the ownership again.
+            Id8LeaderboardRecord theirs = Id8LeaderboardRecord.Read(RealRecord(), 0);
+            var submitted = new Id8LeaderboardEntry
+            {
+                Username = "MHYTEE", CarId = theirs.CarId, GoalMs = theirs.GoalMs,
+            };
+
+            Id8LeaderboardRecord[] board = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Merged,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                new[] { submitted },
+                null,
+                new[] { theirs });
+
+            Assert.Equal("MHYTEE", Id8Name.Decode(board[0].RawName));
+            Assert.Equal(5553014u, board[0].PlayerId);
+        }
+
+        // ---- ladder climb: the two layouts of the same ten drivers ----
+
+        /// <summary>A field deep enough that the top ten and the player's neighbourhood cannot
+        /// overlap, so a test that passes by accident is not possible. Times ascend with the
+        /// number, so P1 is fastest and P100 slowest.</summary>
+        private static Id8LeaderboardEntry[] Field(int n = 100) =>
+            Enumerable.Range(1, n).Select(i => Entry("P" + i, 100000 + i * 1000)).ToArray();
+
+        [Fact]
+        public void TheViewValuesAreThePlacesTheyName()
+        {
+            // Load bearing: the enum value is passed straight through as placeAt. Renumbering
+            // these silently changes the layout, so the numbers are asserted rather than trusted.
+            Assert.Equal(5, (int)Id8LadderView.Standings);
+            Assert.Equal(2, (int)Id8LadderView.Target);
+        }
+
+        [Fact]
+        public void StandingsPutsThePlayerFifthWithFourAboveAndFiveBelow()
+        {
+            var w = Id8Leaderboard.LadderWindow(Field(), "P20", 10, (int)Id8LadderView.Standings);
+
+            Assert.Equal(10, w.Count);
+            Assert.Equal("P20", w[4].Username);          // fifth
+            Assert.Equal("P16", w[0].Username);          // four faster above
+            Assert.Equal("P25", w[9].Username);          // five slower below
+        }
+
+        [Fact]
+        public void TargetPutsTheNextDriverUpFirstAndThePlayerSecond()
+        {
+            var w = Id8Leaderboard.LadderWindow(Field(), "P20", 10, (int)Id8LadderView.Target);
+
+            Assert.Equal(10, w.Count);
+            Assert.Equal("P19", w[0].Username);          // the rung they are chasing, and the
+            Assert.Equal("P20", w[1].Username);          // time the game copies into the HUD
+        }
+
+        [Fact]
+        public void TheTargetIsTheOnlyThingBetweenThePlayerAndTheTopRow()
+        {
+            // The whole point of the layout: whatever the game reads off row one is one place
+            // better than the player, never two and never a world record.
+            // Including the very bottom, where keeping the board full would have slid the window
+            // up and sent them after somebody nine places away.
+            foreach (int place in new[] { 2, 3, 17, 64, 99, 100 })
+            {
+                var w = Id8Leaderboard.LadderWindow(Field(), "P" + place, 10, (int)Id8LadderView.Target,
+                                                    keepBoardFull: false);
+                Assert.Equal("P" + (place - 1), w[0].Username);
+                Assert.Equal("P" + place, w[1].Username);
+            }
+        }
+
+        [Fact]
+        public void NeitherViewEverShowsAPlayerBelowTheirRealPlace()
+        {
+            // Genuinely third is shown third, not dropped to fifth to make the window symmetric.
+            var standings = Id8Leaderboard.LadderWindow(Field(), "P3", 10, (int)Id8LadderView.Standings);
+            Assert.Equal("P3", standings[2].Username);
+            Assert.Equal("P1", standings[0].Username);
+
+            // And first is first in both, because there is no rung above them to promote.
+            foreach (Id8LadderView v in new[] { Id8LadderView.Standings, Id8LadderView.Target })
+            {
+                var w = Id8Leaderboard.LadderWindow(Field(), "P1", 10, (int)v);
+                Assert.Equal("P1", w[0].Username);
+            }
+        }
+
+        [Fact]
+        public void StandingsStaysFullAtTheBottomOfTheField()
+        {
+            // Last of a hundred cannot have five below them, so the reading board slides up rather
+            // than trailing off into filler. Still above their real place, which is the only rule.
+            var w = Id8Leaderboard.LadderWindow(Field(), "P100", 10, (int)Id8LadderView.Standings);
+
+            Assert.Equal(10, w.Count);
+            Assert.Equal("P100", w[9].Username);
+            Assert.Equal("P91", w[0].Username);
+        }
+
+        [Fact]
+        public void TargetGivesUpAFullBoardRatherThanTheRightTargetRow()
+        {
+            // Two real rows and eight filler beats ten real rows aimed at the wrong driver: the
+            // top row is the time the game puts in front of them.
+            var w = Id8Leaderboard.LadderWindow(Field(), "P100", 10, (int)Id8LadderView.Target,
+                                                keepBoardFull: false);
+
+            Assert.Equal(2, w.Count);
+            Assert.Equal("P99", w[0].Username);
+            Assert.Equal("P100", w[1].Username);
+        }
+
+        [Fact]
+        public void BuildBoardKeepsTheRightTargetForAPlayerAtTheBottom()
+        {
+            // End to end, because the per-view clamp is chosen inside BuildBoard, not by the caller.
+            Id8LeaderboardRecord[] rows = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.TeknoParrot,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                null, Field(), null, "P100", Id8LadderView.Target);
+
+            Assert.Equal(10, rows.Length);
+            Assert.Equal("P99", Id8Name.Decode(rows[0].RawName));
+            Assert.Equal("P100", Id8Name.Decode(rows[1].RawName));
+            Assert.True(rows[2].IsFiller);
+        }
+
+        [Fact]
+        public void ACourseThePlayerHasNeverDrivenShowsTheFastestTimes()
+        {
+            foreach (Id8LadderView v in new[] { Id8LadderView.Standings, Id8LadderView.Target })
+            {
+                var w = Id8Leaderboard.LadderWindow(Field(), "NOBODY", 10, (int)v);
+                Assert.Equal("P1", w[0].Username);
+                Assert.Equal("P10", w[9].Username);
+            }
+        }
+
+        [Fact]
+        public void BuildBoardWritesTheTargetLayoutStraightOntoTheBoard()
+        {
+            // End to end through the real build path, because the window being right is not the
+            // same as the rows the game will read being right.
+            Id8LeaderboardRecord[] rows = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.TeknoParrot,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                null,
+                Field(),
+                null,
+                "P20",
+                Id8LadderView.Target);
+
+            Assert.Equal("P19", Id8Name.Decode(rows[0].RawName));
+            Assert.Equal("P20", Id8Name.Decode(rows[1].RawName));
+        }
+
+        [Fact]
+        public void BuildBoardDefaultsToStandingsWhenNoViewIsNamed()
+        {
+            Id8LeaderboardRecord[] rows = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.TeknoParrot,
+                new[] { Id8LeaderboardRecord.Read(FillerRecord(), 0) },
+                null,
+                Field(),
+                null,
+                "P20");
+
+            Assert.Equal("P20", Id8Name.Decode(rows[4].RawName));
+        }
     }
 }

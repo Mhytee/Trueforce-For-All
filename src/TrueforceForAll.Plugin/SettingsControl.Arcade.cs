@@ -518,8 +518,36 @@ namespace TrueforceForAll.Plugin
                 ArcadeLeaderboardOptions.IsEnabled = a.Id8LeaderboardsEnabled;
 
             SelectByTag(ArcadeOnlineSourceCombo, a.Id8OnlineBoardSource.ToString());
-            SelectByTag(ArcadeShopSourceCombo, a.Id8ShopBoardSource.ToString());
+
+            // The shop source is not a choice while the ladder is on. Climb mode ranks against the
+            // merged field whatever the dropdown says, so leaving it readable at Trueforce For All
+            // was the panel stating something the board was not doing.
+            //
+            // Greyed, and reading LADDER rather than All. All would be true and would still leave
+            // somebody wondering why they cannot change it; Ladder answers that in the one place
+            // they are looking. The label greys with the box rather than the box alone.
+            bool ladder = a.Id8LadderClimbEnabled;
+            if (ArcadeShopSourceLadderItem != null)
+                ArcadeShopSourceLadderItem.Visibility = ladder ? Visibility.Visible : Visibility.Collapsed;
+
+            if (ladder && ArcadeShopSourceLadderItem != null && ArcadeShopSourceCombo != null)
+                ArcadeShopSourceCombo.SelectedItem = ArcadeShopSourceLadderItem;
+            else
+                SelectByTag(ArcadeShopSourceCombo, a.Id8ShopBoardSource.ToString());
+
+            if (ArcadeShopSourceRow != null)
+            {
+                ArcadeShopSourceRow.IsEnabled = !ladder;
+                ArcadeShopSourceRow.ToolTip = ladder
+                    ? "Ladder climb ranks you against everyone, so it takes the shop board over."
+                    : null;
+            }
         }
+
+        /// <summary>What the shop board was set to before the ladder took it over, so unticking
+        /// gives it back rather than leaving them on All. Not persisted: across a restart the
+        /// setting simply reads All, which is at least a visible state they can change.</summary>
+        private Id8BoardSource? _shopSourceBeforeLadder;
 
         private static void SelectByTag(System.Windows.Controls.ComboBox combo, string tag)
         {
@@ -556,20 +584,35 @@ namespace TrueforceForAll.Plugin
             bool on = ArcadeLadderClimbCheck?.IsChecked == true;
             a.Id8LadderClimbEnabled = on;
 
-            // Turning the ladder on makes the SHOP board everyone, so the online board showing
-            // everyone too would be two views of the same field. Trueforce For All is the more
-            // useful thing to put beside a ladder: the people you can actually race.
-            //
-            // Only from the shipped default, never over a choice. If they have already picked
-            // TeknoParrot or Local for that board, they meant it, and a toggle that quietly
-            // rewrites a setting somebody set is worse than one that leaves a redundant view.
-            if (on && a.Id8OnlineBoardSource == Id8BoardSource.Merged)
+            if (on)
             {
-                a.Id8OnlineBoardSource = Id8BoardSource.Community;
-                bool prior = _suppressEvents;
-                _suppressEvents = true;
-                try { RefreshArcadeLeaderboardControls(); } finally { _suppressEvents = prior; }
+                // The ladder TAKES the shop board. It ranks against the merged field regardless of
+                // this setting, so the setting has to say so instead of quietly meaning nothing.
+                if (a.Id8ShopBoardSource != Id8BoardSource.Merged)
+                {
+                    _shopSourceBeforeLadder = a.Id8ShopBoardSource;
+                    a.Id8ShopBoardSource = Id8BoardSource.Merged;
+                }
+
+                // And with the shop board showing everyone, an online board showing everyone too
+                // would be two views of the same field. Trueforce For All is the more useful thing
+                // to put beside a ladder: the people you can actually race.
+                //
+                // Only from the shipped default, never over a choice. If they have already picked
+                // TeknoParrot or Local there, they meant it, and a toggle that quietly rewrites a
+                // setting somebody set is worse than one that leaves a redundant view.
+                if (a.Id8OnlineBoardSource == Id8BoardSource.Merged)
+                    a.Id8OnlineBoardSource = Id8BoardSource.Community;
             }
+            else if (_shopSourceBeforeLadder.HasValue)
+            {
+                a.Id8ShopBoardSource = _shopSourceBeforeLadder.Value;
+                _shopSourceBeforeLadder = null;
+            }
+
+            bool priorSuppress = _suppressEvents;
+            _suppressEvents = true;
+            try { RefreshArcadeLeaderboardControls(); } finally { _suppressEvents = priorSuppress; }
 
             _plugin.PersistSettings();
 

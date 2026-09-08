@@ -1,4 +1,4 @@
-// Puts real names and times on Initial D 8's in-game leaderboards, and sends the player's own runs
+﻿// Puts real names and times on Initial D 8's in-game leaderboards, and sends the player's own runs
 // to the community board.
 //
 // The boards ID8 shows have been dead since SEGA's servers went away: every row a player sees is
@@ -47,6 +47,21 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Every board is filled once per attach, not once per course.</summary>
         private bool _filled;
+
+        /// <summary>Which ladder layout the shop board is holding. Standings until somebody signs
+        /// in, because that is what the attract loop's leaderboard screen is for.</summary>
+        private Id8LadderView _ladderView = Id8LadderView.Standings;
+
+        /// <summary>The pools the last fill used, kept so swapping the ladder layout is a rewrite
+        /// of the shop board and nothing else.
+        ///
+        /// Refetching would be wrong twice over. It is a 200 deep request per board for a set of
+        /// times that cannot have moved in the second since the player signed in, and it can FAIL:
+        /// a swap that came back empty would leave HaveDataFor skipping the write, and the board
+        /// would sit in the layout the player just left. The pools are what we already proved we
+        /// could get.</summary>
+        private Dictionary<int, List<Id8LeaderboardEntry>> _pooledCommunity;
+        private Dictionary<string, LeaderboardBoard> _pooledTekno;
 
         /// <summary>The shop board as it was before we ever wrote, per board slot. Both the backup
         /// and the only trustworthy source of the player's own records.</summary>
@@ -126,11 +141,25 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        /// <summary>Let go of the game. Everything remembered about ITS memory goes with it.
+        ///
+        /// The snapshots, the pools and the layout are all statements about one running process.
+        /// Kept across a relaunch they are worse than nothing: the byte snapshots would restore the
+        /// last launch's boards into this one, the frozen local pool could never pick up anything
+        /// set since, and the layout would have the boards aimed at a driver who is not signed in
+        /// yet, on a cabinet sitting at its attract screen.</summary>
         public void Detach()
         {
             _writer?.Dispose();
             _writer = null;
             _filled = false;
+            _preWriteBytes.Clear();
+            _preWriteShop.Clear();
+            _preWriteShopCars.Clear();
+            _pooledCommunity = null;
+            _pooledTekno = null;
+            _ladderView = Id8LadderView.Standings;
+            _refillOwed = false;
         }
 
         /// <summary>Fill EVERY board, all 16 courses in both directions.
@@ -143,15 +172,33 @@ namespace TrueforceForAll.Plugin
         ///
         /// Runs once per attach. The <paramref name="force"/> path is for a settings change, where
         /// the boards must be rewritten without anything else having moved.</summary>
+        /// <summary>One board rewrite at a time, whoever asks.
+        ///
+        /// Three threads can now reach this: SimHub's data thread after a run, the WPF thread when
+        /// a source is changed in the settings, and the layout swap. They all mutate the same plain
+        /// dictionaries, and two fills at once can snapshot a slot the other has already written,
+        /// which is the one way the pristine byte snapshot could ever be poisoned.
+        ///
+        /// A rewrite that arrives while one is running is DROPPED rather than queued. Every caller
+        /// asks for the same thing, the current state of the boards, so the one in flight is
+        /// already producing it; and the layout swap re-asks on the next telemetry sample anyway,
+        /// because it compares against what was actually written.</summary>
+        private int _writeBusy;
+
         public async Task FillAllAsync(CancellationToken ct, bool force = false)
+        {
+            if (Interlocked.CompareExchange(ref _writeBusy, 1, 0) != 0) return;
+            try { await FillAllCoreAsync(ct, force).ConfigureAwait(false); }
+            finally { Interlocked.Exchange(ref _writeBusy, 0); }
+        }
+
+        private async Task FillAllCoreAsync(CancellationToken ct, bool force)
         {
             var s = _settings();
             if (s?.Arcade == null || !s.Arcade.Id8LeaderboardsEnabled) return;
             if (_writer == null) return;
             if (_filled && !force) return;
             _filled = true;
-
-            ClearOurRows();
 
             Dictionary<int, List<Id8LeaderboardEntry>> community = null;
             if (NeedsCommunity(s))
@@ -172,6 +219,14 @@ namespace TrueforceForAll.Plugin
 
             Dictionary<string, LeaderboardBoard> tp = NeedsTeknoParrot(s) ? TeknoParrotBoards() : null;
 
+            // KEPT ONLY IF THEY ARRIVED. Assigning the fetch straight in meant one refill with a
+            // dead connection replaced the opening fill's good pools with nulls, and every ladder
+            // swap for the rest of the session then failed the HaveDataFor test and silently did
+            // nothing, including the return to Standings at the end. A refill happens after every
+            // run, so that was a network hiccup away on any lap.
+            if (community != null) _pooledCommunity = community;
+            if (tp != null) _pooledTekno = tp;
+
             // Said once here rather than 32 times in the loop.
             bool haveCommunity = community != null;
             bool haveTekno = tp != null;
@@ -179,6 +234,28 @@ namespace TrueforceForAll.Plugin
                 _log?.Invoke("[TF4ALL] Arcade: no community rows this fill, leaving those boards as the game had them");
             if (!haveTekno && Uses(s.Arcade.Id8OnlineBoardSource, Id8BoardSource.TeknoParrot))
                 _log?.Invoke("[TF4ALL] Arcade: no TeknoParrot rows this fill, leaving those boards as the game had them");
+
+            // THE SWEEP, and it happens here rather than before the fetches.
+            //
+            // It blanks every row of ours off all four boards, and it used to run first. So a fill
+            // whose fetch then came back empty, on a flaky connection or with community features
+            // switched off, had already taken our rows away and would now decline to write
+            // replacements: the board was left as ten TF4ALL placeholders at the six minute
+            // sentinel, and under climb mode rank one, the time to beat, became one of them.
+            //
+            // HaveDataFor exists to leave a board alone in exactly that case and could not, because
+            // the damage was done two hundred lines earlier. With the recompute after every run
+            // going through this same path, that was a fresh chance to wipe the boards on every
+            // lap the player drove.
+            if (!HaveDataFor(s.Arcade.Id8OnlineBoardSource, haveCommunity, haveTekno) &&
+                !HaveDataFor(s.Arcade.Id8ShopBoardSource, haveCommunity, haveTekno))
+            {
+                _log?.Invoke("[TF4ALL] Arcade leaderboards: nothing to write this fill, "
+                             + "leaving the boards as the game had them");
+                return;
+            }
+
+            ClearOurRows();
 
             int boards = 0, cars = 0;
             for (int course = 0; course <= 15; course++)
@@ -204,35 +281,24 @@ namespace TrueforceForAll.Plugin
                     if (!_preWriteShop.ContainsKey(slot))
                     {
                         var snap = _writer.ReadBoard(Id8Board.ShopTopTen, course, dir);
-                        if (snap == null || snap.Length == 0) continue;
+
+                        // ALL TEN ROWS OR NONE. ReadBoard stops at the first page it cannot read
+                        // and returns what it had, so a read that failed halfway looks like a board
+                        // with four records on it. Accepting that froze a four row board as the
+                        // snapshot AND wrote it to the backup, which only ever records a slot once:
+                        // ranks five to ten would have been gone from both, permanently, on a
+                        // single unlucky read. Skipping the slot costs one fill.
+                        if (snap == null || snap.Length < Id8Leaderboard.Ranks)
+                        {
+                            _log?.Invoke($"[TF4ALL] Arcade leaderboards: shop board for course {course} "
+                                         + $"dir {dir} read back short, leaving it untouched this fill");
+                            continue;
+                        }
                         _preWriteShop[slot] = snap;
                         SaveBackup(slot, snap);
                     }
 
-                    IReadOnlyList<Id8LeaderboardRecord> local =
-                        Id8Leaderboard.LocalRecordsFrom(_preWriteShop[slot]);
-
-                    // RECOVERY. The on-disk backup was write-only for its whole life: it was
-                    // faithfully recorded before the first write of every session and no code ever
-                    // read it back, so it could not help the one situation it existed for.
-                    //
-                    // It matters now because records HAVE been lost. Choosing Community on the shop
-                    // board used to rebuild it without the player's rows, and on a board that loads
-                    // from the save that deleted them. The owner's file holds 17 records at player
-                    // id 5553014 that the live board no longer had.
-                    //
-                    // Folded in as another source of local records rather than written straight
-                    // back, so they take their place on time like everything else, and a genuine
-                    // row still on the board wins over a stale copy of itself. SaveBackup only ever
-                    // records a slot once, so this cannot be poisoned by a later snapshot that
-                    // already contains our own writes.
-                    IReadOnlyList<Id8LeaderboardRecord> archived = ArchivedRecordsFor(slot);
-                    if (archived.Count > 0)
-                    {
-                        var both = new List<Id8LeaderboardRecord>(local);
-                        both.AddRange(archived);
-                        local = both;
-                    }
+                    IReadOnlyList<Id8LeaderboardRecord> local = LocalRecordsFor(course, dir, slot);
 
                     // And the shop PER-CAR board, for the same reason: it is the only place the
                     // player's own per-car records exist, and the online per-car board is SEGA
@@ -289,6 +355,54 @@ namespace TrueforceForAll.Plugin
                 }
 
             _log?.Invoke($"[TF4ALL] Arcade leaderboards: filled {boards} course/direction board(s) and {cars} per-car record(s)");
+        }
+
+        /// <summary>The player's own top-ten records for one course, from every place they survive.
+        ///
+        /// Three sources, because each one covers a hole in the others.
+        ///
+        /// THE SNAPSHOT taken before we first wrote is the primary. Once community or TeknoParrot
+        /// rows are on the board, reading it back would feed our own writes in as though the player
+        /// had set them, which is what the snapshot exists to prevent.
+        ///
+        /// THE ON-DISK BACKUP is recovery. It was write-only for its whole life: faithfully
+        /// recorded before the first write of every session and never read back, so it could not
+        /// help the one situation it existed for. It matters because records HAVE been lost:
+        /// choosing Community on the shop board used to rebuild it without the player's rows, on a
+        /// board that loads from the save that deleted them. The owner's file holds 17 records at
+        /// player id 5553014 that the live board no longer had. SaveBackup only ever records a slot
+        /// once, so this cannot be poisoned by a later snapshot containing our own writes.
+        ///
+        /// THE LIVE BOARD is for the lap they just drove. The snapshot froze their records at
+        /// attach, so a time set this session could never appear in it: they set a record, the
+        /// board is rebuilt, and they are still ranked on yesterday's time. Under climb mode that
+        /// is the difference between the target moving on and the player being handed the rung they
+        /// have already beaten. The per-car path was given this same re-read for the same reason
+        /// and the top ten was left behind.
+        ///
+        /// Safe to read a board we have written to because IsOurs settles it: the game stamps a
+        /// card id on a record it sets and every row we write carries zero, so LocalRecordsFrom
+        /// keeps theirs and drops ours.
+        ///
+        /// Duplicates across the three are fine and expected. Dedupe collapses a driver and car to
+        /// one row and keeps the faster, so a genuine row still on the board wins over a stale copy
+        /// of itself in the backup.
+        ///
+        /// DISPLAY ONLY, never submitted. A row in a save carries no proof of who set it, the save
+        /// is trivially editable, and we write to that board ourselves.</summary>
+        private IReadOnlyList<Id8LeaderboardRecord> LocalRecordsFor(int courseId, int direction, int slot)
+        {
+            var all = new List<Id8LeaderboardRecord>();
+            if (_preWriteShop.TryGetValue(slot, out Id8LeaderboardRecord[] snap))
+                all.AddRange(Id8Leaderboard.LocalRecordsFrom(snap));
+            all.AddRange(ArchivedRecordsFor(slot));
+            // Read through a local: a detach on the telemetry thread can null the field between
+            // the caller's own check and this line.
+            Id8LeaderboardWriter w = _writer;
+            if (w != null)
+                all.AddRange(Id8Leaderboard.LocalRecordsFrom(
+                    w.ReadBoard(Id8Board.ShopTopTen, courseId, direction)));
+            return all;
         }
 
         /// <summary>The player's own per-car records for one course, straight off the shop board.
@@ -772,7 +886,7 @@ namespace TrueforceForAll.Plugin
         private void Write(Id8Board board, Id8BoardSource source, int courseId, int direction,
                            IReadOnlyList<Id8LeaderboardEntry> community,
                            IReadOnlyList<Id8LeaderboardEntry> tekno,
-                           IReadOnlyList<Id8LeaderboardRecord> local)
+                           IReadOnlyList<Id8LeaderboardRecord> local, bool quiet = false)
         {
             var existing = _writer.ReadBoard(board, courseId, direction);
             // LADDER CLIMB. Centre the board on the player rather than on the world records.
@@ -814,10 +928,12 @@ namespace TrueforceForAll.Plugin
                     if (!string.IsNullOrEmpty(n)) { ladderFor = n; break; }
                 }
 
-            var rows = Id8Leaderboard.BuildBoard(effective, existing, community, tekno, local, ladderFor);
+            var rows = Id8Leaderboard.BuildBoard(effective, existing, community, tekno, local,
+                                                 ladderFor, _ladderView);
             int written = _writer.WriteBoard(board, courseId, direction, rows);
-            _log?.Invoke($"[TF4ALL] Arcade {board} {source}: wrote {written}/{rows.Length} rows " +
-                         $"for course {courseId} dir {direction}");
+            if (!quiet)
+                _log?.Invoke($"[TF4ALL] Arcade {board} {source}: wrote {written}/{rows.Length} rows " +
+                             $"for course {courseId} dir {direction}");
         }
 
         // Both gated on CommunityEnabled, the master "Enable community features (online)" switch.
@@ -928,12 +1044,122 @@ namespace TrueforceForAll.Plugin
         /// after the user had switched the feature off, on the one board that persists to the save,
         /// which made "off" mean "stop writing" rather than "undo". The snapshot needed to fix it
         /// was already being taken; nothing was reading it.</summary>
+        /// <summary>Swap the shop board between the two ladder layouts.
+        ///
+        /// THE SAME TEN DRIVERS, CUT DIFFERENTLY. Standings puts the player fifth, which is the
+        /// board somebody reads on the leaderboard screen off the attract loop. Target puts the
+        /// driver one place above them first and the player second, because rank one is what the
+        /// game shows as the shop time at stage select and copies into the in-race HUD. So the
+        /// moment a player signs in, the top row stops being a world record and becomes the one
+        /// rung they are actually chasing.
+        ///
+        /// SHOP TOP TEN ONLY. The online board is theirs to set and is never windowed, and the
+        /// per-car boards hold one record per car rather than a ranking, so there is no window to
+        /// cut in them.
+        ///
+        /// Off the pools the last fill already had rather than fetching again, so a swap cannot be
+        /// lost to a request that failed while the player was standing at the machine.
+        ///
+        /// Returns whether the boards were actually rewritten.</summary>
+        /// <summary>Record the layout WITHOUT rewriting, for when a full fill is about to run
+        /// anyway and would only write the same boards twice.</summary>
+        public void SetLadderView(Id8LadderView view) { _ladderView = view; }
+
+        /// <summary>The layout the boards are actually holding. The caller compares against this
+        /// rather than remembering what it asked for, so a swap that could not run is simply asked
+        /// for again, and a game relaunch, which resets this, re-aims the boards by itself.</summary>
+        public Id8LadderView LadderView { get { return _ladderView; } }
+
+        /// <summary>Whether we still have the game. False the moment it closes.</summary>
+        public bool Attached { get { return _writer != null; } }
+
+        /// <summary>A finished run is waiting to be shown once the results are behind us.
+        ///
+        /// HELD HERE rather than in the plugin because it is a statement about this game process,
+        /// and Detach is the only place that reliably sees the game go. The plugin cannot: the
+        /// branch that detaches returns before the ladder observer is reached, so a guard there
+        /// would never run and a run finished just before the game closed would fire a rewrite
+        /// into the next launch.</summary>
+        private bool _refillOwed;
+
+        public bool RefillOwed { get { return _refillOwed; } }
+        public void NoteFinishedRun() { _refillOwed = true; }
+        public void ClearRefillOwed() { _refillOwed = false; }
+
+        public bool ApplyLadderView(Id8LadderView view)
+        {
+            if (_ladderView == view) return false;
+
+            // Recorded without writing whenever there is nothing to write to. Climb mode being off
+            // is the ordinary case: the board is not windowed at all, so the layout is only a note
+            // of where the player is, ready for the moment they switch it on.
+            var s = _settings();
+            if (s?.Arcade == null || !s.Arcade.Id8LeaderboardsEnabled ||
+                !s.Arcade.Id8LadderClimbEnabled || !_filled)
+            {
+                _ladderView = view;
+                return false;
+            }
+
+            Id8LeaderboardWriter w = _writer;
+            if (w == null) return false;
+
+            bool haveCommunity = _pooledCommunity != null;
+            bool haveTekno = _pooledTekno != null;
+
+            // Climb mode ranks against the merged field whatever the shop source says, so the test
+            // is the one Merged would face rather than the setting's own.
+            if (!HaveDataFor(Id8BoardSource.Merged, haveCommunity, haveTekno)) return false;
+
+            // Same gate as a fill, because this writes the same boards.
+            if (Interlocked.CompareExchange(ref _writeBusy, 1, 0) != 0) return false;
+            try
+            {
+
+            int done = 0;
+            for (int course = 0; course <= 15; course++)
+                for (int dir = 0; dir <= 1; dir++)
+                {
+                    int slot = Id8Leaderboard.SlotIndex(course, dir);
+
+                    // No snapshot means this board was never filled, so there is nothing of ours on
+                    // it to re-cut and writing now would be a first write with no backup behind it.
+                    if (!_preWriteShop.ContainsKey(slot)) continue;
+
+                    List<Id8LeaderboardEntry> cRows = null;
+                    _pooledCommunity?.TryGetValue(slot, out cRows);
+                    List<Id8LeaderboardEntry> tRows = TeknoParrotRowsFrom(_pooledTekno, course, dir);
+
+                    Write(Id8Board.ShopTopTen, s.Arcade.Id8ShopBoardSource, course, dir,
+                          cRows, tRows, LocalRecordsFor(course, dir, slot), quiet: true);
+                    done++;
+                }
+
+            // Claimed only now, with the boards actually holding it. Setting it up front meant a
+            // swap that threw halfway was still recorded as done and was never tried again.
+            _ladderView = view;
+            _log?.Invoke($"[TF4ALL] Arcade ladder: {view} layout across {done} shop board(s)");
+            return done > 0;
+
+            }
+            finally { Interlocked.Exchange(ref _writeBusy, 0); }
+        }
+
         public void RestoreShopBoards()
         {
             if (_writer == null) return;
 
+            // Wait for any fill or swap to finish first. This runs on the WPF thread the moment the
+            // master toggle goes off, and a write already dispatched would otherwise land AFTER the
+            // restore and put our rows straight back, so "off" would not be off until a restart.
+            // Bounded, and it goes ahead anyway rather than skipping: a restore that does not
+            // happen is worse than one that races.
+            for (int i = 0; i < 200 && _writeBusy != 0; i++) Thread.Sleep(10);
+
             int done = 0, failed = 0;
-            foreach (var kv in _preWriteBytes)
+            // Over a copy: a fill on another thread adding a slot mid-enumeration threw, and the
+            // caller swallows it, which left half the boards restored and half still carrying ours.
+            foreach (var kv in new List<KeyValuePair<long, byte[]>>(_preWriteBytes))
             {
                 var board = (Id8Board)(kv.Key >> 32);
                 int slot = (int)(kv.Key & 0xffffffffL);
@@ -962,7 +1188,11 @@ namespace TrueforceForAll.Plugin
         {
             if (_archive == null)
             {
-                _archive = new Dictionary<int, Id8LeaderboardRecord[]>();
+                // Built whole, then published. Assigning the empty dictionary first left a window
+                // where another thread saw a non-null archive with nothing in it and rebuilt every
+                // board without the recovered records, which for a slot the live board has since
+                // lost are the last copy in existence.
+                var loaded = new Dictionary<int, Id8LeaderboardRecord[]>();
                 try
                 {
                     if (File.Exists(_backupPath))
@@ -973,7 +1203,7 @@ namespace TrueforceForAll.Plugin
                         if (all != null)
                             foreach (var kv in all)
                                 if (int.TryParse(kv.Key, out int k) && kv.Value != null)
-                                    _archive[k] = kv.Value;
+                                    loaded[k] = kv.Value;
                     }
                 }
                 catch (Exception ex)
@@ -982,6 +1212,7 @@ namespace TrueforceForAll.Plugin
                     // recovery, and the live board is still the primary source.
                     _log?.Invoke("[TF4ALL] Arcade board backup could not be read: " + ex.Message);
                 }
+                _archive = loaded;
             }
 
             return _archive.TryGetValue(slot, out Id8LeaderboardRecord[] rows)

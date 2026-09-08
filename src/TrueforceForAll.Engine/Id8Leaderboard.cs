@@ -1,4 +1,4 @@
-// The Initial D 8 leaderboard tables: record format, name encoding, and the merge.
+﻿// The Initial D 8 leaderboard tables: record format, name encoding, and the merge.
 //
 // UNLIKE Id8MemoryTelemetry.cs, which is strictly read only, this file exists to WRITE the game's
 // leaderboard tables. Everything here is pure: it turns bytes into records and back, encodes names
@@ -63,6 +63,27 @@ namespace TrueforceForAll.Core
         /// own local records.</summary>
         Merged = 3,
 
+    }
+
+    /// <summary>Which of the two ladder layouts the shop board is holding.
+    ///
+    /// THE SAME TEN DRIVERS EITHER WAY. Only where the window is cut differs, because the board
+    /// serves two readers who want opposite things from it.
+    ///
+    /// The VALUE IS THE PLACE, 1 based, and that is load bearing: it is passed straight through as
+    /// LadderWindow's placeAt. Renumbering these changes the layout.</summary>
+    public enum Id8LadderView
+    {
+        /// <summary>The board a PERSON reads, on the leaderboard screen off the attract loop: the
+        /// player fifth, four faster drivers above them, five slower below. Somewhere to see
+        /// yourself, with the climb visible in both directions.</summary>
+        Standings = 5,
+
+        /// <summary>The board the GAME reads, from the moment somebody signs in. The next driver up
+        /// is first and the player is second, so the shop time the game shows at stage select, and
+        /// copies into the in-race HUD, is the one rung they are actually chasing rather than a
+        /// world record four places away.</summary>
+        Target = 2,
     }
 
     /// <summary>Which of the four leaderboard tables a write is aimed at.</summary>
@@ -375,7 +396,17 @@ namespace TrueforceForAll.Core
                         RawName = enc,
                         Reserved = Id8LeaderboardRecord.ReservedFor(e.CarId),
                         Flags = Id8LeaderboardRecord.FlagReal,
-                        PlayerId = 0,
+
+                        // The id the row came in with, NOT a flat zero.
+                        //
+                        // Zero is our signature and IsOurs reads it back to tell our writes from
+                        // records the game set. Stamping it on everything meant re-placing the
+                        // player's OWN record disowned it: the game wrote their lap with their card
+                        // id, we put it back with a zero, and the next rebuild read it as one of
+                        // ours and dropped it. The lap survived exactly one rewrite. Community and
+                        // TeknoParrot rows carry no id, so they still default to zero and are still
+                        // ours to sweep.
+                        PlayerId = e.PlayerId,
                         UnixTime = e.UnixTime,
                         Section1 = e.Section1,
                         Section2 = e.Section2,
@@ -452,6 +483,11 @@ namespace TrueforceForAll.Core
                 string key = name + "\u0000" + e.CarId;
                 if (!best.TryGetValue(key, out Id8LeaderboardEntry held)) { best[key] = e; order.Add(key); }
                 else if (e.GoalMs < held.GoalMs) best[key] = e;
+                // Same time from two pools: keep the one that knows whose it is. A player's own row
+                // and the copy of it they submitted are the same lap, and the local one carries the
+                // cabinet's card id, which is what stops the next rebuild reading the row back as
+                // one of ours and dropping it.
+                else if (e.GoalMs == held.GoalMs && held.PlayerId == 0 && e.PlayerId != 0) best[key] = e;
             }
 
             // Sort by time. Ties keep insertion order, which puts the community pool first when
@@ -593,7 +629,7 @@ namespace TrueforceForAll.Core
             IReadOnlyList<Id8LeaderboardEntry> teknoParrot,
             IReadOnlyList<Id8LeaderboardRecord> localRecords = null,
             string ladderFor = null,
-            int ladderPlaceAt = 5)
+            Id8LadderView ladderView = Id8LadderView.Standings)
         {
             // LADDER CLIMB. A window of the field around the player instead of its top.
             //
@@ -614,6 +650,7 @@ namespace TrueforceForAll.Core
                         {
                             Username = Id8Name.Decode(r.RawName),
                             CarId = r.CarId,
+                            PlayerId = r.PlayerId,
                             GoalMs = r.GoalMs,
                             Section1 = r.Section1,
                             Section2 = r.Section2,
@@ -622,7 +659,8 @@ namespace TrueforceForAll.Core
                         });
                     }
                 return Merge(existing,
-                             LadderWindow(Dedupe(wide), ladderFor, Ranks, ladderPlaceAt),
+                             LadderWindow(Dedupe(wide), ladderFor, Ranks, (int)ladderView,
+                                          keepBoardFull: ladderView != Id8LadderView.Target),
                              keepExisting: false);
             }
 
@@ -642,6 +680,7 @@ namespace TrueforceForAll.Core
                 {
                     Username = Id8Name.Decode(r.RawName),
                     CarId = r.CarId,
+                    PlayerId = r.PlayerId,
                     GoalMs = r.GoalMs,
                     Section1 = r.Section1,
                     Section2 = r.Section2,
@@ -675,6 +714,11 @@ namespace TrueforceForAll.Core
                 string key = name + "\u0000" + e.CarId;
                 if (!best.TryGetValue(key, out Id8LeaderboardEntry held)) { best[key] = e; order.Add(key); }
                 else if (e.GoalMs < held.GoalMs) best[key] = e;
+                // Same time from two pools: keep the one that knows whose it is. A player's own row
+                // and the copy of it they submitted are the same lap, and the local one carries the
+                // cabinet's card id, which is what stops the next rebuild reading the row back as
+                // one of ours and dropping it.
+                else if (e.GoalMs == held.GoalMs && held.PlayerId == 0 && e.PlayerId != 0) best[key] = e;
             }
             return order.Select(k => best[k]).OrderBy(e => e.GoalMs).ToList();
         }
@@ -700,9 +744,17 @@ namespace TrueforceForAll.Core
         /// row of this board, so putting the player second makes the game show them the next time
         /// to beat. That is the whole feature; placeAt is what aims it.
         ///
-        /// CLAMPED AT BOTH ENDS. Genuinely third means shown third, with the window simply running
-        /// from the top: nobody is ever displayed below the place they hold. At the bottom the
-        /// window slides up so the board is still full rather than trailing off into filler.
+        /// CLAMPED AT THE TOP ALWAYS. Genuinely third means shown third, with the window simply
+        /// running from the top: nobody is ever displayed below the place they hold.
+        ///
+        /// CLAMPED AT THE BOTTOM ONLY WHEN THE BOARD IS FOR READING. Near the end of the field
+        /// there are not enough drivers below the player to fill ten rows, and the two views want
+        /// opposite things about that. Standings slides up so the board is full, because a screen
+        /// of filler is a poor thing to read. Target does NOT, because sliding up would move the
+        /// top row off the driver one place above them, and that row is the time to beat: a player
+        /// eight from the bottom would be sent after somebody nine places away. Their first time on
+        /// a course usually lands them exactly there, which is the player the ladder is most for,
+        /// so the board is allowed to run short and Merge tops it up with filler.
         ///
         /// NOT FOUND MEANS THE TOP. A player with no time on this course has nothing to climb from,
         /// and the fastest times are the right first thing to show them.</summary>
@@ -712,7 +764,8 @@ namespace TrueforceForAll.Core
         /// screen, because the time to beat is copied from the TOP row and second place makes that
         /// row the next time to beat rather than one four places away.</param>
         public static IReadOnlyList<Id8LeaderboardEntry> LadderWindow(
-            IReadOnlyList<Id8LeaderboardEntry> ranked, string playerName, int size = Ranks, int placeAt = 5)
+            IReadOnlyList<Id8LeaderboardEntry> ranked, string playerName, int size = Ranks,
+            int placeAt = 5, bool keepBoardFull = true)
         {
             if (ranked == null || ranked.Count == 0) return new Id8LeaderboardEntry[0];
             if (size < 1) size = Ranks;
@@ -728,8 +781,11 @@ namespace TrueforceForAll.Core
 
             int start = idx - Math.Max(0, placeAt - 1);
             if (start < 0) start = 0;
-            int last = Math.Max(0, ranked.Count - size);
-            if (start > last) start = last;
+            if (keepBoardFull)
+            {
+                int last = Math.Max(0, ranked.Count - size);
+                if (start > last) start = last;
+            }
             return ranked.Skip(start).Take(size).ToList();
         }
 
