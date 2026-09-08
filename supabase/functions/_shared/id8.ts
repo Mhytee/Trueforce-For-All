@@ -23,6 +23,18 @@ const INFO_URL = "https://github.com/Mhytee/Trueforce-For-All";
  *  product. */
 export const GAME_NAME = "Initial D: Arcade Stage 8 Infinity";
 
+/** The game mark, shown top right of the embed.
+ *
+ *  Hosted in the project's own public storage bucket rather than linked from somewhere else:
+ *  Discord caches an embed image once and then serves its own copy, but the first fetch has to
+ *  succeed, and a URL we do not control can go away and leave a broken thumbnail on every past
+ *  post. 256px square, which is four times what Discord renders, so it stays sharp on a high
+ *  density screen.
+ *
+ *  It is the owner's own icon from their IDAS Save Manager project. */
+const ICON_URL =
+  "https://dvttzzjbktelcikvyzmt.supabase.co/storage/v1/object/public/assets/id8-icon.png";
+
 export const COURSES = [
   "Lake Akina", "Myogi", "Akagi", "Akina", "Irohazaka", "Tsukuba", "Happogahara", "Nagao",
   "Tsubaki Line", "Usui", "Sadamine", "Tsuchisaka", "Akina Snow", "Hakone", "Momiji Line",
@@ -342,7 +354,9 @@ export function buildEmbed(week: any): any {
   const drivers = week?.drivers ?? 0;
 
   return {
-    title: "This week in Initial D: Arcade Stage 8 Infinity",
+    // The full title from the one constant, so this and /id8 me cannot drift into calling the game
+    // two different things.
+    title: `This week in ${GAME_NAME}`,
     // Only when there is something to count. "0 times set by 0 drivers" is reachable, because an
     // unconsumed steal from an earlier week can carry a post on its own, and it reads like a bot
     // that has broken rather than a quiet week.
@@ -350,6 +364,9 @@ export function buildEmbed(week: any): any {
       ? `${times} time${times === 1 ? "" : "s"} set by ${drivers} driver${drivers === 1 ? "" : "s"}.`
       : undefined,
     color: 0xE5C04A,
+    // Top right, about 80px as Discord draws it. It narrows the description and the first field
+    // slightly, which is why the opening line is one short sentence and not a paragraph.
+    thumbnail: { url: ICON_URL },
     fields,
   };
 }
