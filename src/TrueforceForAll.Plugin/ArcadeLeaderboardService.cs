@@ -767,11 +767,7 @@ namespace TrueforceForAll.Plugin
                            IReadOnlyList<Id8LeaderboardRecord> local)
         {
             var existing = _writer.ReadBoard(board, courseId, direction);
-            // The shop board loads from the save, so its rebuild must not drop the player's own
-            // rows however the source is set. The online board is rebuilt from the exe every
-            // launch, so there the source can mean strictly what it says.
-            bool persists = board == Id8Board.ShopTopTen || board == Id8Board.ShopPerCar;
-            var rows = Id8Leaderboard.BuildBoard(source, existing, community, tekno, local, persists);
+            var rows = Id8Leaderboard.BuildBoard(source, existing, community, tekno, local);
             int written = _writer.WriteBoard(board, courseId, direction, rows);
             _log?.Invoke($"[TF4ALL] Arcade {board} {source}: wrote {written}/{rows.Length} rows " +
                          $"for course {courseId} dir {direction}");
@@ -813,14 +809,10 @@ namespace TrueforceForAll.Plugin
         {
             switch (source)
             {
-                case Id8BoardSource.Community:         return haveCommunity;
-                case Id8BoardSource.TeknoParrot:       return haveTekno;
-                case Id8BoardSource.Merged:            return haveCommunity || haveTekno;
-                // It keeps local records too, so it always has something to write, but a board
-                // built from the player's rows alone after a failed fetch is a board that has
-                // quietly lost everyone else. Treated like Community: leave it untouched instead.
-                case Id8BoardSource.CommunityAndLocal: return haveCommunity;
-                default:                               return true;   // Local: the snapshot is always there.
+                case Id8BoardSource.Community:   return haveCommunity;
+                case Id8BoardSource.TeknoParrot: return haveTekno;
+                case Id8BoardSource.Merged:      return haveCommunity || haveTekno;
+                default:                         return true;   // Local: the snapshot is always there.
             }
         }
 

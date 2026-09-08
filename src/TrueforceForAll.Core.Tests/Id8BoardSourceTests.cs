@@ -208,14 +208,18 @@ namespace TrueforceForAll.Core.Tests
             Id8Leaderboard.DefaultRow(),
         };
 
+        /// <summary>Every source keeps the player's own records. The source decides who they are
+        /// measured against, never whether they appear on their own leaderboard. Community and
+        /// TeknoParrot used to answer false here, and on the shop board, which IS the save, that
+        /// deleted 17 of the owner's records rather than narrowing a view.</summary>
         [Theory]
-        [InlineData(Id8BoardSource.Local, true)]
-        [InlineData(Id8BoardSource.Merged, true)]
-        [InlineData(Id8BoardSource.Community, false)]
-        [InlineData(Id8BoardSource.TeknoParrot, false)]
-        public void OnlyLocalAndMergedKeepWhatWasAlreadyThere(Id8BoardSource source, bool keeps)
+        [InlineData(Id8BoardSource.Local)]
+        [InlineData(Id8BoardSource.Merged)]
+        [InlineData(Id8BoardSource.Community)]
+        [InlineData(Id8BoardSource.TeknoParrot)]
+        public void EverySourceKeepsThePlayersOwnRecords(Id8BoardSource source)
         {
-            Assert.Equal(keeps, Id8Leaderboard.KeepsLocalRecords(source));
+            Assert.True(Id8Leaderboard.KeepsLocalRecords(source));
         }
 
         /// <summary>Local writes nothing new. It clears SEGA's filler out from under the times
@@ -230,45 +234,8 @@ namespace TrueforceForAll.Core.Tests
             Assert.All(rows.Skip(1), r => Assert.True(r.IsFiller));
         }
 
-        /// <summary>Community has to mean strictly tf4all. Mixing the player's own local record in
-        /// would make the board answer a different question from the one they asked.</summary>
-        [Fact]
-        public void CommunityDoesNotSmuggleInTheLocalRecord()
-        {
-            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Community, ExistingBoard(), Community, Tekno);
-            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
-            Assert.DoesNotContain("LOCALGUY", names);
-            Assert.Equal(new[] { "RIVAL1", "MHYTEE" }, names);
-        }
 
-        /// <summary>The same board, but the one that loads from the save. Community still means
-        /// the tf4all pool, and the player is still ranked against it on time, but they cannot be
-        /// dropped: this board IS the save, so a row we decline to show is a row we delete. The
-        /// owner lost 17 records to exactly this before it was found.</summary>
-        [Theory]
-        [InlineData(Id8BoardSource.Community)]
-        [InlineData(Id8BoardSource.TeknoParrot)]
-        public void APersistingBoardNeverDropsThePlayersOwnRecord(Id8BoardSource source)
-        {
-            var rows = Id8Leaderboard.BuildBoard(source, ExistingBoard(), Community, Tekno,
-                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()),
-                                                 boardPersists: true);
-            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
-            Assert.Contains("LOCALGUY", names);
-        }
 
-        /// <summary>And the board the game rebuilds from the exe every launch is unchanged, because
-        /// nothing is lost by leaving the player off it. The two must not be conflated: making
-        /// every board protective would quietly turn Community into Merged everywhere.</summary>
-        [Fact]
-        public void ATransientBoardStillMeansStrictlyTheSourceChosen()
-        {
-            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Community, ExistingBoard(), Community, Tekno,
-                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()),
-                                                 boardPersists: false);
-            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
-            Assert.DoesNotContain("LOCALGUY", names);
-        }
 
         /// <summary>One driver, several cars, and the board is a TIME board so each one earns a
         /// place. The rig showed this the long way round: the by-car screen had the owner's GT-R
@@ -276,7 +243,7 @@ namespace TrueforceForAll.Core.Tests
         /// records goes through Dedupe, and Dedupe keyed on the name alone.</summary>
         [Theory]
         [InlineData(Id8BoardSource.Merged)]
-        [InlineData(Id8BoardSource.CommunityAndLocal)]
+        [InlineData(Id8BoardSource.Community)]
         public void OneDriverInSeveralCarsTakesSeveralPlaces(Id8BoardSource source)
         {
             var pool = new List<Id8LeaderboardEntry>
@@ -286,8 +253,7 @@ namespace TrueforceForAll.Core.Tests
             };
 
             var rows = Id8Leaderboard.BuildBoard(source, ExistingBoard(), pool, null,
-                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()),
-                                                 boardPersists: true);
+                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()));
             var mine = rows.Where(r => !r.IsFiller && Id8Name.Decode(r.RawName) == "MHYTEE")
                            .Select(r => r.GoalMs).ToList();
             Assert.Equal(new[] { 142781, 151684 }, mine);
@@ -305,8 +271,7 @@ namespace TrueforceForAll.Core.Tests
             };
 
             var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Merged, ExistingBoard(), pool, null,
-                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()),
-                                                 boardPersists: true);
+                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()));
             var mine = rows.Where(r => !r.IsFiller && Id8Name.Decode(r.RawName) == "MHYTEE")
                            .Select(r => r.GoalMs).ToList();
             Assert.Equal(new[] { 151684 }, mine);
@@ -394,15 +359,20 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(129000, rows.First(r => Id8Name.Decode(r.RawName) == "MHYTEE").GoalMs);
         }
 
-        /// <summary>Community means tf4all. Handing it local records must not change that.</summary>
+        /// <summary>Community means the player and tf4all. It ranks their own records in, because
+        /// their times are on every board and do not need announcing, and it still does not reach
+        /// for TeknoParrot: that is the part the source choice actually decides.</summary>
         [Fact]
-        public void CommunityIgnoresLocalRecordsEvenWhenGivenThem()
+        public void CommunityRanksThePlayerInAndStillLeavesTeknoParrotOut()
         {
             var local = Id8Leaderboard.LocalRecordsFrom(new List<Id8LeaderboardRecord> { Real("LocalGuy", 100000) });
             var rows = Id8Leaderboard.BuildBoard(
                 Id8BoardSource.Community, OnlineBoardAsShipped(), Community, Tekno, local);
-            Assert.DoesNotContain("LOCALGUY",
-                rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)));
+            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
+
+            Assert.Contains("LOCALGUY", names);
+            Assert.DoesNotContain("RIVAL2", names);   // TeknoParrot only
+            Assert.DoesNotContain("RIVAL3", names);
         }
     
         // ---- filler rows carry our name, and are still filler ----

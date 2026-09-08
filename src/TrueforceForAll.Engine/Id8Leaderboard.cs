@@ -63,17 +63,6 @@ namespace TrueforceForAll.Core
         /// own local records.</summary>
         Merged = 3,
 
-        /// <summary>The tf4all pool and the player's own records, without TeknoParrot.
-        ///
-        /// The board most people actually want to be on. TeknoParrot publishes times set on real
-        /// cabinets by people chasing world records, so Merged is dominated by times nobody in a
-        /// given server is going to beat, and a target you cannot reach is not a target. This is
-        /// "me and the people I am playing with", which is the question a server leaderboard is
-        /// for.
-        ///
-        /// Appended rather than inserted: these values are persisted in settings, so renumbering
-        /// the existing four would silently move every user's choice to a different board.</summary>
-        CommunityAndLocal = 4,
     }
 
     /// <summary>Which of the four leaderboard tables a write is aimed at.</summary>
@@ -478,9 +467,7 @@ namespace TrueforceForAll.Core
         /// come up short of rows and look like a quiet backend.</summary>
         public static bool UsesCommunity(Id8BoardSource source)
         {
-            return source == Id8BoardSource.Community
-                || source == Id8BoardSource.Merged
-                || source == Id8BoardSource.CommunityAndLocal;
+            return source == Id8BoardSource.Community || source == Id8BoardSource.Merged;
         }
 
         /// <summary>Whether this source draws on TeknoParrot's public board.</summary>
@@ -489,10 +476,25 @@ namespace TrueforceForAll.Core
             return source == Id8BoardSource.TeknoParrot || source == Id8BoardSource.Merged;
         }
 
+        /// <summary>Whether the player's own records are ranked in alongside the chosen pool.
+        ///
+        /// ALWAYS. The source picks who you are measured against. It was never a question about
+        /// whether you appear on your own leaderboard, and treating it as one cost the owner 17
+        /// saved records: the shop board IS the save, so a row we decline to show is a row we
+        /// delete.
+        ///
+        /// It also leaves a shape simple enough to say in one line. Local is your records alone,
+        /// Trueforce For All is yours and the community's, Everyone adds TeknoParrot. Your own
+        /// times are in all three, which is why no label needs to mention them.
+        ///
+        /// Kept as a method rather than inlined as true, because the fact that this USED to vary,
+        /// and what it cost, is worth having where somebody will read it. The two guards that made
+        /// keeping them safe are unchanged: LocalRecordsFrom drops rows carrying our own zero
+        /// player id, so this cannot feed last session's community rows back as the player's own,
+        /// and they are ranked on time like everything else rather than pinned to the top.</summary>
         public static bool KeepsLocalRecords(Id8BoardSource source)
         {
-            return source == Id8BoardSource.Local || source == Id8BoardSource.Merged
-                || source == Id8BoardSource.CommunityAndLocal;
+            return true;
         }
 
         /// <summary>The player's own records out of a board snapshot: the rows somebody actually
@@ -574,31 +576,10 @@ namespace TrueforceForAll.Core
             IReadOnlyList<Id8LeaderboardRecord> existing,
             IReadOnlyList<Id8LeaderboardEntry> community,
             IReadOnlyList<Id8LeaderboardEntry> teknoParrot,
-            IReadOnlyList<Id8LeaderboardRecord> localRecords = null,
-            bool boardPersists = false)
+            IReadOnlyList<Id8LeaderboardRecord> localRecords = null)
         {
             bool keep = KeepsLocalRecords(source);
             var incoming = Combine(source, community, teknoParrot);
-
-            // A BOARD THAT PERSISTS IS THE SAVE, SO A ROW WE DECLINE TO SHOW IS A ROW WE DELETE.
-            //
-            // Community and TeknoParrot mean strictly that pool, and on a board the game rebuilds
-            // from the exe every launch that is exactly right: nothing is lost by leaving the
-            // player out. The shop boards are different. They load from the save and we rewrite
-            // them end to end, so choosing Community there did not narrow a view, it destroyed the
-            // player's records. Measured on the owner's machine: 17 records at player id 5553014
-            // in the pre-write backup, and every sweep afterwards reporting "left 0 real record(s)
-            // alone".
-            //
-            // So on a persisting board the player's own rows are folded into the POOL, the same way
-            // Merged already does it, rather than the source being allowed to drop them. They still
-            // have to earn their position on time. What the source chooses is who they are ranked
-            // against, which is the question it was always meant to answer.
-            //
-            // LocalRecordsFrom has already stripped our own writes, so this cannot feed last
-            // session's community rows back in as though the player had set them.
-            if (boardPersists && !keep && localRecords != null)
-                keep = true;
 
             if (!keep || localRecords == null)
                 return Merge(existing, incoming, keep);
