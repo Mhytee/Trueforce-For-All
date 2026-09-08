@@ -1,4 +1,4 @@
-﻿// Live engine data for Initial D Arcade Stage 8, read out of the running game.
+// Live engine data for Initial D Arcade Stage 8, read out of the running game.
 //
 // The game exe has its relocations stripped and a fixed image base, so every address recovered by
 // static analysis of the file is valid in memory on every launch. That means there is no scanning
@@ -2624,7 +2624,23 @@ namespace TrueforceForAll.Core
             int sceneId;
             if (sceneMgr != 0 && I32(sceneMgr + SceneMgrToSceneId, out sceneId))
             {
-                if (_haveScene && sceneId != _prevSceneId) s.SceneChanged = true;
+                if (_haveScene && sceneId != _prevSceneId)
+                {
+                    s.SceneChanged = true;
+
+                    // Which screen is which, so the leaderboard one can be recognised.
+                    //
+                    // Climb mode has to swap the board layout when the player LEAVES the leaderboard
+                    // screen, not when they enter a race: the in-race time to beat is copied out of
+                    // the table when the race scene is built, so a swap at that moment is already
+                    // too late. Leaving the leaderboard gives us the whole course-select, car-select
+                    // and loading sequence to get the right layout in place.
+                    //
+                    // Only 5, the race, has ever been identified. One transition per screen change
+                    // is nothing next to what this file already logs, and it costs nothing once the
+                    // number is known and this line goes again.
+                    Log?.Invoke($"[ID8MEM] scene {_prevSceneId} -> {sceneId}");
+                }
                 _prevSceneId = sceneId;
                 _haveScene = true;
             }

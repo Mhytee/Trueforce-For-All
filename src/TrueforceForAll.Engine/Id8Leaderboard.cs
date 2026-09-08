@@ -408,10 +408,16 @@ namespace TrueforceForAll.Core
         /// characters collapse into one row. On a ten-row board showing a nine-character name,
         /// there is no representation in which they are distinguishable, so collapsing them is the
         /// honest outcome rather than a loss.</summary>
+        /// <param name="take">How many of the ranked pool to return. Ten fills a board, which is all
+        /// this ever needed until ladder climb: a window centred on the player has to be cut from
+        /// the WHOLE field, and truncating to the top ten first would throw away every row the
+        /// player is anywhere near. TeknoParrot publishes about 1765 entries, so the difference
+        /// between ten and all of them is the entire feature.</param>
         public static IReadOnlyList<Id8LeaderboardEntry> Combine(
             Id8BoardSource source,
             IReadOnlyList<Id8LeaderboardEntry> community,
-            IReadOnlyList<Id8LeaderboardEntry> teknoParrot)
+            IReadOnlyList<Id8LeaderboardEntry> teknoParrot,
+            int take = Ranks)
         {
             var pool = new List<Id8LeaderboardEntry>();
             if (UsesCommunity(source) && community != null) pool.AddRange(community);
@@ -443,7 +449,7 @@ namespace TrueforceForAll.Core
                 string name = Id8Name.Sanitize(e.Username);
                 if (name.Length == 0) continue;
 
-                string key = name + " " + e.CarId;
+                string key = name + "\u0000" + e.CarId;
                 if (!best.TryGetValue(key, out Id8LeaderboardEntry held)) { best[key] = e; order.Add(key); }
                 else if (e.GoalMs < held.GoalMs) best[key] = e;
             }
@@ -624,11 +630,65 @@ namespace TrueforceForAll.Core
                 if (e == null || e.GoalMs <= 0) continue;
                 string name = Id8Name.Sanitize(e.Username);
                 if (name.Length == 0) continue;
-                string key = name + " " + e.CarId;
+                string key = name + "\u0000" + e.CarId;
                 if (!best.TryGetValue(key, out Id8LeaderboardEntry held)) { best[key] = e; order.Add(key); }
                 else if (e.GoalMs < held.GoalMs) best[key] = e;
             }
-            return order.Select(k => best[k]).OrderBy(e => e.GoalMs).Take(Ranks).ToList();
+            return order.Select(k => best[k]).OrderBy(e => e.GoalMs).ToList();
+        }
+
+        /// <summary>Whether ladder climb is worth offering on this source.
+        ///
+        /// Merged and TeknoParrot only. A ladder needs rungs, and tf4all alone does not have them
+        /// yet: with a handful of entries per course the window IS the whole board, so climb mode
+        /// would show the same rows it already shows while implying there is a field to climb.
+        /// Local is a board of one person by definition.</summary>
+        public static bool SupportsLadder(Id8BoardSource source)
+        {
+            return source == Id8BoardSource.Merged || source == Id8BoardSource.TeknoParrot;
+        }
+
+        /// <summary>A window of the field centred on the player, rather than its top.
+        ///
+        /// The board holds ten rows and TeknoParrot's field is about 1765 deep, so the top ten is
+        /// ten world records: a target nobody reaches and a board you never appear on. This shows
+        /// the rows around you instead, so the next one up is a lap away rather than a fantasy.
+        ///
+        /// WHERE THE PLAYER SITS IS NOT COSMETIC. The in-race time to beat is copied from the top
+        /// row of this board, so putting the player second makes the game show them the next time
+        /// to beat. That is the whole feature; placeAt is what aims it.
+        ///
+        /// CLAMPED AT BOTH ENDS. Genuinely third means shown third, with the window simply running
+        /// from the top: nobody is ever displayed below the place they hold. At the bottom the
+        /// window slides up so the board is still full rather than trailing off into filler.
+        ///
+        /// NOT FOUND MEANS THE TOP. A player with no time on this course has nothing to climb from,
+        /// and the fastest times are the right first thing to show them.</summary>
+        /// <param name="placeAt">Which row the player should occupy, 1 based. FIVE is the default,
+        /// because that is the board a person reads: four above and five below is a ladder you can
+        /// see yourself on. TWO is the in-race variant, used once the game has left the attract
+        /// screen, because the time to beat is copied from the TOP row and second place makes that
+        /// row the next time to beat rather than one four places away.</param>
+        public static IReadOnlyList<Id8LeaderboardEntry> LadderWindow(
+            IReadOnlyList<Id8LeaderboardEntry> ranked, string playerName, int size = Ranks, int placeAt = 5)
+        {
+            if (ranked == null || ranked.Count == 0) return new Id8LeaderboardEntry[0];
+            if (size < 1) size = Ranks;
+
+            string me = Id8Name.Sanitize(playerName ?? "");
+            int idx = -1;
+            if (me.Length > 0)
+                for (int i = 0; i < ranked.Count; i++)
+                    if (string.Equals(Id8Name.Sanitize(ranked[i].Username), me, StringComparison.OrdinalIgnoreCase))
+                    { idx = i; break; }          // ranked ascending, so the first hit is their best
+
+            if (idx < 0) return ranked.Take(size).ToList();
+
+            int start = idx - Math.Max(0, placeAt - 1);
+            if (start < 0) start = 0;
+            int last = Math.Max(0, ranked.Count - size);
+            if (start > last) start = last;
+            return ranked.Skip(start).Take(size).ToList();
         }
 
         /// <summary>The name on a filler row.
