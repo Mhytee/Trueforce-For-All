@@ -255,15 +255,28 @@ export function buildEmbed(week: any): any {
                  (h.world_rank && h.world_of ? `, ${ordinalise(h.world_rank)} of ${h.world_of} worldwide` : ""));
       const rest = held.slice(1, 4).map((x) =>
         `${courseName(x.course_id, x.direction)} **${lap(x.goal_ms)}**`);
-      if (rest.length) {
-        const more = held.length - 1 - rest.length;
-        lines.push(`Also open: ${rest.join(" · ")}` + (more > 0 ? ` · and ${more} more` : ""));
-      }
+      if (rest.length) lines.push(`Also open: ${rest.join(" · ")}`);
     }
-    if (undriven) {
-      // A different fact from the ones above: not held by one person, driven by nobody at all.
-      lines.push(`**${undriven}** of the 32 boards have no time from anyone here.`);
+
+    // TOTALS, NOT A REMAINDER. "and 14 more" next to "14 of the 32 have no time" was arithmetically
+    // right and unreadable: 18 held minus 4 shown, and 32 minus 18 undriven, both happen to be 14,
+    // and nothing on screen let a reader tell that apart from the same number printed twice by
+    // mistake. Counting the whole thing removes the coincidence and says more anyway.
+    //
+    // Note these need not sum to 32: a board two or more drivers here have taken on is in neither
+    // count, which is the healthy case and the one this section is trying to bring about.
+    const tail: string[] = [];
+    if (held.length) {
+      tail.push(`**${held.length}** board${held.length === 1 ? " is" : "s are"} held by a single driver here`);
     }
+    if (undriven >= 32) {
+      // "32 of the 32" is arithmetic where a sentence belongs. Only reachable through the
+      // moderator preview, since a server with no times anywhere never posts.
+      tail.push("no board here has a time yet");
+    } else if (undriven) {
+      tail.push(`**${undriven}** of the 32 have no time at all`);
+    }
+    if (tail.length) lines.push(tail.join(" · ") + ".");
     // Scope only. "Boards nobody else here has driven" described the first kind of line and was
     // flatly contradicted by it: the very next line names somebody holding one. The section carries
     // two different things, boards held by exactly one driver and boards driven by nobody, and no
