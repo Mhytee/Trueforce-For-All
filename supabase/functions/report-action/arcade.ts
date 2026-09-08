@@ -315,12 +315,26 @@ async function cmdMe(discordId: string) {
 
   // The worldwide counterpart to the tf4all line below. Without it "18 first times" has nothing to
   // be measured against, and the tf4all numbers on a one-driver server flatter in a way the
-  // worldwide ones do not: 18 unchallenged firsts here, best finish 17th out there.
+  // worldwide ones do not: 18 unchallenged firsts here, 17th of 61 out there.
+  //
+  // Records and top tens appear only when there are some. A row of zeroes is not information, and
+  // on a board somebody is climbing it reads as a scoreboard of their failures.
   const wide: string[] = [];
-  if (s.merged_crowns) wide.push(`**${s.merged_crowns}** course record${s.merged_crowns === 1 ? "" : "s"}`);
+  if (s.merged_crowns) wide.push(`**${s.merged_crowns}** world record${s.merged_crowns === 1 ? "" : "s"}`);
   if (s.merged_top_ten) wide.push(`**${s.merged_top_ten}** top ten place${s.merged_top_ten === 1 ? "" : "s"}`);
-  if (s.merged_best_finish) wide.push(`best finish **${ordinal(s.merged_best_finish)}**`);
-  if (wide.length) fields.push({ name: "Worldwide", value: wide.join(" · ") });
+
+  // The best board, NAMED. "best finish 17th" is trivia; where, in what and how fast is the version
+  // a driver can act on, because it points at the board they are closest to breaking into.
+  if (s.merged_best_finish && s.merged_best_course !== null && s.merged_best_course !== undefined) {
+    const bestCar = carRows.find((c: any) => c.car_id === s.merged_best_car_id);
+    const place = s.merged_best_players
+      ? `**${ordinal(s.merged_best_finish)} of ${s.merged_best_players}**`
+      : `**${ordinal(s.merged_best_finish)}**`;
+    wide.push(`Best board: ${place} on ${courseName(s.merged_best_course, s.merged_best_direction)}` +
+      (s.merged_best_ms ? `, **${lap(s.merged_best_ms)}**` : "") +
+      (bestCar ? ` in the ${bestCar.name}` : ""));
+  }
+  if (wide.length) fields.push({ name: "Worldwide", value: wide.join("\n") });
 
   // AN UNCONTESTED WIN IS NOT A WIN, and the scoring already says so: beating nobody is worth
   // nothing. Calling it a "record" directly above a score that prices it at zero reads as a bot

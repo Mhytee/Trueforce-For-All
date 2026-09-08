@@ -115,6 +115,15 @@ export function esc(name: string | null): string {
   return name.slice(0, 32).replace(/([_*`~|\\])/g, "\\$1");
 }
 
+/** 1 -> "1st". Ranks read as places in prose, and "moved from 71 to 65" is a subtraction where
+ *  "moved from 71st to 65th" is a result. */
+function ordinalise(n: number): string {
+  if (!Number.isFinite(n)) return String(n);
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
 export function buildEmbed(week: any): any {
   const steals: any[] = Array.isArray(week?.steals) ? week.steals : [];
   const top: any[] = Array.isArray(week?.top) ? week.top : [];
@@ -143,14 +152,65 @@ export function buildEmbed(week: any): any {
     fields.push({ name: "Records changed hands", value: lines.join("\n") });
   }
 
+  // PROGRESS FIRST, because it is the only section that has something to say in an ordinary week.
+  // Records change hands rarely on a small server and a standing barely moves, but somebody takes
+  // a few seconds off a time most weeks, and that is the story a weekly summary is for.
+  const gains: any[] = Array.isArray(week?.gains) ? week.gains : [];
+  const moves: any[] = Array.isArray(week?.moves) ? week.moves : [];
+  if (gains.length || moves.length) {
+    const lines: string[] = [];
+    for (const g of gains.slice(0, 4)) {
+      lines.push(`**${esc(g.actor)}** took **${gap(g.gain_ms)}** off ${courseName(g.course_id, g.direction)}, ` +
+                 `now **${lap(g.goal_ms)}**`);
+    }
+    // CLIMBS ONLY. A drop is a public message telling somebody they got worse, and it is often not
+    // even their doing: the daily TeknoParrot sync can surface a driver who was always faster and
+    // had simply never been scraped, which moves everyone below them down without anybody having
+    // driven. We cannot tell that apart from being genuinely overtaken, so the honest thing is to
+    // report the half we can stand behind.
+    for (const m of moves.filter((x) => x.rank_then > x.rank_now).slice(0, 4)) {
+      lines.push(`**${esc(m.author)}** climbed from **${ordinalise(m.rank_then)}** to ` +
+                 `**${ordinalise(m.rank_now)}** of ${m.of} worldwide`);
+    }
+    fields.push({ name: "Progress this week", value: lines.join("\n").slice(0, 1000) });
+  }
+
   if (top.length) {
     fields.push({
-      name: "Overall ranking",
+      // NAMED SCOPE. "Overall ranking" invited the reading that this was a worldwide table; it is
+      // the people in this Discord. The worldwide number then sits inside the row as the
+      // interesting fact rather than competing with the header for what the section means.
+      name: "Top ranked players in this server",
       value: top.map((t) =>
         `**${t.rank}.** ${esc(t.author)} · ${t.points} pts` +
-        (t.course_crowns ? ` (${t.course_crowns} course record${t.course_crowns === 1 ? "" : "s"})` : "")
+        (t.merged_rank && t.merged_of ? ` · **${ordinalise(t.merged_rank)} of ${t.merged_of}** worldwide` : "")
       ).join("\n").slice(0, 1000),
     });
+  }
+
+  // The invitation. Every line says "here" on purpose: these boards are unclaimed IN THIS SERVER,
+  // and the worldwide rank beside each one is what keeps that honest. "2:19.932, unchallenged"
+  // sounds untouchable; "2:19.932, 17th of 61 worldwide" reads as a target somebody can take.
+  const held: any[] = Array.isArray(week?.unclaimed?.held) ? week.unclaimed.held : [];
+  const undriven: number = week?.unclaimed?.undriven ?? 0;
+  if (held.length || undriven) {
+    const lines: string[] = [];
+    if (held.length) {
+      const h = held[0];
+      lines.push(`**${esc(h.author)}** holds ${courseName(h.course_id, h.direction)} at **${lap(h.goal_ms)}**` +
+                 (h.world_rank && h.world_of ? `, ${ordinalise(h.world_rank)} of ${h.world_of} worldwide` : "") +
+                 `. Nobody else here has driven it.`);
+      const rest = held.slice(1, 4).map((x) =>
+        `${courseName(x.course_id, x.direction)} **${lap(x.goal_ms)}**`);
+      if (rest.length) {
+        const more = held.length - 1 - rest.length;
+        lines.push(`Also unclaimed here: ${rest.join(" · ")}` + (more > 0 ? ` · and ${more} more` : ""));
+      }
+    }
+    if (undriven) {
+      lines.push(`Nobody in this server has driven **${undriven}** of the 32 boards.`);
+    }
+    fields.push({ name: "Open for a challenge, in this server", value: lines.join("\n").slice(0, 1000) });
   }
 
   // The call to action, now purely the invitation. The leader line that used to sit here restated

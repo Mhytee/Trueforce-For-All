@@ -199,7 +199,14 @@ Deno.serve(async (req) => {
   // can be approved before it is ever seen in a channel.
   if (op === "preview") return json({ ok: true, preview: true, week, embed });
 
-  const nothingHappened = (week.times_set ?? 0) === 0 && (week.steals?.length ?? 0) === 0;
+  // A DEAD WEEK IS NOT POSTED. If nobody drove, there is nothing to report and the message
+  // collapses to a standing that has not moved and an invitation nobody asked for again. A weekly
+  // bot that speaks only when something happened is one people keep reading.
+  //
+  // Keyed on times_set alone now. It used to also require zero steals, so an unconsumed steal left
+  // over from an earlier week could carry a post through a week in which nobody drove at all,
+  // announcing a record that changed hands days ago as though it were news.
+  const nothingHappened = (week.times_set ?? 0) === 0;
   if (nothingHappened) {
     // A weekly "nobody played" post is how a channel teaches people to ignore it.
     return json({ ok: true, posted: false, reason: "a quiet week is not worth a message" });
