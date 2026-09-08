@@ -23,17 +23,13 @@ const INFO_URL = "https://github.com/Mhytee/Trueforce-For-All";
  *  product. */
 export const GAME_NAME = "Initial D: Arcade Stage 8 Infinity";
 
-/** The game mark, shown top right of the embed.
- *
- *  Hosted in the project's own public storage bucket rather than linked from somewhere else:
- *  Discord caches an embed image once and then serves its own copy, but the first fetch has to
- *  succeed, and a URL we do not control can go away and leave a broken thumbnail on every past
- *  post. 256px square, which is four times what Discord renders, so it stays sharp on a high
- *  density screen.
- *
- *  It is the owner's own icon from their IDAS Save Manager project. */
-const ICON_URL =
-  "https://dvttzzjbktelcikvyzmt.supabase.co/storage/v1/object/public/assets/id8-icon.png";
+// NO THUMBNAIL, tried and dropped. A game mark top right narrowed the description and the first
+// field, and this message is long enough that the width mattered more than the recognition. The
+// gold stripe already marks the post as ours.
+//
+// The asset is uploaded and stays, at
+// /storage/v1/object/public/assets/id8-icon.png in the project's public bucket, 256px square, the
+// owner's own icon from their IDAS Save Manager project. Nothing references it today.
 
 export const COURSES = [
   "Lake Akina", "Myogi", "Akagi", "Akina", "Irohazaka", "Tsukuba", "Happogahara", "Nagao",
@@ -371,9 +367,6 @@ export function buildEmbed(week: any): any {
       ? `${times} time${times === 1 ? "" : "s"} set by ${drivers} driver${drivers === 1 ? "" : "s"}.`
       : undefined,
     color: 0xE5C04A,
-    // Top right, about 80px as Discord draws it. It narrows the description and the first field
-    // slightly, which is why the opening line is one short sentence and not a paragraph.
-    thumbnail: { url: ICON_URL },
     fields,
   };
 }

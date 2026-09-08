@@ -552,7 +552,25 @@ namespace TrueforceForAll.Plugin
         private void ArcadeLadderClimb_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings?.Arcade == null) return;
-            _plugin.Settings.Arcade.Id8LadderClimbEnabled = ArcadeLadderClimbCheck?.IsChecked == true;
+            var a = _plugin.Settings.Arcade;
+            bool on = ArcadeLadderClimbCheck?.IsChecked == true;
+            a.Id8LadderClimbEnabled = on;
+
+            // Turning the ladder on makes the SHOP board everyone, so the online board showing
+            // everyone too would be two views of the same field. Trueforce For All is the more
+            // useful thing to put beside a ladder: the people you can actually race.
+            //
+            // Only from the shipped default, never over a choice. If they have already picked
+            // TeknoParrot or Local for that board, they meant it, and a toggle that quietly
+            // rewrites a setting somebody set is worse than one that leaves a redundant view.
+            if (on && a.Id8OnlineBoardSource == Id8BoardSource.Merged)
+            {
+                a.Id8OnlineBoardSource = Id8BoardSource.Community;
+                bool prior = _suppressEvents;
+                _suppressEvents = true;
+                try { RefreshArcadeLeaderboardControls(); } finally { _suppressEvents = prior; }
+            }
+
             _plugin.PersistSettings();
 
             // Same reason the source combos refill: the boards are written once per attach, so a

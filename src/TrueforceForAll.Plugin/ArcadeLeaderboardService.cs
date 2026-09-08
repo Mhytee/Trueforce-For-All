@@ -786,12 +786,23 @@ namespace TrueforceForAll.Plugin
             // have no record here yet, and BuildBoard falls back to the ordinary top ten. That last
             // case is deliberate: a course you have never driven has nothing to climb from, so the
             // fastest times are the right thing to show.
-            // LADDER ALWAYS RANKS AGAINST EVERYONE. The source setting stops applying to a board in
-            // climb mode, because a ladder needs a full field and the merged one is the only field
-            // deep enough to have rungs: tf4all alone has a handful of entries per course, so a
-            // window onto it is the board it already shows. Now that the three pools genuinely
-            // rank as one, there is no reason to offer the choice.
-            bool ladder = _settings()?.Arcade?.Id8LadderClimbEnabled == true;
+            // THE LADDER LIVES ON THE SHOP BOARD, and only there.
+            //
+            // Because that is the board the game copies the in-race time to beat from. A ladder on
+            // the online board would be a nice thing to read and would never become the target you
+            // are actually driving against, which is the whole feature. Putting it here also means
+            // no swap when a race starts: the target is correct because it is always correct, not
+            // because we won a race against the scene loading.
+            //
+            // That leaves the ONLINE board free, and it keeps its own source untouched and
+            // unwindowed. So the pair reads as: the shop board is your ladder, the online board is
+            // whatever you want to look at, most usefully the real top ten or your own community.
+            //
+            // When it does ladder, it ranks against the MERGED field whatever the source says. A
+            // ladder needs rungs, and tf4all alone has a handful of entries per course, so a window
+            // onto it is the board it already shows.
+            bool ladder = _settings()?.Arcade?.Id8LadderClimbEnabled == true
+                       && board == Id8Board.ShopTopTen;
             Id8BoardSource effective = ladder ? Id8BoardSource.Merged : source;
 
             string ladderFor = null;
