@@ -2338,6 +2338,14 @@ namespace TrueforceForAll.Plugin
         public List<ArcadeModTarget> ArcadeModTargets()
         {
             var list = new List<ArcadeModTarget>();
+            // Shelved with the rest of the arcade path, and this is the choke point for it: every
+            // other caller reaches TeknoParrot through here, so one empty list closes the Game
+            // mods cards, the custom-game profile lookup, the cabinet title and ActiveArcadeTarget
+            // at once. It also stops the WORK, which is the part worth stopping: the root finder
+            // enumerates processes and probes paths, and this then parses every profile XML on
+            // disk. None of that should happen on a build that will not read a cabinet.
+            if (!ArcadeUnlocked) return list;
+
             string root = FindTeknoParrotRoot();
             if (root == null) return list;
 
@@ -17140,8 +17148,11 @@ namespace TrueforceForAll.Plugin
             {
                 if (IsOfflineEditingCar)
                 {
+                    // ArcadeUnlocked too: a car preset saved under a cabinet outlives the switch,
+                    // so without this an old ID8 preset opened for editing would still hide the
+                    // assist sections on a build that no longer has an arcade path.
                     var g = GetCarPresetGame(_offlineEditCarId, _offlineEditCarPresetName);
-                    return !string.IsNullOrEmpty(g) && IsArcadeGameName(g);
+                    return ArcadeUnlocked && !string.IsNullOrEmpty(g) && IsArcadeGameName(g);
                 }
                 return ActiveGameIsArcade;
             }
