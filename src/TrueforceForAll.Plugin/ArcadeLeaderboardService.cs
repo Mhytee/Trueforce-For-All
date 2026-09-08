@@ -554,31 +554,36 @@ namespace TrueforceForAll.Plugin
             // This is what made the earlier attempt look half sorted. Writing rank i to page i put
             // the eleven fastest times on pages 0 to 10, which the screen draws first as a block,
             // so the buckets came out in time order while their contents were shuffled.
-            // RANK THE TRANSIENT BOARD, LEAVE THE SAVED ONE IN CAR ORDER.
+            // RANKED, ON BOTH PER-CAR BOARDS, AND THIS TIME IT IS MEASURED.
             //
-            // Ranking works by putting a row on the page the screen draws in that position, which
-            // means a car no longer sits on its own page. That is fine for a screen that only ever
-            // reads a page to draw it, and NOT fine for anything that looks the table up BY CAR.
-            // Something does: the game computes a per-car page from a CarID at 0x00a01910, and
-            // calls it while building the race HUD.
+            // Ranking puts a row on the page the screen draws in that position, so a car stops
+            // sitting on its own page. That is fine for a screen that reads a page in order to draw
+            // it, and would NOT be fine for anything that looks the table up BY CAR. Something does
+            // look it up that way: the game computes a per-car page from a CarID at 0x00a01910 and
+            // calls it while building the race HUD. So the question was whether the in-race target
+            // time comes from there, because a target set in somebody else's car is not a cosmetic
+            // slip: Time Attack consists of chasing that number.
             //
-            // What that could cost, if the in-race target time is one of those lookups: Time Attack
-            // is chasing a number, so a target taken from somebody else's car is not a cosmetic
-            // slip, it is the mode telling you to drive to a lap your car cannot do, with no way to
-            // see that the number was never yours. Worse if a per-car personal-best check reads the
-            // same page, because a community time parked there could stop your own record being
-            // saved at all. Neither is proven. Neither is disproven either, and the cost of being
-            // wrong lands on the player's own times.
+            // MEASURED ON THE CABINET AND THE ANSWER IS NO. With a distinct time written onto all
+            // fifty pages of the shop per-car board, the game ignored every one of them. What the
+            // menu and the in-race HUD both show is the store ANY-CAR top ten, [obj+0xb0], which is
+            // the board the shop source fills and the one this feature exists to populate: the
+            // player's own best against the store's best, with the store's best as the target.
             //
-            // So the split. OnlinePerCar is rebuilt from the exe on every launch and nothing of the
-            // player's lives there, so ranking it risks nothing that outlives the session, and it
-            // is the board the display-order probe was measured on. ShopPerCar is the one that
-            // persists into the save and the one the owner reports drives the in-race time to beat,
-            // so it keeps the game's own layout: every car on its own page, which is exactly what a
-            // by-car lookup expects.
+            // So the per-car boards are a browsing screen, and a browsing screen is far more use
+            // ordered by time than left in the game's internal car order.
             //
-            // Revisit when one Time Attack run has said which table the HUD reads.
-            bool rankThisBoard = board == Id8Board.OnlinePerCar;
+            // The one cost, named rather than hidden: any other screen that shows a best time
+            // beside a car, a car selector being the obvious candidate, would draw a time that
+            // belongs to a different car. That is misleading where the target time would have been
+            // harmful, and it is the trade this line represents. Flip it to
+            // this to name OnlinePerCar alone to go back to the game's layout on the saved board.
+            //
+            // Note what this is NOT protecting against, so nobody reads it as cover: if the game
+            // gates storing a per-car record on what is already on that page, filling the board
+            // with faster times could suppress the player's own record. That risk is identical
+            // whether or not we sort, so it is not a reason to leave the board unsorted. Untested.
+            bool rankThisBoard = board == Id8Board.OnlinePerCar || board == Id8Board.ShopPerCar;
 
             int written = 0;
             int pos = 0;
