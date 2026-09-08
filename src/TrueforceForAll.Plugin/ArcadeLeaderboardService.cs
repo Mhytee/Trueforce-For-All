@@ -554,13 +554,51 @@ namespace TrueforceForAll.Plugin
             // This is what made the earlier attempt look half sorted. Writing rank i to page i put
             // the eleven fastest times on pages 0 to 10, which the screen draws first as a block,
             // so the buckets came out in time order while their contents were shuffled.
+            // RANK THE TRANSIENT BOARD, LEAVE THE SAVED ONE IN CAR ORDER.
+            //
+            // Ranking works by putting a row on the page the screen draws in that position, which
+            // means a car no longer sits on its own page. That is fine for a screen that only ever
+            // reads a page to draw it, and NOT fine for anything that looks the table up BY CAR.
+            // Something does: the game computes a per-car page from a CarID at 0x00a01910, and
+            // calls it while building the race HUD.
+            //
+            // What that could cost, if the in-race target time is one of those lookups: Time Attack
+            // is chasing a number, so a target taken from somebody else's car is not a cosmetic
+            // slip, it is the mode telling you to drive to a lap your car cannot do, with no way to
+            // see that the number was never yours. Worse if a per-car personal-best check reads the
+            // same page, because a community time parked there could stop your own record being
+            // saved at all. Neither is proven. Neither is disproven either, and the cost of being
+            // wrong lands on the player's own times.
+            //
+            // So the split. OnlinePerCar is rebuilt from the exe on every launch and nothing of the
+            // player's lives there, so ranking it risks nothing that outlives the session, and it
+            // is the board the display-order probe was measured on. ShopPerCar is the one that
+            // persists into the save and the one the owner reports drives the in-race time to beat,
+            // so it keeps the game's own layout: every car on its own page, which is exactly what a
+            // by-car lookup expects.
+            //
+            // Revisit when one Time Attack run has said which table the HUD reads.
+            bool rankThisBoard = board == Id8Board.OnlinePerCar;
+
             int written = 0;
             int pos = 0;
             var claimed = new HashSet<int>();
             foreach (Id8LeaderboardEntry e in ranked)
             {
-                if (pos >= Id8CarTable.DisplayOrder.Length) break;
                 if (Id8CarTable.Find(e.CarId) == null) continue;   // a car the table does not know
+
+                int page;
+                if (rankThisBoard)
+                {
+                    if (pos >= Id8CarTable.DisplayOrder.Length) break;
+                    page = Id8CarTable.DisplayOrder[pos];
+                }
+                else
+                {
+                    page = Id8CarTable.SlotForCarId(e.CarId);
+                    if (page < 0) continue;
+                }
+
                 var row = new Id8LeaderboardRecord
                 {
                     RawName = Id8Name.Encode(Id8Name.Sanitize(e.Username)),
@@ -575,22 +613,33 @@ namespace TrueforceForAll.Plugin
                     Section3 = e.Section3,
                     GoalMs = e.GoalMs,
                 };
-                if (_writer.WriteRecord(board, courseId, direction, Id8CarTable.DisplayOrder[pos], row))
-                    written++;
+                if (_writer.WriteRecord(board, courseId, direction, page, row)) written++;
                 claimed.Add(e.CarId);
                 pos++;
             }
 
-            // Then the cars nobody has a time on, in the game's own car order, each naming itself.
-            // Ranked rows are one per car, so every one of the 50 appears exactly once: the cars
-            // with times ranked, and the rest of the roster below them.
+            // Then the cars nobody has a time on, each naming itself, so a board reads as the times
+            // it has and then the rest of the roster rather than trailing off into SEGA. Every one
+            // of the 50 appears exactly once either way: ranked rows are one per car.
             foreach (int carId in Id8CarTable.CarIdsInSlotOrder())
             {
                 if (claimed.Contains(carId)) continue;
-                if (pos >= Id8CarTable.DisplayOrder.Length) break;
+
+                int page;
+                if (rankThisBoard)
+                {
+                    if (pos >= Id8CarTable.DisplayOrder.Length) break;
+                    page = Id8CarTable.DisplayOrder[pos];
+                }
+                else
+                {
+                    page = Id8CarTable.SlotForCarId(carId);
+                    if (page < 0) continue;
+                }
+
                 Id8LeaderboardRecord blank = Id8Leaderboard.DefaultRow();
                 blank.Reserved = Id8LeaderboardRecord.ReservedFor(carId);
-                _writer.WriteRecord(board, courseId, direction, Id8CarTable.DisplayOrder[pos], blank);
+                _writer.WriteRecord(board, courseId, direction, page, blank);
                 pos++;
             }
             return written;
