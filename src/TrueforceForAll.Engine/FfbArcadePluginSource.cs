@@ -113,18 +113,24 @@ namespace TrueforceForAll.Core
         /// is the constant, and the wrong half got flipped.</summary>
         public bool TraceEffects { get; set; }
 
-        /// <summary>How long the steering force keeps acting after the cabinet
-        /// stops sending it, in milliseconds. 0 means "however long the publisher
-        /// stamped on it", which is that game's FeedbackLength.
+        /// <summary>How long the STEADY forces keep acting after the cabinet
+        /// stops sending them: the constant, the spring, the damper, the friction
+        /// and the inertia. 0 means "however long the publisher stamped on it",
+        /// which is that game's FeedbackLength.
         ///
         /// Split from the waveform hold below because the two want opposite
         /// things and the reference plugin gives them one number. Measured here
         /// 2026-09-06: the constant arrives with FeedbackLength, while a sine
         /// arrives with its own PERIOD (6 ms and 49 ms on the rig), so the one
         /// setting a user can reach already governs only half of what its name
-        /// suggests. Raising it to hold the steering through a burst of buzz also
-        /// lengthens the spring, and nothing at all reaches the buzz.</summary>
-        public int SteeringHoldMs { get; set; }
+        /// suggests, and nothing at all reaches the buzz.
+        ///
+        /// It covers the conditions as well as the constant because the cabinet
+        /// sends one command per frame, so the spring is displaced on the same
+        /// schedule the constant is. Holding one while the other lapsed produced
+        /// two collapses a few seconds apart rather than one, which is harder to
+        /// reason about than either extreme (rig, 2026-09-07).</summary>
+        public int SteadyHoldMs { get; set; }
 
         /// <summary>The same for the waveform effects: sine, triangle and both
         /// sawtooths. 0 leaves them at the length the game asks for, which for
@@ -468,7 +474,7 @@ namespace TrueforceForAll.Core
             if ((flags & FlagNoDevice) != 0 && !_loggedNoDevice)
             {
                 _loggedNoDevice = true;
-                Log("the game found NO force feedback device to open, so it is publishing an empty block "
+                Log("the game found NO force feedback device to open, so it is sending nothing "
                     + "and the wheel will stay silent. Check DeviceGUID in that game's FFBPlugin.ini "
                     + "matches your wheel.");
             }
@@ -682,7 +688,7 @@ namespace TrueforceForAll.Core
             // override that expired them would delete an effect the game holds on
             // purpose. Only a slot that already had a finite length is rescaled.
             if (length == SdlInfinity || length == 0) return false;
-            length = HeldLength(length, U32(slotBase + SKind), SteeringHoldMs, VibrationHoldMs);
+            length = HeldLength(length, U32(slotBase + SKind), SteadyHoldMs, VibrationHoldMs);
             uint updated = U32(slotBase + SUpdatedFrame);
             double sinceMs = (frame >= updated ? frame - updated : 0) * FramePeriodMs;
             return sinceMs > length;
@@ -724,8 +730,8 @@ namespace TrueforceForAll.Core
                 double ageMs = (frame >= updated ? frame - updated : 0) * FramePeriodMs;
                 Log("the steering force just lapsed: " + ageMs.ToString("0")
                     + " ms since the cabinet last sent one, against a hold of "
-                    + (SteeringHoldMs > 0
-                        ? SteeringHoldMs + " ms (Steering hold)"
+                    + (SteadyHoldMs > 0
+                        ? SteadyHoldMs + " ms (Steady force hold)"
                         : U32(b + SLength) + " ms (the game's own Force linger)")
                     + ". The wheel is slack until the next steering command. A hold longer than "
                     + "the gap printed here would have carried it through."
@@ -790,9 +796,9 @@ namespace TrueforceForAll.Core
                         MapNamesJvs[i], MemoryMappedFileRights.Read);
                     _jvsView = mmf.CreateViewAccessor(0, 64, MemoryMappedFileAccess.Read);
                     _jvsMmf = mmf;
-                    Log("also watching the cabinet's own IO block, read only, so a command the "
-                        + "reference plugin discarded can be told apart from one the game "
-                        + "never sent.");
+                    Log("also reading the cabinet's own controls directly, without writing to them, "
+                        + "so a command the FFB Arcade Plugin threw away can be told apart from one "
+                        + "the game never sent.");
                     return true;
                 }
                 catch { }
@@ -871,12 +877,12 @@ namespace TrueforceForAll.Core
         private bool _releasing;
         private long _releaseStartTicks;
 
-        internal static uint HeldLength(uint published, uint kind, int steerHoldMs, int vibHoldMs)
+        internal static uint HeldLength(uint published, uint kind, int steadyHoldMs, int vibHoldMs)
         {
-            int over = kind == KConstant ? steerHoldMs
-                     : (kind == KSine || kind == KTriangle || kind == KSawUp || kind == KSawDown)
-                       ? vibHoldMs
-                       : 0;
+            bool steady = kind == KConstant || kind == KSpring || kind == KDamper
+                       || kind == KInertia || kind == KFriction || kind == KRamp;
+            bool wave = kind == KSine || kind == KTriangle || kind == KSawUp || kind == KSawDown;
+            int over = steady ? steadyHoldMs : wave ? vibHoldMs : 0;
             return over > 0 ? (uint)over : published;
         }
 

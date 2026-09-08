@@ -2757,20 +2757,20 @@
                     <Border Visibility="{Binding Visibility, ElementName=ArcadeHoldMsBox}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ArcadeHoldMsBox" Text="0" LostFocus="ArcadeHoldMs_LostFocus" KeyDown="ArcadeHoldMs_KeyDown"/></Border>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Milliseconds, the game's own setting. Reaches the steering force and the spring; the buzz and the friction carry their own. The two below override it per effect."/>
+                           Text="Milliseconds, the game's own setting, written to its FFBPlugin.ini. It is what the game uses when you run it without SimHub. The two holds below override it here."/>
 
 
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Steering hold:" Style="{StaticResource LabelText}"
-                               ToolTip="How long the steering force keeps acting after the cabinet stops sending it. 0 follows Force linger above."/>
+                    <TextBlock Grid.Column="0" Text="Steady force hold:" Style="{StaticResource LabelText}"
+                               ToolTip="How long the steering force, the spring and the damper keep acting after the cabinet stops sending them. 0 follows Force linger."/>
                     <Slider     Grid.Column="1" x:Name="ArcadeSteerHoldSlider" Minimum="0" Maximum="10000" SmallChange="50" LargeChange="500"
                                 TickFrequency="2000" ValueChanged="ArcadeSteerHoldSlider_ValueChanged" VerticalAlignment="Center"
-                                ToolTip="How long the steering force keeps acting after the cabinet stops sending it. 0 follows Force linger above."/>
+                                ToolTip="How long the steering force, the spring and the damper keep acting after the cabinet stops sending them. 0 follows Force linger."/>
                     <Border Visibility="{Binding Visibility, ElementName=ArcadeSteerHoldBox}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ArcadeSteerHoldBox" Text="0" LostFocus="ArcadeSteerHold_LostFocus" KeyDown="ArcadeSteerHold_KeyDown"/></Border>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Milliseconds, steering force only. 0 follows Force linger. The longest gap measured in Initial D 8 is about 6100 ms, so anything past that holds through every gap the game leaves."/>
+                           Text="Milliseconds, for the steering force, spring and damper. 50 is what the cabinet commands. Higher keeps weight in the wheel but holds a force the game already cancelled."/>
 
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -4783,7 +4783,7 @@
                               Checked="ArcadeLeaderboards_Changed" Unchecked="ArcadeLeaderboards_Changed"
                               Content="Fill Initial D 8's in-game leaderboards"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                               Text="The game's boards have been empty since SEGA's servers shut down: every row says SEGA and six minutes flat. This puts real names and times on them. Your own records are never overwritten, and are backed up before anything is written."/>
+                               Text="SEGA&apos;s servers shut down years ago, so every row in-game shows a placeholder. This puts real community names and times on the leaderboard instead."/>
 
                     <StackPanel x:Name="ArcadeLeaderboardOptions">
                         <Grid Margin="0,0,0,6">
@@ -4791,25 +4791,40 @@
                             <TextBlock Grid.Column="0" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="Online board shows"/>
                             <ComboBox Grid.Column="1" x:Name="ArcadeOnlineSourceCombo" Width="170" VerticalAlignment="Center"
                                       SelectionChanged="ArcadeBoardSource_Changed">
-                                <ComboBoxItem Content="Everyone (merged)" Tag="Merged"/>
+                                <ComboBoxItem Content="All" Tag="Merged"/>
                                 <ComboBoxItem Content="Trueforce For All" Tag="Community"/>
                                 <ComboBoxItem Content="TeknoParrot" Tag="TeknoParrot"/>
-                                <ComboBoxItem Content="My own times" Tag="Local"/>
+                                <ComboBoxItem Content="Local" Tag="Local"/>
                             </ComboBox>
                         </Grid>
-                        <Grid Margin="0,0,0,6">
+                        <Grid x:Name="ArcadeShopSourceRow" Margin="0,0,0,6" ToolTipService.ShowOnDisabled="True">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="Shop board shows"/>
                             <ComboBox Grid.Column="1" x:Name="ArcadeShopSourceCombo" Width="170" VerticalAlignment="Center"
                                       SelectionChanged="ArcadeBoardSource_Changed">
-                                <ComboBoxItem Content="Everyone (merged)" Tag="Merged"/>
+                                <ComboBoxItem Content="All" Tag="Merged"/>
                                 <ComboBoxItem Content="Trueforce For All" Tag="Community"/>
                                 <ComboBoxItem Content="TeknoParrot" Tag="TeknoParrot"/>
-                                <ComboBoxItem Content="My own times" Tag="Local"/>
+                                <ComboBoxItem Content="Local" Tag="Local"/>
+                                <!-- Shown ONLY while climb mode owns this board, and the box is
+                                     greyed whenever it is. It reads Ladder rather than All because
+                                     All is what the board is doing and Ladder is why, and why is
+                                     the thing a greyed control has to answer. Tagged Merged so that
+                                     if it is ever read back it says what the board actually shows.
+                                     Collapsed the rest of the time so it is not a second All in
+                                     the list. -->
+                                <ComboBoxItem x:Name="ArcadeShopSourceLadderItem" Content="Ladder"
+                                              Tag="Merged" Visibility="Collapsed"/>
                             </ComboBox>
                         </Grid>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="Two boards, so they can show different things. Leaving one on Everyone and the other on Trueforce For All lets you read where you stand against everybody and among Trueforce users at the same time."/>
+                                   Text="Two boards, so they can show different things. Your own times are on both. The shop board is also the time to beat the game shows you while driving."/>
+
+                        <CheckBox x:Name="ArcadeLadderClimbCheck" Margin="0,0,0,4"
+                                  Checked="ArcadeLadderClimb_Changed" Unchecked="ArcadeLadderClimb_Changed"
+                                  Content="Ladder climb: show the times around mine"/>
+                        <TextBlock x:Name="ArcadeLadderClimbHelp" Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="Puts the ten times around yours on the shop board, with you fifth, and makes the time to beat the driver just ahead."/>
 
                         <CheckBox x:Name="ArcadeSubmitTimesCheck" Margin="0,0,0,4"
                                   Checked="ArcadeSubmitTimes_Changed" Unchecked="ArcadeSubmitTimes_Changed"

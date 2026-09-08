@@ -1,4 +1,4 @@
-// Live engine data for Initial D Arcade Stage 8, read out of the running game.
+﻿// Live engine data for Initial D Arcade Stage 8, read out of the running game.
 //
 // The game exe has its relocations stripped and a fixed image base, so every address recovered by
 // static analysis of the file is valid in memory on every launch. That means there is no scanning
@@ -526,6 +526,17 @@ namespace TrueforceForAll.Core
         private const string PlaceholderName = "プレイヤー";
         private const int PlayerName = 0x28;         // Shift-JIS, NUL terminated
         private const int PlayerTeamName = 0x68;
+        // The game's OWN per-course personal best, which is a different thing from the boards.
+        // 32 records of 24 bytes keyed exactly as the boards are, direction + 2*course. The flag
+        // word reads 0xffff until a record exists and 0 once one does; the time is at +4.
+        //
+        // READ ONLY, and worth saying twice: nothing in this plugin writes anywhere near the player
+        // record, and this exists to prove what the GAME thinks a personal best is, independently
+        // of whatever we put on its leaderboards.
+        private const int PlayerSelfBest = 0x57c;
+        private const int SelfBestStride = 24;
+        private const int SelfBestGoal = 4;
+
         private const int PlayerGarageSpecs = 0x8cc; // spec[3], 0x60 bytes each, CarID at +0
         private const int PlayerSelectedCar = 0x9ee; // int16 index 0..2 into the garage
         private const int GarageSpecStride = 0x60;
@@ -1059,6 +1070,7 @@ namespace TrueforceForAll.Core
                     _scannedPlayerRecord = true;
                     ScanPlayerRecordForNames(Deref(session + SessionToPlayer));
                 }
+                LogSelfBest(Deref(session + SessionToPlayer));
                 if (!_loggedIdentity && !string.IsNullOrEmpty(s.PlayerName))
                 {
                     _loggedIdentity = true;
@@ -2253,6 +2265,39 @@ namespace TrueforceForAll.Core
         /// <summary>Every readable string in the player record, once. The name offset is only a
         /// LIKELY entry in the map, and a screen showing the wrong field is worse than one showing
         /// none, so this says what is actually there rather than trusting the label.</summary>
+        /// <summary>Print the game's own per-course personal bests, once, and again whenever one
+        /// of them changes.
+        ///
+        /// DIAGNOSTIC (2026-09-08). The owner beat his Akagi record by twenty seconds and the stage
+        /// select still showed the old time. Two explanations fit and they point opposite ways:
+        /// either the game never updated its own store, which is nothing to do with us, or that
+        /// screen reads the shop board, which we rewrite and which had lost his row. Reading the
+        /// game's own store settles it without a guess.</summary>
+        private void LogSelfBest(uint player)
+        {
+            if (player == 0 || Log == null) return;
+
+            var sb = new System.Text.StringBuilder();
+            for (int slot = 0; slot < 32; slot++)
+            {
+                uint at = (uint)(player + PlayerSelfBest + SelfBestStride * slot);
+                uint word;
+                int goal;
+                // The flag is the low half of the first dword; 0xffff there means no record.
+                if (!U32(at, out word) || (word & 0xffff) == 0xffff) continue;
+                if (!I32(at + SelfBestGoal, out goal) || goal <= 0) continue;
+                sb.Append(' ').Append("c").Append(slot / 2).Append('d').Append(slot % 2)
+                  .Append('=').Append(goal);
+            }
+
+            string now = sb.ToString();
+            if (now == _lastSelfBest) return;
+            _lastSelfBest = now;
+            Log?.Invoke("[ID8MEM] the game's own personal bests:" + (now.Length == 0 ? " none" : now));
+        }
+
+        private string _lastSelfBest;
+
         private void ScanPlayerRecordForNames(uint player)
         {
             if (player == 0) return;

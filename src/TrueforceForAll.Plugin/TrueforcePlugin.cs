@@ -6929,10 +6929,56 @@ namespace TrueforceForAll.Plugin
             if (!simHubHasGame || customCode)
             {
                 string arcadeGame = DetectArcadeGameName();
-                if (!string.IsNullOrEmpty(arcadeGame)
-                    && (!customCode || CustomGameIsThisArcadeCabinet(gameName)))
+
+                // "TeknoParrotArcade" is the FALLBACK identity, returned whenever a
+                // cabinet is present but no profile matched the running process. It
+                // is an answer of last resort rather than an answer, so it must not
+                // outrank one we can work out for ourselves.
+                bool fallbackOnly = string.Equals(arcadeGame, GenericArcadeGameName,
+                                                  StringComparison.Ordinal);
+                bool resolved = !string.IsNullOrEmpty(arcadeGame) && !fallbackOnly;
+
+                if (resolved && (!customCode || CustomGameIsThisArcadeCabinet(gameName)))
+                {
+                    // Detection identified the running process, which beats anything
+                    // inferred from a profile's configured name.
                     gameName = arcadeGame;
+                }
+                else if (customCode)
+                {
+                    // Detection cannot answer, but a SimHub custom game whose process
+                    // belongs to a TeknoParrot profile IS that cabinet, and we can say
+                    // so now. Naming it here rather than waiting is what keeps the
+                    // arcade path engaged: held at its guid, ActiveGameIsArcade reads
+                    // false and no arcade telemetry source is ever built.
+                    string profile = ProfileForCustomGame(gameName);
+                    if (!string.IsNullOrEmpty(profile))
+                    {
+                        string named = ArcadeGameName(profile);
+                        if (!string.Equals(named, _customGameNamedAs, StringComparison.Ordinal))
+                        {
+                            _customGameNamedAs = named;
+                            SimHub.Logging.Current.Info(
+                                $"[TF4ALL] This custom game runs the same program as TeknoParrot's "
+                                + $"'{profile}' cabinet, so its settings are saved under '{named}' rather "
+                                + "than the placeholder name SimHub uses for a game it does not know.");
+                        }
+                        gameName = named;
+                    }
+                    else if (fallbackOnly)
+                    {
+                        // Something arcade-shaped is running that no profile claims.
+                        // The fallback is a poor name but it is an arcade one, so the
+                        // arcade path still engages.
+                        gameName = arcadeGame;
+                    }
+                }
+                else if (fallbackOnly)
+                {
+                    gameName = arcadeGame;
+                }
             }
+
             // Remember the last game SimHub named so the process-table rescue
             // (IsKnownGameProcessRunning) has a target to fuzzy-match against
             // after a pause nulls _activeGame.
@@ -16019,10 +16065,17 @@ namespace TrueforceForAll.Plugin
                 });
             }
 
+
             // The run watcher, unlike the fill, genuinely does need a live race sample: it is
             // watching for a finished lap. This is the guard that used to sit at the top and stop
             // the fill as well.
             Id8Sample s = filler.Last;
+
+            // Menu work FIRST, and outside the validity guard below. Valid means the whole car
+            // chain resolved, which only happens in a race, so anything that has to act on a menu
+            // has to act before it: the ladder layout, and the rewrite deferred out of the results.
+            ObserveArcadeLadder(s);
+
             if (!s.Valid) return;
 
             Id8FinishedRun run = _arcadeRuns.Observe(s, s.GameMode);
@@ -16032,6 +16085,26 @@ namespace TrueforceForAll.Plugin
                     $"[TF4ALL] Arcade run finished: course {run.CourseId} dir {run.Direction} " +
                     $"car {run.CarId} {run.GoalMs} ms (clock read {run.ClockMs})");
                 var toSend = run;
+
+                // Show it, but NOT YET. Deferred to the moment the game leaves the race.
+                //
+                // The fill runs once per attach, so without a refill the player's own lap never
+                // reaches the boards until they change a setting or relaunch: they set a record,
+                // look, and it is not there. The game has just written its own copy, with the
+                // cabinet name and card id on it, so the refill folds in THAT rather than anything
+                // we invent.
+                //
+                // But the watcher fires at the GOAL, which is the middle of the results sequence:
+                // the new-record flourish, the splits, the time they are reading. Rewriting the
+                // boards there changes what they are looking at while they look at it. It matters
+                // more under ladder climb, where the target is supposed to move on once beaten, and
+                // the moment to move it is when they come back out to the course select.
+                //
+                // Independent of submission, which needs an account, the network and the disclosure
+                // and can decline for any of them. Their own time appearing on their own cabinet
+                // should not wait on any of that.
+                _arcadeBoards.NoteFinishedRun();
+
                 Task.Run(async () =>
                 {
                     try { await _arcadeBoards.SubmitAsync(toSend, CancellationToken.None).ConfigureAwait(false); }
@@ -16311,7 +16384,15 @@ namespace TrueforceForAll.Plugin
             var m = _arcadeMemory;
             if (m == null) return null;
             var s = m.Last;
-            if (s.InRace || !s.SessionValid) return null;
+            if (s.InRace) return null;
+
+            // NO SESSION AT ALL IS THE MOST ATTRACT STATE THERE IS, and this used to return
+            // nothing for it. The session pointer genuinely comes and goes while a cabinet idles,
+            // so the panel went blank in exactly the state the message exists for, and only spoke
+            // up in the one state where somebody had already pressed start. Identity is what needs
+            // a session; the attract line needs nothing.
+            if (!s.SessionValid) return ArcadeAttractWindow();
+
             // Nobody has swiped in, so there is no driver to name and the attract line takes the
             // row instead. It reads better up here than down in the car slot: the top row is where
             // the eye starts, and leaving it blank above a message made the panel look half broken.
@@ -16330,7 +16411,11 @@ namespace TrueforceForAll.Plugin
             var m = _arcadeMemory;
             if (m == null) return null;
             var s = m.Last;
-            if (s.InRace || !s.SessionValid) return null;
+            if (s.InRace) return null;
+
+            // Blank rather than null with no session, so the top row's attract line has the panel
+            // to itself rather than sitting above whatever was there before.
+            if (!s.SessionValid) return "";
 
             // The attract line lives on the top row now, so this one stays empty until there is
             // a real car to name.
@@ -17319,9 +17404,10 @@ namespace TrueforceForAll.Plugin
             {
                 _arcadeProbeLogged = true;
                 SimHub.Logging.Current.Info(
-                    $"[TF4ALL] Arcade watch is on. Publishing plugin block: {(publisherBlock ? "found" : "not found")}. "
-                    + $"TeknoParrot cabinet IO block: {(cabinetBlock ? "found" : "not found")}. "
-                    + "Neither means no arcade game is running yet.");
+                    $"[TF4ALL] Watching for arcade games. The FFB Arcade Plugin is "
+                    + $"{(publisherBlock ? "sending force feedback" : "not sending anything yet")}, and "
+                    + $"TeknoParrot is {(cabinetBlock ? "sharing its cabinet controls" : "not sharing anything yet")}. "
+                    + "Neither one simply means no arcade game is running yet.");
             }
 
             bool anyBlock = publisherBlock || cabinetBlock;
@@ -17440,16 +17526,111 @@ namespace TrueforceForAll.Plugin
                     _arcadeMatchedExe = hit.ExeName;
                     return ArcadeGameName(hit.ProfileName);
                 }
+
+                NoteCabinetNotIdentified();
             }
             catch { }
             _arcadeMatchedExe = null;
             return GenericArcadeGameName;
         }
 
+        private bool _arcadeIdentifyFailLogged;
+
+        /// <summary>Say once that no cabinet was recognised.
+        ///
+        /// Deliberately does not list which programs the profiles expect against
+        /// which are running. That list answers WHY, and it is the thing worth
+        /// knowing when this fires, but it is a wall of executable names in a log
+        /// a player reads to find out why their wheel is quiet. Owner's call
+        /// (2026-09-07). If the question comes up again, the comparison is
+        /// t.ExeName against the running process names, both already in hand at
+        /// the call site.</summary>
+        private void NoteCabinetNotIdentified()
+        {
+            if (_arcadeIdentifyFailLogged) return;
+            _arcadeIdentifyFailLogged = true;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] An arcade game is running and sending force feedback, but none of "
+                + "TeknoParrot's game profiles match it, so we cannot tell which cabinet it is.");
+        }
+
         /// <summary>The executable that identified the running cabinet, or null when
         /// none did. Kept so a SimHub custom game profile can be matched against the
         /// cabinet it claims to describe rather than assumed to describe it.</summary>
         private string _arcadeMatchedExe;
+
+        // Said once per cabinet so the log records that a custom game was renamed
+        // rather than silently filed somewhere the user did not expect.
+        private string _customGameNamedAs;
+
+        private string _customGameMatchNoted;
+
+        /// <summary>What the cabinet match had to work with, said once per game.
+        ///
+        /// Names both sides because either can be the empty one: the custom game
+        /// may carry no program names, or TeknoParrot's profiles may not have been
+        /// read yet. Those have different fixes and look identical from the
+        /// outside, which is how this went round twice.</summary>
+        private void NoteCustomGameMatchInputs(string gameCode, CustomGameInfo info,
+                                               List<ArcadeModTarget> targets)
+        {
+            if (string.Equals(_customGameMatchNoted, gameCode, StringComparison.Ordinal)) return;
+            _customGameMatchNoted = gameCode;
+
+            string procs = info?.ProcessNames == null || info.ProcessNames.Length == 0
+                ? "none"
+                : string.Join(", ", info.ProcessNames);
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Checking whether custom game '" + (info?.Name ?? gameCode)
+                + "' is an arcade cabinet. It runs: " + procs + ". Cabinets known: "
+                + (targets == null ? 0 : targets.Count) + ".");
+        }
+
+        /// <summary>Which TeknoParrot cabinet this SimHub custom game runs, or null.
+        ///
+        /// A different question from CustomGameIsThisArcadeCabinet, which asks
+        /// whether a cabinet ALREADY identified is the one a profile describes.
+        /// This is asked when nothing has been identified, so it can only compare
+        /// executable names, and it answers null when it cannot tell.
+        ///
+        /// It returns the profile rather than a yes/no on purpose. A yes/no can
+        /// only be acted on by waiting for someone else to supply the name, and
+        /// waiting is what left the game sitting at its guid with the arcade path
+        /// switched off. The name was always available here.
+        ///
+        /// Ambiguity answers null. Two profiles sharing an executable cannot be
+        /// told apart from a name alone, and guessing would file a user's tuning
+        /// under the wrong cabinet, which is worse than the placeholder.</summary>
+        private string ProfileForCustomGame(string gameCode)
+        {
+            var info = TryGetCustomGameInfo(gameCode);
+            List<ArcadeModTarget> targets = null;
+            try { targets = ArcadeModTargets(); }
+            catch { }
+            NoteCustomGameMatchInputs(gameCode, info, targets);
+
+            if (info?.ProcessNames == null || info.ProcessNames.Length == 0) return null;
+            if (targets == null || targets.Count == 0) return null;
+
+            string hit = null;
+            foreach (string p in info.ProcessNames)
+            {
+                if (string.IsNullOrEmpty(p)) continue;
+                // Profiles are written with and without the extension, so compare
+                // the way SimHub's own detection has to.
+                string bare = p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                    ? p.Substring(0, p.Length - 4) : p;
+                foreach (var t in targets)
+                {
+                    if (string.IsNullOrEmpty(t.ExeName) || string.IsNullOrEmpty(t.ProfileName)) continue;
+                    if (!string.Equals(bare, t.ExeName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (hit != null && !string.Equals(hit, t.ProfileName, StringComparison.OrdinalIgnoreCase))
+                        return null;   // two cabinets, no way to choose
+                    hit = t.ProfileName;
+                }
+            }
+            return hit;
+        }
 
         /// <summary>Is this SimHub custom game the arcade cabinet we are reading?
         ///
@@ -17590,31 +17771,73 @@ namespace TrueforceForAll.Plugin
             return "Searching " + attachedTo + " for '" + text + "'. Watch the log; it takes a few seconds.";
         }
 
-        /// <summary>How to SAY an arcade game identity, as opposed to how to file it.
+        /// <summary>How to SAY a game identity, as opposed to how to file it.
         ///
-        /// The identity is "Arcade " plus TeknoParrot's profile id, which is a short code
-        /// like ID8. That code is the preset key and the car-folder name, so it cannot be
-        /// prettied up without re-filing everything a user has tuned. TeknoParrot also
-        /// records the real title in GameNameInternal, and that is what belongs on screen.
+        /// An arcade identity is "Arcade " plus TeknoParrot's profile id, a short code like
+        /// ID8. A custom game's identity is the guid SimHub files it under. Neither can be
+        /// prettied up in place: both are the preset key and the car-folder name, so
+        /// changing one re-files everything a user has tuned. The screen is free to say the
+        /// real title instead, and that is all this does.
         ///
-        /// Returns the identity unchanged for anything that is not an arcade game, or when
-        /// no profile claims it, so a caller can use this for every game without asking.</summary>
+        /// A custom game profile made for a cabinet IS that cabinet, running or not, so it
+        /// is named as one. Failing that, SimHub's own name for the profile beats a guid for
+        /// any custom game at all. Anything else falls through to the shared display map.
+        ///
+        /// Memoised on the last identity asked about. The old version read every TeknoParrot
+        /// profile XML off disk per call, and the caller is a UI refresh on a timer.</summary>
         public string ArcadeDisplayName(string gameIdentity)
         {
-            if (string.IsNullOrEmpty(gameIdentity)
-                || !gameIdentity.StartsWith("Arcade ", StringComparison.Ordinal))
-                return gameIdentity;
+            if (string.IsNullOrEmpty(gameIdentity)) return gameIdentity;
+            if (string.Equals(gameIdentity, _gameTitleKey, StringComparison.Ordinal))
+                return _gameTitleValue;
+
+            string title = ComputeGameTitle(gameIdentity);
+            _gameTitleKey = gameIdentity;
+            _gameTitleValue = title;
+            return title;
+        }
+
+        private string _gameTitleKey, _gameTitleValue;
+
+        private string ComputeGameTitle(string gameIdentity)
+        {
             try
             {
-                foreach (var t in ArcadeModTargets())
+                if (gameIdentity.StartsWith("Arcade ", StringComparison.Ordinal))
                 {
-                    if (string.IsNullOrEmpty(t.FullName)) continue;
-                    if (string.Equals(ArcadeGameName(t.ProfileName), gameIdentity, StringComparison.Ordinal))
-                        return t.FullName;
+                    foreach (var t in ArcadeModTargets())
+                    {
+                        if (string.IsNullOrEmpty(t.FullName)) continue;
+                        if (string.Equals(ArcadeGameName(t.ProfileName), gameIdentity, StringComparison.Ordinal))
+                            return t.FullName;
+                    }
+                    return gameIdentity;
+                }
+
+                if (gameIdentity.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
+                {
+                    // The cabinet's own title, where this profile runs one. True with
+                    // the game closed, because the match is on the program a profile
+                    // is configured to launch rather than on anything running.
+                    string profile = ProfileForCustomGame(gameIdentity);
+                    if (!string.IsNullOrEmpty(profile))
+                    {
+                        foreach (var t in ArcadeModTargets())
+                            if (string.Equals(t.ProfileName, profile, StringComparison.OrdinalIgnoreCase)
+                                && !string.IsNullOrEmpty(t.FullName))
+                                return t.FullName;
+                        return ArcadeGameName(profile);
+                    }
+
+                    // Not a cabinet, but SimHub still knows what the user called it.
+                    var info = TryGetCustomGameInfo(gameIdentity);
+                    if (!string.IsNullOrEmpty(info?.Name)) return info.Name;
+                    return gameIdentity;
                 }
             }
             catch { }
-            return gameIdentity;
+
+            return GameNames.Display(gameIdentity);
         }
 
         /// <summary>The game identity for a TeknoParrot profile. Kept path-safe and
@@ -17725,11 +17948,10 @@ namespace TrueforceForAll.Plugin
             return t;
         }
 
-        /// <summary>The two feels the arcade panel offers, in milliseconds of
-        /// steady-force hold. Faithful releases as soon as the cabinet stops
-        /// asking; Weighted carries the last force across the gaps.</summary>
+        /// <summary>The steady-force hold a measured cabinet opens on, in
+        /// milliseconds. Short enough that the wheel releases as soon as the game
+        /// stops asking, which for Initial D 8 is what it actually commands.</summary>
         internal const int ArcadeFaithfulHoldMs = 50;
-        internal const int ArcadeWeightedHoldMs = 2000;
 
         private void SwapTelemetrySource(string game, bool silent = false)
         {
@@ -20619,7 +20841,12 @@ namespace TrueforceForAll.Plugin
             if (!Settings.Presets.TryGetValue("Assetto Corsa (default)", out var seed) || seed == null)
                 return;
 
-            string presetName = gameName;
+            // The readable name, not the code. SimHub's codes are keys and are
+            // never renamed, but a preset's NAME is free, and a player looking at
+            // a dropdown row saying "RRRE" has to know it means RaceRoom. Existing
+            // presets keep whatever they were called; only new seeds get this.
+            string presetName = GameNames.Display(gameName);
+            if (string.IsNullOrEmpty(presetName)) presetName = gameName;
             if (!Settings.Presets.ContainsKey(presetName))
             {
                 // Write the seeded copy as a user-library file (it's a fresh,

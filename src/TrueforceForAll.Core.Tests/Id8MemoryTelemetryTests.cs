@@ -347,31 +347,24 @@ namespace TrueforceForAll.Core.Tests
                 Assert.Equal(500u, FfbArcadePluginSource.HeldLength(500, kind, 0, 0));
         }
 
+        /// <summary>The steady hold covers the constant AND the conditions.
+        ///
+        /// It grew to include them because the cabinet sends one command per
+        /// frame, so the spring is displaced on the same schedule the constant is.
+        /// Holding one while the other lapsed gave two collapses a few seconds
+        /// apart instead of one.</summary>
         [Fact]
-        public void SteeringHoldReachesTheConstantAndNothingElse()
+        public void SteadyHoldReachesTheConstantAndTheConditions()
         {
-            Assert.Equal(2000u, FfbArcadePluginSource.HeldLength(500, KConstant, 2000, 0));
-            Assert.Equal(500u,  FfbArcadePluginSource.HeldLength(500, KSpring,   2000, 0));
-            Assert.Equal(49u,   FfbArcadePluginSource.HeldLength(49,  KSine,     2000, 0));
+            foreach (uint kind in new uint[] { KConstant, KSpring, KDamper, KFriction })
+                Assert.Equal(2000u, FfbArcadePluginSource.HeldLength(500, kind, 2000, 0));
         }
 
         [Fact]
-        public void VibrationHoldReachesEveryWaveformAndNothingElse()
+        public void SteadyHoldLeavesTheWaveformsAlone()
         {
             foreach (uint kind in new uint[] { KSine, KTriangle, KSawUp, KSawDown })
-                Assert.Equal(120u, FfbArcadePluginSource.HeldLength(49, kind, 0, 120));
-            Assert.Equal(500u, FfbArcadePluginSource.HeldLength(500, KConstant, 0, 120));
-            Assert.Equal(500u, FfbArcadePluginSource.HeldLength(500, KSpring,   0, 120));
-            Assert.Equal(500u, FfbArcadePluginSource.HeldLength(500, KDamper,   0, 120));
-        }
-
-        /// <summary>The two are independent, which is the whole point: the
-        /// cabinet ships one number for both and that is what forced this split.</summary>
-        [Fact]
-        public void TheTwoHoldsDoNotInterfere()
-        {
-            Assert.Equal(2000u, FfbArcadePluginSource.HeldLength(500, KConstant, 2000, 120));
-            Assert.Equal(120u,  FfbArcadePluginSource.HeldLength(49,  KSine,     2000, 120));
+                Assert.Equal(49u, FfbArcadePluginSource.HeldLength(49, kind, 2000, 0));
         }
 
         /// <summary>An override shortens as readily as it lengthens. A user who

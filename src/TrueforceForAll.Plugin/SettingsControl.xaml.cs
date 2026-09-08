@@ -4398,6 +4398,8 @@ namespace TrueforceForAll.Plugin
                 }
             }
             finally { _suppressEvents = prevSuppress; }
+
+            NotePresetComboContents(activeP, defName);
         }
 
         // Rebuild the CAR-preset picker in the header. When a car is loaded it
@@ -4911,21 +4913,7 @@ namespace TrueforceForAll.Plugin
         // Friendly display name for a game code (the car-preset GameName), for
         // the car picker's per-game section headers. Falls back to the raw code.
         private static string GameDisplayName(string game)
-        {
-            switch (game)
-            {
-                case "FH6":  return "Forza Horizon 6";
-                case "FH5":  return "Forza Horizon 5";
-                case "FH4":  return "Forza Horizon 4";
-                case "AssettoCorsa": return "Assetto Corsa";
-                case "AssettoCorsaCompetizione": return "Assetto Corsa Competizione";
-                case "IRacing": return "iRacing";
-                case "Wreckfest2": return "Wreckfest 2";
-                case null:
-                case "": return "Other";
-                default: return game;
-            }
-        }
+            => GameNames.DisplayOrOther(game);
 
         // Build a non-selectable, dimmed/bold section-header row for the
         // grouped active-preset picker.
@@ -4946,6 +4934,48 @@ namespace TrueforceForAll.Plugin
         // is active, binds it as that game's default in the same step
         // (select-is-default, matching the car picker's semantics). The old
         // separate "Set as default" link is gone.
+
+        // What the preset dropdown was built from, said only when it changes.
+        //
+        // Exists because "Arcade ID8 was not in the list until the game started"
+        // survived two wrong explanations. The preset file and its game-default
+        // binding are both loaded at startup, three hundred milliseconds in, so
+        // the cache is not short and the account library is not late. That leaves
+        // the fill itself, and nothing recorded what it saw. This does.
+        //
+        // Signature-gated rather than rate-limited: a dropdown that is rebuilt
+        // identically fifty times a second is not news, and a dropdown whose
+        // contents change is exactly the event in question.
+        private string _presetComboSignature;
+
+        private void NotePresetComboContents(string activePreset, string defaultName)
+        {
+            if (HeaderPresetCombo == null || _plugin == null) return;
+
+            int rows = HeaderPresetCombo.Items.Count;
+            int cached = _plugin.PresetNames?.Count() ?? -1;
+            string game = _plugin.ActiveGame ?? "(none)";
+
+            bool listed = false;
+            foreach (var obj in HeaderPresetCombo.Items)
+            {
+                if (!(obj is System.Windows.Controls.ComboBoxItem ci)) continue;
+                if (!(ci.Tag is PresetPick pick) || pick.IsCar) continue;
+                if (string.Equals(pick.Name, defaultName, StringComparison.Ordinal)) { listed = true; break; }
+            }
+
+            string sig = rows + "|" + cached + "|" + game + "|" + (defaultName ?? "") + "|" + listed;
+            if (string.Equals(sig, _presetComboSignature, StringComparison.Ordinal)) return;
+            _presetComboSignature = sig;
+
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Preset dropdown rebuilt: " + rows + " rows from a cache of " + cached
+                + " presets. Active game '" + game + "', its default '"
+                + (string.IsNullOrEmpty(defaultName) ? "(none)" : defaultName) + "' "
+                + (listed ? "IS" : "is NOT") + " among the rows. Selected '"
+                + (string.IsNullOrEmpty(activePreset) ? "(none)" : activePreset) + "'.");
+        }
+
         private void HeaderPresetCombo_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressEvents || _plugin == null) return;
@@ -5478,21 +5508,11 @@ namespace TrueforceForAll.Plugin
                 _plugin.SetModeBEnabledForActiveGame(on);
         }
 
-        // SimHub GameName -> friendly label for the Mode B tab note.
+        // SimHub GameName -> friendly label for the Mode B tab note. The map
+        // itself is shared: this one used to carry its own copy, which is how
+        // RaceRoom came to be named here and nowhere else.
         private static string ModeBGameDisplayName(string game)
-        {
-            switch (game)
-            {
-                case "FM8": return "Forza Motorsport";
-                case "FH4": return "Forza Horizon 4";
-                case "FH5": return "Forza Horizon 5";
-                case "FH6": return "Forza Horizon 6";
-                case "IRacing": return "iRacing";
-                case "RaceRoomRacingExperience":
-                case "RRRE": return "RaceRoom";
-                default:    return string.IsNullOrEmpty(game) ? "this game" : game;
-            }
-        }
+            => GameNames.DisplayOrThisGame(game);
 
         // "Reverse force direction": ModeBSign is a multiplier (1 normal,
         // -1 flipped), shown as a checkbox. Flip it if the wheel pulls into
