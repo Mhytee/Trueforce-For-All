@@ -3417,7 +3417,7 @@
                                       Content="Stationary spring (adds parked-car wheel weight)"
                                       VerticalAlignment="Center"
                                       Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game, and starts on in Assetto Corsa only: tick it while a game is running to turn it on there. Ignored for iRacing (the sim already weights the wheel)."/>
+                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it, in Assetto Corsa or RaceRoom. Ignored for iRacing (the sim already weights the wheel)."/>
                             <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="not used in Forza"
                                        ToolTip="Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games."/>

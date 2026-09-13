@@ -1071,19 +1071,20 @@ namespace TrueforceForAll.Plugin
         public double StationarySpringCutoffKmh { get; set; } = 10.0;
         // Per-game stationary spring (owner, 2026-09-05): each game keeps its own
         // enabled/strength/cutoff. An explicit entry wins; with no entry a game
-        // uses the defaults, which are ON only for Assetto Corsa (off everywhere
-        // else) and the shared strength/cutoff above. The top-level fields above
+        // uses the defaults: OFF everywhere (it is an option, offered in Assetto
+        // Corsa and RaceRoom and locked elsewhere) and the shared strength/cutoff
+        // above. The top-level fields above
         // stay as those shared defaults and for the preset snapshot; this map is
         // what the spring actually reads.
         public System.Collections.Generic.Dictionary<string, StationarySpringGameConfig> StationarySpringByGame { get; set; }
             = new System.Collections.Generic.Dictionary<string, StationarySpringGameConfig>();
 
-        // The spring OUTSIDE Assetto Corsa, behind the SPRING access code while it
-        // is tested game by game (owner, 2026-09-08). It has caused trouble before
-        // and the per-game rework has not been driven anywhere else yet, so the
-        // shipped answer is "Assetto Corsa only" and this is the tester's way to
-        // turn it on elsewhere. In AC it is unconditional and this is not
-        // consulted. Locked, a saved per-game entry is ignored rather than
+        // The spring OUTSIDE Assetto Corsa and RaceRoom, behind the SPRING access
+        // code while it is tested game by game (owner, 2026-09-08; RaceRoom
+        // joined on 2026-09-12 once both its routes were driven). It has caused
+        // trouble before, so the shipped answer is those two games and this is
+        // the tester's way to turn it on elsewhere. In those two it is
+        // unconditional and this is not consulted. Locked, a saved per-game entry is ignored rather than
         // deleted, so unlocking gives the tester their tuning back.
         //
         // EXCLUDED from backup, like every other access-code unlock: it is a fact
@@ -2116,7 +2117,7 @@ namespace TrueforceForAll.Plugin
 
     /// <summary>One game's stationary-spring settings, held in
     /// <see cref="TrueforceSettings.StationarySpringByGame"/>. A game with no
-    /// entry uses the defaults (on for Assetto Corsa only; shared strength/cutoff).</summary>
+    /// entry uses the defaults (off; shared strength/cutoff).</summary>
     public sealed class StationarySpringGameConfig
     {
         public bool   Enabled   { get; set; }

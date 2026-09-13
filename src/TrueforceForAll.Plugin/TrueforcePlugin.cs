@@ -3413,23 +3413,31 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>The spring's on/off for a game: its entry if one exists, else
-        /// the default (ON for Assetto Corsa only).
+        /// OFF. It is an option, not a default (owner, 2026-09-13): offered in
+        /// Assetto Corsa and RaceRoom, both rig-validated on every route, and
+        /// the user ticks it where they want it.
         ///
-        /// Outside Assetto Corsa the whole thing is behind the SPRING access code
-        /// while it is tested game by game. Locked, a saved per-game entry is
-        /// IGNORED rather than honoured: a tester who unlocks, tunes a game, then
-        /// locks again must get the shipped behaviour back, or the gate proves
-        /// nothing. The entry survives, so unlocking returns their tuning.</summary>
+        /// Elsewhere the whole thing is behind the SPRING access code while it is
+        /// tested game by game. Locked, a saved per-game entry is IGNORED rather
+        /// than honoured: a tester who unlocks, tunes a game, then locks again
+        /// must get the shipped behaviour back, or the gate proves nothing. The
+        /// entry survives, so unlocking returns their tuning.</summary>
         public bool EffectiveStationarySpringEnabled(string game)
         {
             var s = Settings;
-            bool isAc = string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase);
-            if (!isAc && !(s?.StationarySpringUnlocked ?? false)) return false;
+            if (!StationarySpringShipsIn(game) && !(s?.StationarySpringUnlocked ?? false)) return false;
             if (s?.StationarySpringByGame != null && !string.IsNullOrEmpty(game)
                 && s.StationarySpringByGame.TryGetValue(game, out var e) && e != null)
                 return e.Enabled;
-            return isAc;
+            return false;
         }
+
+        /// <summary>The games the spring is offered in (off until ticked), and
+        /// where the SPRING lock does not apply. One list, read by the force
+        /// path, the checkbox gate and the badge.</summary>
+        private static bool StationarySpringShipsIn(string game)
+            => string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
+               || IsR3EGame(game);
 
         /// <summary>The spring's strength for a game: its entry, else that game's
         /// default, else the shared default (the top-level StationarySpringStrength).</summary>
@@ -9187,13 +9195,13 @@ namespace TrueforceForAll.Plugin
                && !ActiveGameIsArcade;
 
         /// <summary>True where the spring is switched off for this version:
-        /// outside Assetto Corsa with the SPRING code not entered. Kept apart
+        /// outside Assetto Corsa and RaceRoom with the SPRING code not entered. Kept apart
         /// from "allows" because the tab must DISABLE the checkbox here rather
         /// than dim it. A tick wrote the game's entry and then read back the
         /// gated value, so the box unticked itself and the sliders vanished: a
         /// control that silently refuses (rig, 2026-09-12).</summary>
         public bool StationarySpringLockedHere
-            => !string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
+            => !StationarySpringShipsIn(_activeGame)
                && !(Settings?.StationarySpringUnlocked ?? false);
 
         /// <summary>Why the spring section is inert for the active game, in the
@@ -9207,7 +9215,7 @@ namespace TrueforceForAll.Plugin
                 if (!ActiveSourceSupportsStationarySpring) return "not used in Forza";
                 if (ActiveGameIsArcade) return "not used on an arcade cabinet";
                 if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return "not used in iRacing";
-                if (StationarySpringLockedHere) return "off outside Assetto Corsa in this version";
+                if (StationarySpringLockedHere) return "off outside Assetto Corsa and RaceRoom in this version";
                 if (_forceMode == ForceModeIRacing && IsR3EGame(_activeGame)
                     && !((Settings?.R3EStationaryDamper ?? false) && (Settings?.R3EStationaryDamperStrength ?? 0.0) > 0.0001))
                     return "needs the stationary friction on";
