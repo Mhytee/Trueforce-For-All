@@ -60,6 +60,9 @@ namespace TrueforceForAll.Plugin
             // sim's own max force, so it carries no wheel-specific meaning.
             "IRacingForceGain", "IRacingUse360Hz",
             "IRacingForceMode", "IRacingPredictGain",
+            // iRacing soft lock. Travels: normalised to the car's own lock,
+            // nothing wheel-specific in it.
+            "IRacingSoftLockEnabled", "IRacingSoftLockStrength",
             // RaceRoom shared-memory FFB route (dev). Travels: it is a
             // preference about which force source to trust, not a machine fact.
             "R3ESharedMemoryFfb", "R3EAutoStrength", "R3EStrengthByCar",

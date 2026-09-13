@@ -652,6 +652,14 @@ namespace TrueforceForAll.Plugin
                     if (IRacingGainText != null)
                         IRacingGainText.Text = IRacingGainSlider.Value.ToString("F2");
                 }
+                if (IRacingSoftLockCheck != null)
+                    IRacingSoftLockCheck.IsChecked = _plugin.Settings?.IRacingSoftLockEnabled ?? true;
+                if (IRacingSoftLockSlider != null)
+                {
+                    IRacingSoftLockSlider.Value = _plugin.Settings?.IRacingSoftLockStrength ?? 1.0;
+                    if (IRacingSoftLockText != null)
+                        IRacingSoftLockText.Text = IRacingSoftLockSlider.Value.ToString("F2");
+                }
                 if (IRacingForceModeCombo != null)
                     IRacingForceModeCombo.SelectedIndex = IRacingFeelIndexFromSettings();
                 UpdateIRacingFeelHelp();
@@ -830,6 +838,9 @@ namespace TrueforceForAll.Plugin
                         ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     if (IRacingPeakForceRow  != null) IRacingPeakForceRow.Visibility  = iracingPeakVis;
                     if (IRacingPeakForceHelp != null) IRacingPeakForceHelp.Visibility = iracingPeakVis;
+                    // The soft lock needs the sim's steering angle, which the
+                    // RaceRoom route does not publish, so it follows the same flag.
+                    if (IRacingSoftLockPanel != null) IRacingSoftLockPanel.Visibility = iracingPeakVis;
                     if (R3EAutoStrengthRow   != null) R3EAutoStrengthRow.Visibility   = r3eAutoVis;
                     if (R3EAutoStrengthHelp  != null) R3EAutoStrengthHelp.Visibility  = r3eAutoVis;
                     // Advanced lives outside that panel now, so Damping and
@@ -6939,6 +6950,25 @@ namespace TrueforceForAll.Plugin
             if (IRacingGainText != null)
                 IRacingGainText.Text = IRacingGainSlider.Value.ToString("F2");
             UpdateIRacingClipWarning();
+            _plugin.PersistSettings();
+        }
+
+        // The soft lock: live, the force path reads both settings every pass.
+        private void IRacingSoftLock_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingSoftLockCheck == null) return;
+            _plugin.Settings.IRacingSoftLockEnabled = IRacingSoftLockCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void IRacingSoftLock_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingSoftLockSlider == null) return;
+            _plugin.Settings.IRacingSoftLockStrength = (float)IRacingSoftLockSlider.Value;
+            if (IRacingSoftLockText != null)
+                IRacingSoftLockText.Text = IRacingSoftLockSlider.Value.ToString("F2");
             _plugin.PersistSettings();
         }
 
@@ -13414,7 +13444,7 @@ namespace TrueforceForAll.Plugin
             "DICOND         A/B: the game's DirectInput condition effects (damper, spring, friction, inertia) and rumble, decoded from the USB wire and rendered into the Trueforce stream (the wheel firmware ignores them while any stream is live). ON by default; type to disable or re-enable. Session only.\n" +
             "FXTEST         Shows or hides the effect test bench at the bottom of the FFB tab (type it again to hide it). NO GAME NEEDED: the bench plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel), then the identical effect through the plugin's renderer, so you can alternate the two and tune until they match. It also carries the hands-free Auto-tune. The typed forms still work: 'FXTEST NATIVE <effect>' and 'FXTEST ENGINE <effect>'; effects DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP, with optional strength% (default 50) and period ms (default 250). FXTEST OFF ends a running test; auto-off after 30 s.\n" +
             "FXDUMP         Effect-download trace: one log line per effect the wheel is asked to download, decoded straight off the USB wire, with its type byte and its raw parameters (coefficients, saturations, deadband, centre, or magnitude and period). Answers whether the wheel was asked for what you think you asked for: on the bench a native effect passes through DirectInput, Windows and Logitech's driver first, and a substituted type or reshaped parameter cannot be told apart by feel. Session only. Toggle.\n" +
-            "SOFTLOCK       Soft-lock diagnostic (Assetto Corsa): a '[TF4ALL] SOFTLOCK' line twice a second with the steering position, how far CSP's custom soft lock has engaged, the force it is aiming for, and what the stationary spring is contributing. Fires from 0.9 of the car's steering limit whether or not a lock results, so a lock that never engages shows up as clearly as one that does. Needs CUSTOM_SOFT_LOCK enabled in CSP's FFB Tweaks and the TF4ALL CSP Bridge installed. Session only. Toggle.\n" +
+            "SOFTLOCK       Soft-lock diagnostic (Assetto Corsa and iRacing): a '[TF4ALL] SOFTLOCK' line twice a second with the steering position, how far the soft lock has engaged, the force it is aiming for, and what the stationary spring is contributing. Fires from 0.9 of the car's steering limit whether or not a lock results, so a lock that never engages shows up as clearly as one that does. In Assetto Corsa it needs CUSTOM_SOFT_LOCK enabled in CSP's FFB Tweaks and the TF4ALL CSP Bridge installed; in iRacing it needs the Soft lock option on. Session only. Toggle.\n" +
             "ACLEDS         Rev-light contention diagnostic: every 2 s, a '[REVLIGHT]' line with the level writes the GAME landed on the wheel's rev-light feature (measured off the USB wire), the longest gap between two of them, the level they left, and what our own LEDs and base screen were allowed to do at the time. In Assetto Corsa it also reports whether CSP's own rev-light module is driving the bar. For lights that stick, go dark, then catch up seconds later. Session only. Toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
@@ -14382,7 +14412,7 @@ namespace TrueforceForAll.Plugin
                 bool slOn = _plugin.ToggleSoftLockDiagnostic();
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = slOn
-                        ? "Soft-lock diagnostic ON: turn past the steering limit in Assetto Corsa and "
+                        ? "Soft-lock diagnostic ON: turn past the steering limit in Assetto Corsa or iRacing and "
                           + "the log gets a [TF4ALL] SOFTLOCK line twice a second with the steering "
                           + "position, how far the lock has engaged, its target and the stationary "
                           + "spring's contribution. Fires from 0.9 whether or not a lock results, so a "

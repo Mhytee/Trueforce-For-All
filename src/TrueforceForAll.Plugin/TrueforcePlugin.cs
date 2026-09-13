@@ -5413,7 +5413,9 @@ namespace TrueforceForAll.Plugin
                     // reduction or the smoothing above and it arrives as a
                     // suggestion. Owner's call (2026-09-09) that it applies at
                     // the very end of our chain rather than riding ffbValue.
-                    finalOut = ApplyAcSoftLock(finalOut);
+                    // Both games' locks land here: the AC bridge's, and the one
+                    // built for iRacing from the sim's angle and range.
+                    finalOut = ApplySoftLock(finalOut);
                     TraceFfb(tapQuiet ? (short?)null : chosen, afterSpring, finalOut);
                     NoteFfbSource(finalOut.HasValue
                         ? (chosen.HasValue ? ffbSrc : "authored")
@@ -11291,9 +11293,23 @@ namespace TrueforceForAll.Plugin
             public bool    FixedScale; // frame already carries its final scale (the R3E route
                                        // publishes a normalized value): the iRacing max-force
                                        // override and per-car map must not rescale it
+            // Steering, for the soft lock. Normalised to the CAR's lock: +/-1 at
+            // the car's limit, beyond it past. Half of SteeringWheelAngleMax is
+            // the per-side limit (the channel is lock-to-lock; MAIRA halves it
+            // the same way). HasSteer is false when either channel is missing.
+            public bool    HasSteer;
+            public float   SteerNorm;
+            public float   SteerSpeed; // d(SteerNorm)/dt per second, from consecutive frames
+            public float   LockDeg;    // the car's per-side lock, degrees
             public long    Ticks;      // Stopwatch timestamp at arrival
         }
         private volatile IRacingTorqueFrame _irFrame;
+        // Previous frame's steer for the lock's speed term. One pair for both
+        // routes: they never run together, and a route swap costs one bogus
+        // sample that the clamp on the target absorbs.
+        private float  _irSteerPrevNorm;
+        private long   _irSteerPrevTicks;
+        private double _irLastLoggedLockRad;
         private float _irRamp;
         private long  _irPrevTicks;
         // Lead-mode frame-join continuity (see ComputeIRacingForce). PrevOut is
@@ -11657,6 +11673,48 @@ namespace TrueforceForAll.Plugin
                 + maxNm.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
                 + (prev > 0.0 ? " (was " + prev.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + ")" : " (first)")
                 + " peakForceNm=" + peakNm.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                + " car=" + (_activeCarId ?? "?"));
+        }
+
+        /// <summary>Steering fields for the torque frame: the wheel angle over
+        /// the car's per-side lock, its rate of change, and that lock in
+        /// degrees. The speed comes from consecutive frames; the first frame
+        /// after a gap gets 0 rather than a spike.</summary>
+        private void IRacingSteerFields(double angleRad, double angleMaxRad, long ticks,
+                                        IRacingTorqueFrame f)
+        {
+            if (double.IsNaN(angleRad) || double.IsInfinity(angleRad) || !(angleMaxRad > 0.01)) return;
+            double lockRad = angleMaxRad * 0.5;
+            float norm = (float)(angleRad / lockRad);
+            float speed = 0f;
+            long prevT = _irSteerPrevTicks;
+            if (prevT != 0)
+            {
+                double dt = (ticks - prevT) / (double)Stopwatch.Frequency;
+                if (dt > 0.001 && dt < 0.25) speed = (float)((norm - _irSteerPrevNorm) / dt);
+            }
+            _irSteerPrevNorm = norm;
+            _irSteerPrevTicks = ticks;
+            f.HasSteer = true;
+            f.SteerNorm = norm;
+            f.SteerSpeed = speed;
+            f.LockDeg = (float)(lockRad * 180.0 / Math.PI);
+            MaybeLogIRacingSteerRange(angleMaxRad);
+        }
+
+        /// <summary>One line per change of the car's steering range, so the rig
+        /// can confirm the channel is lock-to-lock (a 540 degree car should
+        /// print 540, not 270) before anyone trusts where the wall sits.</summary>
+        private void MaybeLogIRacingSteerRange(double angleMaxRad)
+        {
+            if (Math.Abs(angleMaxRad - _irLastLoggedLockRad) < 0.01) return;
+            _irLastLoggedLockRad = angleMaxRad;
+            double deg = angleMaxRad * 180.0 / Math.PI;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] iRacing steering range: SteeringWheelAngleMax="
+                + angleMaxRad.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + " rad = "
+                + deg.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " deg lock-to-lock ("
+                + (deg * 0.5).ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " per side)"
                 + " car=" + (_activeCarId ?? "?"));
         }
 
@@ -12376,7 +12434,7 @@ namespace TrueforceForAll.Plugin
                 float[] sub = SdkArray(frame, vars, "SteeringWheelTorque_ST");
                 if (sub != null && sub.Length < IRacingSubSamples) sub = null;
 
-                _irFrame = new IRacingTorqueFrame
+                var fr = new IRacingTorqueFrame
                 {
                     Sub = sub,
                     Latest = (float)torque,
@@ -12384,6 +12442,13 @@ namespace TrueforceForAll.Plugin
                     GameFfbOn = ffbOn,
                     Ticks = Stopwatch.GetTimestamp(),
                 };
+                // Steering for the soft lock, filled in BEFORE the frame is
+                // published so the force thread never sees a half-built one.
+                double slAngle, slMax;
+                if (SdkScalar(frame, vars, "SteeringWheelAngle", out slAngle)
+                    && SdkScalar(frame, vars, "SteeringWheelAngleMax", out slMax))
+                    IRacingSteerFields(slAngle, slMax, fr.Ticks, fr);
+                _irFrame = fr;
 
                 BuildIRacingOverlayFromSdk(frame, vars, maxNm);
             }
@@ -12493,7 +12558,11 @@ namespace TrueforceForAll.Plugin
             if (SdkScalar(frame, vars, "SteeringWheelAngle", out sr)
                 && SdkScalar(frame, vars, "SteeringWheelAngleMax", out smax) && smax > 0.01)
             {
-                double n = sr / smax;
+                // SteeringWheelAngleMax is lock-to-lock, so half of it is the
+                // per-side limit this normalises to. Dividing by the whole
+                // range (as this did until 2026-09-13) topped out at half
+                // scale at the car's full lock.
+                double n = sr / (smax * 0.5);
                 if (n > 1.5) n = 1.5; else if (n < -1.5) n = -1.5;
                 steerNorm = n;
             }
@@ -12596,7 +12665,18 @@ namespace TrueforceForAll.Plugin
             _irIncidentLimit = ParseIncidentLimit(yaml);
             var parsed = ParseIRacingSessionInfo(yaml);
             if (parsed == null) return;
+            var prevInfo = _irCarInfo;
             _irCarInfo = parsed;
+            // The YAML string is replaced on every session-info update (drivers
+            // joining, timing), so the reference check above only dedupes
+            // ticks. Log the car when the CAR changes, not once a second for
+            // the whole session (log, 2026-09-13).
+            if (prevInfo != null
+                && string.Equals(prevInfo.CarPath, parsed.CarPath, StringComparison.Ordinal)
+                && prevInfo.Cylinders == parsed.Cylinders
+                && prevInfo.RedlineRpm == parsed.RedlineRpm
+                && prevInfo.ForwardGears == parsed.ForwardGears)
+                return;
             SimHub.Logging.Current.Info(
                 "[TF4ALL] iRacing car: " + (parsed.ScreenName ?? "?")
                 + " path=" + (parsed.CarPath ?? "?")
@@ -13112,6 +13192,7 @@ namespace TrueforceForAll.Plugin
                 // the stationary spring +/-7.85 on a 900 degree wheel.
                 object oSteer, oSteerMax;
                 double? steerNorm = null;
+                double slAngleRaw = 0.0, slMaxRaw = 0.0;   // radians, for the soft lock below
                 if (IRacingChannel(tel, dict, null, "SteeringWheelAngle", out oSteer)
                     && IRacingChannel(tel, dict, null, "SteeringWheelAngleMax", out oSteerMax))
                 {
@@ -13121,9 +13202,13 @@ namespace TrueforceForAll.Plugin
                         double max = Convert.ToDouble(oSteerMax, System.Globalization.CultureInfo.InvariantCulture);
                         if (!double.IsNaN(sr) && !double.IsInfinity(sr) && max > 0.01)
                         {
-                            double n = sr / max;
+                            // SteeringWheelAngleMax is lock-to-lock, so half of
+                            // it is the per-side limit this normalises to.
+                            double n = sr / (max * 0.5);
                             if (n > 1.5) n = 1.5; else if (n < -1.5) n = -1.5;
                             steerNorm = n;
+                            slAngleRaw = sr;
+                            slMaxRaw = max;
                         }
                     }
                     catch { }
@@ -13234,7 +13319,7 @@ namespace TrueforceForAll.Plugin
                 }
 
                 var prev = _irFrame;
-                _irFrame = new IRacingTorqueFrame
+                var fr = new IRacingTorqueFrame
                 {
                     Sub = sub,
                     Latest = latest,
@@ -13242,6 +13327,10 @@ namespace TrueforceForAll.Plugin
                     GameFfbOn = ffbOn,
                     Ticks = Stopwatch.GetTimestamp(),
                 };
+                // Steering for the soft lock, read with the overlay above and
+                // stamped before the frame is published.
+                if (slMaxRaw > 0.01) IRacingSteerFields(slAngleRaw, slMaxRaw, fr.Ticks, fr);
+                _irFrame = fr;
 
                 // One line on the first good frame, then only when the sim's own
                 // FFB flips. Enough to tell "never latched" from "latched but
@@ -35706,21 +35795,24 @@ namespace TrueforceForAll.Plugin
             return (short)v;
         }
 
-        /// <summary>CSP's custom soft lock, applied at the very end of the force
-        /// chain (issue #43).
+        /// <summary>The soft lock, applied at the very end of the force chain.
         ///
-        /// CSP runs its own lock AFTER our post-processing script returns, so on
-        /// the takeover path it computes the lock from the zero we hand back and
-        /// sends the result down the game's FFB path, which the wheel ignores
-        /// while we stream Trueforce. The lock was being produced every frame and
-        /// discarded. The bridge now computes it and stands CSP's own down, and
-        /// this is where it lands.
+        /// Two sources feed it. Assetto Corsa (issue #43): CSP runs its own lock
+        /// AFTER our post-processing script returns, so on the takeover path it
+        /// computes the lock from the zero we hand back and sends the result
+        /// down the game's FFB path, which the wheel ignores while we stream
+        /// Trueforce. The lock was being produced every frame and discarded. The
+        /// bridge now computes it and stands CSP's own down, and this is where
+        /// it lands. iRacing: the sim renders its stop inside the force feedback
+        /// the reshape turns off, and the torque it publishes has no stop in it,
+        /// so the lock is built from the sim's own steering angle and range in
+        /// the same shape (IRacingSoftLock, via TryComputeIRacingSoftLock).
         ///
         /// The shape is CSP's, not an addition: cancel force opposing the
         /// steering direction, then lerp toward the lock target by the amount.
-        /// Only the bridge route reaches this; on the capture route the tap
-        /// already reads a force with the lock in it.</summary>
-        private short? ApplyAcSoftLock(short? force)
+        /// In AC only the bridge route reaches this; on the capture route the
+        /// tap already reads a force with the lock in it.</summary>
+        private short? ApplySoftLock(short? force)
         {
             // Cleared every tick and set only on the packet that actually carries
             // a lock, so taming resumes the instant the wheel leaves the limit.
@@ -35728,22 +35820,19 @@ namespace TrueforceForAll.Plugin
             if (dev != null) dev.FfbBypassSpikeTaming = false;
             MaybeLogRingHealth(dev);
             if (!force.HasValue) return force;   // keepalive: the firmware has it
-            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
-            if (src == null) return force;
-            var s = src.CspLastSample;
-            float amt = s.SoftLockAmount;
+            float amt, target, steer, slDamper;
+            if (!TryGetSoftLockInputs(out amt, out target, out steer, out slDamper)) return force;
             // Diagnostic BEFORE the early return: the failure we are hunting is
             // an amount that never rises, so a log that only fires when it does
             // cannot see it. Fires near the limit whether or not a lock resulted,
             // which is what shows a steer input clamped at 1.
-            float steerNow = (float)s.SteerInput;
             long slNow = Environment.TickCount;
-            if (_softLockDiag && Math.Abs(steerNow) > 0.9f && slNow - _lastSoftLockLogMs >= 500)
+            if (_softLockDiag && Math.Abs(steer) > 0.9f && slNow - _lastSoftLockLogMs >= 500)
             {
                 _lastSoftLockLogMs = slNow;
                 SimHub.Logging.Current.Info(
-                    $"[TF4ALL] SOFTLOCK steer={steerNow:F4} amount={amt:F3} "
-                    + $"target={s.SoftLockTarget:F3} damper={s.SoftLockDamper:F2} in={force.Value} "
+                    $"[TF4ALL] SOFTLOCK steer={steer:F4} amount={amt:F3} "
+                    + $"target={target:F3} damper={slDamper:F2} in={force.Value} "
                     + $"spring={_lastSpringAddLsb}");
             }
             if (amt <= 0f) return force;         // the usual case, nowhere near lock
@@ -35751,13 +35840,14 @@ namespace TrueforceForAll.Plugin
 
             const float FullScale = 32767f;
             float cur = force.Value;
-            // Opposing force first, the same pre-step the reference does: at the
-            // stop, self-aligning torque pulling you back out of the corner
-            // fights the wall instead of adding to it.
-            float steer = (float)s.SteerInput;
+            // Opposing force first, the same pre-step the reference does. The
+            // wall's own direction carries the steer's sign, so a force with
+            // the opposite sign is pushing the wheel on past the stop, and it
+            // fades as the band opens rather than fighting the wall. Force in
+            // the wall's direction (the self-aligning torque at the stop) is
+            // kept and folded into the blend.
             if (steer != 0f && Math.Sign(cur) != Math.Sign(steer))
                 cur = Lerp(cur, 0f, Math.Min(amt * 2f, 1f));
-            float target = s.SoftLockTarget;
             if (target < -1f) target = -1f; else if (target > 1f) target = 1f;
             float outF = Lerp(cur, target * FullScale, amt);
             if (outF > FullScale) outF = FullScale;
@@ -35769,6 +35859,58 @@ namespace TrueforceForAll.Plugin
         }
 
         private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+        /// <summary>The lock's blend inputs from whichever source is live: the
+        /// AC bridge sample, or the iRacing computation. False when neither
+        /// applies, which leaves the force untouched.</summary>
+        private bool TryGetSoftLockInputs(out float amount, out float target, out float steer, out float damper)
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src != null)
+            {
+                var s = src.CspLastSample;
+                amount = s.SoftLockAmount;
+                target = s.SoftLockTarget;
+                steer  = (float)s.SteerInput;
+                damper = s.SoftLockDamper;
+                return true;
+            }
+            damper = 0f;
+            if (_forceMode == ForceModeIRacing
+                && string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
+                return TryComputeIRacingSoftLock(out amount, out target, out steer);
+            amount = target = steer = 0f;
+            return false;
+        }
+
+        /// <summary>The iRacing lock from the latest torque frame.
+        ///
+        /// SIGN. The target carries the sign of the steer, and that is the way
+        /// back toward centre in this path's sign space, by two routes that
+        /// agree. MAIRA's lock adds -sign(angle) in the sim's torque space, and
+        /// the reshape maps that space to the wheel with a negation
+        /// (ComputeIRacingForce authors -f01), so the wheel-side lock is
+        /// +sign(angle). Independently, the reshape's friction opposes motion
+        /// as -velocity with velocity positive to the right, so a positive
+        /// value here pulls right, which is toward centre from iRacing's
+        /// positive (left) angle. The pre-step in ApplySoftLock then reads the
+        /// same way: force with the steer's sign is toward centre and stays,
+        /// force against it is pushing on past the stop and fades.</summary>
+        private bool TryComputeIRacingSoftLock(out float amount, out float target, out float steer)
+        {
+            amount = target = steer = 0f;
+            var cfg = Settings;
+            if (cfg == null || !cfg.IRacingSoftLockEnabled) return false;
+            var f = _irFrame;
+            if (f == null || !f.HasSteer || f.FixedScale) return false;
+            // A held frame is a held wall: ComputeIRacingForce already went
+            // silent past this age, and the lock must not outlive it.
+            if ((Stopwatch.GetTimestamp() - f.Ticks) * 1000.0 / Stopwatch.Frequency > 250.0) return false;
+            steer = f.SteerNorm;
+            IRacingSoftLock.Compute(steer, f.SteerSpeed, f.LockDeg, cfg.IRacingSoftLockStrength,
+                                    out amount, out target);
+            return true;
+        }
 
         private long _lastRingLogMs;
         private long _lastRingUnderruns = -1;

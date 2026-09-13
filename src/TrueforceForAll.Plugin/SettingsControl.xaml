@@ -2998,6 +2998,30 @@
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
                            Text="The only force control you should need day to day. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
 
+                <!-- Soft lock: the wall at the car's steering limit. iRacing
+                     renders its own inside the force feedback this path turns
+                     off, so the plugin builds one from the sim's angle and
+                     range. Hidden on the RaceRoom route with the peak-force
+                     row: that route publishes no steering angle to build from. -->
+                <StackPanel x:Name="IRacingSoftLockPanel">
+                    <CheckBox x:Name="IRacingSoftLockCheck" Content="Soft lock"
+                              Margin="0,6,0,2" Checked="IRacingSoftLock_Changed" Unchecked="IRacingSoftLock_Changed"
+                              ToolTip="Stops the wheel where the car's steering stops. iRacing normally does this through its own force feedback, which is off on this path, so the plugin renders the stop itself from the sim's steering angle and range."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6"
+                               Text="Stops the wheel where the car's steering stops."/>
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Stop strength:" Style="{StaticResource LabelText}"
+                                   ToolTip="How hard the stop pushes back, as a share of the wheel's full force. 1.00 is a wall; lower lets a determined push through."/>
+                        <Slider     Grid.Column="1" x:Name="IRacingSoftLockSlider" Minimum="0.1" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                    ToolTip="How hard the stop pushes back, as a share of the wheel's full force. 1.00 is a wall; lower lets a determined push through."
+                                    TickFrequency="0.1" ValueChanged="IRacingSoftLock_ValueChanged" VerticalAlignment="Center"/>
+                        <Border Visibility="{Binding Visibility, ElementName=IRacingSoftLockText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="IRacingSoftLockText" Text="1.00"/></Border>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                               Text="How hard the stop pushes back. 1.00 is the wheel's full force."/>
+                </StackPanel>
+
             </StackPanel> <!-- /IRacingTuningPanel: Damping and FFB smooth follow,
                  outside it, because they are live in every game. The Advanced
                  expander is re-opened below them so the two everyday feel
