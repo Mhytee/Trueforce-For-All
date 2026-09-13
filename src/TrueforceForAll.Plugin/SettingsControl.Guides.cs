@@ -654,7 +654,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             bool? go = TrueforceDialog.Show(Window.GetWindow(this),
                 "Remove the TF4ALL CSP Bridge?",
-                "This deletes the bridge script from Assetto Corsa and unselects it in CSP's FFB Tweaks.\n\n"
+                "This deletes the bridge script from Assetto Corsa and puts CSP's FFB Tweaks post-processing slot back the way it was before the install.\n\n"
                 + "Your force feedback keeps working through the USB capture. What you lose is the wheel's "
                 + "Dynamic OLED display and drop-free LIGHTSYNC pattern changes in Assetto Corsa.\n\n"
                 + "It stops loading the next time Assetto Corsa starts.\n\nIf Content Manager is open, close it first, then click Remove.",

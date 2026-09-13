@@ -193,7 +193,7 @@ namespace TrueforceForAll.Plugin
             "FsModInstallDeclined", "FsModInstalledVersions",
             // CSP bridge script install state: the script lives in THIS PC's
             // Assetto Corsa folder and consent was given here.
-            "CspBridgeInstallDeclined",
+            "CspBridgeInstallDeclined", "CspBridgeDisplacedRecorded", "CspBridgeDisplacedSection",
             // One-shot wheel-defaults latch for the per-wheel Mode B defaults;
             // per-PC hardware state like LastUsedWheel.
             "WheelDefaultsApplied",

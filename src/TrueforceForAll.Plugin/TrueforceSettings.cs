@@ -1290,6 +1290,19 @@ namespace TrueforceForAll.Plugin
         // FsModInstallDeclined.
         public bool   CspBridgeInstallDeclined   { get; set; } = false;
 
+        // What the bridge install displaced in the player's FFB Tweaks override
+        // (the [POSTPROCESSING_SCRIPT] section body, lines joined by '\n'), so
+        // the uninstall can put it back. The install may take a slot whose
+        // script is selected but disabled (owner decision, 2026-08-30), and the
+        // uninstall used to leave IMPLEMENTATION=tf4all behind, pointing at a
+        // deleted folder, with the player's own script name gone (owner,
+        // 2026-09-12). Recorded=false means nothing was recorded (an install
+        // from before this existed): the uninstall then only disables the slot,
+        // as before. An empty section string with Recorded=true means the
+        // section did not exist, so the restore removes it again. Per-PC.
+        public bool   CspBridgeDisplacedRecorded { get; set; } = false;
+        public string CspBridgeDisplacedSection  { get; set; } = "";
+
         // Which CSP bridge field the force comes from while CspBridgeFfbEnabled:
         // "pure" (default; the sim's pre-gain normalized force), "torque" (the
         // raw column torque in Nm, scaled by CspBridgeMaxNm), or "final"/"value"

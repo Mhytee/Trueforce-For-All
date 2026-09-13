@@ -35031,8 +35031,142 @@ namespace TrueforceForAll.Plugin
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
             }
             catch (Exception ex) { return "could not delete the script: " + ex.Message; }
-            try { DeselectAcPostProcessScript(); } catch { }
-            SimHub.Logging.Current.Info("[TF4ALL] Assetto Corsa CSP bridge script removed.");
+            string how;
+            try { how = RestoreAcPostProcessScript(); }
+            catch (Exception ex) { how = "could not edit FFB Tweaks: " + ex.Message; }
+            SimHub.Logging.Current.Info("[TF4ALL] Assetto Corsa CSP bridge script removed; " + how + ".");
+            return null;
+        }
+
+        /// <summary>Put CSP's post-processing slot back the way the install found
+        /// it, but only while the slot is still ours, so a script the player
+        /// selected later is never touched. With a record, the whole
+        /// [POSTPROCESSING_SCRIPT] section body is restored verbatim (or the
+        /// section removed, if the install created it). Without one, an install
+        /// from before the record existed, the slot is disabled as before.
+        /// Returns a short phrase for the log.</summary>
+        private string RestoreAcPostProcessScript()
+        {
+            var st = Settings;
+            bool recorded = st?.CspBridgeDisplacedRecorded ?? false;
+            string cfg = AcFfbTweaksIniPath();
+            if (!File.Exists(cfg))
+            {
+                ClearDisplacedRecord();
+                return "FFB Tweaks override not present, nothing to restore";
+            }
+            var lines = new List<string>(File.ReadAllLines(cfg));
+            int sec, secEnd;
+            FindAcPostProcessSection(lines, out sec, out secEnd);
+            if (sec < 0)
+            {
+                ClearDisplacedRecord();
+                return "no post-processing section, nothing to restore";
+            }
+            if (!string.Equals(AcPostProcessImplementationIn(lines, sec, secEnd), AcCspScriptName,
+                               StringComparison.OrdinalIgnoreCase))
+            {
+                // The player has since selected something else. Leave it alone,
+                // and drop a record that no longer describes anything.
+                ClearDisplacedRecord();
+                return "another script is selected, left as is";
+            }
+            if (!recorded)
+            {
+                DeselectAcPostProcessScript();
+                return "slot disabled (no record of what the install displaced)";
+            }
+            string body = st.CspBridgeDisplacedSection ?? "";
+            if (body.Length == 0)
+            {
+                // The install created the section. Remove it, and the blank line
+                // the install put before it, if that is what precedes it.
+                int from = sec;
+                if (from > 0 && lines[from - 1].Trim().Length == 0) from--;
+                lines.RemoveRange(from, secEnd - from);
+                // (Cosmetic, known: a blank line that was already at the end of
+                // the file, or an empty section that existed with no body, is
+                // not told apart from what the install added, so those two
+                // shapes lose one blank line or an empty header. CSP reads the
+                // same keys either way.)
+            }
+            else
+            {
+                lines.RemoveRange(sec + 1, secEnd - sec - 1);
+                lines.InsertRange(sec + 1, body.Split('\n'));
+            }
+            if (lines.Count == 0)
+            {
+                // The install created the file for its section alone; an empty
+                // override left behind is not what the install found.
+                File.Delete(cfg);
+            }
+            else File.WriteAllLines(cfg, lines);
+            ClearDisplacedRecord();
+            return body.Length == 0
+                ? (lines.Count == 0 ? "FFB Tweaks override removed, as the install found it"
+                                    : "post-processing section removed, as the install found it")
+                : "previous post-processing selection put back";
+        }
+
+        private void ClearDisplacedRecord()
+        {
+            var st = Settings;
+            if (st == null || (!st.CspBridgeDisplacedRecorded && string.IsNullOrEmpty(st.CspBridgeDisplacedSection))) return;
+            st.CspBridgeDisplacedRecorded = false;
+            st.CspBridgeDisplacedSection = "";
+            try { PersistSettings(); } catch { }
+        }
+
+        /// <summary>Record the [POSTPROCESSING_SCRIPT] section body of the
+        /// player's FFB Tweaks override before the install rewrites it, unless
+        /// the slot is already ours (a reinstall or update), in which case the
+        /// existing record still describes what was there first.</summary>
+        private void RecordDisplacedAcPostProcessSection()
+        {
+            var st = Settings;
+            if (st == null) return;
+            string cfg = AcFfbTweaksIniPath();
+            var lines = File.Exists(cfg) ? new List<string>(File.ReadAllLines(cfg)) : new List<string>();
+            int sec, secEnd;
+            FindAcPostProcessSection(lines, out sec, out secEnd);
+            if (sec >= 0 && string.Equals(AcPostProcessImplementationIn(lines, sec, secEnd), AcCspScriptName,
+                                          StringComparison.OrdinalIgnoreCase))
+                return;
+            st.CspBridgeDisplacedRecorded = true;
+            st.CspBridgeDisplacedSection = sec < 0
+                ? ""
+                : string.Join("\n", lines.GetRange(sec + 1, secEnd - sec - 1));
+        }
+
+        // The [POSTPROCESSING_SCRIPT] header index (-1 when absent) and the
+        // index of the next section header or the end of the file.
+        private static void FindAcPostProcessSection(List<string> lines, out int sec, out int secEnd)
+        {
+            sec = -1; secEnd = lines.Count;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string t = lines[i].Trim();
+                if (t.Equals("[POSTPROCESSING_SCRIPT]", StringComparison.OrdinalIgnoreCase)) { sec = i; continue; }
+                if (sec >= 0 && t.StartsWith("[") && t.EndsWith("]")) { secEnd = i; break; }
+            }
+        }
+
+        // The IMPLEMENTATION value inside one section of the override, or null.
+        private static string AcPostProcessImplementationIn(List<string> lines, int sec, int secEnd)
+        {
+            for (int i = sec + 1; i < secEnd; i++)
+            {
+                string t = lines[i].TrimStart();
+                if (t.StartsWith(";")) continue;
+                if (t.StartsWith("IMPLEMENTATION", StringComparison.OrdinalIgnoreCase) && t.Contains("="))
+                {
+                    string val = t.Substring(t.IndexOf('=') + 1).Trim();
+                    int semi = val.IndexOf(';');
+                    if (semi >= 0) val = val.Substring(0, semi).Trim();
+                    return val;
+                }
+            }
             return null;
         }
 
@@ -35104,6 +35238,15 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex) { return "could not write the script into Assetto Corsa: " + ex.Message; }
 
+            // Remember what the selection is about to displace, so Remove can
+            // put it back. Recorded before the rewrite and persisted with the
+            // install so it survives to whichever session does the removal.
+            try { RecordDisplacedAcPostProcessSection(); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Could not record the displaced FFB Tweaks section: " + ex.Message); }
+            // Persisted BEFORE the rewrite: a record with an untouched slot is
+            // harmless (the restore clears it when the slot is not ours), but a
+            // rewritten slot with no record is the bug this exists to fix.
+            try { PersistSettings(); } catch { }
             try { SelectAcPostProcessScript(AcCspScriptName); }
             catch (Exception ex)
             {
