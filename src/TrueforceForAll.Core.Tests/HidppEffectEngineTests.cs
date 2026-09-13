@@ -388,22 +388,33 @@ namespace TrueforceForAll.Core.Tests
             Assert.InRange(g2move - g1move, coulombDelta * 0.95f, coulombDelta * 1.05f);
         }
 
-        // The wheel's own firmware renders inertia as damping (owner, by
-        // feel, twice), so that is the default: matching the wheel is the
-        // point, and it also drops the grain that came of building an effect
-        // on a second derivative.
+        // Inertia is force per unit ACCELERATION and it coasts: a flywheel
+        // resists being sped up, then hands the energy back. That is what
+        // DirectInput means by the effect and what every open renderer we
+        // compared against does, mescon's Linux driver included. Owner call
+        // 2026-09-09, replacing a default that reproduced the G PRO
+        // firmware's damping-shaped version of it; the two switches survive
+        // for the bench A/B that first found the difference.
         [Fact]
-        public void InertiaRendersAsDampingByDefault()
+        public void InertiaRendersFromAccelerationAndCoastsByDefault()
         {
             var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
             var dl = Download(0, (byte)(HidppEffectEngine.TypeInertia | 0x80), 0, 0,
                 ConditionBlock(0x7fff, 0x4000, 0, 0, 0x4000, 0x7fff));   // coeff 0.5
             e.HandleDownload(dl, 0, dl.Length, 0);
 
-            // Opposes VELOCITY, and does not care about acceleration at all.
-            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out _, inertiaGain: 1f), 0.49f, 0.51f);
-            Assert.InRange(Eval(e, 0f, -1f, 0f, 11, out _, inertiaGain: 1f), -0.51f, -0.49f);
-            Assert.Equal(0f, Eval(e, 0f, 0f, 5f, 12, out _, inertiaGain: 1f), 3);
+            // Opposes ACCELERATION, either way.
+            Assert.InRange(Eval(e, 0f, 0f, 1f, 10, out _, inertiaGain: 1f), 0.49f, 0.51f);
+            Assert.InRange(Eval(e, 0f, 0f, -1f, 11, out _, inertiaGain: 1f), -0.51f, -0.49f);
+
+            // Steady speed is no acceleration, so a moving wheel meets
+            // nothing. A damper would resist here; this is the whole
+            // difference between the two effects.
+            Assert.Equal(0f, Eval(e, 0f, 5f, 0f, 12, out _, inertiaGain: 1f), 3);
+
+            // Slowing while still moving rightward: the stored energy comes
+            // back as a torque ALONG travel rather than being faded out.
+            Assert.InRange(Eval(e, 0f, 1f, -1f, 13, out _, inertiaGain: 1f), -0.51f, -0.49f);
         }
 
         // A sawtooth resets by a full-scale step in a single tick. Rendered

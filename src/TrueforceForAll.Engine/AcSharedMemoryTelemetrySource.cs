@@ -356,6 +356,8 @@ namespace TrueforceForAll.Core
             _cspControl.Close();
             _cspControlActive = false;
             _cspHaveSample = false;
+            _cspDamperNow = 0f;
+            _cspDamperSeen = float.NaN;
             _cspLoggedLive = false;
             _cspLoggedBadHeader = false;
             Interlocked.Exchange(ref _running, 0);
@@ -409,6 +411,15 @@ namespace TrueforceForAll.Core
                     {
                         _cspBridge.Close();
                         _cspHaveSample = false;
+                        // The damper coefficient dies with the map. It used to
+                        // outlive it: CSPFFB forced the bridge off, the last
+                        // sample's 0.75 stayed in _cspDamperNow, and on the
+                        // tap route with DirectInput rendering switched off the
+                        // synthesized damper ran on that stale value, so the
+                        // "loose wheel" A/B came out damped and grainy instead
+                        // (rig, 2026-09-12).
+                        _cspDamperNow = 0f;
+                        _cspDamperSeen = float.NaN;
                     }
                     // Once armed this session, heartbeat the control channel
                     // every tick so the script's liveness check stays fresh; the
@@ -573,6 +584,8 @@ namespace TrueforceForAll.Core
                 _cspBridge.Close();
                 _cspLastNewTicks = ticks;
                 _cspLoggedLive = false;
+                _cspDamperNow = 0f;      // no sample, no coefficient (see the latch-off close)
+                _cspDamperSeen = float.NaN;
                 Log("CSP bridge silent for 10 s; closed it, will reopen when it writes again.");
             }
         }

@@ -791,7 +791,7 @@ direction normal. Owner: "that feels much better... graininess is basically
 gone", without touching the condition filter. Two changes did it, and both came
 from taking a feel report literally instead of explaining it away.
 
-**Inertia renders as damping.** The owner reported twice, months apart, that
+**Inertia renders as damping.** The owner reported twice that
 native inertia "feels like a whole different effect, like it's just damping, no
 inertia". The G PRO's firmware evidently renders the DirectInput inertia
 condition against velocity. Matching the wheel is the entire mandate, so a
@@ -943,3 +943,74 @@ as a concept), never code. mescon is GPL-2.0; the standing practice
 there stays facts-only with attribution. Simucube 2 / True Drive is
 closed (their releases repo says source "will be published soon", it has
 not been); nothing to read there today.
+
+## Inertia rendered accurately, 2026-09-09 (owner call)
+
+Owner: "I think we should make our inertia effect accurate. No more
+inertia as damping." Both switches now default to the DirectInput
+reading:
+
+| setting | was | now |
+| --- | --- | --- |
+| `FfbConditionInertiaAsDamping` | true (velocity) | **false** (acceleration) |
+| `FfbConditionInertiaCoasts` | false (resist only) | **true** (lossless flywheel) |
+
+Neither switch is deleted. The finding that produced the old defaults is
+real and still unexplained: the wheel's OWN native inertia reads as
+damping by feel, reported twice, and nothing has yet
+measured whether the firmware aliases the condition onto its damper or
+renders true inertia off a heavily lagged acceleration estimate. The
+bench keeps both as A/B controls, and "Inertia as damping" is now a
+checkbox beside "Inertia coasts" instead of a settings-file-only field.
+
+**The saved gain had to be discarded, not migrated.** The inertia gain
+means force per unit VELOCITY under the old default and force per unit
+ACCELERATION under the new one, and a hand-turned wheel reaches about an
+order of magnitude more range/s^2 than range/s. The owner's saved 0.84
+was tuned in the velocity domain; carried across it would saturate the
+term on every push, which is itself a grain source. `FfbConditionInertia
+SpecMigrated` flips both switches once and resets the gain to the
+acceleration default (0.05), but ONLY when the stored mode was the
+damping one: anyone already rendering acceleration has a gain that means
+what it says. Latch is in BackupProjection's Excluded set with the other
+migration markers, so it never travels to a second PC.
+
+**What to watch on the rig.** `InertiaAsDamping` was what removed the
+last of the graininess at feel parity, and acceleration is a second
+derivative of a quantized encoder, so some grain may return. The washout
+differentiator in `WheelMotionEstimator` (AccelTauSec 0.05) is the real
+defence; `FfbConditionInertiaLpfHz` is the second lever and currently
+follows the 200 Hz global. Coasting is also negative damping, so it
+spends loop stability margin: if the wheel starts to ring or self-excite
+with a game's inertia effect loaded, that is the first suspect and
+turning coasting off is the test.
+
+**Cross-check against mescon (read 2026-09-09,
+`mainline/hidpp_dd_effect_math.h` + `hid-logitech-hidpp.c`, GPL-2.0).**
+His `FF_INERTIA` feeds the shared condition formula a clamped
+`wheel_accel * 4096`, with no coast/resist split and no per-class user
+level, and his comment records the 4096 as a hand-picked default because
+"INERTIA is rare in games". So our new default is his implementation,
+and the condition formula itself now has a four-way independent
+convergence (ours, his, OpenFFBoard, Simucube). Two deltas worth
+recording:
+
+- His acceleration is `new_vel - wheel_vel`, a raw per-tick difference of
+  a velocity derived from a quantized encoder. That is exactly the
+  impulse train we measured as the grain source on 2026-09-01 and
+  replaced with the washout differentiator, so our inertia is the
+  cleaner of the two whichever metric turns out to be right.
+- His spring adds synthetic damping at 25% of the SPRING'S OWN
+  coefficient, clamped to the spring's saturation. Damping proportional
+  to stiffness holds the damping RATIO constant, which is the right
+  invariant for ring, and we have no equivalent. With our measured
+  spring gain at 4.00 this is worth taking.
+
+**Settled for free by reading his source:** his periodic phase is a u16
+where 0xFFFF is one full cycle, which is our wire assumption and not
+OpenFFBoard's 0..35999. The phase-units question in the roadmap is
+closed in our favour. Still open: our decode treats the wire deadband as
+already halved while he halves the evdev value himself, and he cannot
+settle it because on Linux he never downloads conditions to the wheel.
+FXDUMP can, but the bench hardcodes `DeadBand = 0`, so testing it needs
+a one-line change there first.

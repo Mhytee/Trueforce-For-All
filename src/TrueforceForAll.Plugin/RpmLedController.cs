@@ -584,7 +584,7 @@ namespace TrueforceForAll.Plugin
         /// finishes, or -1 to turn the strip off. Parked, a pick that ends dark
         /// shows the user nothing, which is the whole reason they pressed.</param>
         /// <param name="holdMs">How long to leave the strip lit after the sweep
-        /// before fading it out, or 0 to leave it lit indefinitely.</param>
+        /// before putting it out, or 0 to leave it lit indefinitely.</param>
         public int PreviewPattern(int endLevel = -1, int holdMs = 0)
         {
             const int stepMs = 180;   // just above the channel's 160 ms change floor
@@ -689,9 +689,16 @@ namespace TrueforceForAll.Plugin
             ArmAutoOff(holdMs);
         }
 
-        /// <summary>Fade the strip out after a quiet period. The fade is a level
-        /// ramp rather than a brightness ramp: brightness is the user's own
-        /// setting and dimming it here would leave their wheel changed.</summary>
+        /// <summary>Put the strip out after a quiet period, in one write.
+        ///
+        /// This used to walk the levels back down at 70 ms a step, which on a ten
+        /// step rim drained for the better part of a second. That is the same fall
+        /// animation the preview dropped on 2026-09-03, just moved to the end: it
+        /// says nothing the rise has not already said, and it reads as the wheel
+        /// hesitating rather than finishing. Off means off (owner, 2026-09-08).
+        ///
+        /// Brightness is still never touched. It is the user's own setting and
+        /// dimming it here would leave their wheel changed.</summary>
         private void ArmAutoOff(int holdMs)
         {
             if (holdMs <= 0) return;
@@ -702,21 +709,14 @@ namespace TrueforceForAll.Plugin
                 {
                     Thread.Sleep(holdMs);
                     // Anything at all happened since: another pick, an edit, the
-                    // Test button, or a game started driving the bar.
+                    // Test button, or a game started driving the bar. One check
+                    // is enough now that the turn-off is a single write; the
+                    // per-step re-checks existed only to abort mid-drain.
                     if (_holdGen != gen || _owner != OwnerNone) return;
                     if (LiveBarIsLit || !_channel.IsReady) return;
 
-                    for (int lvl = _channel.StripLength - 1; lvl >= 0; lvl--)
-                    {
-                        if (_holdGen != gen || _owner != OwnerNone || LiveBarIsLit) return;
-                        _channel.SetLevel(lvl);
-                        Thread.Sleep(70);
-                    }
-                    if (_holdGen == gen && _owner == OwnerNone && !LiveBarIsLit)
-                    {
-                        _channel.TurnOff();
-                        _lastBucket = -1;
-                    }
+                    _channel.TurnOff();
+                    _lastBucket = -1;
                 }
                 catch (Exception ex) { _log($"[RPM-LED] auto-off error: {ex.Message}"); }
             });
@@ -734,12 +734,12 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Give the strip up completely and stop everything already in
         /// flight: a running preview sweep, a test sweep, a lit hold, and a pending
-        /// auto-off ramp.
+        /// auto-off.
         ///
         /// ForceOff is not enough on its own. It stands down when _testing is set,
         /// which is exactly the case while a sweep owns the strip, so a mode switch
         /// made mid-preview left that sweep writing levels for seconds afterwards
-        /// and its auto-off ramp firing up to eight seconds later, into a mode that
+        /// and its auto-off firing up to eight seconds later, into a mode that
         /// had promised to stop touching the wheel. Bumping both generations is what
         /// makes the already-queued work notice.</summary>
         public void AbandonWheel()

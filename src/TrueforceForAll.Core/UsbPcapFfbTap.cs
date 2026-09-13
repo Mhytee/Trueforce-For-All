@@ -874,6 +874,10 @@ namespace TrueforceForAll.Core
             _livenessThread = null;
             try { _proc?.Dispose(); } catch { }   // Kill() doesn't release the managed handles
             _proc = null;
+            // Belt and braces with the reader's own finally: a tap stopped while
+            // its thread is wedged (the join above times out) would otherwise
+            // keep the trace file locked against whatever replaces it.
+            CloseRawLog();
             Status = "Stopped";
         }
 
@@ -1349,7 +1353,21 @@ namespace TrueforceForAll.Core
 
         // Split from ParseStream so a test can drive the parser with a
         // synthetic capture stream (no child process).
+        //
+        // The trace handle must not outlive the reader. A tap dying mid-stream
+        // is routine (an EndOfStreamException every time the device is cycled,
+        // including our own startup re-attach), and the close used to sit after
+        // the read loop where an exception skipped it. The file then stayed
+        // locked by a dead tap, the REPLACEMENT tap could not open it, and the
+        // trace silently stopped recording: worst for exactly the person who
+        // turned it on to diagnose something (owner, 2026-09-09).
         internal void ParseFrom(Stream s)
+        {
+            try { ParseFromCore(s); }
+            finally { CloseRawLog(); }
+        }
+
+        private void ParseFromCore(Stream s)
         {
             // ---- pcap global header (24 bytes, LE) ----
             byte[] gh = ReadExact(s, 24);
@@ -1537,7 +1555,6 @@ namespace TrueforceForAll.Core
                 if ((reportId == 0x11 || reportId == 0x12) && featIdx == _ffbFeatureIndex)
                     HandleHidppFfbFunction(reportId, funcByte, payload, dataOffset, dataLen, "ep0-ctrl");
             }
-            CloseRawLog();
         }
 
         // ---------- classic Logitech FFB protocol (slot state machine) -------
@@ -2329,13 +2346,32 @@ namespace TrueforceForAll.Core
             {
                 try
                 {
-                    // Create (truncate). Each enable starts a fresh trace,
-                    // and the global header below assumes byte 0 of the
-                    // file is the magic.
-                    _rawLogStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
-                    WritePcapGlobalHeader(_rawLogStream);
-                    _rawLogBytesWritten = 24;
-                    Log($"FFB tap: pcap trace opened at {path} (Wireshark + USBPcap dissector).");
+                    // APPEND, not truncate. A tap restart is routine (a device
+                    // cycle, the blind-capture self-heal, our own startup
+                    // re-attach) and the replacement tap arrives here with no
+                    // memory of the one before it. Truncating would wipe a
+                    // capture mid-session, which is precisely when the packets
+                    // worth having were recorded. The global header only belongs
+                    // at byte 0, so it is written only into an empty file.
+                    //
+                    // "Toggle off and on to reset" still holds: the Diagnostics
+                    // toggle deletes the file, which is where that intent lives.
+                    _rawLogStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
+                    _rawLogStream.Seek(0, SeekOrigin.End);
+                    if (_rawLogStream.Length == 0)
+                    {
+                        WritePcapGlobalHeader(_rawLogStream);
+                        _rawLogBytesWritten = 24;
+                        Log($"FFB tap: pcap trace opened at {path} (Wireshark + USBPcap dissector).");
+                    }
+                    else
+                    {
+                        // Counted from the file, so the 50 MB cap still measures
+                        // the whole capture rather than this instance's share.
+                        _rawLogBytesWritten = _rawLogStream.Length;
+                        Log($"FFB tap: pcap trace resumed at {path} "
+                            + $"({_rawLogBytesWritten / 1024} KB already captured).");
+                    }
                 }
                 catch (Exception ex)
                 {

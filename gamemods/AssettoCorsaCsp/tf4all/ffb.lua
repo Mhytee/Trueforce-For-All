@@ -56,11 +56,15 @@ local LAYOUT = [[
   float acLedBlinkRpm;
   float acLedBlinkHz;
   float acLedRgb[36];
+  float softLockAmount;
+  float softLockTarget;
+  float softLockDamper;
+  uint32_t softLockEnabled;
 ]]
 
 local mmf = ac.writeMemoryMappedFile('TF4All.ACBridge.v1', LAYOUT)
 mmf.magic   = 0x54463441   -- "TF4A" little-endian ("A4FT" as bytes)
-mmf.version = 5                  -- v5: the car's shift-light COLOURS after v4's thresholds
+mmf.version = 7                  -- v7: whether a soft lock is configured at all
 mmf.seq     = 0
 
 -- Physics-rate per-wheel data needs a CSP new enough to expose
@@ -233,6 +237,88 @@ local function readControl(dt)
   return ok, scale
 end
 
+-- ---- CSP's custom soft lock, rendered by us instead of by CSP -------------
+--
+-- CSP applies its own lock AFTER this script returns, so on the takeover path
+-- (where we return 0) it computes the lock against that zero and sends the
+-- result down the game's FFB path, which the wheel ignores while TF4ALL is
+-- streaming Trueforce. The lock is produced every frame and thrown away, which
+-- is issue #43. So we compute it here, export it, and let the plugin apply it
+-- at the very end of its own chain, past spike reduction and smoothing, where
+-- a lock's sharp onset survives intact.
+--
+-- The maths is CSP's, from extension/lua/ffb-postprocess/soft-lock-test, whose
+-- manifest says "Actual implementation matches the custom in CSP". Exported as
+-- BLEND INPUTS rather than a force, because the lock is a lerp toward a target
+-- and a cancel of opposing force, not something that can be added on.
+--
+-- SHIFT_PADDING is ours: the reference does not implement it, so this is a
+-- reconstruction of CSP's described behaviour (slide the lock band outward so
+-- the car's full lock is reachable before resistance starts) rather than a
+-- copy. Applied unconditionally as a band offset: on a wheel that cannot turn
+-- past the car's lock a shifted band simply never fully engages, which is what
+-- setting it that way asks for.
+local slEnabled, slPad, slShift, slForce, slSpeed, slDamper
+local slSteerLock = 0
+-- This frame's result, kept so the return path can blend the damper with the
+-- same numbers the seqlock published.
+local slAmount, slDamperOut = 0, 0
+
+local function readSoftLockSettings()
+  slEnabled, slPad, slShift, slForce, slSpeed, slDamper = false, 10, 0.8, 1, 1, 0
+  pcall(function()
+    local cfg = ac.INIConfig.cspModule(ac.CSPModuleID.FFBTweaks)
+    if cfg == nil then return end
+    slEnabled = cfg:get('CUSTOM_SOFT_LOCK', 'ENABLED', 0) == 1
+    slPad     = cfg:get('CUSTOM_SOFT_LOCK', 'PADDING', 10)
+    slShift   = cfg:get('CUSTOM_SOFT_LOCK', 'SHIFT_PADDING', 0.8)
+    slForce   = cfg:get('CUSTOM_SOFT_LOCK', 'FORCE_FACTOR', 1)
+    slSpeed   = cfg:get('CUSTOM_SOFT_LOCK', 'SPEED_FACTOR', 1)
+    slDamper  = cfg:get('CUSTOM_SOFT_LOCK', 'DAMPER', 0)
+  end)
+end
+readSoftLockSettings()
+-- Their settings, live: someone tuning the lock in CSP's UI mid-session sees it
+-- change on the wheel, the same as the rev-light config above.
+pcall(function() ac.onCSPConfigChanged(ac.CSPModuleID.FFBTweaks, readSoftLockSettings) end)
+
+-- Per CAR, not per session: steerLock is the car's steering range and the
+-- reference reads it once because it is a test script.
+local function currentSteerLock()
+  local ok, v = pcall(function() return car.steerLock end)
+  if ok and v ~= nil and v > 1 then return v end
+  return slSteerLock > 1 and slSteerLock or 900
+end
+
+-- Returns amount (0..1), target (-1..1) and damper. amount 0 means no lock.
+local function computeSoftLock(steerInput, steerInputSpeed)
+  if not slEnabled then return 0, 0, 0 end
+  slSteerLock = currentSteerLock()
+  local pad = slPad / slSteerLock
+  if pad <= 0 then return 0, 0, 0 end
+  -- Band centre slides outward with SHIFT_PADDING: 0 straddles the car's
+  -- limit, 1 puts the whole band past it.
+  local a = math.abs(steerInput) - 1 - slShift * pad
+  local amount = math.lerpInvSat(a, -pad, pad)
+  if amount <= 0 then return 0, 0, 0 end
+  local speedAware = math.lerpInvSat(math.abs(steerInput) - 1, pad * 2, 0)
+  local target = math.clampN(
+    math.sign(steerInput) * slForce + steerInputSpeed * speedAware * slSpeed, -1, 1)
+  return amount, target, slDamper
+end
+
+-- CSP's own lock must stand down while we render it, or at full lock it puts
+-- force back on the wheel's HID++ pipe from our zero, and force on that pipe is
+-- what makes our LED and screen writes cut the force feedback. Toggled on the
+-- takeover EDGE rather than per frame: on the pass-through path CSP keeps its
+-- own lock and behaves exactly as it did before.
+local slDisabled = nil
+local function setSoftLockDisabled(disable)
+  if slDisabled == disable then return end
+  slDisabled = disable
+  pcall(function() ac.disableSoftLock(disable) end)
+end
+
 function script.update(ffbValue, ffbDamper, steerInput, steerInputSpeed, dt)
   local s = mmf.seq + 1
   mmf.seq = s                      -- odd: writer busy
@@ -242,6 +328,17 @@ function script.update(ffbValue, ffbDamper, steerInput, steerInputSpeed, dt)
   mmf.steerInput      = steerInput
   mmf.steerInputSpeed = steerInputSpeed
   mmf.dt              = dt
+  -- The lock, as the blend inputs the plugin needs: it lerps toward target by
+  -- amount, having first cancelled force opposing the steering direction, which
+  -- is CSP's shape rather than an addition.
+  local slA, slT, slD = computeSoftLock(steerInput, steerInputSpeed)
+  slAmount, slDamperOut = slA, slD
+  mmf.softLockAmount  = slA
+  mmf.softLockTarget  = slT
+  mmf.softLockDamper  = slD
+  -- Availability, not engagement: the plugin fades its stationary spring on
+  -- approach to the limit, and must only do that where a lock will catch it.
+  mmf.softLockEnabled = slEnabled and 1 or 0
   mmf.acLeds          = acLedsWord
   -- Constant for the session, but written inside the seqlock with everything
   -- else so a reader that attaches late still gets them without a handshake.
@@ -296,11 +393,23 @@ function script.update(ffbValue, ffbDamper, steerInput, steerInputSpeed, dt)
   -- without it a released wheel oscillates and full lock arrives hard.
   -- Otherwise pass everything through untouched.
   local takeover, dampScale = readControl(dt)
+  -- Only stand CSP's lock down when we are actually rendering one in its place.
+  -- ac.disableSoftLock kills "either from AC or the one added by CSP", so with
+  -- CUSTOM_SOFT_LOCK off this would switch off the player's VANILLA AC soft lock
+  -- and put nothing back, losing a lock they had before installing us. Re-read
+  -- live, so toggling the setting in CSP hands the lock over either way without
+  -- a restart.
+  setSoftLockDisabled(takeover and slEnabled)
   if takeover then
     -- dampScale is the CSPFFB DAMP / DAMPTEST lever: 1 = pass the game's
     -- damper through (normal), 0 = the pre-fix feel, in between = the
     -- DAMPTEST ramps, proving on the wheel what the channel does.
-    return 0, ffbDamper * dampScale
+    --
+    -- The lock's damper rides the same channel as the game's, taking over from
+    -- it as the lock engages, which is what the reference does.
+    local d = ffbDamper * dampScale
+    if slAmount > 0 then d = math.lerp(d, slDamperOut, slAmount) end
+    return 0, d
   end
   return ffbValue, ffbDamper
 end

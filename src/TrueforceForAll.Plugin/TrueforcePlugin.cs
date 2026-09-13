@@ -1052,6 +1052,19 @@ namespace TrueforceForAll.Plugin
                     : "[TF4ALL] Auto force (bound): iRacing has not learned a peak yet; drive a lap first.");
                 return;
             }
+            // RaceRoom's press-to-apply is the same gesture as iRacing's Auto
+            // button, so it belongs on this binding rather than one of its own.
+            // Without this branch RaceRoom fell through to the grip-cal reset
+            // below, which has nothing to do with the R3E strength learner.
+            if (IsR3EGame(_activeGame) && (Settings?.R3ESharedMemoryFfb ?? false))
+            {
+                float peak = ApplyR3EAutoStrength();
+                if (peak > 0f) DashReadoutGain("AUTO FORCE", peak);
+                SimHub.Logging.Current.Info(peak > 0f
+                    ? $"[TF4ALL] Auto force (bound): RaceRoom max set to {peak:0.000} for this car."
+                    : "[TF4ALL] Auto force (bound): RaceRoom has not observed a peak yet; drive a lap first.");
+                return;
+            }
             string status = RequestGripCalReset();
             SimHub.Logging.Current.Info("[TF4ALL] Auto force (bound): " + status);
         }
@@ -1569,6 +1582,10 @@ namespace TrueforceForAll.Plugin
             _lastGameSeenForNotice = game;
             if (IsIRacingReshapeGame(game)) ShowIracingNotice(null);
             else _iracingNoticeShownThisSession = false;
+            // RaceRoom's own, on the same edge and with the same reset on the way
+            // out, so a later RaceRoom session shows it again until it is dismissed.
+            if (IsR3EGame(game)) ShowR3ENotice(null);
+            else _r3eNoticeShownThisSession = false;
         }
 
         /// <summary>Show it. Safe from any thread; a null owner centres on screen,
@@ -1613,6 +1630,80 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 { SimHub.Logging.Current.Info("[TF4ALL] iRacing notice failed: " + ex.Message); }
                 finally { _iracingNoticeShowing = false; }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        /// <summary>The RaceRoom equivalent of the iRacing notice. Two steps rather
+        /// than four: RaceRoom needs no config-file edit and no second switch, so
+        /// the whole of it is "turn the game's force feedback intensity down, tick
+        /// ours". Deliberately does NOT teach the strength learner or the invert;
+        /// those are in the guide, and a first-launch box that lists everything is
+        /// a box nobody reads.</summary>
+        private string R3ENoticeBody =>
+            "To let the plugin carry RaceRoom's force feedback, and free your rev lights and the wheel's screen, two steps, once:\n\n" +
+            "1. In RaceRoom, disable force feedback. The intensity slider does not matter.\n" +
+            "2. On the FFB tab, tick \"Take over force feedback for RaceRoom\".\n\n" +
+            "Start SimHub before RaceRoom, or the lights and screen may not come on.\n\n" +
+            "Until then, RaceRoom works as it did before, through the USB capture.";
+
+        private volatile bool _r3eNoticeShowing;
+        private volatile bool _r3eNoticeShownThisSession;
+
+        /// <summary>Show the RaceRoom setup notice. Same contract as the iRacing
+        /// one: once per RaceRoom session until dismissed for good, safe from any
+        /// thread, and <paramref name="force"/> for someone who asked for it.
+        ///
+        /// Skipped once the takeover is already on: they have done the setup, and
+        /// a first-launch box that keeps appearing after you have followed it is
+        /// just noise.</summary>
+        public void ShowR3ENotice(System.Windows.Window owner, bool force = false)
+        {
+            if (Settings == null) return;
+            if (!force && Settings.R3ETrueforceNoticeDismissed) return;
+            if (!force && Settings.R3ESharedMemoryFfb) return;
+            if (_r3eNoticeShowing) return;
+            if (!force && _r3eNoticeShownThisSession) return;
+
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            _r3eNoticeShownThisSession = true;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_r3eNoticeShowing) return;
+                if (Settings == null) return;
+                if (!force && Settings.R3ETrueforceNoticeDismissed) return;
+                _r3eNoticeShowing = true;
+                try
+                {
+                    // A text link to the RaceRoom guide, the same shape as the
+                    // bridge-install dialog's link, in place of a sentence
+                    // saying where the guide lives.
+                    var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
+                    var link = new System.Windows.Documents.Hyperlink(
+                        new System.Windows.Documents.Run("Open the RaceRoom guide"))
+                    {
+                        Foreground = new System.Windows.Media.SolidColorBrush(
+                            System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                    };
+                    link.Click += (s2, e2) => OpenGuideFromAnywhere("raceroom-setup");
+                    guideLink.Inlines.Add(link);
+                    bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
+                        "Using Trueforce For All in RaceRoom",
+                        R3ENoticeBody,
+                        DialogKind.Info,
+                        okLabel: "Got it, don't show again",
+                        cancelLabel: "Remind me later",
+                        goldOk: true,
+                        extraContent: guideLink);
+                    if (r == true)
+                    {
+                        Settings.R3ETrueforceNoticeDismissed = true;
+                        try { PersistSettings(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                { SimHub.Logging.Current.Info("[TF4ALL] RaceRoom notice failed: " + ex.Message); }
+                finally { _r3eNoticeShowing = false; }
             }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
@@ -3322,18 +3413,26 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>The spring's on/off for a game: its entry if one exists, else
-        /// the default (ON for Assetto Corsa only).</summary>
+        /// the default (ON for Assetto Corsa only).
+        ///
+        /// Outside Assetto Corsa the whole thing is behind the SPRING access code
+        /// while it is tested game by game. Locked, a saved per-game entry is
+        /// IGNORED rather than honoured: a tester who unlocks, tunes a game, then
+        /// locks again must get the shipped behaviour back, or the gate proves
+        /// nothing. The entry survives, so unlocking returns their tuning.</summary>
         public bool EffectiveStationarySpringEnabled(string game)
         {
             var s = Settings;
+            bool isAc = string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase);
+            if (!isAc && !(s?.StationarySpringUnlocked ?? false)) return false;
             if (s?.StationarySpringByGame != null && !string.IsNullOrEmpty(game)
                 && s.StationarySpringByGame.TryGetValue(game, out var e) && e != null)
                 return e.Enabled;
-            return string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase);
+            return isAc;
         }
 
-        /// <summary>The spring's strength for a game: its entry, else the shared
-        /// default (the top-level StationarySpringStrength).</summary>
+        /// <summary>The spring's strength for a game: its entry, else that game's
+        /// default, else the shared default (the top-level StationarySpringStrength).</summary>
         public double EffectiveStationarySpringStrength(string game)
         {
             var s = Settings;
@@ -3341,7 +3440,20 @@ namespace TrueforceForAll.Plugin
             if (s.StationarySpringByGame != null && !string.IsNullOrEmpty(game)
                 && s.StationarySpringByGame.TryGetValue(game, out var e) && e != null)
                 return e.Strength;
-            return s.StationarySpringStrength;
+            return DefaultStationarySpringStrength(game, s.StationarySpringStrength);
+        }
+
+        /// <summary>Per-game starting strength for a game with no saved entry.
+        /// RaceRoom needs about three times the shared default: on the USB tap
+        /// route the game's own parked-wheel damping comes through with its
+        /// force, and the spring has to move the wheel against that damping to
+        /// be felt at all. 0.5 was barely there; 1.5 felt right (owner, on the
+        /// rig, 2026-09-12). Only fresh entries see this; a game the user has
+        /// tuned keeps its entry.</summary>
+        private static double DefaultStationarySpringStrength(string game, double shared)
+        {
+            if (IsR3EGame(game)) return 1.5;
+            return shared;
         }
 
         /// <summary>The spring's fade-out speed for a game: its entry, else the
@@ -3406,8 +3518,16 @@ namespace TrueforceForAll.Plugin
             var s = Settings;
             if (!testArmed && (s == null || !EffectiveStationarySpringEnabled(_activeGame)))
                 return gameTarget;
-            return ApplyStationarySpring(gameTarget);
+            short? sprungOut = ApplyStationarySpring(gameTarget);
+            _lastSpringAddLsb = sprungOut.HasValue ? sprungOut.Value - (gameTarget ?? 0) : 0;
+            return sprungOut;
         }
+
+        /// <summary>What the stationary spring added to the last frame's force, in
+        /// LSB. Diagnostic only: the spring and the soft lock are deliberately
+        /// independent now, and three attempts at coupling them all failed.</summary>
+        private int _lastSpringAddLsb;
+
 
         // Stationary-spring FFB floor. The plugin streams the game's own FFB
         // to the motor; a parked car produces ~0 self-aligning torque, so the
@@ -3467,6 +3587,11 @@ namespace TrueforceForAll.Plugin
             // ActiveGameAllowsStationarySpring so the FFB tab hides the control
             // on exactly the same rule that skips it here.
             if (!ActiveGameAllowsStationarySpring) return gameTarget;
+            // Armed takeover: MaybeReshapeFfb assigns over whatever this
+            // returns, so the spring is rendered THERE, in the reshape's own
+            // sign and scale (see the wantReshapeSpring block). Anything added
+            // here would be computed and thrown away.
+            if (_forceMode == ForceModeIRacing) return gameTarget;
             // Forza exclusion (user's call, 2026-05-28). The spring conflicted
             // with Forza's FFB during the matchmaking-found transition and
             // could pull the wheel to the rotational stop, sometimes with
@@ -3842,12 +3967,42 @@ namespace TrueforceForAll.Plugin
                 Settings.StopStreamOnPauseMigrated = true;
                 Settings.StopStreamOnPause = true;
             }
+            // Inertia renders accurately from 2026-09-09: force per unit
+            // ACCELERATION, and it coasts. Settings written before that carry
+            // the damping-shaped defaults, and with them an inertia gain
+            // tuned as force per unit VELOCITY. The two domains are about an
+            // order of magnitude apart on a hand-turned wheel, so carrying
+            // the number over is not honouring a preference, it is a unit
+            // error that saturates the term on every push. Reset it to the
+            // acceleration default and let the bench retune. Only when the
+            // stored mode was the damping one: anyone already rendering
+            // acceleration has a gain that means what it says.
+            if (!Settings.FfbConditionInertiaSpecMigrated)
+            {
+                Settings.FfbConditionInertiaSpecMigrated = true;
+                if (Settings.FfbConditionInertiaAsDamping)
+                {
+                    Settings.FfbConditionInertiaAsDamping = false;
+                    Settings.FfbConditionInertiaGain = new TrueforceSettings().FfbConditionInertiaGain;
+                }
+                Settings.FfbConditionInertiaCoasts = true;
+            }
             // The two spike-reduction methods used to share one number, read as
             // a rate under the rate limiter and as a magnitude threshold under
             // the peak limiter. Give the peak limiter its own: someone already
             // using it keeps the value they tuned, everyone else gets the
             // shipped default instead of whatever their rate happened to be.
             Settings.SeedSpikeTransientThreshold();
+            // Bring an installed TF4ALL CSP Bridge up to date NOW, while Assetto
+            // Corsa is almost certainly closed, rather than waiting for the
+            // game-change edge. CSP reads its scripts once at startup, so an
+            // update applied on entering AC cannot take effect until the launch
+            // AFTER that one: the user plays a whole session on the old script,
+            // and a fix they were told shipped appears not to work. Updating at
+            // plugin start means their next launch already has it (owner,
+            // 2026-09-09). The game-change call stays as the backstop for a
+            // bridge installed later in the session.
+            MaybeUpdateAcCspBridge();
             // Provision the official community backend: nothing is baked into the code, so a
             // fresh install can't reach sign-in / community / backup ("could not reach the
             // sign-in server"). Seeded every launch and authoritative, so a key rotation
@@ -4555,15 +4710,13 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => NudgeIRacingMaxForce(+0.5), (pm, a) => { });
                 pluginManager.AddInputMapping("IRacingMaxForceDown", GetType(),
                     (pm, a) => NudgeIRacingMaxForce(-0.5), (pm, a) => { });
-                // RaceRoom R3E per-car strength: Apply commits the observed peak
-                // as this car's max (press when the dash confidence is full);
-                // Up/Down nudge the applied max afterwards.
-                pluginManager.AddInputMapping("R3EStrengthApply", GetType(),
-                    (pm, a) => ApplyR3EAutoStrength(), (pm, a) => { });
-                pluginManager.AddInputMapping("R3EStrengthUp", GetType(),
-                    (pm, a) => NudgeR3EStrength(+1), (pm, a) => { });
-                pluginManager.AddInputMapping("R3EStrengthDown", GetType(),
-                    (pm, a) => NudgeR3EStrength(-1), (pm, a) => { });
+                // RaceRoom deliberately has NO bindings of its own. Its
+                // press-to-apply is the same gesture as iRacing's Auto button and
+                // rides AutoForce; its per-car max is the same concept as
+                // iRacing's and rides the pair above. Three R3E-specific mappings
+                // lived here briefly and were the wrong shape: a fourth binding
+                // for a fourth game does not scale, and it left AutoForce still
+                // running the grip-cal reset in RaceRoom.
 
                 // The dash's -/+ pair fires ACTIONS (ButtonItem.TriggerAction),
                 // which AddInputMapping does not register: the mappings above
@@ -5247,6 +5400,12 @@ namespace TrueforceForAll.Plugin
                     var afterSpring = ApplyStationarySpringIfActive(chosen);
                     var finalOut    = MaybeReshapeFfb(afterSpring);
                     finalOut = AddSynthesizedDamper(finalOut);
+                    // LAST, deliberately. A soft lock is a wall, and its whole
+                    // value is the sharpness of its onset: run it through spike
+                    // reduction or the smoothing above and it arrives as a
+                    // suggestion. Owner's call (2026-09-09) that it applies at
+                    // the very end of our chain rather than riding ffbValue.
+                    finalOut = ApplyAcSoftLock(finalOut);
                     TraceFfb(tapQuiet ? (short?)null : chosen, afterSpring, finalOut);
                     NoteFfbSource(finalOut.HasValue
                         ? (chosen.HasValue ? ffbSrc : "authored")
@@ -7341,6 +7500,7 @@ namespace TrueforceForAll.Plugin
                 if (EnginePulse != null)
                 {
                     EnginePulse.ObservedCyl = null;
+                    EnginePulse.ObservedIsElectric = false;
                     EnginePulse.ObservedMaxRpm = 0.0;
                     EnginePulse.ObservedRedlineRpm = 0.0;
                 }
@@ -7975,6 +8135,17 @@ namespace TrueforceForAll.Plugin
             {
                 if (frame.NumCylinders is int liveCyl && liveCyl >= 1 && liveCyl <= 16)
                     EnginePulse.ObservedCyl = liveCyl;
+                // A game can also say a car has NO cylinders, which is an
+                // answer ("electric"), not a missing one. Re-resolve on the
+                // spot: this moves no part of the variant signature, so the
+                // mid-session detector below would never notice it, and the
+                // rev limiter reads the electric state off that resolve.
+                if (frame.EngineIsElectric == true && !EnginePulse.ObservedIsElectric)
+                {
+                    EnginePulse.ObservedIsElectric = true;
+                    if (!string.IsNullOrEmpty(_activeCarId))
+                        ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
+                }
                 if (frame.MaxRpm > 100)     EnginePulse.ObservedMaxRpm     = frame.MaxRpm;
                 // Per-gear redline is excluded from the variant signature (it
                 // changes every shift; including it spawns a junk variant per
@@ -8698,12 +8869,27 @@ namespace TrueforceForAll.Plugin
             if (trace == null) return;
             var sr = _steeringReader;
             float phys = (sr != null && sr.LastUpdateTicks != 0) ? sr.SteerNorm : float.NaN;
+            // The condition renderer's inputs, so a ringing damper can be read
+            // back to its cause: the reader's own velocity, the estimator's
+            // filtered velocity that the damper actually multiplies, and the
+            // force the renderer added. NaN where a source is not live, which
+            // the CSV writes as a blank cell.
+            var wheel = _wheelMotion;
+            float diVel = wheel != null && wheel.IsRunning
+                ? (float)wheel.Velocity : float.NaN;
+            float estVel = _hidppMotion.HasState
+                ? (float)_hidppMotion.Velocity : float.NaN;
             trace.Record(
                 rawTap.HasValue ? (int?)rawTap.Value : null,
                 afterSpring.HasValue ? (int?)afterSpring.Value : null,
                 finalOut.HasValue ? (int?)finalOut.Value : null,
-                _lastSteerNorm, phys, _steerVel, _lastSpeedKmh);
+                _lastSteerNorm, phys, _steerVel, _lastSpeedKmh,
+                diVel, estVel, _lastConditionTerm);
         }
+
+        /// <summary>Whether the FFB trace is recording. Drives the bench
+        /// button's label, which is the only way to tell from the UI.</summary>
+        public bool FfbTraceRunning => _ffbTrace != null;
 
         /// <summary>Toggle the high-rate FFB signal-chain trace (TRACE access
         /// code). On: starts recording every provider tick into a ring buffer
@@ -8956,15 +9142,22 @@ namespace TrueforceForAll.Plugin
         /// forever: the spring would believe the car is permanently parked and
         /// centre against the cabinet for the entire session.
         ///
-        /// RaceRoom is deliberately NOT here, although it shares iRacing's
-        /// reshape route. The spring is added before MaybeReshapeFfb, so its
-        /// contribution is reshaped along with the game's own force and still
-        /// reaches the wheel. The tab used to hide on "is a reshape game", which
-        /// took the control away from RaceRoom while it went on working.
+        /// RaceRoom is not hidden, although it shares iRacing's reshape route:
+        /// on the USB tap route ApplyStationarySpring renders the spring, and
+        /// with the takeover armed MaybeReshapeFfb renders its own term in the
+        /// reshape's frame. An earlier note here claimed the upstream spring
+        /// was "reshaped along with the game's own force". It was not:
+        /// MaybeReshapeFfb assigns ComputeIRacingForce() over the incoming
+        /// target and never reads it, so anything added upstream was dropped
+        /// (verified 2026-09-12), which is why the reshape now has its own.
         ///
         /// The Forza exclusion is not here either. That one is a session state
         /// rather than a property of the game, and it already says so through
         /// the unsupported badge instead of vanishing.</summary>
+        public bool ActiveGameHidesStationarySpring
+            => string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
+               || ActiveGameIsArcade;
+
         /// <summary>True while the device is actually bypassing FfbScale and
         /// FfbInvertSign, which it does under the armed reshape and nowhere
         /// else. The FFB tab hides those two controls on this rather than on
@@ -8980,9 +9173,47 @@ namespace TrueforceForAll.Plugin
         /// checkbox showing a state it no longer has any effect on.</summary>
         public bool InvertIsDead => TapCorrectionsBypassed || ActiveGameIsArcade;
 
+        // ONE answer for the force path and the FFB tab. They used to ask two
+        // different questions (this one, and ActiveSourceSupportsStationarySpring
+        // for the badge), so iRacing had its spring skipped with no badge.
+        //
+        // A property of the GAME only. The route decides which stage renders
+        // the spring, not whether it exists: ApplyStationarySpring on the tap
+        // route, and the reshape's own term in MaybeReshapeFfb while the
+        // takeover is armed (the reshape assigns over its input, so a spring
+        // added upstream never reached the wheel; 2026-09-12).
         public bool ActiveGameAllowsStationarySpring
             => !string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
                && !ActiveGameIsArcade;
+
+        /// <summary>True where the spring is switched off for this version:
+        /// outside Assetto Corsa with the SPRING code not entered. Kept apart
+        /// from "allows" because the tab must DISABLE the checkbox here rather
+        /// than dim it. A tick wrote the game's entry and then read back the
+        /// gated value, so the box unticked itself and the sliders vanished: a
+        /// control that silently refuses (rig, 2026-09-12).</summary>
+        public bool StationarySpringLockedHere
+            => !string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
+               && !(Settings?.StationarySpringUnlocked ?? false);
+
+        /// <summary>Why the spring section is inert for the active game, in the
+        /// words the badge shows, or null when it is live. Ordered so the reason
+        /// the user can act on comes last: unlocking does nothing if the route
+        /// would discard the spring anyway.</summary>
+        public string StationarySpringInertReason
+        {
+            get
+            {
+                if (!ActiveSourceSupportsStationarySpring) return "not used in Forza";
+                if (ActiveGameIsArcade) return "not used on an arcade cabinet";
+                if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return "not used in iRacing";
+                if (StationarySpringLockedHere) return "off outside Assetto Corsa in this version";
+                if (_forceMode == ForceModeIRacing && IsR3EGame(_activeGame)
+                    && !((Settings?.R3EStationaryDamper ?? false) && (Settings?.R3EStationaryDamperStrength ?? 0.0) > 0.0001))
+                    return "needs the stationary friction on";
+                return null;
+            }
+        }
 
         /// <summary>True when the RaceRoom shared-memory reshape (R3EFFB) is the
         /// active route, so its stationary-friction tuning applies. Drives the
@@ -9105,6 +9336,10 @@ namespace TrueforceForAll.Plugin
         // staircase the quantized wheel velocity leaves at this friction's higher
         // gain, which read as graininess (owner, 2026-09-05).
         private float _r3eFrictionLp;
+        // Position EMA for the reshape's own stationary spring. Separate from
+        // _springSteerEma so a route switch never resumes from the other
+        // stage's stale value.
+        private float _rsSpringSteerEma;
 
         // Crash duck: impact protection for the synthesized force (Mode B
         // core behavior, not a feel toggle — a crash buzz can physically
@@ -11324,6 +11559,15 @@ namespace TrueforceForAll.Plugin
             // the dash button fire at all" without a debugger on the rig.
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] max force nudge fired (delta={delta:+0.0;-0.0})");
+            // RaceRoom's per-car max is the same concept on a different scale, so
+            // the one pair of bindings serves both rather than each reshape game
+            // growing its own. Deliberately NOT every game: this nudges a learned
+            // per-car maximum, which only the reshape routes have.
+            if (IsR3EGame(_activeGame) && (Settings?.R3ESharedMemoryFfb ?? false))
+            {
+                NudgeR3EStrength(delta > 0 ? +1 : -1);
+                return;
+            }
             if (!IsIRacingReshapeGame(_activeGame) || !ModeBEnabledForActiveGame)
             {
                 DashReadout("PEAK FORCE","IRACING ONLY");
@@ -13634,6 +13878,11 @@ namespace TrueforceForAll.Plugin
             // (plus the FS terrain kick above when enabled).
             if (!modeB || !target.HasValue) return target;
             double v = target.Value;
+            // The sim's torque alone, before the wheel-side terms below. The
+            // reshape's stationary spring deficit-fills against THIS: damper
+            // and friction are velocity terms, not centering, and must not
+            // count as "the sim already centres".
+            double simOnly = v;
 
             // Centering "fight": a directional force toward center
             // proportional to steering lock, so the wheel resists turning
@@ -13714,7 +13963,25 @@ namespace TrueforceForAll.Plugin
                 && stFrCfg != null
                 && stFrCfg.R3EStationaryDamper
                 && stFrCfg.R3EStationaryDamperStrength > 0.0001;
-            bool needPhys = damperGain != 0f || (_mbCenterPdOn && centerGain != 0f) || wantR3EFriction;
+            // Stationary spring under the armed reshape: the same per-game
+            // spring ApplyStationarySpring renders on the tap route, rendered
+            // here because the reshape assigns over its input. Wants the
+            // physical wheel position below (RaceRoom publishes no steering
+            // through SimHub, so physical is the only position there on either
+            // route). FXTEST owns the wheel while it runs, as upstream.
+            // Requires the friction: on the tap route the spring works against
+            // RaceRoom's own parked damper, which this route replaces. With
+            // the friction off the only dissipation left is the 0.07 stability
+            // damper, and a lagged spring (HID position ~20 ms + the EMA) eats
+            // most of that margin, so a let-go would hunt around centre
+            // (review, 2026-09-12). The badge names this state.
+            bool wantReshapeSpring = reshapeMode
+                && _fxTestMode == 0
+                && wantR3EFriction
+                && ActiveGameAllowsStationarySpring
+                && EffectiveStationarySpringEnabled(_activeGame);
+            bool needPhys = damperGain != 0f || (_mbCenterPdOn && centerGain != 0f)
+                || wantR3EFriction || wantReshapeSpring;
             if (needPhys)
             {
                 // Prefer the physical wheel velocity; fall back to the telemetry
@@ -13840,9 +14107,10 @@ namespace TrueforceForAll.Plugin
                 // settling it (owner rig, 2026-08-15, the discriminating
                 // test). The closed loop through the sim is the one path that
                 // most needs a working damper, so flip it to match.
+                // No cap of its own (owner, 2026-09-12: "there shouldn't be
+                // caps on damper, friction or spring"). The full-scale clamp
+                // at the end is the wheel's limit and the only one.
                 double damp = (reshapeMode ? -damperGain : damperGain) * velLp * 32767.0;
-                if (damp > 16383.0) damp = 16383.0;
-                else if (damp < -16383.0) damp = -16383.0;
                 v += damp;
             }
 
@@ -13864,8 +14132,7 @@ namespace TrueforceForAll.Plugin
                     // cycle (owner, 2026-09-05: "it oscillates"). Linear in the
                     // band-limited velocity is dissipative and stable, and it is
                     // literally RaceRoom's own "stationary friction uses the damper
-                    // effect". Gain is held to the range the stability damper above
-                    // proved stable and the force is capped like it. NO deadband:
+                    // effect". NO deadband:
                     // its edge made the force flick on and off as the wheel crept.
                     // A LIGHT low-pass on the FORCE only takes the edge off this
                     // term's own ripple. The graininess the owner felt turned out to
@@ -13875,18 +14142,87 @@ namespace TrueforceForAll.Plugin
                     // double-smoothed and lagged the friction, so this stays light.
                     // OPPOSES motion, same convention as that damper (-vel for
                     // reshapeMode).
+                    // The slider means what it says: no gain cap and no
+                    // half-scale clamp (owner, 2026-09-12). Only the final
+                    // full-scale clamp applies.
                     double gain = stFrCfg.R3EStationaryDamperStrength;
-                    if (gain > 0.6) gain = 0.6;
                     double fr = -velLp * gain * gate * 32767.0;
                     float aFr = (float)(1.0 - Math.Exp(-dtD / 6.0));
                     _r3eFrictionLp += (float)((fr - _r3eFrictionLp) * aFr);
-                    double frs = _r3eFrictionLp;
-                    if (frs > 16383.0) frs = 16383.0; else if (frs < -16383.0) frs = -16383.0;
-                    v += frs;
+                    v += _r3eFrictionLp;
                 }
                 else _r3eFrictionLp = 0f;   // faded out: don't carry a stale term
             }
             else _r3eFrictionLp = 0f;
+
+            if (wantReshapeSpring)
+            {
+                // Same recipe as ApplyStationarySpring (position EMA, linear
+                // speed fade, strength x |steer| of full scale, deficit-fill),
+                // with two deliberate differences, both because TrueforceDevice
+                // skips FfbInvertSign and FfbScale under FfbBypassTapCorrections
+                // while the reshape is armed:
+                //   SIGN: authored here as the MOTOR sign. Upstream, dir =
+                //   sign(steer) in the game's space and the device negates it;
+                //   here nothing negates, so the centering direction is
+                //   -sign(steer), the same flip the damper and friction above
+                //   carry (reshapeMode ? -gain : gain).
+                //   SCALE: no division by FfbScale. The device does not multiply
+                //   by it here, so the pre-compensation would land 1/FfbScale
+                //   too strong.
+                // Position: the fresh physical wheel (physSteer), else a fresh
+                // game value, else no spring. No sim on this route publishes
+                // steering through SimHub today, so physical is the working
+                // case, exactly as on RaceRoom's tap route.
+                float steerR = !float.IsNaN(physSteer) ? physSteer
+                    : (Stopwatch.GetTimestamp() - System.Threading.Interlocked.Read(ref _lastSteerTicks)) <= SteerMaxAgeTicks
+                        ? _lastSteerNorm
+                        : float.NaN;
+                float cutoffR = (float)EffectiveStationarySpringCutoff(_activeGame);
+                float fadeR = cutoffR > 0f ? 1f - (_lastSpeedKmh / cutoffR) : 0f;
+                int springAdd = 0;
+                if (!float.IsNaN(steerR) && fadeR > 0f)
+                {
+                    if (fadeR > 1f) fadeR = 1f;
+                    if (steerR > 1f) steerR = 1f; else if (steerR < -1f) steerR = -1f;
+                    // Fresh start on every engage. The ramp below is ~0 for
+                    // the first ticks after arming or a telemetry gap (pause,
+                    // garage), and the spring contributes nothing there, so
+                    // seeding the EMA from the live position costs nothing and
+                    // means a wheel turned by hand during the gap never gets
+                    // a kick toward where it USED to be from a stale EMA.
+                    if (ramp < 0.05f) _rsSpringSteerEma = steerR;
+                    else _rsSpringSteerEma += SpringSteerEmaAlpha * (steerR - _rsSpringSteerEma);
+                    float steerS = _rsSpringSteerEma;
+                    // Engage on the route's own 300 ms ramp, like the damper
+                    // and the sim torque itself, so arming with lock on never
+                    // steps the wheel (the reshape's stated contract).
+                    double desired = EffectiveStationarySpringStrength(_activeGame)
+                                   * Math.Abs(steerS) * fadeR * ramp * 32767.0;
+                    // No cap (owner, 2026-09-12): strength x |steer| of full
+                    // scale, exactly the tap route's meaning. The full-scale
+                    // clamp at the end is the only limit, as it is upstream.
+                    if (desired >= 1.0)
+                    {
+                        double dirR = (steerS > 0f) ? -1.0 : 1.0;
+                        // Deficit-fill against the sim's own torque only: top
+                        // up the same-direction part to the floor, never
+                        // beyond, never against, so the spring lets go the
+                        // moment the sim centres the wheel itself.
+                        double have = (Math.Sign(simOnly) == Math.Sign(dirR)) ? Math.Abs(simOnly) : 0.0;
+                        double add  = desired - have;
+                        if (add > 0.0)
+                        {
+                            v += add * dirR;
+                            // Trace value in the GAME's sign space, the tap
+                            // route's convention, so `spring=` reads the same
+                            // way on both routes for the same direction.
+                            springAdd = -(int)(add * dirR);
+                        }
+                    }
+                }
+                _lastSpringAddLsb = springAdd;
+            }
 
             if (v > short.MaxValue) v = short.MaxValue;
             else if (v < short.MinValue) v = short.MinValue;
@@ -14425,6 +14761,14 @@ namespace TrueforceForAll.Plugin
         private int _slotSyncRetryAtMs;      // 0 = nothing owed
         private int _slotSyncRetriesLeft;
         private const int SlotSyncRetryDelayMs = 30000;
+        // Deliberately SHORT, and it was briefly raised to 20 minutes before
+        // being put back (owner, 2026-09-12): "if a game is saturating the LEDs
+        // then there's probably no reason to keep retrying if it means we
+        // sacrifice performance". Exactly right. A saturated pipe stays
+        // saturated for as long as the game drives the wheel, so a longer budget
+        // buys no extra chance of success and just spends more workers on five
+        // blocking reads each. And a game that owns the LED bar is one we should
+        // be standing down from anyway.
         private const int SlotSyncMaxRetries   = 6;   // ~3 minutes of trying
 
         /// <summary>Arm, re-arm or stand down the retry from a sync's result.
@@ -14461,8 +14805,11 @@ namespace TrueforceForAll.Plugin
 
             _slotSyncRetryAtMs = 0;
             SimHub.Logging.Current.Info(
-                "[TF4ALL] light slots still unreadable; leaving them alone for this session. "
-                + "Starting SimHub before the game avoids this.");
+                "[TF4ALL] light slots still unreadable; leaving them alone for this session, so the "
+                + "rev lights and the wheel's screen stay off. This happens when the GAME is driving "
+                + "the wheel's HID++ pipe, so it does not apply to iRacing, RaceRoom or Assetto Corsa "
+                + "with the bridge, where the game's own force feedback is off. Elsewhere, starting "
+                + "SimHub before the game avoids it.");
         }
 
         /// <summary>Once per SimHub tick: re-run a sync that could not read the
@@ -14475,35 +14822,57 @@ namespace TrueforceForAll.Plugin
             if (unchecked(Environment.TickCount - _slotSyncRetryAtMs) < 0) return;
             if (MasterMode == TrueforceMasterMode.Off) return;
             if (_rpmLeds?.Channel == null) return;
-            // While the wheel is being driven the HID++ pipe is saturated by the
-            // FFB stream, so the feature reads below each block to their 250 ms
-            // timeout (five of them, ~1.25 s) ON THIS SimHub tick thread and freeze
-            // it: SimHub's watchdog flags "Abnormal Inactivity", the frozen tick
-            // reads as a telemetry stall, and the rev lights + OLED get handed back
-            // then re-taken, which is the flicker the owner saw (RaceRoom R3EFFB
-            // with in-game FFB on, 2026-09-05). The retry's premise ("the pipe frees
-            // up later") only holds when the wheel is idle, so defer to then. Budget
-            // is NOT consumed here: this is a "not now", not a failed attempt.
-            if (HidppSessionActive()) return;
+            // One at a time. The reads take over a second when the pipe is busy,
+            // which is longer than the retry interval, so without this a slow
+            // attempt would have a second one stacked behind it.
+            if (System.Threading.Interlocked.CompareExchange(ref _slotSyncRunning, 1, 0) != 0) return;
 
             _slotSyncRetriesLeft--;
-            // Drop the cached map so this genuinely re-reads the wheel instead of
-            // answering from whatever armed the retry.
-            InvalidateSlotProgrammedCache();
-            try
+            _slotSyncRetryAtMs = 0;   // the attempt itself re-arms below
+            // OFF THE TICK THREAD, and this is the whole point of the change.
+            //
+            // These are five feature reads that each block to a 250 ms timeout
+            // while the FFB stream saturates the HID++ pipe, so on SimHub's own
+            // tick thread they froze it for over a second: SimHub flagged
+            // "Abnormal Inactivity", the frozen tick read as a telemetry stall,
+            // and the rev lights and screen were handed back then re-taken, which
+            // is the flicker seen on 2026-09-05. The old answer was to refuse to
+            // retry at all while the wheel was being driven, which made the retry
+            // useless for the case it exists for: someone who starts the game
+            // first and drives straight into a session never offers an idle
+            // moment, the budget expires, and StageSlot has no slot it dares
+            // borrow, so there is no LED or OLED control for the whole session.
+            //
+            // On a worker the reads can fail as often as they like and cost
+            // nothing but their own thread. That is what lets the idle-only gate
+            // go (owner, 2026-09-12).
+            System.Threading.Tasks.Task.Run(() =>
             {
-                string msg;
-                SyncSlotsToWheel(out msg);   // re-arms or stands down via NoteSlotSyncOutcome
-            }
-            catch (Exception ex)
-            {
-                // The pattern list is also reachable from the settings UI, so a
-                // user editing it at the exact moment this fires can throw here.
-                // That must not take the tick down; the next retry picks it up.
-                _slotSyncRetryAtMs = unchecked(Environment.TickCount + SlotSyncRetryDelayMs);
-                SimHub.Logging.Current.Info("[TF4ALL] slot-sync retry failed: " + ex.Message);
-            }
+                try
+                {
+                    // Drop the cached map so this genuinely re-reads the wheel
+                    // rather than answering from whatever armed the retry.
+                    InvalidateSlotProgrammedCache();
+                    string msg;
+                    SyncSlotsToWheel(out msg);   // re-arms or stands down via NoteSlotSyncOutcome
+                }
+                catch (Exception ex)
+                {
+                    // The pattern list is also reachable from the settings UI, so
+                    // a user editing it at the exact moment this fires can throw.
+                    // Re-arm and let the next attempt pick it up.
+                    _slotSyncRetryAtMs = unchecked(Environment.TickCount + SlotSyncRetryDelayMs);
+                    SimHub.Logging.Current.Info("[TF4ALL] slot-sync retry failed: " + ex.Message);
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Exchange(ref _slotSyncRunning, 0);
+                }
+            });
         }
+
+        /// <summary>1 while a slot-sync retry is in flight on a worker.</summary>
+        private int _slotSyncRunning;
 
         /// <summary>The level to write with when we put something on the strip
         /// deliberately. Driving, keep the live rev level: the bar IS the display
@@ -14513,7 +14882,7 @@ namespace TrueforceForAll.Plugin
         /// One rule, in one place. The editor used to pass a full bar and the
         /// cycle the live level, which is exactly why clicking a pattern lit up
         /// and cycling to the same pattern did not.</summary>
-        /// <summary>How long a lit strip stays up after an EDIT before fading.
+        /// <summary>How long a lit strip stays up after an EDIT before going out.
         /// Long: the user is working on that pattern, each change re-arms it, and
         /// a bar that drops out between color picks is the thing they are trying
         /// to look at going away.</summary>
@@ -14525,9 +14894,13 @@ namespace TrueforceForAll.Plugin
         /// bar for another eight seconds afterwards reads as the wheel being
         /// stuck rather than as an answer.
         ///
+        /// A second is the glance (owner, 2026-09-08). The fill itself already
+        /// runs about two seconds, so the bar has been in front of the user the
+        /// whole time it was rising; this is the beat at the top, not the look.
+        ///
         /// Not zero. Ending dark would mean a pick shows nothing at the moment it
         /// finishes, which is the whole reason someone pressed.</summary>
-        private const int PickHoldMs = 2500;
+        private const int PickHoldMs = 1000;
 
         private int ShowLevel =>
             (_rpmLeds?.IsDriving ?? false) ? -1 : WheelLedChannel.LedCount;
@@ -23684,6 +24057,25 @@ namespace TrueforceForAll.Plugin
                         + $"redline={(v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-")}, "
                         + $"source={v.Source} -> layout={EnginePulse.AutoLayout}");
             }
+            else if (EnginePulse.ObservedIsElectric)
+            {
+                // The game itself counted the cylinders of the car that is
+                // actually loaded and came back with none. That is first-hand
+                // truth about this car, so it outranks a catalog keyed on the
+                // car's id: Forza's EV lineup is large, grows with every
+                // update, and the FH6 table carries names only. Same rung as
+                // RaceRoom's own EngineType below.
+                EnginePulse.AutoLayout = Effects.EngineLayout.Electric;
+                EnginePulse.AutoLayoutSource = "telemetry";
+                EnginePulse.CatalogCyl = null;
+                if (string.IsNullOrEmpty(_activeCarDisplayName)
+                    && CarCylinderResolver.TryResolve(_activeGame, carId, out var evSpec))
+                    _activeCarDisplayName = evSpec.DisplayName;
+                if (logResolution)
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Car '{carId}' resolved from the game's own cylinder count: "
+                        + "no cylinders, so electric.");
+            }
             else if (CarCylinderResolver.TryResolve(_activeGame, carId, out var carSpec))
             {
                 EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
@@ -23945,7 +24337,8 @@ namespace TrueforceForAll.Plugin
                     if (IsAutoVariantLabel(match.Label))
                         match.Label = BuildAutoVariantLabel(match.Cylinders,
                                                             match.MaxRpm,
-                                                            match.RedlineRpm);
+                                                            match.RedlineRpm,
+                                                            EnginePulse?.ObservedIsElectric == true);
                 }
                 return match;
             }
@@ -23969,7 +24362,8 @@ namespace TrueforceForAll.Plugin
             };
             fresh.Label = BuildAutoVariantLabel(fresh.Cylinders,
                                                fresh.MaxRpm,
-                                               fresh.RedlineRpm);
+                                               fresh.RedlineRpm,
+                                               EnginePulse?.ObservedIsElectric == true);
             bundle.EngineVariants.Add(fresh);
             changed = true;
             return fresh;
@@ -24635,7 +25029,7 @@ namespace TrueforceForAll.Plugin
         // on upgrade without clobbering a label the user typed themselves.
         private static readonly System.Text.RegularExpressions.Regex AutoLabelPattern =
             new System.Text.RegularExpressions.Regex(
-                @"^(\d+ cyl|engine)(, \d+ RPM)?(, \d+ redline)?$",
+                @"^(\d+ cyl|electric|engine)(, \d+ RPM)?(, \d+ redline)?$",
                 System.Text.RegularExpressions.RegexOptions.Compiled);
 
         internal static bool IsAutoVariantLabel(string label)
@@ -24644,13 +25038,15 @@ namespace TrueforceForAll.Plugin
             return AutoLabelPattern.IsMatch(label);
         }
 
-        internal static string BuildAutoVariantLabel(int cyl, int? maxRpm, int? redlineRpm)
+        internal static string BuildAutoVariantLabel(int cyl, int? maxRpm, int? redlineRpm,
+                                                     bool isElectric = false)
         {
             var sb = new System.Text.StringBuilder();
             // Cyl=0 sentinel = "unknown cyl count" (SimHub-fallback game
             // with no bake entry). Lead with "engine" instead of "0 cyl"
-            // so the label reads cleanly.
-            sb.Append(cyl >= 1 ? (cyl + " cyl") : "engine");
+            // so the label reads cleanly, or with "electric" when the zero
+            // is an answer rather than a gap.
+            sb.Append(cyl >= 1 ? (cyl + " cyl") : (isElectric ? "electric" : "engine"));
             if (maxRpm.HasValue && maxRpm.Value > 0)
                 sb.Append(", ").Append(maxRpm.Value).Append(" RPM");
             if (redlineRpm.HasValue && redlineRpm.Value > 0)
@@ -34253,7 +34649,7 @@ namespace TrueforceForAll.Plugin
 
         private const string AcCspScriptName = "tf4all";
         // Bumped when the bridge script changes so the mods list can show it.
-        private const string AcCspBridgeVersion = "1.2";
+        private const string AcCspBridgeVersion = "1.5";
         public string AcCspBridgeVersionString => AcCspBridgeVersion;
         public string FsModVersionString => FsModVersion;
 
@@ -34298,6 +34694,34 @@ namespace TrueforceForAll.Plugin
                 EnsureWheelMotion(exclusive: false);
         }
 
+        /// <summary>Turn our rev lights on alongside the wheel's screen in Assetto
+        /// Corsa, when they are off.
+        ///
+        /// The screen stands down whenever something else is writing the wheel's
+        /// LED bar, and in AC that something else is the game's own g27_lights
+        /// module. We only ask AC to stop writing it while OUR rev lights are on,
+        /// because silencing AC for the screen's sake alone would leave the bar
+        /// dark. With the lights off, then, the screen has no way to run: AC keeps
+        /// the bar and we keep yielding to it, with nothing on screen saying why.
+        ///
+        /// Turning the lights on is the one way out that leaves nothing dark, so
+        /// the screen brings them with it. Deliberately silent: the alternative is
+        /// a switch that visibly does nothing. Returns true if it changed
+        /// anything, so a caller can re-sync its checkbox.</summary>
+        public bool EnsureRevLightsForOled()
+        {
+            var s = Settings;
+            if (s == null || !s.ModeBOledEnabled || s.ModeBRevLightsEnabled) return false;
+            if (!string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                return false;
+            s.ModeBRevLightsEnabled = true;
+            try { PersistSettings(); } catch { }
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Rev lights turned on with the wheel's screen in Assetto Corsa: "
+                + "the screen cannot run while the game is driving the LED bar.");
+            return true;
+        }
+
         private void MaybeFireAcCspNotice(string game)
         {
             if (string.Equals(_lastGameSeenForAcCsp, game, StringComparison.Ordinal)) return;
@@ -34306,6 +34730,11 @@ namespace TrueforceForAll.Plugin
             {
                 MaybeUpdateAcCspBridge();
                 ShowAcCspNotice(null);
+                // Also on entering AC, not only when the screen is switched on:
+                // most people set the screen up once and never touch that box
+                // again, so catching only the toggle would leave the screen dead
+                // for exactly the users who already had it on.
+                EnsureRevLightsForOled();
                 // The synthesized damper reads wheel speed from DirectInput;
                 // a shared reader rides along with every AC session. NEVER
                 // while a bench run holds the wheel: replacing the exclusive
@@ -34361,16 +34790,23 @@ namespace TrueforceForAll.Plugin
         private void MaybeUpdateAcCspBridge()
         {
             if (_acCspUpdateChecked) return;
-            _acCspUpdateChecked = true;
             try
             {
                 string ac = FindAcInstallDir();
+                // NOT latched on these three: each can become true later in the
+                // session (Assetto Corsa installed, the bridge installed from the
+                // Game mods list, a manifest that was mid-write when we looked).
+                // Latching here would mean a user who installs the bridge after
+                // SimHub started never gets an update until the next restart.
                 if (ac == null) return;
                 string dir = Path.Combine(ac, "extension", "lua", "ffb-postprocess", AcCspScriptName);
                 string manifest = Path.Combine(dir, "manifest.ini");
                 if (!File.Exists(manifest)) return;   // not installed: nothing to maintain
                 string installed = ReadAcCspInstalledVersion(manifest);
-                if (installed == null || AcCspVersionCurrent(installed)) return;
+                if (installed == null) return;
+                // A definite answer, so stop asking.
+                _acCspUpdateChecked = true;
+                if (AcCspVersionCurrent(installed)) return;
                 WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.ffb.lua",
                                       Path.Combine(dir, "ffb.lua"));
                 WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.manifest.ini", manifest);
@@ -35030,6 +35466,13 @@ namespace TrueforceForAll.Plugin
         private long _diRenderDiagTick;   // throttle for the DI render diagnostic
         private readonly WheelMotionEstimator _hidppMotion = new WheelMotionEstimator();
 
+        // The force the condition renderer added on the current pump tick, for
+        // the FFB trace's cond_term column. Written and read on the pump thread
+        // only. Zeroed at the top of AddHidppDiEffects, which runs first in the
+        // chain and unconditionally, so a renderer further down only ever has
+        // to write its own non-zero term.
+        private int _lastConditionTerm;
+
         /// <summary>DICOND: A/B the decoded DirectInput effect rendering.
         /// Returns true when the toggle lands OFF.</summary>
         public bool ToggleDicondRendering()
@@ -35047,6 +35490,7 @@ namespace TrueforceForAll.Plugin
         // nothing rather than render wrong.
         private short? AddHidppDiEffects(short? force)
         {
+            _lastConditionTerm = 0;
             // A live decoded condition (damper/spring/friction) must render even
             // on a keepalive base, or a parked wheel and momentary zero-force
             // frames drop the game's damper. So do NOT bail on a null force
@@ -35089,6 +35533,7 @@ namespace TrueforceForAll.Plugin
                 _springGain, _frictionGain, _periodicGain, _rampGain);
             if (!term.HasValue || term.Value == 0) return force;
             int t = term.Value;
+            _lastConditionTerm = t;
             // Diagnostic (throttled, only while a damper is live): the velocity
             // we feed the damper, the position, and the rendered term. Lets an
             // on-track stop-and-wiggle show whether a high-coeff parking damper
@@ -35108,6 +35553,118 @@ namespace TrueforceForAll.Plugin
             int v = (force ?? 0) + t;   // ride a keepalive base so a parked condition still renders
             if (v > short.MaxValue) v = short.MaxValue; else if (v < short.MinValue) v = short.MinValue;
             return (short)v;
+        }
+
+        /// <summary>CSP's custom soft lock, applied at the very end of the force
+        /// chain (issue #43).
+        ///
+        /// CSP runs its own lock AFTER our post-processing script returns, so on
+        /// the takeover path it computes the lock from the zero we hand back and
+        /// sends the result down the game's FFB path, which the wheel ignores
+        /// while we stream Trueforce. The lock was being produced every frame and
+        /// discarded. The bridge now computes it and stands CSP's own down, and
+        /// this is where it lands.
+        ///
+        /// The shape is CSP's, not an addition: cancel force opposing the
+        /// steering direction, then lerp toward the lock target by the amount.
+        /// Only the bridge route reaches this; on the capture route the tap
+        /// already reads a force with the lock in it.</summary>
+        private short? ApplyAcSoftLock(short? force)
+        {
+            // Cleared every tick and set only on the packet that actually carries
+            // a lock, so taming resumes the instant the wheel leaves the limit.
+            var dev = _device;
+            if (dev != null) dev.FfbBypassSpikeTaming = false;
+            MaybeLogRingHealth(dev);
+            if (!force.HasValue) return force;   // keepalive: the firmware has it
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return force;
+            var s = src.CspLastSample;
+            float amt = s.SoftLockAmount;
+            // Diagnostic BEFORE the early return: the failure we are hunting is
+            // an amount that never rises, so a log that only fires when it does
+            // cannot see it. Fires near the limit whether or not a lock resulted,
+            // which is what shows a steer input clamped at 1.
+            float steerNow = (float)s.SteerInput;
+            long slNow = Environment.TickCount;
+            if (_softLockDiag && Math.Abs(steerNow) > 0.9f && slNow - _lastSoftLockLogMs >= 500)
+            {
+                _lastSoftLockLogMs = slNow;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] SOFTLOCK steer={steerNow:F4} amount={amt:F3} "
+                    + $"target={s.SoftLockTarget:F3} damper={s.SoftLockDamper:F2} in={force.Value} "
+                    + $"spring={_lastSpringAddLsb}");
+            }
+            if (amt <= 0f) return force;         // the usual case, nowhere near lock
+            if (amt > 1f) amt = 1f;
+
+            const float FullScale = 32767f;
+            float cur = force.Value;
+            // Opposing force first, the same pre-step the reference does: at the
+            // stop, self-aligning torque pulling you back out of the corner
+            // fights the wall instead of adding to it.
+            float steer = (float)s.SteerInput;
+            if (steer != 0f && Math.Sign(cur) != Math.Sign(steer))
+                cur = Lerp(cur, 0f, Math.Min(amt * 2f, 1f));
+            float target = s.SoftLockTarget;
+            if (target < -1f) target = -1f; else if (target > 1f) target = 1f;
+            float outF = Lerp(cur, target * FullScale, amt);
+            if (outF > FullScale) outF = FullScale;
+            else if (outF < -FullScale) outF = -FullScale;
+            // From the first hint of lock, not just at full: taming that switched
+            // on partway up the ramp would put a kink in the wall.
+            if (dev != null) dev.FfbBypassSpikeTaming = true;
+            return (short)outF;
+        }
+
+        private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+        private long _lastRingLogMs;
+        private long _lastRingUnderruns = -1;
+
+        /// <summary>Say so when the Trueforce ring starves.
+        ///
+        /// An underrun is the stream running out of samples to send, and on a
+        /// 4 kHz audio-haptic stream that is exactly what a user hears as
+        /// crackle and feels as force dropping in and out. The device has
+        /// counted them all along and the settings panel shows the rate, but
+        /// nothing ever wrote them to the log, so a report of "the audio
+        /// crackles after I alt-tab" had no evidence behind it at all (rig,
+        /// 2026-09-10).
+        ///
+        /// Only on CHANGE, and at most every five seconds: a healthy stream
+        /// says nothing, and a starving one says how far it has got without
+        /// filling the log at tick rate.</summary>
+        private void MaybeLogRingHealth(TrueforceDevice dev)
+        {
+            if (dev == null) return;
+            long now = Environment.TickCount;
+            if (now - _lastRingLogMs < 5000) return;
+            _lastRingLogMs = now;
+            long u = dev.UnderrunCount;
+            if (u == _lastRingUnderruns) return;   // nothing new: stay quiet
+            long added = _lastRingUnderruns < 0 ? u : u - _lastRingUnderruns;
+            _lastRingUnderruns = u;
+            if (added <= 0) return;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Trueforce ring starved: {added} underrun(s) in the last 5 s "
+                + $"({u} this session), ring capacity {dev.RingCapacity}. "
+                + "Heard as crackle and felt as force dropping out.");
+        }
+
+        private long _lastSoftLockLogMs;
+        private volatile bool _softLockDiag;
+
+        /// <summary>SOFTLOCK: the soft-lock diagnostic. Off by default and session
+        /// only, like the other probes. Logs whenever steering passes 0.9 whether
+        /// or not a lock resulted, because the failures worth catching here are an
+        /// amount that never rises and a spring that never recedes, and a line that
+        /// only fired on a live lock could see neither.</summary>
+        public bool ToggleSoftLockDiagnostic()
+        {
+            _softLockDiag = !_softLockDiag;
+            _lastSoftLockLogMs = 0;
+            return _softLockDiag;
         }
 
         private short? AddSynthesizedDamper(short? force)
@@ -35511,24 +36068,47 @@ namespace TrueforceForAll.Plugin
                 // The reader already differenced and smoothed its velocity;
                 // re-deriving it from quantized position was the slow-turn
                 // damper shake on the rig (2026-09-01). One derivation.
+                //
+                // The PUMP clock is right here, unlike the position-only paths
+                // below: nothing is being differentiated, so the estimator's
+                // output filter and its acceleration washout are continuous
+                // filters that should advance in real time whether or not the
+                // reader has a new sample for us.
                 _hidppMotion.UpdateWithVelocity(wheel.Position, wheel.Velocity, now, Stopwatch.Frequency);
                 NoteMotionSource("the DirectInput reader");
                 return true;
             }
+            // Each position carries the time it ARRIVED, not the time we asked
+            // for it. Both sources below hold their last value between updates
+            // (HID reports at ~2 ms, game telemetry at frame rate) while this
+            // runs on the 1 kHz pump, so stamping them with the pump clock told
+            // the estimator a held position was a fresh one that had not moved:
+            // the alpha-beta tracker bled velocity toward zero between arrivals
+            // and got it back as a kick on each one, which is a damper input
+            // that ripples at the report rate. Feeding the arrival tick makes
+            // the interval the real one, and PrepareDt already no-ops on a
+            // stamp that has not advanced, so holding between reports is free.
             double pos;
-            if (sr != null && sr.LastUpdateTicks != 0
-                     && (now - sr.LastUpdateTicks) <= SteerMaxAgeTicks)
+            long arrived;
+            long srTicks = sr != null ? sr.LastUpdateTicks : 0;
+            if (srTicks != 0 && (now - srTicks) <= SteerMaxAgeTicks)
             {
+                // Value read after the stamp, so it can be one report newer
+                // than the stamp claims. That skew is bounded by a single
+                // report and self-corrects on the next arrival.
                 pos = sr.SteerNorm;
+                arrived = srTicks;
                 NoteMotionSource("HID steering reader");
             }
-            else if ((now - System.Threading.Interlocked.Read(ref _lastSteerTicks)) <= SteerMaxAgeTicks)
+            else
             {
+                long steerTicks = System.Threading.Interlocked.Read(ref _lastSteerTicks);
+                if ((now - steerTicks) > SteerMaxAgeTicks) return false;
                 pos = _lastSteerNorm;
+                arrived = steerTicks;
                 NoteMotionSource("the game's own steering telemetry");
             }
-            else return false;
-            _hidppMotion.Update(pos, now, Stopwatch.Frequency);
+            _hidppMotion.Update(pos, arrived, Stopwatch.Frequency);
             return true;
         }
 
@@ -35768,6 +36348,7 @@ namespace TrueforceForAll.Plugin
             // with the tapped path, where its convention is correct and hardware
             // validated. This is the one place the two conventions meet.
             int t = (int)(-f * 32767f);
+            _lastConditionTerm = t;   // traced like the other two renderers
             // Full authority (cap removed across the board, owner 2026-09-05).
             // The engine is the ONLY force here, so the old ±16384 cap cost half
             // the cabinet's intended strength; the sum is still clamped below.
@@ -35881,6 +36462,7 @@ namespace TrueforceForAll.Plugin
                 _springGain, _frictionGain, _periodicGain, _rampGain);
             if (!anyPlaying && !_fxTestEngine.AnyPlaying) return force;
             int t = (int)(f * 32767f);
+            _lastConditionTerm = t;   // the bench's term is the one to trace during a bench run
             // Full authority, matching the decoded path (cap removed across the
             // board 2026-09-05) so the A/B compares the same ceiling.
             int v = (force ?? 0) + t;
@@ -36657,15 +37239,32 @@ namespace TrueforceForAll.Plugin
 
         public bool InertiaCoastsNow => _inertiaCoasts;
 
+        public bool InertiaAsDampingNow => _inertiaAsDamping;
+
         /// <summary>Whether rendered inertia coasts like a flywheel (the
-        /// DirectInput reading) or only ever resists, which is what the
-        /// wheel's own firmware does.</summary>
+        /// DirectInput reading, the default) or only ever resists, which is
+        /// what the wheel's own firmware does.</summary>
         public void SetInertiaCoasts(bool coasts)
         {
             _inertiaCoasts = coasts;
             ApplyConditionLpf();
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] Rendered inertia {(coasts ? "COASTS (lossless flywheel)" : "only resists (matches the wheel's firmware)")}.");
+        }
+
+        /// <summary>Whether inertia is rendered from acceleration (the
+        /// default, and what the effect means) or from velocity, which is how
+        /// the wheel's own native inertia behaves. For the bench A/B; see
+        /// HidppEffectEngine.InertiaAsDamping.</summary>
+        public void SetInertiaAsDamping(bool asDamping)
+        {
+            _inertiaAsDamping = asDamping;
+            ApplyConditionLpf();
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Rendered inertia reads "
+                + (asDamping ? "VELOCITY (damping-shaped, matches the firmware's own)"
+                             : "ACCELERATION (the DirectInput effect)")
+                + ". The gain means force per unit of that, so retune it.");
         }
 
         /// <summary>Sets the velocity-term direction explicitly (the UI
@@ -38481,6 +39080,26 @@ namespace TrueforceForAll.Plugin
             if (Settings.LogUsbBytesEnabled == enabled) return;
             Settings.LogUsbBytesEnabled = enabled;
             try { PersistSettingsCore(); } catch { }
+            // Switching it ON is the one place a FRESH capture is meant, so the
+            // old file goes here. The tap itself appends, because it cannot tell
+            // a deliberate re-enable from the restart that follows a device
+            // cycle, and truncating on the latter loses the capture someone
+            // turned this on to get.
+            if (enabled)
+            {
+                try
+                {
+                    string p = GetUsbTraceLogPath();
+                    if (System.IO.File.Exists(p)) System.IO.File.Delete(p);
+                }
+                catch (Exception ex)
+                {
+                    // Not fatal: the tap appends to whatever survives, so the
+                    // capture is merely longer than expected rather than absent.
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Could not clear the old USB trace: " + ex.Message);
+                }
+            }
             ApplyUsbBytesLoggingSetting();
             SimHub.Logging.Current.Info($"[TF4ALL] USB byte logging {(enabled ? "enabled" : "disabled")}.");
         }

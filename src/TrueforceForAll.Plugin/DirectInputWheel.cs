@@ -383,9 +383,44 @@ namespace TrueforceForAll.Plugin
         private const double MinSampleDt      = 0.0004;   // seconds
         private const double MaxPlausibleVel  = 25.0;     // range/s
 
+        // Velocity is derived ONLY on a poll where the axis actually moved,
+        // over the interval since the last poll that moved it.
+        //
+        // DirectInput hands back the last cached report, and the wheel reports
+        // every 2.0-2.5 ms while this loop polls every 1 ms. Differencing on
+        // every poll therefore divided one whole report's motion by a single
+        // poll's interval: the derivative came out as a burst followed by one
+        // or two zeros, and which pattern landed where beat between the two
+        // clocks. The mean was right (so strength and DAMPCAL were unaffected)
+        // but the ripple is what a damper renders as motor whine, and the
+        // filtering added on 2026-09-01 for the "slow-turn damper shake" was
+        // treating that symptom. mescon hit the identical thing on the G923
+        // and fixed it the same way in their 0.40.2; behaviour only, no code.
+        //
+        // Between moves the velocity is HELD rather than zeroed, because a
+        // zero there is the on-off velocity all over again. It may only be
+        // held while another move is still plausibly pending, so past
+        // VelHoldSec it bleeds out: a genuinely stopped wheel must not carry
+        // a stale velocity, or the damper renders it as a standing torque
+        // against a wheel that is not moving. Motion slower than about one
+        // position quantum per VelHoldSec bleeds out too, which is honest:
+        // below that speed a quantized axis carries no velocity to read.
+        private const double VelHoldSec       = 0.006;    // ~2 report intervals
+        private const double VelDecayTauSec   = 0.010;    // then bleed to zero
+
+        // Time constant of the smoothing one-pole, in SECONDS rather than as
+        // a per-sample fraction: samples now arrive at the wheel's report rate
+        // instead of the poll rate, and a fixed fraction would silently
+        // lengthen the filter with them (0.25 per 1 ms poll is 3 ms; the same
+        // 0.25 per 2.5 ms report is 7.5 ms). A damper lagged more damps less,
+        // so the smoothing stays exactly where it was and the fix shows up as
+        // cleaner velocity, not as a slower one.
+        private const double VelEmaTauSec     = 0.003;
+
         private void PollLoop()
         {
-            double lastPos = double.NaN, lastT = 0, vel = 0;
+            double lastPos = double.NaN, lastT = 0, lastPollT = 0, vel = 0;
+            int lastX = 0;
             long nextReport = 10000;
             int min = int.MaxValue, max = int.MinValue;
             int pollFails = 0;
@@ -432,7 +467,11 @@ namespace TrueforceForAll.Plugin
                     }
                     double t = _sw.ElapsedTicks / (double)Stopwatch.Frequency;
                     double pos = (x - 32767.5) / 32767.5;
-                    if (!double.IsNaN(lastPos))
+                    if (double.IsNaN(lastPos))
+                    {
+                        lastX = x; lastPos = pos; lastT = t;
+                    }
+                    else if (x != lastX)
                     {
                         double dt = t - lastT;
                         // Reject the physically impossible instead of
@@ -450,18 +489,31 @@ namespace TrueforceForAll.Plugin
                             double raw = (pos - lastPos) / dt;
                             if (Math.Abs(raw) <= MaxPlausibleVel)
                             {
-                                // Light smoothing: 1 ms samples of a 16-bit axis are
-                                // quantized; a 4-sample EMA keeps the decay shape.
-                                vel += (raw - vel) * 0.25;
+                                // Light smoothing: a 16-bit axis is quantized,
+                                // so even a full-interval derivative is grainy.
+                                vel += (raw - vel) * (dt / (dt + VelEmaTauSec));
                             }
                             else if (!QuietEffects)
                             {
                                 _log($"DirectInput: ignoring an impossible velocity sample "
                                      + $"({raw:F0} range/s over {dt * 1000:F2} ms).");
                             }
+                            // Consumed either way: an implausible reading still
+                            // re-syncs the reference, or the next real move is
+                            // measured from a position we already rejected.
+                            lastX = x; lastPos = pos; lastT = t;
                         }
+                        // A dt under the floor is a Sleep(1) that came back
+                        // early, not a real interval. Leave the move
+                        // UNCONSUMED so the next poll measures it over a usable
+                        // span; discarding it here would throw away real motion.
                     }
-                    lastPos = pos; lastT = t;
+                    else if (vel != 0 && t - lastT > VelHoldSec)
+                    {
+                        double dtPoll = t - lastPollT;
+                        if (dtPoll > 0) vel -= vel * (dtPoll / (dtPoll + VelDecayTauSec));
+                    }
+                    lastPollT = t;
                     Interlocked.Exchange(ref _posBits, BitConverter.DoubleToInt64Bits(pos));
                     Interlocked.Exchange(ref _velBits, BitConverter.DoubleToInt64Bits(vel));
                     Interlocked.Increment(ref _reads);

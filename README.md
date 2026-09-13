@@ -44,9 +44,12 @@ three places:
   real cornering load, weight transfer and curb forces keep coming through
   underneath every effect, in any game whose force feedback uses standard
   HID++ (effectively all of them on these wheels).
-- **Handed over directly.** [iRacing](#iracing), and
+- **Handed over directly.** [iRacing](#iracing), RaceRoom, and
   [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge, give the
-  plugin their force feedback with no capture involved.
+  plugin their force feedback with no capture involved. RaceRoom needs its
+  own force feedback disabled and its intensity set to 0, plus the FFB tab's
+  "Take over force feedback for RaceRoom" ticked; the in-app RaceRoom setup
+  guide has the detail.
 - **Built from telemetry.** In some games the plugin can fully replace the
   game's force feedback using telemetry
   ([Telemetry Based FFB](#telemetry-based-ffb)). Currently supported:

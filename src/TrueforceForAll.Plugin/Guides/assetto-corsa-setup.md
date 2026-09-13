@@ -1,6 +1,6 @@
 # Assetto Corsa: the TF4ALL CSP Bridge
 
-Assetto Corsa can hand the plugin its own force feedback. The wheel feels exactly as you have tuned it, and the Dynamic OLED display and LIGHTSYNC pattern changes keep working without cutting the force. This needs Custom Shaders Patch (CSP) and a small script, the TF4ALL CSP Bridge, that the plugin installs for you.
+Assetto Corsa can hand the plugin its own force feedback. The wheel feels exactly as you have tuned it, and the Dynamic OLED display and LIGHTSYNC pattern changes keep working without cutting the force. This needs Custom Shaders Patch (CSP) and a small script, the TF4ALL CSP Bridge, that the plugin installs for you. ([What the bridge is](guide:csp-bridge).)
 
 ## Installing it
 

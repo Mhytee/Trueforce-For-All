@@ -74,6 +74,13 @@ namespace TrueforceForAll.Plugin.Effects
         /// cylinders (AC, iRacing, generic SimHub).</summary>
         public int? ObservedCyl { get; set; }
 
+        /// <summary>True once the active source has said the car is electric
+        /// (<see cref="TelemetryFrame.EngineIsElectric"/>). Latched for the
+        /// car rather than tracked per frame, since a game only ever answers
+        /// this one way for a given car; the plugin clears it on car change
+        /// alongside the other observations.</summary>
+        public bool ObservedIsElectric { get; set; }
+
         /// <summary>Latest valid <see cref="TelemetryFrame.MaxRpm"/> the
         /// active source reported. Latest-not-peak so an in-session swap
         /// that LOWERS the rev ceiling (V8 stock → economy V6) still
@@ -130,7 +137,7 @@ namespace TrueforceForAll.Plugin.Effects
         /// <see cref="ElectricMode"/>.</summary>
         public bool ActiveCustomIsElectric { get; set; }
 
-        /// <summary>What to do for EVs: attenuate to 50% (default,
+        /// <summary>What to do for EVs: attenuate to 25% (default,
         /// <see cref="ElectricCarMode.MutedHum"/>) or fully silence. Set by
         /// ApplyEngineSettings from EnginePulseSettings.ElectricMode so global
         /// default + per-car preset both work. Combustion layouts ignore
@@ -138,12 +145,12 @@ namespace TrueforceForAll.Plugin.Effects
         public ElectricCarMode ElectricMode { get; set; } = ElectricCarMode.MutedHum;
 
         /// <summary>Computed amplitude scale applied alongside the user's
-        /// Gain. Combustion: 1.0. EVs: 0.5 in MutedHum, 0.0 in Silent.
+        /// Gain. Combustion: 1.0. EVs: 0.25 in MutedHum, 0.0 in Silent.
         /// Computed (not stored) so changing ElectricMode in the UI takes
         /// effect on the next render without re-resolving the car.</summary>
         public float AutoGainScale =>
             !IsElectricEffective ? 1.0f
-            : (ElectricMode == ElectricCarMode.Silent ? 0.0f : 0.5f);
+            : (ElectricMode == ElectricCarMode.Silent ? 0.0f : 0.25f);
 
         /// <summary>Multiplier on the firing-frequency calc; let per-car overrides shift the pitch.</summary>
         public float PitchMultiplier { get; set; } = 1.0f;

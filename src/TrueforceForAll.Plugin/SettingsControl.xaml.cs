@@ -553,6 +553,11 @@ namespace TrueforceForAll.Plugin
                 FfbScaleSlider.Value   = _plugin.Settings?.FfbScale ?? 1.0;
                 FfbScaleText.Text      = FfbScaleSlider.Value.ToString("F2");
                 StationarySpringCheck.IsChecked = _plugin.StationarySpringEnabledForActiveGame;
+                // Disabled, not merely dimmed, where a tick would be written and
+                // then refused: locked outside Assetto Corsa the entry gets
+                // Enabled=true but the read-back is the gated value, so the box
+                // untick itself on the next refresh. The badge below says why.
+                StationarySpringCheck.IsEnabled = !_plugin.StationarySpringLockedHere;
                 StationarySpringStrengthSlider.Value = _plugin.StationarySpringStrengthForActiveGame;
                 StationarySpringStrengthText.Text    = StationarySpringStrengthSlider.Value.ToString("F2");
                 StationarySpringCutoffSlider.Value   = _plugin.StationarySpringCutoffForActiveGame;
@@ -905,19 +910,18 @@ namespace TrueforceForAll.Plugin
                             ? System.Windows.Visibility.Visible
                             : System.Windows.Visibility.Collapsed;
 
-                    // The stationary spring hides where the force path skips it,
-                    // which is now one rule in one place rather than this
-                    // condition and ApplyStationarySpring each stating their own.
-                    // They had already drifted: this hid on "is a reshape game",
-                    // and RaceRoom is one, but the force path skipped only
-                    // iRacing. The spring goes in before the reshape and gets
-                    // reshaped along with the game's force, so it was still
-                    // working in RaceRoom with no control left to tune it.
+                    // Hidden only where the game itself rules the spring out
+                    // (iRacing, arcade), one rule shared with the force path.
+                    // Where a session or version state rules it out (Forza,
+                    // the SPRING lock, RaceRoom's friction off) the section
+                    // stays and the badge in RefreshFromPlugin says why. The
+                    // takeover is a ROUTE, not an inert state: with it armed
+                    // MaybeReshapeFfb renders the spring itself.
                     if (StationarySpringExpander != null)
                         StationarySpringExpander.Visibility =
-                            _plugin.ActiveGameAllowsStationarySpring
-                                ? System.Windows.Visibility.Visible
-                                : System.Windows.Visibility.Collapsed;
+                            _plugin.ActiveGameHidesStationarySpring
+                                ? System.Windows.Visibility.Collapsed
+                                : System.Windows.Visibility.Visible;
                     // Same flag as the two controls it names. "Wheel Output" is
                     // the honest word only while nothing passes through, and
                     // with takeover off in a reshape game the game's own force
@@ -1782,16 +1786,7 @@ namespace TrueforceForAll.Plugin
                 if (AbsExpander != null) AbsExpander.Visibility = assists;
                 if (DrsExpander != null) DrsExpander.Visibility = assists;
                 if (PitLimiterExpander != null) PitLimiterExpander.Visibility = assists;
-                if (StationarySpringUnsupportedBadge != null)
-                {
-                    bool springSupported = _plugin.ActiveSourceSupportsStationarySpring;
-                    StationarySpringUnsupportedBadge.Visibility = springSupported ? Visibility.Collapsed : Visibility.Visible;
-                    // Grayed, not hidden or locked: the section is preset-scoped,
-                    // so its tuning still applies in other games; the dimming
-                    // just says "inert here" while a Forza title is active.
-                    if (StationarySpringExpander != null)
-                        StationarySpringExpander.Opacity = springSupported ? 1.0 : 0.55;
-                }
+                RefreshStationarySpringBadge();
                 if (PitLimiterOverrideBadge != null)
                     PitLimiterOverrideBadge.Visibility = (_plugin.IsPitLimiterOverridden && carDetected) ? Visibility.Visible : Visibility.Collapsed;
                 if (DrsOverrideBadge != null)
@@ -3101,6 +3096,50 @@ namespace TrueforceForAll.Plugin
         /// the running build is newer than the user's stamped LastSeenVersion.
         /// Header reads "What's new in v{CurrentVersion}". Idempotent. Called
         /// from RefreshFromPlugin.</summary>
+        /// <summary>The "not used here" badge and dimming on the stationary
+        /// spring section. One reason string from the plugin, which mirrors
+        /// the gates the force path uses. Called from RefreshFromPlugin and
+        /// from every control whose change can flip the reason without a full
+        /// refresh: the RaceRoom friction checkbox and slider (the takeover
+        /// spring needs the friction), and the takeover checkbox. Unticking
+        /// the friction used to stop the spring on the FFB thread at once and
+        /// leave the section looking live (rig, 2026-09-12).</summary>
+        private void RefreshStationarySpringBadge()
+        {
+            if (_plugin == null || StationarySpringUnsupportedBadge == null) return;
+            string inert = _plugin.StationarySpringInertReason;
+            bool springLive = inert == null;
+            StationarySpringUnsupportedBadge.Visibility = springLive ? Visibility.Collapsed : Visibility.Visible;
+            if (!springLive)
+            {
+                StationarySpringUnsupportedBadge.Text = inert;
+                StationarySpringUnsupportedBadge.ToolTip = StationarySpringInertTooltip(inert);
+            }
+            // Grayed, not hidden: the section is per game, so its tuning for
+            // other games is untouched; the dimming just says "inert here".
+            if (StationarySpringExpander != null)
+                StationarySpringExpander.Opacity = springLive ? 1.0 : 0.55;
+        }
+
+        /// <summary>Badge tooltip for each StationarySpringInertReason. Kept
+        /// next to the badge because it is UI copy, not plugin logic.</summary>
+        private static string StationarySpringInertTooltip(string reason)
+        {
+            switch (reason)
+            {
+                case "not used in Forza":
+                    return "Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games.";
+                case "not used in iRacing":
+                    return "iRacing weights the wheel itself while parked, so the spring is skipped there. Your tuning still applies in other games.";
+                case "needs the stationary friction on":
+                    return "With RaceRoom's force handed over, the spring works against the plugin's own stationary friction instead of the game's parked damper. With that friction off there is nothing to settle the spring, so it is skipped. Turn the stationary friction on in the RaceRoom section to use it.";
+                case "off outside Assetto Corsa in this version":
+                    return "The spring runs in Assetto Corsa only in this version while it is retested game by game. Type SPRING in the access code box to unlock it for testing. Your saved per-game tuning is kept.";
+                default:
+                    return "Not used for the active game. Your tuning still applies in other games.";
+            }
+        }
+
         private void RefreshChangelogBanner()
         {
             if (_plugin == null || WhatsNewBanner == null) return;
@@ -5571,6 +5610,7 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.R3EStationaryDamper = R3EStationaryDamperCheck.IsChecked == true;
             SchedulePersistDebounced();
+            RefreshStationarySpringBadge();
         }
 
         private void R3EDamperSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -5582,6 +5622,7 @@ namespace TrueforceForAll.Plugin
             R3EDamperStrengthText.Text = s.R3EStationaryDamperStrength.ToString("F2");
             R3EDamperFadeText.Text     = s.R3EStationaryDamperFadeKmh.ToString("F0");
             SchedulePersistDebounced();
+            RefreshStationarySpringBadge();
         }
 
         // Show the global "Grip limit" slider only when per-car grip auto-cal is
@@ -6296,8 +6337,13 @@ namespace TrueforceForAll.Plugin
             {
                 FxTuneSignCheck.IsChecked = _plugin.DamperSignInvertedNow;
                 FxTuneInertiaCoastsCheck.IsChecked = _plugin.InertiaCoastsNow;
+                FxTuneInertiaAsDampingCheck.IsChecked = _plugin.InertiaAsDampingNow;
                 FxLoadGainForSelectedKind();
                 FxLoadLpfForSelectedKind();
+                // The trace outlives this panel (the access code arms the same
+                // one, and the tab can be left and come back), so the label has
+                // to be read from the plugin rather than remembered here.
+                FxUpdateTraceButton();
             }
             finally { _suppressEvents = prev; }
         }
@@ -6384,6 +6430,25 @@ namespace TrueforceForAll.Plugin
             if (FxTestStatus != null) FxTestStatus.Text = "Stopped.";
         }
 
+        // The same trace the TRACE access code arms, on the surface where the
+        // effect being diagnosed is already playing. Deliberately NOT stopped by
+        // the Stop button: the interesting part of a runaway effect is often the
+        // moment it was stopped, and a recording that ends before it is a
+        // recording of everything except the answer.
+        private void FxTrace_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            string msg = _plugin.ToggleFfbTrace();
+            if (FxTestStatus != null) FxTestStatus.Text = msg;
+            FxUpdateTraceButton();
+        }
+
+        private void FxUpdateTraceButton()
+        {
+            if (FxTraceButton == null || _plugin == null) return;
+            FxTraceButton.Content = _plugin.FfbTraceRunning ? "Save trace" : "Record trace";
+        }
+
         private void FxAutoTune_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
@@ -6422,6 +6487,17 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null) return;
             _plugin.SetInertiaCoasts(FxTuneInertiaCoastsCheck.IsChecked == true);
+        }
+
+        private void FxTuneInertiaAsDamping_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null) return;
+            _plugin.SetInertiaAsDamping(FxTuneInertiaAsDampingCheck.IsChecked == true);
+            // The gain means force per unit velocity in one mode and per unit
+            // acceleration in the other, so the number on screen no longer
+            // describes what the effect is doing. Re-read it rather than leave
+            // a stale caption beside a switched effect.
+            FxLoadGainForSelectedKind();
         }
 
         private void FxTuneLpf_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -13311,7 +13387,7 @@ namespace TrueforceForAll.Plugin
             "STALL          Simulate a Forza 'no packets' stall + open the troubleshooter + show the UDP setup banner (toggle).\n" +
             "CAPTURE        Toggle the aligned telemetry+FFB capture CSV (v2 golden fixture format) under Documents\\TrueforceForAll.\n" +
             "FZBANNERS      Toggle the two info-tier Forza banners (SimHub-fallback notice + discovered-port) on to eyeball their button styling.\n" +
-            "SPRING         Desk test of the stationary spring (motor pushes one way, then the other).\n" +
+            "SPRINGTEST     Desk test of the stationary spring (motor pushes one way, then the other).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
             "WELCOME        Reset the networked-welcome modal AND the Mode B intro seen state and re-trigger them now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt / HasSeenModeBIntro all cleared).\n" +
             "MOTDFLUSH      Clear the Message-of-the-day cache + all MOTD dismissals and refetch now (so dismissed/edited messages reappear; bypasses the ~6h cache).\n" +
@@ -13330,6 +13406,7 @@ namespace TrueforceForAll.Plugin
             "CSPFFB         Assetto Corsa: the TF4ALL CSP Bridge is used AUTOMATICALLY when its script is installed (install it from Settings > Game mods, the on-screen prompt, or the guide), otherwise the USB capture is used. This code is a DEV force-off: type it to make AC use the capture even with the bridge installed, type again for automatic. Sub-commands pick the read field: VALUE (default, post-gain, keeps your CSP tweaks), PURE or TORQUE (pre-gain, work at in-game gain 0), FINAL, FINALFF; 'CSPFFB NM 8' sets full-scale torque for TORQUE; 'CSPFFB SUP/NOSUP' is a suppression diagnostic; 'CSPFFB DAMP' toggles the synthesized damper; 'CSPFFB DAMPK <x>' sets its strength (0..2, default 0.25); 'CSPFFB DAMPSIGN' flips its direction; 'CSPFFB DAMPTEST' runs a 28 s damper wiggle (off/on flips, then ramps). Persists.\n" +
             "R3EFFB         RaceRoom: drive the wheel from the sim's own pre-gain steering force (read straight from its shared memory) instead of the USB capture; set in-game FFB intensity to 0 first. Frees the HID++ pipe for the rev lights and screen the way CSPFFB does in Assetto Corsa. Enabling also opts RaceRoom into Telemetry Based FFB, so this one code is the whole A/B switch against the tap route. 'R3EFFB INV' flips the force sign, 'R3EFFB NM 15' reads the raw SteeringForce channel with that full scale, 'R3EFFB PCT' returns to the percentage channel (those three are session only), 'R3EFFB AUTO' toggles per-car auto-strength (persisted, on by default; RaceRoom's percentage tops out well below full scale) and 'R3EFFB APPLY' commits this car's max iRacing-style (drive a couple of clean laps, watch the strength confidence, then apply; nothing drifts under you until you do). Bindable as R3EStrengthApply / R3EStrengthUp / R3EStrengthDown. Persists per car. Toggle.\n" +
             "R3EPROBE       RaceRoom signal probe: '[TF4ALL] R3EPROBE' lines every ~2 s with the sim's SteeringForce and percentage (current + min/max), steering input, tick rate and control state. For verifying, before trusting R3EFFB, that the force survives in-game FFB intensity 0 and that its sign matches the steering direction. Session only. Toggle.\n" +
+            "SPRING         Unlock the stationary spring outside Assetto Corsa, where it ships off while it is retested game by game (it has misbehaved before, and the per-game rework has only been driven in AC). Unlocked, tick the spring while each game is running and that game keeps its own enabled/strength/cutoff. Locking again returns every game except Assetto Corsa to off without deleting what you tuned. Assetto Corsa is unaffected either way. Persists, does not travel in a backup. Toggle.\n" +
             "ARCADE         Unlock the shelved arcade cabinet path: the TeknoParrot and FFB Arcade Plugin force sources, the Initial D 8 memory map (rpm, gear, speed, steering, slip) and its in-game leaderboards and ladder. Off in shipping builds: the arcade work was built against TeknoParrot, and the other way people run Initial D 8 is micetools plus a server emulator, which fills the game's own leaderboards from a real server and renders its own force feedback. Turning it off also puts the game's own leaderboard rows back. Restart SimHub after typing it: the Arcade.* dash properties are attached at startup. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "DIDAMP [pct]   DEV: drive the wheel's NATIVE DirectInput damper from the plugin (default 75%) with the Trueforce stream fully stopped (the wheel exactly as without the plugin), and log the position read rate: the DAMPCAL feasibility spike. DIDAMP OFF ends it (auto-off after 60 s).\n" +
@@ -13337,6 +13414,7 @@ namespace TrueforceForAll.Plugin
             "DICOND         A/B: the game's DirectInput condition effects (damper, spring, friction, inertia) and rumble, decoded from the USB wire and rendered into the Trueforce stream (the wheel firmware ignores them while any stream is live). ON by default; type to disable or re-enable. Session only.\n" +
             "FXTEST         Shows or hides the effect test bench at the bottom of the FFB tab (type it again to hide it). NO GAME NEEDED: the bench plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel), then the identical effect through the plugin's renderer, so you can alternate the two and tune until they match. It also carries the hands-free Auto-tune. The typed forms still work: 'FXTEST NATIVE <effect>' and 'FXTEST ENGINE <effect>'; effects DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP, with optional strength% (default 50) and period ms (default 250). FXTEST OFF ends a running test; auto-off after 30 s.\n" +
             "FXDUMP         Effect-download trace: one log line per effect the wheel is asked to download, decoded straight off the USB wire, with its type byte and its raw parameters (coefficients, saturations, deadband, centre, or magnitude and period). Answers whether the wheel was asked for what you think you asked for: on the bench a native effect passes through DirectInput, Windows and Logitech's driver first, and a substituted type or reshaped parameter cannot be told apart by feel. Session only. Toggle.\n" +
+            "SOFTLOCK       Soft-lock diagnostic (Assetto Corsa): a '[TF4ALL] SOFTLOCK' line twice a second with the steering position, how far CSP's custom soft lock has engaged, the force it is aiming for, and what the stationary spring is contributing. Fires from 0.9 of the car's steering limit whether or not a lock results, so a lock that never engages shows up as clearly as one that does. Needs CUSTOM_SOFT_LOCK enabled in CSP's FFB Tweaks and the TF4ALL CSP Bridge installed. Session only. Toggle.\n" +
             "ACLEDS         Rev-light contention diagnostic: every 2 s, a '[REVLIGHT]' line with the level writes the GAME landed on the wheel's rev-light feature (measured off the USB wire), the longest gap between two of them, the level they left, and what our own LEDs and base screen were allowed to do at the time. In Assetto Corsa it also reports whether CSP's own rev-light module is driving the bar. For lights that stick, go dark, then catch up seconds later. Session only. Toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
@@ -13728,7 +13806,11 @@ namespace TrueforceForAll.Plugin
             // Lets us verify strength + the force-vs-position direction. It
             // does NOT verify a given game's steering sign (that needs a
             // session); it confirms the spring's own mapping is correct.
-            if (code.Equals("SPRING", StringComparison.OrdinalIgnoreCase))
+            // SPRINGTEST, not SPRING: two handlers answered to SPRING and this
+            // one ran first, so the unlock below was unreachable. Typing SPRING
+            // at the rig ran a six-second desk test and left the spring locked
+            // (2026-09-12).
+            if (code.Equals("SPRINGTEST", StringComparison.OrdinalIgnoreCase))
             {
                 _plugin.StartStationarySpringTest();
                 AccessCodeBox.Text = string.Empty;
@@ -14294,6 +14376,20 @@ namespace TrueforceForAll.Plugin
             // GAME is writing to the wheel's rev-light feature, measured off
             // the wire, beside what our own LED and screen surfaces were
             // allowed to do. For "the lights stick, go dark, then catch up".
+            if (code.Equals("SOFTLOCK", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                bool slOn = _plugin.ToggleSoftLockDiagnostic();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = slOn
+                        ? "Soft-lock diagnostic ON: turn past the steering limit in Assetto Corsa and "
+                          + "the log gets a [TF4ALL] SOFTLOCK line twice a second with the steering "
+                          + "position, how far the lock has engaged, its target and the stationary "
+                          + "spring's contribution. Fires from 0.9 whether or not a lock results, so a "
+                          + "lock that never engages is visible too. Session only."
+                        : "Soft-lock diagnostic OFF.";
+                return;
+            }
             if (code.Equals("ACLEDS", StringComparison.OrdinalIgnoreCase))
             {
                 AccessCodeBox.Text = string.Empty;
@@ -14731,6 +14827,24 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Manual device picker revealed (Diagnostics + the contextual banner). Persists. Type MANUALPIN again to hide it."
                         : "Manual device picker hidden (persists).";
+                return;
+            }
+
+            // The stationary spring outside Assetto Corsa, for testing it game by
+            // game. Assetto Corsa is unaffected either way: there it always runs.
+            if (code.Equals("SPRING", StringComparison.OrdinalIgnoreCase))
+            {
+                var sp = _plugin.Settings;
+                sp.StationarySpringUnlocked = !sp.StationarySpringUnlocked;
+                _plugin.PersistSettings();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = sp.StationarySpringUnlocked
+                        ? "Stationary spring unlocked outside Assetto Corsa. Tick it while each game is running to test it there; every game keeps its own strength and cutoff. Type SPRING again to lock it back to Assetto Corsa only, which leaves your per-game tuning saved for next time."
+                        : "Stationary spring locked to Assetto Corsa only (the shipping default). Your per-game settings are kept, not deleted.";
+                // The checkbox and its badge read the effective value, so re-read
+                // rather than leaving a tick on a spring that no longer runs.
+                RefreshFromPlugin();
                 return;
             }
 
@@ -15606,6 +15720,16 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
             _plugin.Settings.ModeBOledEnabled = ModeBOledCheck.IsChecked == true;
+            // In Assetto Corsa the screen cannot run while the game is driving
+            // the LED bar, and our own rev lights being on is what stops it. Turn
+            // them on with the screen rather than hand the user a switch that
+            // does nothing. Guarded so the box we tick does not re-enter here.
+            if (_plugin.EnsureRevLightsForOled() && ModeBRevLightsCheck != null)
+            {
+                _suppressEvents = true;
+                try { ModeBRevLightsCheck.IsChecked = true; }
+                finally { _suppressEvents = false; }
+            }
             _plugin.PersistSettings();
             if (!_plugin.Settings.ModeBOledEnabled) _plugin.TurnOffOled();
         }

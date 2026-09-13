@@ -10,7 +10,7 @@ namespace TrueforceForAll.Plugin
     public enum ElectricCarMode
     {
         /// <summary>Play the same firing-frequency hum as a combustion car
-        /// but at half amplitude. Real EVs aren't silent, many pump
+        /// but at a quarter amplitude. Real EVs aren't silent, many pump
         /// synthetic engine sound, so a muted hum reads more correctly
         /// than dead silence. Default.</summary>
         MutedHum,

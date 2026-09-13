@@ -1,4 +1,4 @@
-On these wheels the light bar and the force feedback **share one channel**. While a game is driving the force itself, writing light levels makes that force cut out, so the plugin leaves the levels alone rather than costing you the feel of the car.
+On these wheels the light bar, OLED, and the force feedback **share one channel**. While a game is driving the force itself, writing light levels makes that force cut out, so the plugin leaves the levels alone rather than costing you the feel of the car. [Why](guide:force-and-lights).
 
 That leaves one condition, and the plugin checks it for you every session: the bar is ours to drive whenever the game's own force feedback is quiet. In practice that means the games where [the plugin produces the force itself](guide:telemetry-ffb), [iRacing](guide:iracing-setup) once it hands its force over, and Assetto Corsa with [the TF4ALL CSP Bridge](guide:assetto-corsa-setup). Elsewhere the wheel keeps whatever lighting it came with.
 

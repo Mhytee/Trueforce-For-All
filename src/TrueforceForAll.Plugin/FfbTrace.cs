@@ -20,7 +20,16 @@ namespace TrueforceForAll.Plugin
     /// (game's FFB before our processing), after_spring (post stationary-spring),
     /// final_out (what we hand the device as cur). Comparing raw_tap vs final_out
     /// vs steer shows whether an oscillation originates in the game's force, our
-    /// boost, or the wheel/loop — and the phase between them.
+    /// boost, or the wheel/loop, and the phase between them.
+    ///
+    /// Then the condition renderer's own inputs: di_vel (the DirectInput
+    /// reader's velocity, straight off the wheel), est_vel (what the estimator
+    /// publishes after filtering, which is what a damper actually multiplies)
+    /// and cond_term (the force the renderer added this tick). Those three are
+    /// how much of the estimator's filtering can be given back: di_vel shows
+    /// what the raw signal looks like now that velocity is differenced over a
+    /// real report interval, est_vel shows what the filters are still removing,
+    /// and the gap between them is the lag being paid for it.
     /// </summary>
     internal sealed class FfbTrace
     {
@@ -28,7 +37,9 @@ namespace TrueforceForAll.Plugin
         {
             public long Ticks;
             public float Speed, GameSteer, PhysSteer, SteerVel;
+            public float DiVel, EstVel;
             public int RawTap, AfterSpring, FinalOut;   // int.MinValue = null (no value)
+            public int CondTerm;
         }
 
         private readonly Row[] _buf;
@@ -47,7 +58,8 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Stamp one provider tick. Hot path: no allocation, no I/O.</summary>
         public void Record(int? rawTap, int? afterSpring, int? finalOut,
-                           float gameSteer, float physSteer, float steerVel, float speed)
+                           float gameSteer, float physSteer, float steerVel, float speed,
+                           float diVel, float estVel, int condTerm)
         {
             long i = Interlocked.Increment(ref _count) - 1;
             int slot = (int)(i % _buf.Length);
@@ -58,9 +70,12 @@ namespace TrueforceForAll.Plugin
                 GameSteer = gameSteer,
                 PhysSteer = physSteer,
                 SteerVel = steerVel,
+                DiVel = diVel,
+                EstVel = estVel,
                 RawTap = rawTap ?? int.MinValue,
                 AfterSpring = afterSpring ?? int.MinValue,
                 FinalOut = finalOut ?? int.MinValue,
+                CondTerm = condTerm,
             };
         }
 
@@ -73,7 +88,7 @@ namespace TrueforceForAll.Plugin
             long start = total > cap ? total - cap : 0;   // ring may have wrapped
 
             var sb = new StringBuilder(1 << 20);
-            sb.Append("t_ms,speed_kmh,game_steer,phys_steer,steer_vel,raw_tap,after_spring,final_out\n");
+            sb.Append("t_ms,speed_kmh,game_steer,phys_steer,steer_vel,raw_tap,after_spring,final_out,di_vel,est_vel,cond_term\n");
 
             var ci = CultureInfo.InvariantCulture;
             for (long i = start; i < total; i++)
@@ -87,7 +102,10 @@ namespace TrueforceForAll.Plugin
                 sb.Append(r.SteerVel.ToString("0.###", ci)).Append(',');
                 AppendCell(sb, r.RawTap); sb.Append(',');
                 AppendCell(sb, r.AfterSpring); sb.Append(',');
-                AppendCell(sb, r.FinalOut); sb.Append('\n');
+                AppendCell(sb, r.FinalOut); sb.Append(',');
+                AppendVel(sb, r.DiVel); sb.Append(',');
+                AppendVel(sb, r.EstVel); sb.Append(',');
+                sb.Append(r.CondTerm).Append('\n');
             }
 
             string dir = Path.GetDirectoryName(path);
@@ -99,6 +117,15 @@ namespace TrueforceForAll.Plugin
         private static void AppendCell(StringBuilder sb, int v)
         {
             if (v != int.MinValue) sb.Append(v);   // blank cell for null
+        }
+
+        // A velocity source that is not live reads NaN, which would land in the
+        // CSV as a literal "NaN" and quietly become a zero in most spreadsheets.
+        // Leave the cell blank instead: no source and standing still are
+        // different facts, and a plot of the second is a plot of nothing.
+        private static void AppendVel(StringBuilder sb, float v)
+        {
+            if (!float.IsNaN(v)) sb.Append(v.ToString("0.####", CultureInfo.InvariantCulture));
         }
     }
 }

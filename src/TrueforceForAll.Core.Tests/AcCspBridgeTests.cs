@@ -15,7 +15,9 @@ namespace TrueforceForAll.Core.Tests
                                     float damper = 0.6f, float steerSpeed = 1.5f,
                                     uint acLeds = 0, float[] ledRpms = null,
                                     float ledBlinkRpm = 0f, float ledBlinkHz = 0f,
-                                    float[] ledRgb = null)
+                                    float[] ledRgb = null,
+                                    float softLockAmount = 0f, float softLockTarget = 0f,
+                                    float softLockDamper = 0f, bool softLockEnabled = false)
         {
             var b = new byte[AcCspBridgeLayout.Size];
             BitConverter.GetBytes(magic).CopyTo(b, AcCspBridgeLayout.OffMagic);
@@ -45,7 +47,71 @@ namespace TrueforceForAll.Core.Tests
                 for (int i = 0; ledRgb != null && i < ledRgb.Length; i++)
                     BitConverter.GetBytes(ledRgb[i]).CopyTo(b, AcCspBridgeLayout.OffAcLedRgb + i * 4);
             }
+            if (version >= 6)
+            {
+                BitConverter.GetBytes(softLockAmount).CopyTo(b, AcCspBridgeLayout.OffSoftLockAmount);
+                BitConverter.GetBytes(softLockTarget).CopyTo(b, AcCspBridgeLayout.OffSoftLockTarget);
+                BitConverter.GetBytes(softLockDamper).CopyTo(b, AcCspBridgeLayout.OffSoftLockDamper);
+            }
+            if (version >= 7)
+                BitConverter.GetBytes(softLockEnabled ? 1u : 0u).CopyTo(b, AcCspBridgeLayout.OffSoftLockEnabled);
             return b;
+        }
+
+        [Fact]
+        public void Parse_V6_ReadsSoftLockBlendInputs()
+        {
+            Assert.Equal(AcCspBridgeParse.Ok, AcCspBridgeLayout.TryParse(
+                Block(42, softLockAmount: 0.4f, softLockTarget: -0.8f, softLockDamper: 0.25f), out var s));
+            Assert.Equal(0.4f, s.SoftLockAmount, 3);
+            Assert.Equal(-0.8f, s.SoftLockTarget, 3);
+            Assert.Equal(0.25f, s.SoftLockDamper, 3);
+        }
+
+        [Fact]
+        public void Parse_V6_ClampsAmountAndTreatsNegativeAsNoLock()
+        {
+            // Amount is the caller's only gate, so it must never arrive above 1
+            // (a lerp past the target overshoots the wall) or below 0.
+            Assert.Equal(AcCspBridgeParse.Ok,
+                AcCspBridgeLayout.TryParse(Block(42, softLockAmount: 3.5f), out var hi));
+            Assert.Equal(1f, hi.SoftLockAmount, 3);
+            Assert.Equal(AcCspBridgeParse.Ok,
+                AcCspBridgeLayout.TryParse(Block(42, softLockAmount: -2f), out var lo));
+            Assert.Equal(0f, lo.SoftLockAmount, 3);
+        }
+
+        [Fact]
+        public void Parse_OlderWriter_LeavesSoftLockAtZero()
+        {
+            // A v5 script cannot describe a lock, and "no lock" is the safe
+            // reading: the caller skips the blend entirely at amount 0.
+            Assert.Equal(AcCspBridgeParse.Ok, AcCspBridgeLayout.TryParse(
+                Block(42, version: 5, softLockAmount: 0.9f), out var s));
+            Assert.Equal(0f, s.SoftLockAmount, 3);
+        }
+
+        [Fact]
+        public void Parse_V7_ReadsWhetherALockIsConfigured()
+        {
+            // Availability, not engagement. The spring fades on APPROACH, before
+            // any amount exists, so it needs this rather than the amount.
+            Assert.Equal(AcCspBridgeParse.Ok,
+                AcCspBridgeLayout.TryParse(Block(42, softLockEnabled: true), out var on));
+            Assert.True(on.SoftLockEnabled);
+            Assert.Equal(AcCspBridgeParse.Ok,
+                AcCspBridgeLayout.TryParse(Block(42, softLockEnabled: false), out var off));
+            Assert.False(off.SoftLockEnabled);
+        }
+
+        [Fact]
+        public void Parse_PreV7Writer_ReportsNoLockConfigured()
+        {
+            // The safe reading: the spring keeps its full authority rather than
+            // fading out for a lock that will never catch the wheel.
+            Assert.Equal(AcCspBridgeParse.Ok, AcCspBridgeLayout.TryParse(
+                Block(42, version: 6, softLockEnabled: true), out var s));
+            Assert.False(s.SoftLockEnabled);
         }
 
         [Fact]
@@ -184,7 +250,9 @@ namespace TrueforceForAll.Core.Tests
         public void Parse_RejectsForeignHeader()
         {
             Assert.Equal(AcCspBridgeParse.BadMagic,   AcCspBridgeLayout.TryParse(Block(2, magic: 0x11111111), out _));
-            Assert.Equal(AcCspBridgeParse.BadVersion, AcCspBridgeLayout.TryParse(Block(2, version: 6), out _));
+            // One past the newest layout we know (v7 = the soft lock), so this
+            // keeps testing "too new to trust" rather than a specific number.
+            Assert.Equal(AcCspBridgeParse.BadVersion, AcCspBridgeLayout.TryParse(Block(2, version: 8), out _));
             Assert.Equal(AcCspBridgeParse.TooShort,   AcCspBridgeLayout.TryParse(new byte[10], out _));
         }
 

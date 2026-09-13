@@ -66,9 +66,24 @@ namespace TrueforceForAll.Plugin
             // and telemetry freshness stamped through the game-close window,
             // holding force paths open against frozen data (2026-08-08,
             // trace-proven). No running game = no frames.
-            if (data?.GameRunning != true) return;
+            // Named, not silent. Both of these stop frames, which decays
+            // MeasuredHz to zero and releases the wheel through the FFB
+            // provider's pause path, and until now they did it with nothing in
+            // the log to say why: a RaceRoom force dropout mid-corner showed a
+            // bare "FFB source: pause-release" and no reason anywhere (rig,
+            // 2026-09-10). The other two withhold paths already announce
+            // themselves; these are the two that could not be told apart.
+            if (data?.GameRunning != true)
+            {
+                MarkWithheld("the reader reports the game is not running");
+                return;
+            }
             var d = data?.NewData;
-            if (d == null) return;
+            if (d == null)
+            {
+                MarkWithheld("the reader delivered no data block");
+                return;
+            }
 
             // Flagged pause: withhold frames for the whole pause. A one-shot
             // settle would not work here, because SimHub keeps re-delivering
@@ -113,6 +128,18 @@ namespace TrueforceForAll.Plugin
             double realRedline = d.CarSettings_RedLineRPM > 0 ? d.CarSettings_RedLineRPM
                                : d.CarSettings_CurrentGearRedLineRPM > 0 ? d.CarSettings_CurrentGearRedLineRPM
                                : 0.0;
+            // RaceRoom's published redline is REAL and is the number to use. It
+            // briefly looked otherwise: it is identical in every gear (7350 on a
+            // car whose MaxRpm is 7500), which reads like a derived value, and a
+            // MaxRpm override was tried on 2026-09-12. It was wrong. 7350 is
+            // where RaceRoom's own rev limiter cuts and where its own LEDs blink
+            // (owner, on the rig), so overriding to MaxRpm put our bar and flash
+            // PAST the limiter. Identical-per-gear means the car has one shift
+            // point, not that the number is invented.
+            //
+            // The flicker that prompted the override was never this: it was a
+            // per-variant redline PIN of 7500 moving the flash while the bar kept
+            // reading telemetry at 7350. Clearing the pin lands both on 7350.
             // Per-gear redline (no stable car-level value): used for the buzz but
             // kept OUT of the variant signature, since it changes every shift and
             // would otherwise spawn a junk variant per gear.

@@ -78,7 +78,39 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(1.0, f.Throttle01, 3);         // 255/255
             Assert.Equal("3", f.Gear);                  // gear byte 4 -> "3"
             Assert.Equal(8, f.NumCylinders);
+            Assert.False(f.EngineIsElectric);
             Assert.Equal(2468, src.CurrentCarOrdinal);
+        }
+
+        // ---- electric cars ----------------------------------------------
+        // Forza counts the loaded car's cylinders and an EV has none, so a
+        // zero here is the game answering "electric", not staying quiet. The
+        // count itself still reads as unknown: nothing fires at 0 cylinders.
+
+        [Fact]
+        public void ElectricCar_ZeroCylindersOnALivePacket_ReadsAsElectric()
+        {
+            var src = NewSource();
+            var f = src.ParsePacket(DashPacket(cylinders: 0, maxRpm: 12500f, rpm: 4000f),
+                                    HorizonDashLength);
+
+            Assert.True(f.EngineIsElectric);
+            Assert.Null(f.NumCylinders);
+        }
+
+        [Fact]
+        public void EmptyKeepalive_SaysNothingAboutElectric()
+        {
+            var src = NewSource();
+            // The zeroed packet FH6 interleaves between real frames. Its zero
+            // cylinder count is an empty field, so it must not be mistaken
+            // for an EV: every combustion car would flip electric mid-race.
+            var f = src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 0f, cylinders: 0,
+                                               speedMs: 0f, accel: 0, gear: 1),
+                                    HorizonDashLength);
+
+            Assert.Null(f.EngineIsElectric);
+            Assert.Null(f.NumCylinders);
         }
 
         // ---- gear scale -------------------------------------------------

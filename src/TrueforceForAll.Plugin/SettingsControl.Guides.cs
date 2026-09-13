@@ -115,6 +115,13 @@ namespace TrueforceForAll.Plugin
                 },
                 new GuideEntry
                 {
+                    Key = "raceroom-setup", Group = GroupSetup,
+                    Title = "RaceRoom: setup guide",
+                    ActionLabel = TelemetryFfbTabLabel(),
+                    Action = () => SelectTab(TelemetryFfbTab),
+                },
+                new GuideEntry
+                {
                     Key = "forza-setup", Group = GroupSetup,
                     Title = "Forza: UDP & Data Out setup",
                     ActionLabel = "Open the UDP settings",
@@ -139,10 +146,43 @@ namespace TrueforceForAll.Plugin
                     ActionLabel = "Install the TF4ALL CSP Bridge",
                     Action = () => _plugin.InstallAcCspBridgeInteractive(),
                 },
+                // What the bridge IS, kept apart from how to install it: the setup
+                // guide above is a procedure and already long, and someone asking
+                // "what is this thing about to touch my game" wants a page, not a
+                // paragraph buried above the install steps.
+                new GuideEntry
+                {
+                    Key = "csp-bridge", Group = GroupSetup,
+                    Title = "What the TF4ALL CSP Bridge is",
+                    ActionLabel = "Install the TF4ALL CSP Bridge",
+                    Action = () => _plugin.InstallAcCspBridgeInteractive(),
+                },
                 new GuideEntry
                 {
                     Key = "telemetry-ffb", Group = GroupSetup,
                     Title = "Telemetry Based FFB: what it does",
+                    ActionLabel = TelemetryFfbTabLabel(),
+                    Action = () => SelectTab(TelemetryFfbTab),
+                },
+                // Why the lights and screen are conditional at all. Sits with the
+                // two force guides because it is the thing both of them point at
+                // to explain themselves, and wheel-lights.md links here for the
+                // mechanism rather than restating it in a clause.
+                new GuideEntry
+                {
+                    Key = "force-and-lights", Group = GroupSetup,
+                    Title = "Why your rev lights and screen only work in some games",
+                    ActionLabel = TelemetryFfbTabLabel(),
+                    Action = () => SelectTab(TelemetryFfbTab),
+                },
+                // The other half of that story, kept separate because the two want
+                // OPPOSITE game-side settings and one page could not say both
+                // without hedging the sentence that matters most. The FFB tab
+                // already renames itself per game along the same line.
+                new GuideEntry
+                {
+                    Key = "force-handover", Group = GroupSetup,
+                    Title = "Force handover: carrying the sim's own force",
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },

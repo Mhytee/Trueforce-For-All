@@ -44,6 +44,18 @@ namespace TrueforceForAll.Core
         public float AcLedBlinkRpm;
         /// <summary>How fast they flash, in Hz. 0 if the car does not say.</summary>
         public float AcLedBlinkHz;
+        /// <summary>CSP's custom soft lock, as the blend the plugin must apply
+        /// LAST: 0 = no lock (almost every frame), 1 = fully locked. Not a
+        /// force: the caller cancels force opposing the steering direction and
+        /// then lerps toward <see cref="SoftLockTarget"/> by this amount, which
+        /// is the shape CSP itself uses.</summary>
+        public float SoftLockAmount;
+        public float SoftLockTarget;
+        public float SoftLockDamper;
+        /// <summary>True when CSP has a custom soft lock configured at all, even
+        /// while <see cref="SoftLockAmount"/> is 0 because the wheel is nowhere
+        /// near the limit.</summary>
+        public bool SoftLockEnabled;
     }
 
     /// <summary>CSP g27_lights MODE values. Disabled is the one that stops AC
@@ -74,9 +86,9 @@ namespace TrueforceForAll.Core
         // v4 appends the car's own shift-light thresholds after that. Same rule
         // throughout: every earlier offset is unchanged and the reader takes
         // the tail only from a writer new enough to have written it.
-        public const uint   Version    = 5;
+        public const uint   Version    = 7;
         public const uint   VersionMin = 1;
-        public const int    Size       = 368;
+        public const int    Size       = 384;
         /// <summary>Room the wire reserves for per-LED switch-on RPMs. Cars
         /// run to about ten; the wheel's own bar is ten steps on a G PRO.</summary>
         public const int    AcLedMax   = 12;
@@ -87,7 +99,19 @@ namespace TrueforceForAll.Core
                          OffFfbDamper = 152, OffSteerInputSpeed = 156, OffAcLeds = 160,
                          OffAcLedCount = 164, OffAcLedRpm = 168,
                          OffAcLedBlinkRpm = 216, OffAcLedBlinkHz = 220,
-                         OffAcLedRgb = 224;
+                         OffAcLedRgb = 224,
+                         // v6: CSP's custom soft lock, as blend inputs rather than
+                         // a force. CSP applies its own lock AFTER the script, so
+                         // on the takeover path it lands on our zeroed return and
+                         // is discarded (issue #43); the bridge computes it and
+                         // the plugin applies it at the end of its chain.
+                         OffSoftLockAmount = 368, OffSoftLockTarget = 372,
+                         OffSoftLockDamper = 376,
+                         // v7: whether a lock is CONFIGURED, which is a different
+                         // question from whether it is engaging right now. The
+                         // stationary spring fades on approach to the limit, and
+                         // must only do that where a lock will catch the wheel.
+                         OffSoftLockEnabled = 380;
 
         /// <summary>One AC dash LED's EMISSIVE turned into an sRGB triple.
         ///
@@ -161,6 +185,17 @@ namespace TrueforceForAll.Core
                 s.AcLedBlinkRpm = BitConverter.ToSingle(buf, OffAcLedBlinkRpm);
                 s.AcLedBlinkHz  = BitConverter.ToSingle(buf, OffAcLedBlinkHz);
             }
+            if (ver >= 6)
+            {
+                // Amount is the only gate a caller needs: 0 means the wheel is
+                // nowhere near the lock, which is almost every frame.
+                float amt = BitConverter.ToSingle(buf, OffSoftLockAmount);
+                s.SoftLockAmount = amt > 0f ? (amt > 1f ? 1f : amt) : 0f;
+                s.SoftLockTarget = BitConverter.ToSingle(buf, OffSoftLockTarget);
+                s.SoftLockDamper = BitConverter.ToSingle(buf, OffSoftLockDamper);
+            }
+            if (ver >= 7)
+                s.SoftLockEnabled = BitConverter.ToUInt32(buf, OffSoftLockEnabled) != 0;
             return AcCspBridgeParse.Ok;
         }
     }

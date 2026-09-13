@@ -542,34 +542,48 @@ namespace TrueforceForAll.Core
         }
 
         /// <summary>Whether rendered inertia gives its stored energy back
-        /// (a lossless flywheel: push the wheel and it coasts on). The G PRO
-        /// firmware does NOT (rig A/B, 2026-09-01: native inertia turned up
-        /// "just acts as damping", the wheel stops while ours kept moving),
-        /// so the default is the lossy form that matches the wheel. True is
-        /// the DirectInput-spec reading, kept for the bench A/B and for
-        /// firmware that stores energy properly.</summary>
-        public bool InertiaCoasts { get; set; }
+        /// (a lossless flywheel: push the wheel and it coasts on), which is
+        /// what DirectInput means by inertia and what every other open stack
+        /// renders. Default TRUE since 2026-09-09 (owner call: render the
+        /// effect accurately rather than reproduce the wheel's version of
+        /// it). False fades out the half of the term that would sustain
+        /// motion, so inertia only ever resists: that matches the G PRO
+        /// firmware (rig A/B 2026-09-01, native inertia turned up "just acts
+        /// as damping" and the wheel stopped while ours kept moving) and it
+        /// is the conservative setting, a lossless flywheel being negative
+        /// damping that spends loop stability margin.</summary>
+        public bool InertiaCoasts { get; set; } = true;
 
         /// <summary>Render the inertia effect against VELOCITY rather than
         /// acceleration, which is what the G PRO's firmware appears to do.
         ///
-        /// The owner has now reported it twice, unprompted and months of
-        /// tuning apart: native inertia "feels like a whole different effect,
-        /// like it's just damping, no inertia". Matching the wheel is the
-        /// whole mandate, so when the firmware renders inertia as damping,
-        /// rendering a textbook flywheel is the wrong answer however correct
-        /// it is on paper.
+        /// DEFAULT OFF since 2026-09-09 (owner call: "make our inertia effect
+        /// accurate"). Inertia means force per unit ACCELERATION, in this
+        /// engine, in DirectInput, and in every open stack we compared
+        /// against, mescon's Linux driver included, which feeds its condition
+        /// formula a scaled wheel_accel exactly as we now do by default.
         ///
-        /// It also cures the grain. Acceleration is a SECOND derivative of a
-        /// quantized encoder and inertia was the only effect built on one,
-        /// which is exactly why it was the grainiest of the four. Velocity is
-        /// one derivative cleaner.
+        /// It stays available because the finding behind it is real and
+        /// unexplained: the owner reported it twice, unprompted, that the
+        /// wheel's OWN native inertia "feels like a
+        /// whole different effect, like it's just damping, no inertia", and
+        /// turning this on to match reached feel parity. Whether the firmware
+        /// aliases inertia onto its damper or renders true inertia off a
+        /// heavily lagged acceleration estimate (a lagged acceleration term
+        /// IS a damping term) is still unmeasured; see docs/di-condition-
+        /// engine.md. Matching a wheel's defect is not the same as rendering
+        /// the effect, and this switch is what keeps the two separable.
+        ///
+        /// Turning it on also loses some grain, acceleration being a SECOND
+        /// derivative of a quantized encoder and inertia the only effect
+        /// built on one. WheelMotionEstimator's washout differentiator is the
+        /// real answer to that, with InertiaCutoffHz as the second lever.
         ///
         /// NOTE the gain changes meaning with the mode: force per unit
         /// VELOCITY here, per unit ACCELERATION otherwise, and those differ by
         /// about an order of magnitude on a hand-turned wheel. A gain tuned in
         /// one mode is meaningless in the other.</summary>
-        public bool InertiaAsDamping { get; set; } = true;
+        public bool InertiaAsDamping { get; set; }
 
         // Velocity scale (range/s) over which the sustaining half fades in.
         // A hard gate on sign(velocity) would chatter exactly where the

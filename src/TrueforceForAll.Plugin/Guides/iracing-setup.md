@@ -5,7 +5,7 @@ Until it is set up, the plugin sits on **Lightsync only** in iRacing and leaves 
 1. With iRacing closed, open `Documents\iRacing\app.ini` and set `loadTrueForceAPI=0`.
 2. Start iRacing and turn its force feedback **off** in the options. Leave its strength number where it is: the plugin reads that number and scales the sim's forces by it, so a 0 there gives you a dead wheel.
 3. Set the mode at the top of the panel to **Normal**.
-4. On the **FFB** tab, tick **Take over force feedback for iRacing**. ([What it does](guide:telemetry-ffb).)
+4. On the **FFB** tab, tick **Take over force feedback for iRacing**. ([What it does](guide:force-handover).)
 
 If the wheel stays quiet afterwards, one of the two iRacing switches (steps 1 and 2) is still on.
 

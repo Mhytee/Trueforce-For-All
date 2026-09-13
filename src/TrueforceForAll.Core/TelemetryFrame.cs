@@ -304,6 +304,14 @@ namespace TrueforceForAll.Core
         /// Null when the source doesn't expose it (AC, SimHub fallback).</summary>
         public int? NumCylinders;
 
+        /// <summary>True when the sim says the active car burns nothing: no
+        /// cylinders at all, so it is electric. This is a positive answer,
+        /// which is what separates it from a null <see cref="NumCylinders"/>
+        /// ("this source never tells us"). A source may only set it on a frame
+        /// it knows carries real engine data, never on a zero-filled keepalive.
+        /// Null from every source that cannot tell an EV from a quiet frame.</summary>
+        public bool? EngineIsElectric;
+
         // ---- Rev / shift LEDs (SimHub-only) ----
         /// <summary>Rev-bar fill, 0..1, mapped over the meaningful idle→shift
         /// band the same way SimHub's dashboard rev bars are (from

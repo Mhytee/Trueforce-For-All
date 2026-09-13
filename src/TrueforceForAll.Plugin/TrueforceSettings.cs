@@ -266,6 +266,8 @@ namespace TrueforceForAll.Plugin
         // show again"). Machine-local in backup: the app.ini change is per-PC,
         // so a restored backup on a new machine should show the notice again.
         public bool IRacingTrueforceNoticeDismissed { get; set; } = false;
+        // Same latch for the RaceRoom setup notice.
+        public bool R3ETrueforceNoticeDismissed { get; set; } = false;
 
         // The games (SimHub names) whose "the plugin stepped aside" notice the
         // user dismissed for good: a stand-down for a second Trueforce stream
@@ -915,20 +917,32 @@ namespace TrueforceForAll.Plugin
         public double FfbConditionSpringGain   { get; set; } = 1.0;
         public double FfbConditionFrictionGain { get; set; } = 1.0;
         public double FfbConditionInertiaGain  { get; set; } = 0.05;
-        // Whether rendered inertia coasts (a lossless flywheel) or only ever
-        // resists. The G PRO firmware only resists (rig A/B 2026-09-01), and
-        // matching the wheel is the point, so this is off by default; on is
-        // the DirectInput-spec reading, for the bench A/B.
-        public bool   FfbConditionInertiaCoasts { get; set; } = false;
+        // Whether rendered inertia coasts (a lossless flywheel: it resists
+        // the push, then hands the stored energy back) or only ever resists.
+        // ON by default since 2026-09-09: coasting is what DirectInput means
+        // by inertia. Off is the conservative form that matches the G PRO
+        // firmware (rig A/B 2026-09-01), a flywheel being negative damping
+        // that spends loop stability margin.
+        public bool   FfbConditionInertiaCoasts { get; set; } = true;
         // Render inertia against velocity (damping-shaped) rather than
-        // acceleration. Default ON because that is what the wheel's own
-        // firmware appears to do: native inertia reads as damping by feel,
-        // reported twice, and matching the wheel is the point. It also loses
-        // the grain, acceleration being a second derivative of a quantized
-        // encoder. The inertia GAIN means something different in each mode
-        // (per velocity here, per acceleration otherwise), so a value tuned
-        // under one does not carry to the other.
-        public bool   FfbConditionInertiaAsDamping { get; set; } = true;
+        // acceleration. OFF by default since 2026-09-09 (owner call: render
+        // the effect accurately). Inertia is force per unit acceleration in
+        // DirectInput and in every open renderer we compared against. The
+        // switch stays because the finding behind it is real: the wheel's own
+        // native inertia reads as damping by feel, reported twice, and
+        // nobody has yet measured whether the firmware aliases it
+        // onto the damper or renders it off a lagged acceleration estimate.
+        // The inertia GAIN means something different in each mode (per
+        // velocity here, per acceleration otherwise), so a value tuned under
+        // one does not carry to the other.
+        public bool   FfbConditionInertiaAsDamping { get; set; } = false;
+        // One-time repair marker for the two above. A settings file written
+        // before 2026-09-09 carries the damping-shaped defaults plus an
+        // inertia gain tuned in the VELOCITY domain, which is not a
+        // preference in the acceleration domain but a unit error, so the
+        // first launch after the change flips both switches and resets the
+        // gain. Anything the user sets afterward stands.
+        public bool   FfbConditionInertiaSpecMigrated { get; set; } = false;
         // Reveals the effect test bench at the bottom of the FFB tab. Off by
         // default and unlocked with the FXTEST access code: the bench drives
         // the wheel directly and stops the Trueforce stream to do it, which
@@ -1047,7 +1061,14 @@ namespace TrueforceForAll.Plugin
         // Default 0.5 (owner's preferred general feel once the spring is driven
         // by the wheel's physical steering position).
         public double StationarySpringStrength  { get; set; } = 0.5;
-        public double StationarySpringCutoffKmh { get; set; } = 12.0;  // spring fully gone at/above this speed
+        // Spring fully gone at/above this speed. Dropped 12 -> 10 (owner,
+        // 2026-09-10): Assetto Corsa applies no stationary spring of its own, so
+        // ours is the only thing weighting a parked wheel there, and it was still
+        // contributing at the speeds where a car starts generating its own
+        // self-aligning torque. Letting it go earlier hands over to the car's own
+        // force sooner. An existing settings file keeps whatever it has; this
+        // only moves fresh installs.
+        public double StationarySpringCutoffKmh { get; set; } = 10.0;
         // Per-game stationary spring (owner, 2026-09-05): each game keeps its own
         // enabled/strength/cutoff. An explicit entry wins; with no entry a game
         // uses the defaults, which are ON only for Assetto Corsa (off everywhere
@@ -1056,6 +1077,18 @@ namespace TrueforceForAll.Plugin
         // what the spring actually reads.
         public System.Collections.Generic.Dictionary<string, StationarySpringGameConfig> StationarySpringByGame { get; set; }
             = new System.Collections.Generic.Dictionary<string, StationarySpringGameConfig>();
+
+        // The spring OUTSIDE Assetto Corsa, behind the SPRING access code while it
+        // is tested game by game (owner, 2026-09-08). It has caused trouble before
+        // and the per-game rework has not been driven anywhere else yet, so the
+        // shipped answer is "Assetto Corsa only" and this is the tester's way to
+        // turn it on elsewhere. In AC it is unconditional and this is not
+        // consulted. Locked, a saved per-game entry is ignored rather than
+        // deleted, so unlocking gives the tester their tuning back.
+        //
+        // EXCLUDED from backup, like every other access-code unlock: it is a fact
+        // about this machine's testing, not a preference to carry to a new PC.
+        public bool StationarySpringUnlocked { get; set; } = false;
 
         // FFB spike taming: tames AC's over-the-top kerb / collision FFB so
         // it lands as a firm shove instead of a wheel-yanking jolt.

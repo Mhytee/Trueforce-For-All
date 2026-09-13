@@ -214,6 +214,25 @@ namespace TrueforceForAll.Core
         /// knowing this flag exists may set it.</summary>
         public volatile bool FfbBypassTapCorrections;
 
+        /// <summary>Skip spike taming for this packet's target. Set while a mode
+        /// AUTHORS a force that is meant to reach full scale and stay there.
+        ///
+        /// Spike taming exists for curb and collision transients: brief, violent,
+        /// and not something the driver asked for. A steering soft lock is the
+        /// exact opposite. It is deliberate, sustained, and the one force that
+        /// should arrive at the ceiling, because its whole job is to stop the
+        /// wheel going further.
+        ///
+        /// Left on, the peak limiter clamped a lock commanding 32767 down to
+        /// about 22943 with the shipped threshold, which is BELOW what the
+        /// stationary spring was already producing at the same angle. No wall
+        /// could be felt however the spring was shaped, because the limiter had
+        /// already decided the ceiling (rig, 2026-09-10).
+        ///
+        /// Set per tick by the force provider and read on the same thread
+        /// immediately after, so it never describes a stale packet.</summary>
+        public volatile bool FfbBypassSpikeTaming;
+
         /// <summary>Skip the SIGN correction but keep the scale.
         ///
         /// FfbInvertSign exists to reconcile a value we read off the wire with
@@ -1024,7 +1043,10 @@ namespace TrueforceForAll.Core
                     // because the wheel still reaches the target value,
                     // just over a few extra ms. Only active in slew mode.
                     bool tamed = false;
-                    bool useSlew = FfbSpikeTamingEnabled && FfbSpikeUseSlewLimiter;
+                    // One gate for both modes: an authored wall opts out of
+                    // taming entirely rather than of whichever mode is active.
+                    bool tamingOn = FfbSpikeTamingEnabled && !FfbBypassSpikeTaming;
+                    bool useSlew = tamingOn && FfbSpikeUseSlewLimiter;
                     float maxDelta = useSlew ? FfbSpikeMaxLsbPerMs : 0f;
                     if (maxDelta > 0f)
                     {
@@ -1074,7 +1096,7 @@ namespace TrueforceForAll.Core
                     // cap/2; asymptotes to cap as the spike grows. Output
                     // ceiling = baseline + softExcess, so peak FFB during a
                     // big crash asymptotes toward baseline + cap.
-                    bool useTransient = FfbSpikeTamingEnabled && !FfbSpikeUseSlewLimiter;
+                    bool useTransient = tamingOn && !FfbSpikeUseSlewLimiter;
                     float spikeCap = useTransient ? FfbPeakSoftLimitLsb : 0f;
                     float magThreshold = useTransient ? FfbSpikeTransientThresholdLsb : 0f;
                     int absT = t < 0 ? -t : t;

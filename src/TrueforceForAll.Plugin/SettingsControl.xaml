@@ -1573,7 +1573,7 @@
                             <TextBlock Grid.Column="0" Text="Electric cars:" Style="{StaticResource LabelText}"
                                        ToolTip="What Engine pulse does for electric cars (detected as electric, or set to Electric in Car facts). Most users prefer the muted hum since real EVs aren't silent (many pump synthetic engine sound). Pick Silent if you want true silence on EVs."/>
                             <ComboBox  Grid.Column="1" x:Name="EngineElectricModeCombo" SelectionChanged="EngineElectricMode_Changed">
-                                <ComboBoxItem Content="Muted hum (50%)"/>
+                                <ComboBoxItem Content="Muted hum (25%)"/>
                                 <ComboBoxItem Content="Silent (off)"/>
                             </ComboBox>
                         </Grid>
@@ -3417,7 +3417,7 @@
                                       Content="Stationary spring (adds parked-car wheel weight)"
                                       VerticalAlignment="Center"
                                       Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It works in any game, and is ignored for iRacing (the sim already weights the wheel)."/>
+                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game, and starts on in Assetto Corsa only: tick it while a game is running to turn it on there. Ignored for iRacing (the sim already weights the wheel)."/>
                             <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="not used in Forza"
                                        ToolTip="Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games."/>
@@ -3869,6 +3869,8 @@
                                 <Button x:Name="FxTestEngineButton" Content="Play engine" Width="100" Height="24" Margin="8,0,0,0" Click="FxTestEngine_Click"
                                         ToolTip="The identical effect through the plugin's renderer, streamed as Trueforce force: what games feel under the plugin."/>
                                 <Button x:Name="FxTestStopButton" Content="Stop" Width="70" Height="24" Margin="8,0,0,0" Click="FxTestStop_Click"/>
+                                <Button x:Name="FxTraceButton" Content="Record trace" Width="100" Height="24" Margin="16,0,0,0" Click="FxTrace_Click"
+                                        ToolTip="Records every force tick to a CSV in Documents\TrueforceForAll: the wheel's velocity as the reader measures it, the smoothed velocity the damper actually multiplies, and the force each effect added. Play an effect, turn the wheel through whatever feels wrong, then press again to save. Keeps the last 30 seconds, so a long recording is fine."/>
                                 <TextBlock x:Name="FxTestStatus" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,2">
@@ -3883,7 +3885,10 @@
                                         ToolTip="Puts the picked effect's gain back to its shipped default. The other effects keep their tuning."/>
                                 <CheckBox x:Name="FxTuneInertiaCoastsCheck" Content="Inertia coasts" Margin="14,0,0,0" VerticalAlignment="Center"
                                           Checked="FxTuneInertiaCoasts_Changed" Unchecked="FxTuneInertiaCoasts_Changed"
-                                          ToolTip="Off (default) matches the wheel: rendered inertia only ever resists, like the firmware's own. On is the DirectInput reading, a lossless flywheel that coasts on after a push. Affects inertia only."/>
+                                          ToolTip="On (default) is real inertia: the wheel resists the push, then carries on turning as the stored energy comes back. Off makes it only ever resist, which is what the wheel's own firmware does. Affects inertia only."/>
+                                <CheckBox x:Name="FxTuneInertiaAsDampingCheck" Content="Inertia as damping" Margin="14,0,0,0" VerticalAlignment="Center"
+                                          Checked="FxTuneInertiaAsDamping_Changed" Unchecked="FxTuneInertiaAsDamping_Changed"
+                                          ToolTip="Off (default) renders inertia properly, from how fast the wheel is speeding up. On renders it from how fast the wheel is turning instead, which is how the wheel's own native inertia feels. For A/B against the firmware. The inertia gain means a different thing in each mode, so retune after switching."/>
                                 <CheckBox x:Name="FxTuneSignCheck" Content="Flip direction" Margin="16,0,0,0" VerticalAlignment="Center"
                                           Checked="FxTuneSign_Changed" Unchecked="FxTuneSign_Changed"
                                           ToolTip="Flips the velocity-coupled effects (damper, friction, inertia) if the rendered damper feels like an anti-damper. Springs never flip."/>
