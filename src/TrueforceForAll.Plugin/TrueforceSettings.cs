@@ -1163,7 +1163,7 @@ namespace TrueforceForAll.Plugin
         // + Pause) so the wheel reverts to its native FFB, e.g. Forza's own
         // auto-center, instead of us streaming a substitute force. This is
         // what stopped the G923/FH6 pause full-lock (issue #13), and why it
-        // shipped ON from v0.1.24 to 0.3.0. OFF since 0.3.1 (owner call
+        // shipped ON from v0.1.24 to 0.3.0. OFF since 0.4.0 (owner call
         // 2026-09-14): the pause path now handles a pause itself, zeroing the
         // game's constant force while keeping its spring and damper shapes,
         // and rendering our own spring under Telemetry Based FFB, so the
@@ -1176,7 +1176,7 @@ namespace TrueforceForAll.Plugin
 
         // One-time default repair markers for the above. 0.3.0 flipped the
         // beta-era stored false (a regressed default nobody chose) to ON once;
-        // 0.3.1 flips to OFF once, since nearly every stored ON came from that
+        // 0.4.0 flips to OFF once, since nearly every stored ON came from that
         // flip rather than a choice. After each, the checkbox choice sticks.
         public bool  StopStreamOnPauseMigrated { get; set; } = false;
         public bool  StopStreamOnPauseDefaultOffMigrated { get; set; } = false;

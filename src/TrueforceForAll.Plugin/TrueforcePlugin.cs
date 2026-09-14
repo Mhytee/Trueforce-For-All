@@ -3987,7 +3987,7 @@ namespace TrueforceForAll.Plugin
             // keeps honouring a shared number set before this release.
             Settings.IRacingMaxForcePerCar = true;
             // StopStreamOnPause: 0.3.0 flipped beta-era files to ON once (the
-            // shipped default then). 0.3.1 ships it OFF (see the setting), and
+            // shipped default then). 0.4.0 ships it OFF (see the setting), and
             // nearly every stored ON came from that flip rather than a choice,
             // so flip once more; the checkbox choice then sticks.
             if (!Settings.StopStreamOnPauseMigrated) Settings.StopStreamOnPauseMigrated = true;

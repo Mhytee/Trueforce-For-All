@@ -4952,7 +4952,7 @@
                              the plugin fully leaves Trueforce mode while the game is
                              paused so the wheel reverts to the game's own FFB /
                              auto-center instead of holding a force.
-                             Global, not preset-saved. Default OFF since 0.3.1: the
+                             Global, not preset-saved. Default OFF since 0.4.0: the
                              pause path handles a pause itself now (the game's constant
                              force zeroed, its spring and damper kept), so this is the
                              escape hatch (owner call 2026-09-14). -->
