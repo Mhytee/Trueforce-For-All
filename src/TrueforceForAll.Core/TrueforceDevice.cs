@@ -377,6 +377,36 @@ namespace TrueforceForAll.Core
         private float _sumAbsDeltas;
         private float _spikeSlewEnv;
 
+        // Peak-limiter mode only: the rate a hit may move at while it is in
+        // spike territory (above the user's floor and moving faster than
+        // this). The peak limiter is a magnitude clamp with no rate term, so
+        // a wall slide's sign reversals left it as one-tick steps of twice
+        // the ceiling: a 131% swing in 1 ms with the shipped floor and cap,
+        // 200% once the envelope had opened, on every scrape of the wall
+        // (rig, iRacing takeover, 2026-09-13). Content under the floor is
+        // untouched, which is what keeps this from being the rate limiter
+        // under another name: a kerb at 40% passes bit-identical. A kerb
+        // whose peaks cross the floor is slowed on both edges, by the floor's
+        // own definition of a hit; the floor slider is the lever. Fixed
+        // rather than FfbSpikeMaxLsbPerMs, which is tuned per preset for the
+        // other method (the AC preset carries 386, an 85 ms full swing).
+        // 2000 LSB/ms: full scale in 16 ms, a full reversal in 33 ms. Wheel
+        // frame; the code maps it through the scale where one applies.
+        private const float HitSlewLsbPerMs = 2000f;
+        // The edge that counts as evidence of a hit for the envelope freeze
+        // (below): a directional step of a quarter of full scale in one tick,
+        // which surface texture on a 60 Hz feed never produces and every hit
+        // does. The freeze needed its own bar: at the 2000 of the rate limit,
+        // ordinary per-frame texture on a rough 60 Hz corner tripped it, and
+        // the ceiling then never opened for that corner (model, 2026-09-13).
+        private const float HitHoldEdgeLsbPerMs = 8000f;
+        // Latched while a hit is being rate-limited. Released only once the
+        // limited value has caught the raw AND the raw itself is moving
+        // slower than the rate: with "caught up" alone, a reversal passing
+        // through the floor at the instant of catch-up snapped the rest in
+        // one tick (model, 2026-09-13). Reset in ResetFfbFilters.
+        private bool _hitSlewEngaged;
+
         // Slow-follower envelope of |t| (post-scale FFB magnitude). Drives
         // the transient detector for spike attenuation: only the excess of
         // current magnitude OVER this envelope counts as a spike, so
@@ -601,6 +631,7 @@ namespace TrueforceForAll.Core
             _sumDeltas       = 0f;
             _sumAbsDeltas    = 0f;
             _spikeSlewEnv    = 0f;
+            _hitSlewEngaged  = false;
             _sustainedFfbEnv = 0f;
             _bandLow         = 0f;
             _bandLow2        = 0f;
@@ -902,7 +933,21 @@ namespace TrueforceForAll.Core
             // the StopStreamOnPause gate left Trueforce mode). A normal pause
             // with no test still emits nothing.
             bool forceActive = Stopwatch.GetTimestamp() < System.Threading.Interlocked.Read(ref _forceActiveUntilTicks);
-            if (_paused && !forceActive) return;
+            if (_paused && !forceActive)
+            {
+                // Nothing goes on the wire while paused, so the wheel is at
+                // zero force by the time we resume. The slew and smoothing
+                // filters restart from there rather than from the last value
+                // before the pause, which used to ride out as a ghost of the
+                // pre-pause force on the first ticks back and cut across the
+                // resume ramp (model, 2026-09-13). Done here, on the stream
+                // thread, so nothing races Pause()/Resume().
+                _slewLimitedFfb = 0f;
+                _prevRawForSlew = 0f;
+                _smoothedFfb = 0f;
+                _hitSlewEngaged = false;
+                return;
+            }
 
             short? ffbTargetMaybe = FfbTargetProvider?.Invoke();
             // Resume ramp: fade the first post-resume force in instead of
@@ -1016,7 +1061,8 @@ namespace TrueforceForAll.Core
                     // (otherwise huge) raw slew. A real wall hit is
                     // unidirectional, directionality stays high (~0.7-1.0),
                     // and the slew event registers in full.
-                    float deltaRaw = raw - _prevRawForSlew;
+                    float prevRaw = _prevRawForSlew;
+                    float deltaRaw = raw - prevRaw;
                     _prevRawForSlew = raw;
                     float slewInst = Math.Abs(deltaRaw);
                     _sumDeltas    = _sumDeltas    * DirectionalityDecayPerTick + deltaRaw;
@@ -1047,7 +1093,42 @@ namespace TrueforceForAll.Core
                     // taming entirely rather than of whichever mode is active.
                     bool tamingOn = FfbSpikeTamingEnabled && !FfbBypassSpikeTaming;
                     bool useSlew = tamingOn && FfbSpikeUseSlewLimiter;
+                    bool useTransient = tamingOn && !FfbSpikeUseSlewLimiter;
+                    float spikeCap = useTransient ? FfbPeakSoftLimitLsb : 0f;
+                    float magThreshold = useTransient ? FfbSpikeTransientThresholdLsb : 0f;
                     float maxDelta = useSlew ? FfbSpikeMaxLsbPerMs : 0f;
+
+                    // The wheel's frame: raw is pre-scale on the tap route, the
+                    // floor and the hit rate are what the wheel feels. k maps
+                    // between them (1 where the scale is bypassed or off).
+                    float k = (!FfbBypassTapCorrections && FfbScale != 1.0f && FfbScale != 0f)
+                        ? Math.Abs(FfbScale) : 1f;
+
+                    // Peak-limiter mode: rate-limit a hit while it is in spike
+                    // territory, and nothing else. Either end of a step counts:
+                    // the exit of a hit, a dropout and a reversal that lands
+                    // under the floor are slams too (model, 2026-09-13). The
+                    // floor is compared in the wheel's frame, so the gate and
+                    // the ceiling below agree on what a hit is.
+                    if (spikeCap > 0f && magThreshold > 0f)
+                    {
+                        float hitRate = HitSlewLsbPerMs / k;   // the wheel-frame rate, in raw units
+                        bool fast = slewInst > hitRate;
+                        if (!_hitSlewEngaged)
+                        {
+                            if (fast && (Math.Abs(raw) * k > magThreshold || Math.Abs(prevRaw) * k > magThreshold))
+                                _hitSlewEngaged = true;
+                        }
+                        else if (!fast && Math.Abs(raw - _slewLimitedFfb) <= hitRate)
+                        {
+                            _hitSlewEngaged = false;
+                        }
+                        if (_hitSlewEngaged) maxDelta = hitRate;
+                    }
+                    else
+                    {
+                        _hitSlewEngaged = false;
+                    }
                     if (maxDelta > 0f)
                     {
                         float delta = raw - _slewLimitedFfb;
@@ -1096,11 +1177,33 @@ namespace TrueforceForAll.Core
                     // cap/2; asymptotes to cap as the spike grows. Output
                     // ceiling = baseline + softExcess, so peak FFB during a
                     // big crash asymptotes toward baseline + cap.
-                    bool useTransient = tamingOn && !FfbSpikeUseSlewLimiter;
-                    float spikeCap = useTransient ? FfbPeakSoftLimitLsb : 0f;
-                    float magThreshold = useTransient ? FfbSpikeTransientThresholdLsb : 0f;
                     int absT = t < 0 ? -t : t;
-                    _sustainedFfbEnv += (absT - _sustainedFfbEnv) * SustainedFfbAlpha;
+                    // The envelope must not learn from the hit it is measuring
+                    // against. Trained on |t| through a wall slide, it treated
+                    // the slide as a corner and opened the ceiling from 66%
+                    // to full scale in about half a second, so the longer the
+                    // scrape the harder each reversal landed (rig, iRacing
+                    // takeover, 2026-09-13). While a hit is in progress the
+                    // envelope is frozen: the hit rate limit is engaged, or the
+                    // directional slew sidechain has seen a hit-rate edge while
+                    // the load (now, or the recent average) is in spike
+                    // territory. Both halves of that second test matter. A
+                    // 60 Hz feed steps every frame, and a step alone must not
+                    // read as a hit, or an ordinary corner entry would hold its
+                    // own ceiling down; the recent average is in the test so a
+                    // kerb ridden mid-corner, whose low half-cycles dip under
+                    // the floor, holds the corner's envelope instead of
+                    // training it down (model, 2026-09-13: six variants, this
+                    // one alone clean on the slide, 60 Hz corners, bumpy
+                    // plateaus and the mid-corner kerb). Frozen rather than
+                    // fall-only for the same kerb. A corner builds too slowly
+                    // to trip either test and opens exactly as before.
+                    bool hitInProgress = useTransient
+                        && (_hitSlewEngaged
+                            || (_spikeSlewEnv * k > HitHoldEdgeLsbPerMs
+                                && Math.Max(absT, _sustainedFfbEnv) > magThreshold));
+                    if (!hitInProgress)
+                        _sustainedFfbEnv += (absT - _sustainedFfbEnv) * SustainedFfbAlpha;
                     if (spikeCap > 0f && magThreshold > 0f)
                     {
                         float baseline = magThreshold > _sustainedFfbEnv ? magThreshold : _sustainedFfbEnv;
@@ -1130,7 +1233,12 @@ namespace TrueforceForAll.Core
                 for (int i = 0; i < Window; i++) _window[i] = 0x8000;
                 _lastCurrent = 0x8000;
                 _lastFfbOutput = 0;
+                // The wire carries silence, so the filters restart from zero
+                // (see the paused branch above for why).
                 _smoothedFfb = 0f;
+                _slewLimitedFfb = 0f;
+                _prevRawForSlew = 0f;
+                _hitSlewEngaged = false;
                 BuildSilentPacket(_packetBuf, _seq++);
             }
 

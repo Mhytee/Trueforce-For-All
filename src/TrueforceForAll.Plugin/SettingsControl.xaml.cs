@@ -660,6 +660,14 @@ namespace TrueforceForAll.Plugin
                     if (IRacingSoftLockText != null)
                         IRacingSoftLockText.Text = IRacingSoftLockSlider.Value.ToString("F2");
                 }
+                if (IRacingKerbCheck != null)
+                    IRacingKerbCheck.IsChecked = _plugin.Settings?.IRacingKerbSofteningEnabled ?? true;
+                if (IRacingKerbSlider != null)
+                {
+                    IRacingKerbSlider.Value = _plugin.Settings?.IRacingKerbSoftening ?? 0.6;
+                    if (IRacingKerbText != null)
+                        IRacingKerbText.Text = IRacingKerbSlider.Value.ToString("F2");
+                }
                 if (IRacingForceModeCombo != null)
                     IRacingForceModeCombo.SelectedIndex = IRacingFeelIndexFromSettings();
                 UpdateIRacingFeelHelp();
@@ -838,6 +846,9 @@ namespace TrueforceForAll.Plugin
                         ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     if (IRacingPeakForceRow  != null) IRacingPeakForceRow.Visibility  = iracingPeakVis;
                     if (IRacingPeakForceHelp != null) IRacingPeakForceHelp.Visibility = iracingPeakVis;
+                    // Kerb softening reads iRacing's shock speeds, which the
+                    // RaceRoom route does not carry.
+                    if (IRacingKerbPanel     != null) IRacingKerbPanel.Visibility     = iracingPeakVis;
                     // The soft lock needs the sim's steering angle, which the
                     // RaceRoom route does not publish, so it follows the same flag.
                     if (IRacingSoftLockPanel != null) IRacingSoftLockPanel.Visibility = iracingPeakVis;
@@ -911,11 +922,11 @@ namespace TrueforceForAll.Plugin
                     if (ModeBDamperRow  != null) ModeBDamperRow.Visibility  = damperVis;
                     if (ModeBDamperHelp != null) ModeBDamperHelp.Visibility = damperVis;
 
-                    // Stationary friction shows only on the RaceRoom R3EFFB route,
-                    // the one path that drops it (the shared-memory force it rebuilds
-                    // from is ~0 parked). Hidden everywhere else, including RaceRoom
-                    // on the tap route, where the game's own friction still comes
-                    // through.
+                    // Stationary friction shows on the routes that replace the
+                    // game's force outright, RaceRoom's takeover and Telemetry
+                    // Based FFB, since those drop the game's own parking
+                    // resistance. Hidden on the capture route, where it still
+                    // comes through with the game's force.
                     if (R3EStationaryDamperPanel != null)
                         R3EStationaryDamperPanel.Visibility = _plugin.R3EStationaryDamperApplies
                             ? System.Windows.Visibility.Visible
@@ -3138,14 +3149,14 @@ namespace TrueforceForAll.Plugin
         {
             switch (reason)
             {
-                case "not used in Forza":
-                    return "Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games.";
+                case "not used in Forza on the capture route":
+                    return "Skipped in Forza on the capture route, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Available with Telemetry Based FFB on. Your tuning still applies in other games.";
                 case "not used in iRacing":
                     return "iRacing weights the wheel itself while parked, so the spring is skipped there. Your tuning still applies in other games.";
                 case "needs the stationary friction on":
                     return "With RaceRoom's force handed over, the spring works against the plugin's own stationary friction instead of the game's parked damper. With that friction off there is nothing to settle the spring, so it is skipped. Turn the stationary friction on in the RaceRoom section to use it.";
-                case "off outside Assetto Corsa and RaceRoom in this version":
-                    return "The spring is offered in Assetto Corsa and RaceRoom in this version while it is retested game by game. Type SPRING in the access code box to unlock it for testing. Your saved per-game tuning is kept.";
+                case "off outside Assetto Corsa, RaceRoom and Forza in this version":
+                    return "The spring is offered in Assetto Corsa, RaceRoom and Forza (with Telemetry Based FFB) in this version while it is retested game by game. Type SPRING in the access code box to unlock it for testing. Your saved per-game tuning is kept.";
                 default:
                     return "Not used for the active game. Your tuning still applies in other games.";
             }
@@ -5548,14 +5559,15 @@ namespace TrueforceForAll.Plugin
             // one control A/Bs the tap route against it. Everywhere else it is the
             // per-game Mode B / reshape opt-in. Both persist + re-arm in the plugin.
             if (_plugin.ActiveGameIsR3E)
-            {
                 _plugin.SetR3ETakeover(on);
-                // The route change flips the FFB scale/invert rows, the tuning
-                // panels and the R3E friction section, so re-read them now.
-                RefreshFromPlugin();
-            }
             else
                 _plugin.SetModeBEnabledForActiveGame(on);
+            // The toggle flips the tuning panels (and for RaceRoom the FFB
+            // scale/invert rows and the friction section), all of which are
+            // computed in the full refresh. Only RaceRoom used to re-read here,
+            // so in Forza the panels stayed hidden until something else
+            // refreshed the tab (owner, 2026-09-13).
+            RefreshFromPlugin();
         }
 
         // SimHub GameName -> friendly label for the Mode B tab note. The map
@@ -5614,8 +5626,9 @@ namespace TrueforceForAll.Plugin
             SchedulePersistDebounced();
         }
 
-        // RaceRoom stationary friction (R3EFFB route). The FFB thread reads these
-        // settings every tick, so a slider move is live; just persist.
+        // Stationary friction (RaceRoom takeover and Telemetry Based FFB). The
+        // FFB thread reads these settings every tick, so a slider move is live;
+        // just persist.
         private void R3EStationaryDamper_Changed(object sender, RoutedEventArgs e)
         {
             if (_suppressEvents || _plugin?.Settings == null) return;
@@ -5793,7 +5806,7 @@ namespace TrueforceForAll.Plugin
             if (SpikeModeDescription != null)
                 SpikeModeDescription.Text = slew
                     ? "Slows how fast the force can change. Nothing is made weaker: a sharp hit still reaches full strength, it just arrives over a few more milliseconds."
-                    : "Measures each moment against the force of the last fifth of a second. A corner builds gradually and passes through at full strength; a curb strike outruns that average, and only the part above it gets flattened.";
+                    : "Caps how hard a hit lands. Measures each moment against the force of the last fifth of a second: a corner builds gradually and passes through at full strength, while a hit outruns that average and only the part above it gets flattened. A hit above the minimum reference is also slowed, so a long scrape along a wall arrives as shoves rather than slams.";
             var show = System.Windows.Visibility.Visible;
             var hide = System.Windows.Visibility.Collapsed;
             if (SpikeRateRow  != null) SpikeRateRow.Visibility  = slew ? show : hide;
@@ -5852,7 +5865,7 @@ namespace TrueforceForAll.Plugin
                 + (floor * 100.0 / full).ToString("0.#")
                 + "%, that means nothing gets past about "
                 + ((floor + maxHit) * 100.0 / full).ToString("0.#")
-                + "% of full strength.";
+                + "% of full strength. A hit above the floor also takes at least 16 ms to swing from nothing to full force.";
         }
 
         private void CaptureExeOverride_LostFocus(object sender, RoutedEventArgs e)
@@ -6969,6 +6982,26 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.IRacingSoftLockStrength = (float)IRacingSoftLockSlider.Value;
             if (IRacingSoftLockText != null)
                 IRacingSoftLockText.Text = IRacingSoftLockSlider.Value.ToString("F2");
+            _plugin.PersistSettings();
+        }
+
+        // Kerb strike softening: live, the producer reads both settings on
+        // every frame.
+        private void IRacingKerb_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingKerbCheck == null) return;
+            _plugin.Settings.IRacingKerbSofteningEnabled = IRacingKerbCheck.IsChecked == true;
+            _plugin.PersistSettings();
+        }
+
+        private void IRacingKerb_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressEvents || _plugin == null || _plugin.Settings == null
+                || IRacingKerbSlider == null) return;
+            _plugin.Settings.IRacingKerbSoftening = (float)IRacingKerbSlider.Value;
+            if (IRacingKerbText != null)
+                IRacingKerbText.Text = IRacingKerbSlider.Value.ToString("F2");
             _plugin.PersistSettings();
         }
 
@@ -13436,7 +13469,7 @@ namespace TrueforceForAll.Plugin
             "CSPFFB         Assetto Corsa: the TF4ALL CSP Bridge is used AUTOMATICALLY when its script is installed (install it from Settings > Game mods, the on-screen prompt, or the guide), otherwise the USB capture is used. This code is a DEV force-off: type it to make AC use the capture even with the bridge installed, type again for automatic. Sub-commands pick the read field: VALUE (default, post-gain, keeps your CSP tweaks), PURE or TORQUE (pre-gain, work at in-game gain 0), FINAL, FINALFF; 'CSPFFB NM 8' sets full-scale torque for TORQUE; 'CSPFFB SUP/NOSUP' is a suppression diagnostic; 'CSPFFB DAMP' toggles the synthesized damper; 'CSPFFB DAMPK <x>' sets its strength (0..2, default 0.25); 'CSPFFB DAMPSIGN' flips its direction; 'CSPFFB DAMPTEST' runs a 28 s damper wiggle (off/on flips, then ramps). Persists.\n" +
             "R3EFFB         RaceRoom: drive the wheel from the sim's own pre-gain steering force (read straight from its shared memory) instead of the USB capture; set in-game FFB intensity to 0 first. Frees the HID++ pipe for the rev lights and screen the way CSPFFB does in Assetto Corsa. Enabling also opts RaceRoom into Telemetry Based FFB, so this one code is the whole A/B switch against the tap route. 'R3EFFB INV' flips the force sign, 'R3EFFB NM 15' reads the raw SteeringForce channel with that full scale, 'R3EFFB PCT' returns to the percentage channel (those three are session only), 'R3EFFB AUTO' toggles per-car auto-strength (persisted, on by default; RaceRoom's percentage tops out well below full scale) and 'R3EFFB APPLY' commits this car's max iRacing-style (drive a couple of clean laps, watch the strength confidence, then apply; nothing drifts under you until you do). Bindable as R3EStrengthApply / R3EStrengthUp / R3EStrengthDown. Persists per car. Toggle.\n" +
             "R3EPROBE       RaceRoom signal probe: '[TF4ALL] R3EPROBE' lines every ~2 s with the sim's SteeringForce and percentage (current + min/max), steering input, tick rate and control state. For verifying, before trusting R3EFFB, that the force survives in-game FFB intensity 0 and that its sign matches the steering direction. Session only. Toggle.\n" +
-            "SPRING         Unlock the stationary spring outside Assetto Corsa and RaceRoom, where it is locked while it is retested game by game (it has misbehaved before, and the per-game rework has only been driven in those two). Unlocked, tick the spring while each game is running and that game keeps its own enabled/strength/cutoff. Locking again returns every other game to off without deleting what you tuned. Assetto Corsa and RaceRoom are unaffected either way. Persists, does not travel in a backup. Toggle.\n" +
+            "SPRING         Unlock the stationary spring outside Assetto Corsa, RaceRoom and Forza, where it is locked while it is retested game by game (it has misbehaved before, and the per-game rework has only been driven in those three). Unlocked, tick the spring while each game is running and that game keeps its own enabled/strength/cutoff. Locking again returns every other game to off without deleting what you tuned. Assetto Corsa, RaceRoom and Forza are unaffected either way. Persists, does not travel in a backup. Toggle.\n" +
             "ARCADE         Unlock the shelved arcade cabinet path: the TeknoParrot and FFB Arcade Plugin force sources, the Initial D 8 memory map (rpm, gear, speed, steering, slip) and its in-game leaderboards and ladder. Off in shipping builds: the arcade work was built against TeknoParrot, and the other way people run Initial D 8 is micetools plus a server emulator, which fills the game's own leaderboards from a real server and renders its own force feedback. Turning it off also puts the game's own leaderboard rows back. Restart SimHub after typing it: the Arcade.* dash properties are attached at startup. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "DIDAMP [pct]   DEV: drive the wheel's NATIVE DirectInput damper from the plugin (default 75%) with the Trueforce stream fully stopped (the wheel exactly as without the plugin), and log the position read rate: the DAMPCAL feasibility spike. DIDAMP OFF ends it (auto-off after 60 s).\n" +
@@ -13444,7 +13477,7 @@ namespace TrueforceForAll.Plugin
             "DICOND         A/B: the game's DirectInput condition effects (damper, spring, friction, inertia) and rumble, decoded from the USB wire and rendered into the Trueforce stream (the wheel firmware ignores them while any stream is live). ON by default; type to disable or re-enable. Session only.\n" +
             "FXTEST         Shows or hides the effect test bench at the bottom of the FFB tab (type it again to hide it). NO GAME NEEDED: the bench plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel), then the identical effect through the plugin's renderer, so you can alternate the two and tune until they match. It also carries the hands-free Auto-tune. The typed forms still work: 'FXTEST NATIVE <effect>' and 'FXTEST ENGINE <effect>'; effects DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP, with optional strength% (default 50) and period ms (default 250). FXTEST OFF ends a running test; auto-off after 30 s.\n" +
             "FXDUMP         Effect-download trace: one log line per effect the wheel is asked to download, decoded straight off the USB wire, with its type byte and its raw parameters (coefficients, saturations, deadband, centre, or magnitude and period). Answers whether the wheel was asked for what you think you asked for: on the bench a native effect passes through DirectInput, Windows and Logitech's driver first, and a substituted type or reshaped parameter cannot be told apart by feel. Session only. Toggle.\n" +
-            "SOFTLOCK       Soft-lock diagnostic (Assetto Corsa and iRacing): a '[TF4ALL] SOFTLOCK' line twice a second with the steering position, how far the soft lock has engaged, the force it is aiming for, and what the stationary spring is contributing. Fires from 0.9 of the car's steering limit whether or not a lock results, so a lock that never engages shows up as clearly as one that does. In Assetto Corsa it needs CUSTOM_SOFT_LOCK enabled in CSP's FFB Tweaks and the TF4ALL CSP Bridge installed; in iRacing it needs the Soft lock option on. Session only. Toggle.\n" +
+            "SOFTLOCK       Soft-lock diagnostic (Assetto Corsa, iRacing and RaceRoom): a '[TF4ALL] SOFTLOCK' line twice a second with the steering position, how far the soft lock has engaged, the force it is aiming for, and what the stationary spring is contributing. Fires from 0.9 of the car's steering limit whether or not a lock results, so a lock that never engages shows up as clearly as one that does. In Assetto Corsa it needs CUSTOM_SOFT_LOCK enabled in CSP's FFB Tweaks and the TF4ALL CSP Bridge installed; in iRacing and RaceRoom (takeover on) it needs the Soft lock option on. Session only. Toggle.\n" +
             "ACLEDS         Rev-light contention diagnostic: every 2 s, a '[REVLIGHT]' line with the level writes the GAME landed on the wheel's rev-light feature (measured off the USB wire), the longest gap between two of them, the level they left, and what our own LEDs and base screen were allowed to do at the time. In Assetto Corsa it also reports whether CSP's own rev-light module is driving the bar. For lights that stick, go dark, then catch up seconds later. Session only. Toggle.\n" +
             "FRESH          Filter the Presets tab to built-in (factory) presets only, to preview the fresh-install library. Hides your own presets without deleting them. Toggle.\n" +
             "DEV            Unlock the Developer tools bar (Presets tab) + per-row 'Set as built-in' promote buttons: maintain the file-based built-in folder (validate / open / promote selected or checked). Persists. Toggle.\n" +
@@ -14412,7 +14445,7 @@ namespace TrueforceForAll.Plugin
                 bool slOn = _plugin.ToggleSoftLockDiagnostic();
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = slOn
-                        ? "Soft-lock diagnostic ON: turn past the steering limit in Assetto Corsa or iRacing and "
+                        ? "Soft-lock diagnostic ON: turn past the steering limit in Assetto Corsa, iRacing or RaceRoom and "
                           + "the log gets a [TF4ALL] SOFTLOCK line twice a second with the steering "
                           + "position, how far the lock has engaged, its target and the stationary "
                           + "spring's contribution. Fires from 0.9 whether or not a lock results, so a "
@@ -14870,8 +14903,8 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = sp.StationarySpringUnlocked
-                        ? "Stationary spring unlocked outside Assetto Corsa and RaceRoom. Tick it while each game is running to test it there; every game keeps its own strength and cutoff. Type SPRING again to lock it back to those two, which leaves your per-game tuning saved for next time."
-                        : "Stationary spring locked to Assetto Corsa and RaceRoom (the shipping default). Your per-game settings are kept, not deleted.";
+                        ? "Stationary spring unlocked outside Assetto Corsa, RaceRoom and Forza. Tick it while each game is running to test it there; every game keeps its own strength and cutoff. Type SPRING again to lock it back to those three, which leaves your per-game tuning saved for next time."
+                        : "Stationary spring locked to Assetto Corsa, RaceRoom and Forza (the shipping default). Your per-game settings are kept, not deleted.";
                 // The checkbox and its badge read the effective value, so re-read
                 // rather than leaving a tick on a spring that no longer runs.
                 RefreshFromPlugin();

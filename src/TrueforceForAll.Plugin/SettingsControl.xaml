@@ -2998,6 +2998,30 @@
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
                            Text="The only force control you should need day to day. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
 
+                <!-- Kerb strike softening: the sim's per-wheel shock speed, six
+                     times a frame, says which torque samples are a strike; those
+                     are eased toward the cornering load before they reach the
+                     wheel. iRacing only (RaceRoom's route carries no shock data),
+                     so the panel follows iracingPeakVis. -->
+                <StackPanel x:Name="IRacingKerbPanel">
+                    <CheckBox x:Name="IRacingKerbCheck" Content="Kerb strike softening"
+                              Margin="0,6,0,2" Checked="IRacingKerb_Changed" Unchecked="IRacingKerb_Changed"
+                              ToolTip="Softens the jolt of a kerb strike and the buzz of a rumble strip, and leaves everything else alone. The sim reports each wheel's suspension speed six times a frame and says when the car is on a strip; the torque samples from those instants are eased toward the cornering load."/>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6"
+                               Text="Eases the jolt of a kerb strike and the buzz of a rumble strip. Off the kerb, nothing changes."/>
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Softening:" Style="{StaticResource LabelText}"
+                                   ToolTip="How much of the strike is taken out. 0 leaves it as the sim sent it; 1 flattens it to the cornering load."/>
+                        <Slider     Grid.Column="1" x:Name="IRacingKerbSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                    ToolTip="How much of the strike is taken out. 0 leaves it as the sim sent it; 1 flattens it to the cornering load."
+                                    TickFrequency="0.1" ValueChanged="IRacingKerb_ValueChanged" VerticalAlignment="Center"/>
+                        <Border Visibility="{Binding Visibility, ElementName=IRacingKerbText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="IRacingKerbText" Text="0.60"/></Border>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                               Text="How much of the strike is taken out. 0.60 keeps the hit but takes the sting off it."/>
+                </StackPanel>
+
                 <!-- Soft lock: the wall at the car's steering limit. iRacing
                      renders its own inside the force feedback this path turns
                      off, so the plugin builds one from the sim's angle and
@@ -3041,16 +3065,16 @@
             </Grid>
             <TextBlock x:Name="ModeBDamperHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Resistance to wheel motion. The heavy, planted feel that is not grip force."/>
 
-            <!-- RaceRoom stationary friction, R3EFFB route only. That route drives
-                 the wheel from the sim's shared-memory steering force, which is ~0
-                 parked, so RaceRoom's low-speed "stationary friction" (carried in
-                 the game force this route replaces) goes missing. Resynthesized:
-                 firm parked, fading to nothing by the set speed. Visibility is
-                 driven in code (R3EStationaryDamperApplies). -->
+            <!-- Stationary friction, for the routes that replace the game's force
+                 outright: RaceRoom's takeover (the shared-memory steering force is
+                 ~0 parked) and Telemetry Based FFB (the synthesis). The game's
+                 low-speed parking resistance goes missing there, so it is
+                 resynthesized: firm parked, fading to nothing by the set speed.
+                 Visibility is driven in code (R3EStationaryDamperApplies). -->
             <StackPanel x:Name="R3EStationaryDamperPanel" Visibility="Collapsed" Margin="0,0,0,4">
-                <CheckBox x:Name="R3EStationaryDamperCheck" Content="Stationary friction (RaceRoom)"
+                <CheckBox x:Name="R3EStationaryDamperCheck" Content="Stationary friction"
                           Margin="0,2,0,6" Checked="R3EStationaryDamper_Changed" Unchecked="R3EStationaryDamper_Changed"
-                          ToolTip="Adds back RaceRoom's low-speed parking resistance, which the shared-memory route otherwise drops. Firm when parked, fading to nothing as you gain speed."/>
+                          ToolTip="Adds back the game's low-speed parking resistance, which the handed-over and Telemetry Based routes otherwise drop. Firm when parked, fading to nothing as you gain speed."/>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Friction strength:" Style="{StaticResource LabelText}"
@@ -3070,7 +3094,7 @@
                     <Border Visibility="{Binding Visibility, ElementName=R3EDamperFadeText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="R3EDamperFadeText" Text="25"/></Border>
                 </Grid>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Firm when parked, easing off as you gain speed and gone by this speed (km/h). Adds back RaceRoom's low-speed damper, which this route otherwise drops."/>
+                           Text="Firm when parked, easing off as you gain speed and gone by this speed (km/h)."/>
             </StackPanel>
 
             <!-- Smoothing moved up here from the old FFB tweaks section (owner,
@@ -3089,7 +3113,7 @@
                 <Border Visibility="{Binding Visibility, ElementName=FfbSmoothText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="FfbSmoothText" Text="0.0"/></Border>
             </Grid>
             <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                       Text="Leave smoothing at 0 unless the wheel feels notchy."/>
+                       Text="Leave smoothing at 0 unless the wheel feels notchy or grainy."/>
             <!-- Save/Revert for the Master trio (scale, smoothing, invert).
                  They live with Smoothing because that is the one of the three
                  that is live in EVERY game; the other two hide under the
@@ -3438,10 +3462,10 @@
                     <StackPanel Margin="0,8,0,0">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <CheckBox x:Name="StationarySpringCheck"
-                                      Content="Stationary spring (adds parked-car wheel weight)"
+                                      Content="Stationary spring"
                                       VerticalAlignment="Center"
                                       Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it, in Assetto Corsa or RaceRoom. Ignored for iRacing (the sim already weights the wheel)."/>
+                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it, in Assetto Corsa, RaceRoom or Forza with Telemetry Based FFB. Ignored for iRacing (the sim already weights the wheel)."/>
                             <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="not used in Forza"
                                        ToolTip="Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games."/>
@@ -3540,7 +3564,9 @@
                                  the average a hit may rise; Minimum reference is a FLOOR
                                  under the average, there because a near-zero average on
                                  a calm road would make every ordinary bump look like a
-                                 jump.
+                                 jump. Since 2026-09-13 the floor is also the gate for
+                                 the fixed hit rate limit (HitSlewLsbPerMs in
+                                 TrueforceDevice): only a hit above it is slowed.
 
                                  Two earlier framings of this failed with testers and are
                                  worth not repeating: "levels off above the threshold" is
@@ -3567,7 +3593,7 @@
                                     <Border Visibility="{Binding Visibility, ElementName=FfbSpikeThresholdText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="FfbSpikeThresholdText" Text="6.3%"/></Border>
                                 </Grid>
                                 <TextBlock Style="{StaticResource HelpText}" Margin="150,4,0,8"
-                                           Text="Holds the running average up to at least this much, so ordinary force on a smooth road is not mistaken for a hit. Set it below normal road feel and everyday bumps start getting flattened."/>
+                                           Text="Holds the running average up to at least this much, so ordinary force on a smooth road is not mistaken for a hit. It is also where a hit starts being slowed. Set it below normal road feel and everyday bumps start getting flattened and slowed."/>
                                 <TextBlock x:Name="SpikePeakSummary" Style="{StaticResource HelpText}" Margin="150,0,0,0"/>
                             </StackPanel>
                         </StackPanel>

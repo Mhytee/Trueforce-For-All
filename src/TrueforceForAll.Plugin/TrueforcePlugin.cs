@@ -392,6 +392,8 @@ namespace TrueforceForAll.Plugin
         // self-disengages the spring, no explicit reset hook needed.
         private volatile float _lastSteerNorm;
         private volatile float _lastSpeedKmh;
+        private volatile float _lastThrottle01;   // for the pause gate's "driver is active" test
+        private volatile float _lastRpms;         // same; the one channel every Forza format carries
         private long _lastSteerTicks;
         private static readonly long SteerMaxAgeTicks = Stopwatch.Frequency / 2; // 500 ms
         // Synthetic-spring telemetry gate (EvaluateClassicSpringForce): looser
@@ -3437,7 +3439,8 @@ namespace TrueforceForAll.Plugin
         /// path, the checkbox gate and the badge.</summary>
         private static bool StationarySpringShipsIn(string game)
             => string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
-               || IsR3EGame(game);
+               || IsR3EGame(game)
+               || IsForzaGameName(game);   // Telemetry Based FFB only; the capture route excludes it
 
         /// <summary>The spring's strength for a game: its entry, else that game's
         /// default, else the shared default (the top-level StationarySpringStrength).</summary>
@@ -3553,7 +3556,7 @@ namespace TrueforceForAll.Plugin
         // weight); any Forza session (see the exclusion below); steering is
         // stale from both the game and the physical reader; or already at or
         // above the cutoff speed.
-        private short? ApplyStationarySpring(short? gameTarget)
+        private short? ApplyStationarySpring(short? gameTarget, bool inSynthesis = false)
         {
             // SPRING desk self-test: while the deadline is in the future,
             // synthesize a centering force with a simulated wheel position
@@ -3595,11 +3598,14 @@ namespace TrueforceForAll.Plugin
             // ActiveGameAllowsStationarySpring so the FFB tab hides the control
             // on exactly the same rule that skips it here.
             if (!ActiveGameAllowsStationarySpring) return gameTarget;
-            // Armed takeover: MaybeReshapeFfb assigns over whatever this
-            // returns, so the spring is rendered THERE, in the reshape's own
-            // sign and scale (see the wantReshapeSpring block). Anything added
-            // here would be computed and thrown away.
-            if (_forceMode == ForceModeIRacing) return gameTarget;
+            // Armed takeover or Telemetry Based FFB: MaybeReshapeFfb assigns
+            // over whatever this returns, so the spring is rendered THERE (the
+            // wantReshapeSpring block in the takeover's own sign and scale; a
+            // call back into this method with inSynthesis for the synthesis,
+            // whose sign space is the same as the tap's). Anything added here
+            // would be computed and thrown away.
+            if (!inSynthesis && (_forceMode == ForceModeIRacing || _forceMode == ForceModeModeB))
+                return gameTarget;
             // Forza exclusion (user's call, 2026-05-28). The spring conflicted
             // with Forza's FFB during the matchmaking-found transition and
             // could pull the wheel to the rotational stop, sometimes with
@@ -3609,7 +3615,10 @@ namespace TrueforceForAll.Plugin
             // session is bypassed. Gate on the SESSION, not the active source:
             // a Forza session running on the SimHub fallback (Data Out pointed
             // at SimHub) reports source SimHub, yet must still stay excluded.
-            if (InForzaSession)
+            // The conflict was with the game's own force on the CAPTURE route.
+            // Under Telemetry Based FFB that force is not on the wire, so the
+            // spring is offered there (owner, 2026-09-13).
+            if (InForzaSession && !inSynthesis)
                 return gameTarget;
 
             // Steering source. Prefer the GAME's value: it shares the game's
@@ -5109,7 +5118,14 @@ namespace TrueforceForAll.Plugin
                         // from an idle background game must not silence them
                         // (audit stale-focus-latch / AT2-03).
                         NoteFfbSource("focus-release");
-                        return (short?)0;
+                        // Zero the game's CONSTANT force (the frozen value that
+                        // walked the wheel to lock), but still render the
+                        // game's decoded conditions: a title's menu centring
+                        // is a DirectInput spring, and the wheel firmware does
+                        // not render it while we stream. Without this the menu
+                        // wheel went limp unless "hand the wheel back while
+                        // paused" was on (owner, Forza, 2026-09-13).
+                        return ReleasedWheelForce();
                     }
 
                     // Pause release (issue #13). When the game is paused / in a
@@ -5162,16 +5178,19 @@ namespace TrueforceForAll.Plugin
                         // streamed that force as cur on ep3, and the wheel
                         // snapped to or sat on full lock until the user resumed.
                         //
-                        // We also intentionally SKIP the stationary-spring
-                        // layer here. The spring is designed for a STATIONARY
-                        // car during an ACTIVE driving session (e.g. AC's
-                        // pre-race grid). It conflicts with Forza's FFB across
-                        // pause-state transitions; we addressed that with a
-                        // source-type exclusion in ApplyStationarySpring, and
-                        // bypassing it here keeps the wheel truly free during
-                        // pause-release for every other source as well.
+                        // The stationary-spring layer is skipped here on the
+                        // capture route: the spring is designed for a
+                        // STATIONARY car during an ACTIVE driving session (e.g.
+                        // AC's pre-race grid) and it conflicted with Forza's own
+                        // FFB across pause-state transitions. Under Telemetry
+                        // Based FFB the game's force is not on the wire, so
+                        // ReleasedWheelForce renders our spring there.
                         NoteFfbSource("pause-release");
-                        return (short?)0;
+                        // As on the focus release above: the constant force is
+                        // silenced, the game's spring and damper shapes still
+                        // play through the DirectInput engine, so a pause menu
+                        // centres the wheel the way the game intends.
+                        return ReleasedWheelForce();
                     }
 
                     // EXPERIMENTAL driver-intercept path takes precedence ONLY
@@ -7855,6 +7874,8 @@ namespace TrueforceForAll.Plugin
             // actually reports it (AC), so the spring stays disengaged on
             // sources that don't (the freshness check in the provider).
             _lastSpeedKmh = (float)frame.SpeedKmh;
+            _lastThrottle01 = (float)frame.Throttle01;
+            _lastRpms = (float)frame.Rpms;
             // The grip re-learn request is consumed here rather than inside the learning block:
             // it must land in EVERY mode and on every source. The learning block
             // needs tire quads and Mode B, so leaving the consumption in there
@@ -9197,7 +9218,7 @@ namespace TrueforceForAll.Plugin
                && !ActiveGameIsArcade;
 
         /// <summary>True where the spring is switched off for this version:
-        /// outside Assetto Corsa and RaceRoom with the SPRING code not entered. Kept apart
+        /// outside Assetto Corsa, RaceRoom and Forza with the SPRING code not entered. Kept apart
         /// from "allows" because the tab must DISABLE the checkbox here rather
         /// than dim it. A tick wrote the game's entry and then read back the
         /// gated value, so the box unticked itself and the sliders vanished: a
@@ -9214,10 +9235,10 @@ namespace TrueforceForAll.Plugin
         {
             get
             {
-                if (!ActiveSourceSupportsStationarySpring) return "not used in Forza";
+                if (!ActiveSourceSupportsStationarySpring) return "not used in Forza on the capture route";
                 if (ActiveGameIsArcade) return "not used on an arcade cabinet";
                 if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return "not used in iRacing";
-                if (StationarySpringLockedHere) return "off outside Assetto Corsa and RaceRoom in this version";
+                if (StationarySpringLockedHere) return "off outside Assetto Corsa, RaceRoom and Forza in this version";
                 if (_forceMode == ForceModeIRacing && IsR3EGame(_activeGame)
                     && !((Settings?.R3EStationaryDamper ?? false) && (Settings?.R3EStationaryDamperStrength ?? 0.0) > 0.0001))
                     return "needs the stationary friction on";
@@ -9230,7 +9251,8 @@ namespace TrueforceForAll.Plugin
         /// FFB tab's stationary-friction controls (shown only for RaceRoom on the
         /// R3EFFB route, since that path replaces the game force that carried it).</summary>
         public bool R3EStationaryDamperApplies
-            => IsR3EGame(_activeGame) && (Settings?.R3ESharedMemoryFfb ?? false);
+            => (IsR3EGame(_activeGame) && (Settings?.R3ESharedMemoryFfb ?? false))
+               || (IsForzaGameName(_activeGame) && ModeBEnabledForActiveGame);
 
         /// <summary>True while a spring-mode game (Farming Simulator) is the
         /// active game. Deliberately not folded into ActiveGameSupportsModeB:
@@ -11381,7 +11403,11 @@ namespace TrueforceForAll.Plugin
         // running entirely: staying on DataUpdate would keep us behind exactly
         // the hop this exists to remove.
         private IRacingSdkReader _irSdk;
+        private long _irResumeStampTicks;   // FFB thread; 0 = no fade-in being traced
+        private int  _irResumeSlot = -1;
+        private System.Text.StringBuilder _irResumeTrace;
         private volatile bool _irSdkLive;
+        private bool _irSdkChannelsMissingLogged;   // one Warn per gap, reader thread only
         private long _irSdkLastAttemptTicks;
 
         /// <summary>True while iRacing telemetry is coming straight from the
@@ -12385,8 +12411,23 @@ namespace TrueforceForAll.Plugin
                 if (!r.IsConnected) { _irSdkLive = false; return; }
 
                 double torque, maxNm;
-                if (!SdkScalar(frame, vars, "SteeringWheelTorque", out torque)) return;
-                if (!SdkScalar(frame, vars, "SteeringWheelMaxForceNm", out maxNm)) return;
+                if (!SdkScalar(frame, vars, "SteeringWheelTorque", out torque)
+                    || !SdkScalar(frame, vars, "SteeringWheelMaxForceNm", out maxNm))
+                {
+                    // Never silent: with the reader live the SimHub copy is
+                    // not consulted, so a missing channel here is a dead wheel
+                    // with no other line in the log (rig, 2026-09-13).
+                    if (!_irSdkChannelsMissingLogged)
+                    {
+                        _irSdkChannelsMissingLogged = true;
+                        SimHub.Logging.Current.Warn(
+                            "[TF4ALL] iRacing direct reader: SteeringWheelTorque / SteeringWheelMaxForceNm not in the sim's "
+                            + vars.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                            + "-channel table, so no force is authored from it.");
+                    }
+                    return;
+                }
+                _irSdkChannelsMissingLogged = false;
                 if (!(maxNm > 0.01)) return;
 
                 double ffbOnD;
@@ -12434,13 +12475,31 @@ namespace TrueforceForAll.Plugin
                 float[] sub = SdkArray(frame, vars, "SteeringWheelTorque_ST");
                 if (sub != null && sub.Length < IRacingSubSamples) sub = null;
 
+                // Kerb strikes softened here, on our own copy of the samples,
+                // so the frame the force thread sees is already the one to play.
+                long nowT = Stopwatch.GetTimestamp();
+                float latestF = (float)torque;
+                if (sub != null && (Settings?.IRacingKerbSofteningEnabled ?? false))
+                {
+                    double matD, pLF, pRF;
+                    bool onStrip = (SdkScalar(frame, vars, "PlayerTrackSurfaceMaterial", out matD)
+                                    && matD >= 10.5 && matD <= 14.5)   // irsdk_TrkSurf rumble strips are 11 to 14
+                        || (SdkScalar(frame, vars, "TireLF_RumblePitch", out pLF) && pLF > 0.0)
+                        || (SdkScalar(frame, vars, "TireRF_RumblePitch", out pRF) && pRF > 0.0);
+                    SoftenIRacingKerbStrikes(sub, ref latestF,
+                        SdkArray(frame, vars, "LFshockVel_ST"), SdkArray(frame, vars, "RFshockVel_ST"),
+                        SdkArray(frame, vars, "LRshockVel_ST"), SdkArray(frame, vars, "RRshockVel_ST"),
+                        nowT, (float)maxNm, onStrip);
+                }
+                else _kerbPrevTicks = 0;
+
                 var fr = new IRacingTorqueFrame
                 {
                     Sub = sub,
-                    Latest = (float)torque,
+                    Latest = latestF,
                     MaxNm = (float)maxNm,
                     GameFfbOn = ffbOn,
-                    Ticks = Stopwatch.GetTimestamp(),
+                    Ticks = nowT,
                 };
                 // Steering for the soft lock, filled in BEFORE the frame is
                 // published so the force thread never sees a half-built one.
@@ -12462,6 +12521,186 @@ namespace TrueforceForAll.Plugin
             IRacingSdkReader.VarDef v;
             if (vars == null || !vars.TryGetValue(name, out v)) return false;
             return IRacingSdkReader.TryReadDouble(frame, v, 0, out value);
+        }
+
+        // ---- Kerb strike softening for the takeover (producer thread) ------
+        // One producer runs at a time (the direct reader, or SimHub's copy
+        // while the reader is not live), and both call
+        // SoftenIRacingKerbStrikes on the six torque sub-samples before the
+        // frame is published, so the state below is single-writer. The FFB
+        // thread only ever sees the finished frame.
+        private float _kerbBaseNm;         // running average of the torque the wheel gets, Nm
+        private float _kerbLevelMps;       // slow average of shock speed between strikes, m/s
+        private float _kerbPrevMask;       // the last sub-sample's mask, for the dilation across frames
+        private long  _kerbPrevTicks;      // last frame softened; a gap resets the average
+        private bool  _kerbInStrike;
+        private long  _kerbLastLogTicks;
+        private long  _kerbStripUntilTicks;  // the surface flag said "rumble strip"; held a little past it
+        private const float KerbStripHoldMs = 120f;
+        private int   _kerbLogCount;       // the strike line stops after KerbLogMax a session
+        private const int KerbLogMax = 60;
+        private readonly float[] _kerbShock = new float[IRacingSubSamples];
+        private readonly float[] _kerbMask  = new float[IRacingSubSamples];
+        private readonly float[] _kerbDil   = new float[IRacingSubSamples];
+        // Calibrated on the rig (MX-5, 2026-09-13): the road between strikes
+        // reads 0.03 to 0.12 m/s, kerbs and hits 0.36 to 0.75. The first guess
+        // (floor 0.35, full mask at twice the threshold) sat on top of the
+        // strikes and cut them by a percent or two.
+        private const float KerbShockFloorMps  = 0.25f;   // below this a shock speed is never a strike
+        private const float KerbShockLevelMult = 2.5f;    // a strike is this many times the running level
+        private const float KerbShockCeilMps   = 0.40f;   // a rough track raises the bar, but never past this
+        private const float KerbMaskRampMps    = 0.15f;   // the mask goes 0 to 1 over this much above the threshold
+        private const float KerbBaseAlpha      = 0.085f;  // ~30 ms at 360 Hz: follows the load, not the spike
+        private const float KerbLevelAlpha     = 0.0014f; // ~2 s at 360 Hz
+
+        /// <summary>Soften the torque sub-samples that coincide with a shock
+        /// burst on a wheel. The fronts carry the steering, so they set the
+        /// mask; the rears count half. A sample's mask grows from 0 at the
+        /// threshold to 1 a small step above it, is widened by one sample each way so
+        /// a spike that lands a sample off the burst is still covered, and
+        /// blends that sample toward the running average of the torque by
+        /// the user's strength. The threshold is a floor or a multiple of a
+        /// slow average of the shock speed between strikes, whichever is
+        /// higher, so a bumpy track raises its own bar. One log line per
+        /// strike, rate-limited, carries the numbers for tuning.</summary>
+        private void SoftenIRacingKerbStrikes(float[] sub, ref float latest,
+                                              float[] lf, float[] rf, float[] lr, float[] rr,
+                                              long ticks, float maxNm, bool onStrip)
+        {
+            var cfg = Settings;
+            if (cfg == null || sub == null || lf == null || rf == null
+                || lf.Length < IRacingSubSamples || rf.Length < IRacingSubSamples)
+            { _kerbPrevTicks = 0; return; }
+            float strength = cfg.IRacingKerbSoftening;
+            if (strength <= 0f) { _kerbPrevTicks = 0; return; }
+            if (strength > 1f) strength = 1f;
+            float sens = cfg.IRacingKerbSensitivity;
+            if (!(sens > 0.05f)) sens = 1f;
+            bool rearsOk = lr != null && rr != null
+                && lr.Length >= IRacingSubSamples && rr.Length >= IRacingSubSamples;
+            // One bad torque sample would otherwise sit in the average until
+            // the next gap; the frame passes untouched instead.
+            for (int i = 0; i < IRacingSubSamples; i++)
+                if (float.IsNaN(sub[i]) || float.IsInfinity(sub[i])) { _kerbPrevTicks = 0; return; }
+
+            // A gap (pause, out of the car) means the average is stale.
+            bool fresh = _kerbPrevTicks != 0
+                && (ticks - _kerbPrevTicks) * 1000.0 / Stopwatch.Frequency < 250.0;
+            _kerbPrevTicks = ticks;
+
+            float peakShock = 0f, minShock = float.MaxValue;
+            int quietest = 0;
+            for (int i = 0; i < IRacingSubSamples; i++)
+            {
+                float v = Math.Max(Math.Abs(lf[i]), Math.Abs(rf[i]));
+                if (rearsOk) v = Math.Max(v, 0.5f * Math.Max(Math.Abs(lr[i]), Math.Abs(rr[i])));
+                if (float.IsNaN(v) || float.IsInfinity(v)) v = 0f;
+                _kerbShock[i] = v;
+                if (v > peakShock) peakShock = v;
+                if (v < minShock) { minShock = v; quietest = i; }
+            }
+            if (!fresh)
+            {
+                // Seeded from the quietest sample of the frame, so a resume
+                // that lands mid-strike does not make the strike the average
+                // (model, 2026-09-13).
+                _kerbBaseNm = sub[quietest];
+                _kerbPrevMask = 0f;
+                _kerbInStrike = false;
+                _kerbStripUntilTicks = 0;
+            }
+            if (!fresh || _kerbLevelMps <= 0f)
+                _kerbLevelMps = Math.Min(minShock, KerbShockFloorMps);
+            float threshold = Math.Min(KerbShockCeilMps,
+                                  Math.Max(KerbShockFloorMps, KerbShockLevelMult * _kerbLevelMps)) / sens;
+
+            for (int i = 0; i < IRacingSubSamples; i++)
+            {
+                float m = (_kerbShock[i] - threshold) / KerbMaskRampMps;
+                _kerbMask[i] = m <= 0f ? 0f : (m >= 1f ? 1f : m);
+                // The level learns only from the quiet samples, so a strike
+                // never raises its own bar.
+                if (_kerbMask[i] <= 0f)
+                    _kerbLevelMps += (_kerbShock[i] - _kerbLevelMps) * KerbLevelAlpha;
+            }
+            // Riding a rumble strip: a front tyre's rumble pitch (per tyre,
+            // nonzero while it is on a strip) or the car's surface flag says
+            // so, and the ridges that do not trip the shock detector are still
+            // the buzz the driver feels, so the whole traverse is masked. Held
+            // a little past the flag so its exit lag does not leave a hard tail
+            // (owner, 2026-09-13: strikes softened, strips not; the car-level
+            // flag alone fired three times in three minutes of strips).
+            if (onStrip)
+                _kerbStripUntilTicks = ticks + (long)(KerbStripHoldMs / 1000.0 * Stopwatch.Frequency);
+            bool strip = ticks < _kerbStripUntilTicks;
+            if (strip)
+                for (int i = 0; i < IRacingSubSamples; i++) _kerbMask[i] = 1f;
+
+            float prevM = _kerbPrevMask;
+            float maxMask = 0f;
+            for (int i = 0; i < IRacingSubSamples; i++)
+            {
+                float next = i + 1 < IRacingSubSamples ? _kerbMask[i + 1] : _kerbMask[i];
+                float d = Math.Max(prevM, Math.Max(_kerbMask[i], next));
+                prevM = _kerbMask[i];
+                _kerbDil[i] = d;
+                if (d > maxMask) maxMask = d;
+            }
+            _kerbPrevMask = _kerbMask[IRacingSubSamples - 1];
+
+            float peakRawAbs = 0f, peakRaw = 0f, peakOutAbs = 0f, peakOut = 0f;
+            for (int i = 0; i < IRacingSubSamples; i++)
+            {
+                float raw = sub[i];
+                float bse = _kerbBaseNm;
+                float d = _kerbDil[i];
+                if (d > 0f)
+                {
+                    float outV = bse + (raw - bse) * (1f - strength * d);
+                    // Softening only ever reduces: an average that crept up
+                    // under the strike must not lift the quiet sample on the
+                    // way out of it (model, 2026-09-13).
+                    if (Math.Abs(outV) > Math.Abs(raw)) outV = raw;
+                    sub[i] = outV;
+                    float ra = Math.Abs(raw), oa = Math.Abs(outV);
+                    if (ra > peakRawAbs) { peakRawAbs = ra; peakRaw = raw; }
+                    if (oa > peakOutAbs) { peakOutAbs = oa; peakOut = outV; }
+                }
+                // The average follows the raw torque at full rate between
+                // strikes and at a quarter of it under a mask, so a load that
+                // changes under a strike is partly followed and the rest lands
+                // when the mask clears.
+                _kerbBaseNm = bse + (raw - bse) * KerbBaseAlpha * Math.Max(0.25f, 1f - d);
+            }
+            latest = sub[IRacingSubSamples - 1];
+
+            if (maxMask > 0f)
+            {
+                if (!_kerbInStrike)
+                {
+                    _kerbInStrike = true;
+                    if (_kerbLogCount < KerbLogMax
+                        && (ticks - _kerbLastLogTicks) * 1000.0 / Stopwatch.Frequency >= 500.0)
+                    {
+                        _kerbLastLogTicks = ticks;
+                        _kerbLogCount++;
+                        int n = 0;
+                        for (int i = 0; i < IRacingSubSamples; i++) if (_kerbDil[i] > 0f) n++;
+                        var ci = System.Globalization.CultureInfo.InvariantCulture;
+                        double full = maxNm > 0.01f ? maxNm : 1.0;
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] iRacing kerb strike: shock " + peakShock.ToString("0.00", ci)
+                            + " m/s (level " + _kerbLevelMps.ToString("0.00", ci)
+                            + ", threshold " + threshold.ToString("0.00", ci) + "), "
+                            + n.ToString(ci) + " of 6 samples softened, torque "
+                            + ((int)(peakRaw * 100.0 / full)).ToString(ci) + "% -> "
+                            + ((int)(peakOut * 100.0 / full)).ToString(ci) + "% at the peak."
+                            + (strip ? " On a rumble strip." : "")
+                            + (_kerbLogCount >= KerbLogMax ? " (Last strike line this session.)" : ""));
+                    }
+                }
+            }
+            else _kerbInStrike = false;
         }
 
         private static float[] SdkArray(byte[] frame, Dictionary<string, IRacingSdkReader.VarDef> vars, string name)
@@ -13318,6 +13557,39 @@ namespace TrueforceForAll.Plugin
                     }
                 }
 
+                long nowT = Stopwatch.GetTimestamp();
+                if (sub != null && dict != null && (Settings?.IRacingKerbSofteningEnabled ?? false))
+                {
+                    bool onStrip = false;
+                    object oMatK;
+                    if (IRacingChannel(tel, dict, null, "PlayerTrackSurfaceMaterial", out oMatK))
+                    {
+                        try
+                        {
+                            int mat = Convert.ToInt32(oMatK, System.Globalization.CultureInfo.InvariantCulture);
+                            onStrip = mat >= 11 && mat <= 14;
+                        }
+                        catch { }
+                    }
+                    string[] frontPitch = { "TireLF_RumblePitch", "TireRF_RumblePitch" };
+                    for (int i = 0; i < frontPitch.Length && !onStrip; i++)
+                    {
+                        object pv;
+                        if (!IRacingChannel(tel, dict, null, frontPitch[i], out pv)) continue;
+                        try
+                        {
+                            double d = Convert.ToDouble(pv, System.Globalization.CultureInfo.InvariantCulture);
+                            if (!double.IsNaN(d) && !double.IsInfinity(d) && d > 0.0) onStrip = true;
+                        }
+                        catch { }
+                    }
+                    SoftenIRacingKerbStrikes(sub, ref latest,
+                        IRacingSubArray(dict, "LFshockVel_ST"), IRacingSubArray(dict, "RFshockVel_ST"),
+                        IRacingSubArray(dict, "LRshockVel_ST"), IRacingSubArray(dict, "RRshockVel_ST"),
+                        nowT, (float)maxNm, onStrip);
+                }
+                else _kerbPrevTicks = 0;
+
                 var prev = _irFrame;
                 var fr = new IRacingTorqueFrame
                 {
@@ -13325,7 +13597,7 @@ namespace TrueforceForAll.Plugin
                     Latest = latest,
                     MaxNm = maxNm,
                     GameFfbOn = ffbOn,
-                    Ticks = Stopwatch.GetTimestamp(),
+                    Ticks = nowT,
                 };
                 // Steering for the soft lock, read with the overlay above and
                 // stamped before the frame is published.
@@ -13423,7 +13695,18 @@ namespace TrueforceForAll.Plugin
         private short? ComputeIRacingForce()
         {
             var f = _irFrame;
-            if (f == null) return null;
+            if (f == null)
+            {
+                // Out of the car, or the reader not live: nothing is authored,
+                // so the next engagement fades in the way arming does. Only the
+                // aged-out exit below used to reset the ramp; a pause that
+                // dropped the frame instead came back as a step to the
+                // corner's torque (rig, 2026-09-13).
+                _irRamp = 0f; _irPrevTicks = 0;
+                _irLeadFrameTicks = 0;
+                _irRingPrimed = false;
+                return null;
+            }
 
             long now = Stopwatch.GetTimestamp();
             double ageMs = (now - f.Ticks) * 1000.0 / Stopwatch.Frequency;
@@ -13841,6 +14124,7 @@ namespace TrueforceForAll.Plugin
             _irPrevTicks = now;
             if (_irRamp < 1f)
             {
+                if (_irRamp <= 0f) { _irResumeStampTicks = now; _irResumeTrace = null; }
                 _irRamp += (float)(dtMs / 300.0);
                 if (_irRamp > 1f) _irRamp = 1f;
             }
@@ -13853,6 +14137,37 @@ namespace TrueforceForAll.Plugin
             double v = -f01 * _irRamp * 32767.0;
             if (v > short.MaxValue) v = short.MaxValue;
             else if (v < short.MinValue) v = short.MinValue;
+
+            // Once per fade-in, a short trace of the first half second: the
+            // authored force, the sim's own torque before the ramp, and where
+            // the wheel is, at a few instants. A kick at resume was reported on
+            // the rig (2026-09-13, "tries to center, then suddenly stops") with
+            // no way to tell whose it was; this line says whether the torque
+            // this path plays is the shape that was felt.
+            if (_irResumeStampTicks != 0)
+            {
+                double sinceMs = (now - _irResumeStampTicks) * 1000.0 / Stopwatch.Frequency;
+                if (_irResumeTrace == null) _irResumeTrace = new System.Text.StringBuilder(160);
+                int slot = sinceMs < 25 ? 0 : sinceMs < 50 ? 1 : sinceMs < 100 ? 2 : sinceMs < 200 ? 3
+                         : sinceMs < 300 ? 4 : sinceMs < 500 ? 5 : 6;
+                if (slot > _irResumeSlot)
+                {
+                    _irResumeSlot = slot;
+                    var ci = System.Globalization.CultureInfo.InvariantCulture;
+                    _irResumeTrace.Append(((int)sinceMs).ToString(ci)).Append("ms:")
+                        .Append(((int)(v * 100.0 / 32767.0)).ToString(ci)).Append("%/")
+                        .Append(((int)(f01 * 100.0)).ToString(ci)).Append("%/")
+                        .Append(_lastSteerNorm.ToString("0.00", ci)).Append(' ');
+                }
+                if (sinceMs >= 500.0)
+                {
+                    _irResumeStampTicks = 0;
+                    _irResumeSlot = -1;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] iRacing force back on (ms: played% / sim torque% / wheel): " + _irResumeTrace);
+                    _irResumeTrace = null;
+                }
+            }
             return (short)v;
         }
 
@@ -13938,6 +14253,17 @@ namespace TrueforceForAll.Plugin
                 }
                 NoteModeBSlipRecovered();
                 target = synth;
+                // The stationary spring, rendered here because the synthesis
+                // assigned over the upstream stage's work. Same sign space as
+                // the synthesis (the game's; the device negates and scales),
+                // so the upstream recipe applies unchanged.
+                if (_fxTestMode == 0 && ActiveGameAllowsStationarySpring
+                    && EffectiveStationarySpringEnabled(_activeGame))
+                {
+                    var sprung = ApplyStationarySpring(target, inSynthesis: true);
+                    _lastSpringAddLsb = sprung.HasValue ? sprung.Value - (target ?? 0) : 0;
+                    target = sprung;
+                }
             }
             else
             {
@@ -14055,8 +14381,10 @@ namespace TrueforceForAll.Plugin
             // the sim's shared-memory steering force (that value is ~0 parked). It
             // needs the physical wheel velocity below, so fold it into needPhys.
             var stFrCfg = Settings;
-            bool wantR3EFriction = reshapeMode
-                && IsR3EGame(_activeGame)
+            // Also under Telemetry Based FFB: the synthesis replaces the game's
+            // force outright, parking resistance included (owner, 2026-09-13).
+            // Same setting and controls; the sign follows the route below.
+            bool wantR3EFriction = ((reshapeMode && IsR3EGame(_activeGame)) || _forceMode == ForceModeModeB)
                 && stFrCfg != null
                 && stFrCfg.R3EStationaryDamper
                 && stFrCfg.R3EStationaryDamperStrength > 0.0001;
@@ -14243,7 +14571,38 @@ namespace TrueforceForAll.Plugin
                     // half-scale clamp (owner, 2026-09-12). Only the final
                     // full-scale clamp applies.
                     double gain = stFrCfg.R3EStationaryDamperStrength;
-                    double fr = -velLp * gain * gate * 32767.0;
+                    // The friction and the Damping slider are the same kind of
+                    // term, velocity feedback off one delayed signal, and their
+                    // SUM is what the loop has to survive. 0.6 of damper alone
+                    // settles; 0.6 of damper plus 0.4 of friction rang on a
+                    // let-go from lock (rig, Forza, 2026-09-13). So the friction
+                    // yields as the damper rises, keeping the pair within the
+                    // 0.6 the damper slider allows by itself: untouched at the
+                    // 0.07 default, trimmed only past a damper of 0.2.
+                    double headroom = 0.6 - _pModeBDamperGain;
+                    if (headroom < 0.0) headroom = 0.0;
+                    if (gain > headroom) gain = headroom;
+                    // Opposes motion in each route's own frame: the takeover
+                    // authors the motor sign (-vel), the synthesis is authored
+                    // in the game's space where +vel opposes, the same split
+                    // the damper above makes.
+                    // On the synthesis route the term rides the same engage ramp
+                    // as the damper and centering: without it the friction was
+                    // at full strength from the first tick of an engage, and for
+                    // the ~3 s a parked telemetry stall takes to be called starved
+                    // (review, 2026-09-13). The takeover keeps its own ramp-free
+                    // shape, which has been driven.
+                    double fr = (reshapeMode ? -1.0 : ramp) * velLp * gain * gate * 32767.0;
+                    // One slider, one weight on both routes. The takeover skips
+                    // the device's FFB strength trim; the synthesis does not, so
+                    // pre-compensate here the way the stationary spring does,
+                    // and 0.40 lands as 0.40 either way (owner, 2026-09-13).
+                    if (!reshapeMode)
+                    {
+                        float trim = _device != null ? _device.FfbScale : 1f;
+                        if (trim < 0.05f) trim = 0.05f;
+                        fr /= trim;
+                    }
                     float aFr = (float)(1.0 - Math.Exp(-dtD / 6.0));
                     _r3eFrictionLp += (float)((fr - _r3eFrictionLp) * aFr);
                     v += _r3eFrictionLp;
@@ -17672,7 +18031,8 @@ namespace TrueforceForAll.Plugin
         /// a "not used in Forza" badge next to the Stationary spring
         /// checkbox so users don't tune the section expecting a behavior
         /// that won't apply. Other sources unchanged.</summary>
-        public bool ActiveSourceSupportsStationarySpring => !InForzaSession;
+        public bool ActiveSourceSupportsStationarySpring
+            => !InForzaSession || ModeBEnabledForActiveGame;
 
         /// <summary>True if SimHub's GameName looks like any Forza title
         /// (Horizon or Motorsport). Drives Forza UDP section visibility.
@@ -35728,7 +36088,37 @@ namespace TrueforceForAll.Plugin
         // Velocity and acceleration come from one estimator so the units
         // stay DAMPCAL's regardless of source. No live position = render
         // nothing rather than render wrong.
-        private short? AddHidppDiEffects(short? force)
+        /// <summary>What the wheel gets on the pause and focus releases: the
+        /// game's constant force silenced, its decoded condition shapes played
+        /// (a title's menu centring is a DirectInput spring), and, under
+        /// Telemetry Based FFB, our own stationary spring on top. On that route
+        /// the game's force is not on the wire, so there is nothing for the
+        /// spring to conflict with, and without it a parked wheel with the
+        /// spring ticked went limp the moment the game paused (owner, Forza,
+        /// 2026-09-13). The spring reads the wheel's physical position while
+        /// the game reports paused, so it holds in a menu.</summary>
+        private short? ReleasedWheelForce()
+        {
+            short? released = AddHidppDiEffects((short?)0, conditionsOnly: true);
+            if (_forceMode == ForceModeModeB)
+            {
+                // The synthesis is not run while released, so its engage ramp
+                // would otherwise sit at full and the force would step straight
+                // back on resume. Wound down here, it fades in over its usual
+                // 250 ms on the first tick back, the way the takeover's ramp
+                // does (owner, Forza, 2026-09-13). The pause spring below has
+                // its own shaping and does not read this ramp.
+                _mbRamp = 0f;
+                _mbPrevTicks = 0;
+                if (_fxTestMode == 0
+                    && ActiveGameAllowsStationarySpring
+                    && EffectiveStationarySpringEnabled(_activeGame))
+                    released = ApplyStationarySpring(released, inSynthesis: true);
+            }
+            return released;
+        }
+
+        private short? AddHidppDiEffects(short? force, bool conditionsOnly = false)
         {
             _lastConditionTerm = 0;
             // A live decoded condition (damper/spring/friction) must render even
@@ -35770,7 +36160,15 @@ namespace TrueforceForAll.Plugin
             short? term = tap.TryEvaluateHidppEffects(
                 (float)_hidppMotion.Position, (float)_hidppMotion.Velocity,
                 (float)_hidppMotion.Acceleration, _damperGain, _inertiaGain, _damperSign,
-                _springGain, _frictionGain, _periodicGain, _rampGain);
+                _springGain, _frictionGain,
+                // Conditions only on the pause and focus releases: a periodic
+                // or ramp the game left playing when the pause landed has no
+                // freshness bound in the parametric table, and one with a DC
+                // offset would push the wheel toward a stop in the menu, the
+                // issue #13 class the release exists to prevent (review,
+                // 2026-09-13). Springs and dampers are what a menu needs.
+                conditionsOnly ? 0f : _periodicGain,
+                conditionsOnly ? 0f : _rampGain);
             if (!term.HasValue || term.Value == 0) return force;
             int t = term.Value;
             _lastConditionTerm = t;
@@ -35778,8 +36176,11 @@ namespace TrueforceForAll.Plugin
             // we feed the damper, the position, and the rendered term. Lets an
             // on-track stop-and-wiggle show whether a high-coeff parking damper
             // is producing force or the motion source is reading ~0.
+            // Behind the FXDUMP trace: unconditional, this wrote a line every
+            // 400 ms for as long as any damper played, which in a Forza menu
+            // is the whole time (295 lines in one short rig session, 2026-09-13).
             long diTick = Environment.TickCount;
-            if (diTick - _diRenderDiagTick >= 400 && tap.AnyHidppDamperPlayingNow)
+            if (tap.LogEffectDownloads && diTick - _diRenderDiagTick >= 400 && tap.AnyHidppDamperPlayingNow)
             {
                 _diRenderDiagTick = diTick;
                 SimHub.Logging.Current.Info(
@@ -38010,6 +38411,15 @@ namespace TrueforceForAll.Plugin
         // the stream, so a quick-travel / teleport flap can't re-engage us.
         private const long ResumeHoldMs = 300;
         private long _resumeCandidateSinceTicks;   // 0 = no resume pending
+        // RPM on the first race-on tick after a pause. Movement or throttle
+        // are the usual "driver is active" signs, but Forza's Sled-only Data
+        // Out format (FM7/FM8 at 232 bytes) carries neither, and would have
+        // held the stream stopped for the rest of the session (review,
+        // 2026-09-13). Every Forza format carries engine RPM, and a flapping
+        // pause menu reports the same idle value every time, so RPM moving
+        // away from where it sat is the third sign. NaN = not yet noted.
+        private float _gateRpmAtCandidate = float.NaN;
+        private const float GateRpmMoveThreshold = 150f;
 
         // Drive the device in/out of Trueforce mode on pause edges when the
         // StopStreamOnPause toggle is on. Stopping the stream (vs streaming a
@@ -38120,14 +38530,38 @@ namespace TrueforceForAll.Plugin
                 // otherwise land a strong counter-force in the tap that replays
                 // on the next restart and slams the wheel (issue #13).
                 _ffbTap?.ClearLastFfbTarget();
+                _gateRpmAtCandidate = float.NaN;
                 return;
             }
 
             // Not paused. If we never stopped, nothing to do.
             if (!_stopStreamPauseActive) { _resumeCandidateSinceTicks = 0; return; }
 
-            // Stopped + telemetry back: wait out the hysteresis so a one-frame
-            // flap mid-transition can't restart us, and stay cleared until we do.
+            // Stopped + telemetry back. The flag alone is not enough to resume:
+            // with the wheel as Forza's active input device its pause menu
+            // alternates race-on frames and keepalives in stretches of three
+            // to eight seconds each, with the car sitting at idle, speed zero,
+            // no throttle, and the gate followed it up and down, taking the
+            // wheel from the game's native menu spring mid-swing every time
+            // (rig, 2026-09-13; an escalating hold was tried first and could
+            // not outwait a cycle that long). A real unpause is followed within
+            // a fraction of a second by movement or throttle, so the resume
+            // waits for one of those. Until then the wheel stays on the game's
+            // native FFB, which for a parked car is the game's own parking
+            // feel: nothing the driver is missing.
+            float rpmNow = _lastRpms;
+            if (float.IsNaN(_gateRpmAtCandidate)) _gateRpmAtCandidate = rpmNow;
+            bool driverActive = _lastSpeedKmh > 2f
+                                || _lastThrottle01 > 0.05f
+                                || Math.Abs(rpmNow - _gateRpmAtCandidate) > GateRpmMoveThreshold;
+            if (!driverActive)
+            {
+                _resumeCandidateSinceTicks = 0;
+                _ffbTap?.ClearLastFfbTarget();
+                return;
+            }
+            // Wait out the hysteresis so a one-frame flap mid-transition can't
+            // restart us, and stay cleared until we do.
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             if (_resumeCandidateSinceTicks == 0) _resumeCandidateSinceTicks = now;
             long heldMs = (now - _resumeCandidateSinceTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
@@ -38161,6 +38595,7 @@ namespace TrueforceForAll.Plugin
                 _stopStreamPauseActive = false;
             }
             _resumeCandidateSinceTicks = 0;
+            _gateRpmAtCandidate = float.NaN;
             if (resumed)
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] StopStreamOnPause: resumed, restarted Trueforce stream.");

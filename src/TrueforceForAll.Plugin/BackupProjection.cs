@@ -63,6 +63,9 @@ namespace TrueforceForAll.Plugin
             // iRacing soft lock. Travels: normalised to the car's own lock,
             // nothing wheel-specific in it.
             "IRacingSoftLockEnabled", "IRacingSoftLockStrength",
+            // iRacing kerb strike softening. Travels: it reads the sim's own
+            // shock speeds and torque, nothing wheel-specific in it.
+            "IRacingKerbSofteningEnabled", "IRacingKerbSoftening", "IRacingKerbSensitivity",
             // RaceRoom shared-memory FFB route (dev). Travels: it is a
             // preference about which force source to trust, not a machine fact.
             "R3ESharedMemoryFfb", "R3EAutoStrength", "R3EStrengthByCar",

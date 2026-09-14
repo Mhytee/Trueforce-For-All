@@ -1519,6 +1519,22 @@ namespace TrueforceForAll.Plugin
         // lets a determined push through.
         public float IRacingSoftLockStrength { get; set; } = 1.0f;
 
+        // Kerb strike softening for the iRacing takeover. iRacing publishes
+        // each corner's shock velocity six times a frame beside the torque
+        // sub-samples, and a kerb strike is a burst on one wheel. The torque
+        // sub-samples that coincide with the burst are blended toward a
+        // running average of the torque (the cornering load stays, the spike
+        // goes) BEFORE they enter the replay ring, so the softening has no
+        // lag. Everything off the kerb passes untouched (owner, 2026-09-13:
+        // kerbs and sharp hits read very harsh on the takeover).
+        public bool  IRacingKerbSofteningEnabled { get; set; } = true;
+        // How much of the strike is taken out: 0 none, 1 flattened to the
+        // running average.
+        public float IRacingKerbSoftening { get; set; } = 0.6f;
+        // Detector sensitivity; 1 is the shipped calibration, higher catches
+        // smaller bumps. Settings file only, for tuning on the rig.
+        public float IRacingKerbSensitivity { get; set; } = 1.0f;
+
         // RaceRoom shared-memory FFB route (dev, the R3EFFB access code): drive
         // the wheel from the sim's own pre-gain steering force, read straight
         // from its "$R3E" shared memory, instead of the USB tap. While on,

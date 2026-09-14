@@ -153,6 +153,15 @@ namespace TrueforceForAll.Core
                 _frame = null; _frameLen = 0;
                 _sessionYaml = null; _sessionInfoUpdate = -1;
             }
+            // The table sentinels go with the table. Left standing, a restart
+            // against the same sim layout matched them, skipped the rebuild and
+            // ran on an empty name map: every channel lookup failed, the force
+            // latch was never set, and with the reader "live" the SimHub copy
+            // was not consulted either. Silent dead wheel after any stop/start
+            // in one SimHub run (rig, 2026-09-13: pick Normal after a
+            // stand-down).
+            _varTableVars = -1;
+            _varTableOff = -1;
             _lastTick = int.MinValue;
             IsConnected = false;
             Interlocked.Exchange(ref _running, 0);
@@ -302,7 +311,8 @@ namespace TrueforceForAll.Core
         private void EnsureVarTable(MemoryMappedViewAccessor view, int numVars, int varHdrOff)
         {
             if (numVars <= 0 || numVars > 4096 || varHdrOff <= 0) return;
-            if (numVars == _varTableVars && varHdrOff == _varTableOff) return;
+            // An empty map is never current, whatever the sentinels say.
+            if (numVars == _varTableVars && varHdrOff == _varTableOff && _vars.Count > 0) return;
 
             var map = new Dictionary<string, VarDef>(StringComparer.Ordinal);
             var nameBuf = new byte[VarNameLen];
