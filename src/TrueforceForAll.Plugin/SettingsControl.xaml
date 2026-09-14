@@ -4952,12 +4952,13 @@
                              the plugin fully leaves Trueforce mode while the game is
                              paused so the wheel reverts to the game's own FFB /
                              auto-center instead of holding a force.
-                             Global, not preset-saved. Default ON since 0.3.0: stable
-                             shipped it on in v0.1.24, the 0.2.x opt-in was a
-                             regression (owner call 2026-08-15). -->
+                             Global, not preset-saved. Default OFF since 0.3.1: the
+                             pause path handles a pause itself now (the game's constant
+                             force zeroed, its spring and damper kept), so this is the
+                             escape hatch (owner call 2026-09-14). -->
                         <CheckBox x:Name="StopStreamOnPauseCheck" Content="Hand the wheel back to the game while paused"
                                   Margin="0,4,0,2" Checked="StopStreamOnPause_Changed" Unchecked="StopStreamOnPause_Changed"
-                                  ToolTip="On by default. When the game pauses (menu, fast travel, race start) the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center instead of holding the last force. Turn it off if you prefer the plugin to keep hold of the wheel while paused."/>
+                                  ToolTip="Off by default. When the game pauses (menu, fast travel, race start) the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center instead of holding the last force. Turn it off if you prefer the plugin to keep hold of the wheel while paused."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
                                    Text="If the wheel misbehaves around pauses or fast travel, try flipping this."/>
 

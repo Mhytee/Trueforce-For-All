@@ -1162,18 +1162,24 @@ namespace TrueforceForAll.Plugin
         // fully leaves Trueforce mode while the game is paused (SendStopCommand
         // + Pause) so the wheel reverts to its native FFB, e.g. Forza's own
         // auto-center, instead of us streaming a substitute force. This is
-        // what stops the G923/FH6 pause full-lock (issue #13). Stable shipped
-        // it DEFAULT-ON in v0.1.24; the 0.2.x line left it opt-in by
-        // oversight, silently regressing upgraders, so 0.3.0 restores the
-        // shipped default (owner call 2026-08-15). The checkbox stays as the
-        // escape hatch for anyone who prefers the plugin to keep the wheel.
-        public bool  StopStreamOnPause        { get; set; } = true;
+        // what stopped the G923/FH6 pause full-lock (issue #13), and why it
+        // shipped ON from v0.1.24 to 0.3.0. OFF since 0.3.1 (owner call
+        // 2026-09-14): the pause path now handles a pause itself, zeroing the
+        // game's constant force while keeping its spring and damper shapes,
+        // and rendering our own spring under Telemetry Based FFB, so the
+        // full-lock cannot happen with the stream kept, and keeping it spares
+        // the two stream transitions per pause, the resume ramp, Forza's menu
+        // flapping and the wheel's lights and screen. The checkbox stays as
+        // the escape hatch for anyone who prefers the game's own force feedback
+        // while paused.
+        public bool  StopStreamOnPause        { get; set; } = false;
 
-        // One-time default repair marker for the above: beta-era settings
-        // files carry a stored false nobody chose (the regressed default), so
-        // the first 0.3.0 launch flips StopStreamOnPause on once. A user who
-        // turns it off afterward stays off.
+        // One-time default repair markers for the above. 0.3.0 flipped the
+        // beta-era stored false (a regressed default nobody chose) to ON once;
+        // 0.3.1 flips to OFF once, since nearly every stored ON came from that
+        // flip rather than a choice. After each, the checkbox choice sticks.
         public bool  StopStreamOnPauseMigrated { get; set; } = false;
+        public bool  StopStreamOnPauseDefaultOffMigrated { get; set; } = false;
 
         // Release the wheel when the game is no longer the foreground window.
         // Sibling of StopStreamOnPause, for the games its test cannot reach.

@@ -3986,13 +3986,15 @@ namespace TrueforceForAll.Plugin
             // choice is retired rather than removed so the resolution order
             // keeps honouring a shared number set before this release.
             Settings.IRacingMaxForcePerCar = true;
-            // StopStreamOnPause is DEFAULT-ON (owner call, shipped so in v0.1.24)
-            // but the 0.2.x line left it opt-in, so beta-era files carry a stored
-            // false nobody chose. Flip once; the checkbox choice then sticks.
-            if (!Settings.StopStreamOnPauseMigrated)
+            // StopStreamOnPause: 0.3.0 flipped beta-era files to ON once (the
+            // shipped default then). 0.3.1 ships it OFF (see the setting), and
+            // nearly every stored ON came from that flip rather than a choice,
+            // so flip once more; the checkbox choice then sticks.
+            if (!Settings.StopStreamOnPauseMigrated) Settings.StopStreamOnPauseMigrated = true;
+            if (!Settings.StopStreamOnPauseDefaultOffMigrated)
             {
-                Settings.StopStreamOnPauseMigrated = true;
-                Settings.StopStreamOnPause = true;
+                Settings.StopStreamOnPauseDefaultOffMigrated = true;
+                Settings.StopStreamOnPause = false;
             }
             // Inertia renders accurately from 2026-09-09: force per unit
             // ACCELERATION, and it coasts. Settings written before that carry
