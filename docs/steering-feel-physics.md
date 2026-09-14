@@ -92,7 +92,7 @@ proportional rather than saturating. Logging proved it **never once acted**: in
 
 **The root cause, which is the real finding.** `TelemetryFrame.FrontSlipAngleRad`
 is misnamed and its doc is wrong. It carries Forza's `TireSlipAngle` straight
-through with no conversion, and that value is NOT radians: it is normalised slip
+through with no conversion, and that value is NOT radians: it is normalized slip
 where about 1.0 means the tire is at its peak slip angle, exactly like its
 sibling `TireCombinedSlip` which this codebase already reads that way (see
 `ModeBPeakUtil`). Measured range was 0.15 to 1.05 in ordinary drifting and 7.3
@@ -109,14 +109,14 @@ attempts at GAP #2 failed while everything else works: force SIZE comes from
 **To reopen this gap**, in order: rename the field and fix its doc; express the
 direction window in slip units instead of the fictional radians/degrees;
 re-derive the base window (0.03 of peak slip is arbitrary, it just happens to
-give sign-like behaviour); only then rebuild a proportional-in-slide term and
+give sign-like behavior); only then rebuild a proportional-in-slide term and
 validate it.
 
 **The rear-axle branch went with them.** The rear-over-front excess, its
 soft-saturating gate (`SlideGate01` / `SlideHalfPoint` / BOVERCAP) and the
 centering ease it fed (`SlideDuck`) existed only to serve those two terms. With
 both gone the gate had no consumer, and the ease was A/B'd on the wheel at full
-authority (BOVERCAP 0.5, matching the hard-cap behaviour it was validated under
+authority (BOVERCAP 0.5, matching the hard-cap behavior it was validated under
 on 2026-08-01) and still could not be told apart. Its effect measured 4 to 11%
 of the total force in a slide at shipped settings, about 25% at full authority,
 and neither registered.

@@ -4,7 +4,7 @@ Your wheel's rev lights and screen work in some games and not in others, and the
 
 Your wheel listens in two places. Force feedback, the light bar and the screen all arrive on one connection. Trueforce arrives on its own.
 
-When a force value exists on the Trueforce connection, the wheel prefers it, ignoring any force being sent through the other channel. The game continues sending its own FFB and the wheel keeps receiving it, it just ignores it in favour of the Trueforce signal.
+When a force value exists on the Trueforce connection, the wheel prefers it, ignoring any force being sent through the other channel. The game continues sending its own FFB and the wheel keeps receiving it, it just ignores it in favor of the Trueforce signal.
 
 That is the whole trick. The plugin reads what the game is sending, folds it into Trueforce, adds its own effects on top, and never has to fight the game for the wheel.
 
@@ -25,7 +25,7 @@ Two situations make that connection quiet, and they are the two where the plugin
 - **[Telemetry Based FFB](guide:telemetry-ffb)**, where the plugin builds the force and the game is sending none.
 - **[Force handover](guide:force-handover)**, where the sim hands its force to the plugin instead of the wheel. iRacing, RaceRoom, and Assetto Corsa through the CSP Bridge.
 
-Anywhere else the plugin leaves your lights as they are rather than costing you the feel of the car. Setting a single pattern is different: that is one write rather than a constant stream, so a car's colours can still land in a game whose rev lights stay dark.
+Anywhere else the plugin leaves your lights as they are rather than costing you the feel of the car. Setting a single pattern is different: that is one write rather than a constant stream, so a car's colors can still land in a game whose rev lights stay dark.
 
 ## What we are exploring
 

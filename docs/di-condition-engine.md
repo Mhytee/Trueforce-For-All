@@ -199,7 +199,7 @@ cannot be deafened; the arbiter's change gate guards it), the
 driver-intercept fix is the minimum type-byte guard (conditions are
 dropped there, not rendered; full engine feed only if the mode is kept),
 and pause still resets the table (parameter retention stays phase 2).
-The mescon report was cancelled by the owner the same day; nothing is
+The mescon report was canceled by the owner the same day; nothing is
 sent externally. Original item list:
 
 Engine-local, unit-testable without the wheel,
@@ -475,7 +475,7 @@ identifies each effect by its physical signature, native group first
   engine baseline phase (DAMPCAL's math, pulses instead of hand flicks).
 - Spring: post-pulse oscillation frequency; gain = (fN/fE)^2, inertia
   cancels. (The planned SPRINGCAL, automated.)
-- Friction: linear deceleration, baseline-cancelled.
+- Friction: linear deceleration, baseline-canceled.
 
 Results land in the live gains for the owner to VERIFY BY FEEL on the
 bench (auto-tune proposes, hands confirm), then Save persists. Safety:
@@ -631,7 +631,7 @@ Worth a bench A/B before ship.
 
 ## Inertia, 2026-09-01 (rig: "engine inertia works, feels a little grainy"; native "just feels like damper")
 
-The engine behaviour the owner described - push the wheel and it holds
+The engine behavior the owner described - push the wheel and it holds
 the speed it was pushed to - is CORRECT inertia. Added virtual mass
 resists a change of speed in both directions: it fights the push, and
 then it fights the wheel's own friction trying to slow it down, so it
@@ -672,7 +672,7 @@ gains high enough to fully cancel the wheel's own friction. At matched,
 sane gains the two felt the same. So the divergence lives at the top of
 the gain range, not in normal use.
 
-Both behaviours now exist behind one switch, because which is right is
+Both behaviors now exist behind one switch, because which is right is
 an open question, not a settled one:
 
 - `InertiaCoasts = false` (default, `FfbConditionInertiaCoasts`): the
@@ -685,7 +685,7 @@ The fade is ramped over +-0.05 range/s rather than gated on
 dithers around zero: the start of a push.
 
 Owner's counter-point, recorded: if the wheel is out of spec, matching
-its defect may be the wrong call, and the behaviour could equally point
+its defect may be the wrong call, and the behavior could equally point
 to a bug on our side. Checked: our native DirectInput inertia effect is
 built the standard way (condition set, single axis, direction 0, full
 saturation, no deadband) and the wheel enumerates the effect; and our
@@ -725,7 +725,7 @@ All eight are fixed. What each one was:
 | D1 | The wheel's own drag was left in both sides of the damper ratio, "because it cancels". An additive term common to a ratio's numerator and denominator does not cancel, it pulls the ratio toward 1: measured -25 % to -57 % in simulation | Subtract a measured wheel baseline per side |
 | D2 | `peak / pulseAmp` assumed the response is proportional to the pulse. Coulomb friction subtracts a constant before anything accelerates, so it is affine, and the intercept is bigger on the weaker side: the force ratio was pushed away from 1 and the error landed 1:1 on the damper | `(peak/T + mu)/A`, exact |
 | D3 | Every gain is valid only at the FfbScale it was measured at, and the result line advised changing FfbScale in the same sentence. FfbScale is preset-carried while the gains are global | Stamp the scale into the calibration, warn on mismatch, and say what changing it costs |
-| D4 | The two damper plateaus pushed opposite ways, so Coulomb reversed sign between them and cancelled only by luck. Starting direction was set by which side of centre the wheel settled on: a coin flip, 25 % out when the two phases disagreed | Both levels one way, launched from the far side, direction alternating per trial |
+| D4 | The two damper plateaus pushed opposite ways, so Coulomb reversed sign between them and canceled only by luck. Starting direction was set by which side of center the wheel settled on: a coin flip, 25 % out when the two phases disagreed | Both levels one way, launched from the far side, direction alternating per trial |
 | D5 | Friction differenced mean decelerations against a baseline measured with the stream UP while the native leg ran with it STOPPED, over per-trial speed bands | Friction in the parameter domain, same-side baseline |
 | D6 | Rendered friction carries a velocity term (`FrictionDampK`) that a constant-deceleration fit charges to Coulomb | The integral fit puts it in `c`, where it belongs |
 | D7 | The `_forceEq` clamp railed silently, leaving the engine phases un-equalized | Rails set `ResultsSuspect` and say so |
@@ -979,7 +979,7 @@ migration markers, so it never travels to a second PC.
 last of the graininess at feel parity, and acceleration is a second
 derivative of a quantized encoder, so some grain may return. The washout
 differentiator in `WheelMotionEstimator` (AccelTauSec 0.05) is the real
-defence; `FfbConditionInertiaLpfHz` is the second lever and currently
+defense; `FfbConditionInertiaLpfHz` is the second lever and currently
 follows the 200 Hz global. Coasting is also negative damping, so it
 spends loop stability margin: if the wheel starts to ring or self-excite
 with a game's inertia effect loaded, that is the first suspect and
@@ -1009,7 +1009,7 @@ recording:
 **Settled for free by reading his source:** his periodic phase is a u16
 where 0xFFFF is one full cycle, which is our wire assumption and not
 OpenFFBoard's 0..35999. The phase-units question in the roadmap is
-closed in our favour. Still open: our decode treats the wire deadband as
+closed in our favor. Still open: our decode treats the wire deadband as
 already halved while he halves the evdev value himself, and he cannot
 settle it because on Linux he never downloads conditions to the wheel.
 FXDUMP can, but the bench hardcodes `DeadBand = 0`, so testing it needs

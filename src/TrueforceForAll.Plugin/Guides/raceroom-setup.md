@@ -17,7 +17,7 @@ From a wheel button: bind **AutoForce**, **IRacingMaxForceUp** and **IRacingMaxF
 
 ## A parked wheel
 
-This route drops RaceRoom's parking resistance, so the plugin adds its own: firm when parked, gone as you gain speed. Tune it under **Stationary friction** on the FFB tab, and tick **Stationary spring** there for a centring pull as well.
+This route drops RaceRoom's parking resistance, so the plugin adds its own: firm when parked, gone as you gain speed. Tune it under **Stationary friction** on the FFB tab, and tick **Stationary spring** there for a centering pull as well.
 
 ## If the wheel pulls the wrong way
 

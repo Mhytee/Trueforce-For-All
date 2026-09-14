@@ -35,7 +35,7 @@ Recorded because the wrong numbers are what produced the wrong hypothesis.
    `?op=entitlements` averaged 5,418 ms across 48. There was never a 96 second run.
 2. **"6 invocations an hour, something else triggers it too" was not the plugin.** It is 4
    role-sync on `*/15` plus 2 entitlement-sync on `*/30`, both pointed at `discord-role-sync`.
-3. **"Roughly one run in six is killed at the ceiling" was two errors cancelling out.** Every
+3. **"Roughly one run in six is killed at the ceiling" was two errors canceling out.** Every
    `op=sync` run was slow, not one in six: 84 of 95 exceeded 140 s and the fastest ever seen was
    131.7 s. But they were not being killed. 94 of 95 returned 200 with a complete body; exactly one
    returned 504. The sweep was finishing with about 8 seconds to spare.
@@ -73,7 +73,7 @@ the two existing write loops: skip the PUT when the member already holds the rol
 when they do not.
 
 The guards are applied to `p.add` and `p.remove` exactly as they were already built. That is
-load-bearing. The write set can then only shrink relative to the old behaviour, which is what makes
+load-bearing. The write set can then only shrink relative to the old behavior, which is what makes
 the change safe to ship without a dry run. Rebuilding the diff from the member's actual role array
 instead would sweep in the three Patreon tier roles, `op=entitlements` would read no tier role, call
 `set_supporter(p_on => false)`, and start the two year backup retention timer on paying supporters.

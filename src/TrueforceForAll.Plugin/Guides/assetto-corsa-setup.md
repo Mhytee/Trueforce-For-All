@@ -14,7 +14,7 @@ Close Content Manager first. It keeps its own copy of the FFB Tweaks page and wr
 
 Then restart Assetto Corsa once, since CSP only reads its scripts at startup. From then on it is automatic: whenever the script is installed the plugin uses the game's own force, and when it is not, the plugin falls back to the USB capture.
 
-Keep your in-game force feedback gain where you like it. The plugin reads the game's finished force (after your gain and every CSP FFB tweak), so your tuning carries through. Use FFBClip or your own judgement to set a gain that fills the range without clipping.
+Keep your in-game force feedback gain where you like it. The plugin reads the game's finished force (after your gain and every CSP FFB tweak), so your tuning carries through. Use FFBClip or your own judgment to set a gain that fills the range without clipping.
 
 ## If the install says a script is already selected
 

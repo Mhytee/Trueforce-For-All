@@ -6,4 +6,4 @@ Data is fetched the first time you drive a car and kept on this PC, then re-chec
 
 ## Where the data comes from
 
-The light patterns, the per-gear redlines behind them, and each car's blink rate come from [Lovely Sim Racing](https://github.com/Lovely-Sim-Racing/lovely-car-data), shared under the CC BY-NC-SA 4.0 licence. Car names, engine details and the community redline consensus come from the CarFacts database, which covers cars the pattern dataset does not.
+The light patterns, the per-gear redlines behind them, and each car's blink rate come from [Lovely Sim Racing](https://github.com/Lovely-Sim-Racing/lovely-car-data), shared under the CC BY-NC-SA 4.0 license. Car names, engine details and the community redline consensus come from the CarFacts database, which covers cars the pattern dataset does not.

@@ -39,11 +39,11 @@ memory section, `TF4All.ACBridge.v1`, readable from any local process via
   no shift lights report a count of 0, which readers must treat as "no
   opinion" rather than "no lights".
 
-- `acLedRgb[36]` (v5): the same LEDs' `EMISSIVE` colours, three floats each,
-  UNSCALED. AC treats these as emissive intensities rather than 0-255 colours
-  (values above 255 are ordinary), so readers normalise per LED: scale the
+- `acLedRgb[36]` (v5): the same LEDs' `EMISSIVE` colors, three floats each,
+  UNSCALED. AC treats these as emissive intensities rather than 0-255 colors
+  (values above 255 are ordinary), so readers normalize per LED: scale the
   brightest channel to full and keep the hue. An all-zero triple means the car
-  gave no colour.
+  gave no color.
 
 Readers must honor the seqlock: `seq` is odd while the writer is mid-frame;
 re-read until it is even and unchanged across the read. `magic` is

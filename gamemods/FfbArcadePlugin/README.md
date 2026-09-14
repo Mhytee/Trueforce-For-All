@@ -10,7 +10,7 @@ The wheel's lights and screen cannot be written while something else is pushing
 force at the same endpoint, so taking the force upstream and being the only
 writer is what frees them.
 
-## Licence, and why these are separate programs
+## License, and why these are separate programs
 
 FFBArcadePlugin is **GPL-3.0-or-later**. TrueForce For All is **GPL-2.0-only**.
 Those two cannot be combined into a single work, so they are not combined:
@@ -20,7 +20,7 @@ Those two cannot be combined into a single work, so they are not combined:
 - The only thing crossing between them is a fixed-layout block of numbers.
 - No code, headers or linkage are shared in either direction.
 
-That is aggregation, which both licences permit, and it is a requirement rather
+That is aggregation, which both licenses permit, and it is a requirement rather
 than an implementation detail. Do not merge any of that project's source into
 this one, and do not link against it.
 
@@ -42,7 +42,7 @@ Built from a fork of <https://github.com/Boomslangnz/FFBArcadePlugin>.
 1. **`SharedMemoryOutput` backend.** An opt-in output mode selected in
    `FFBPlugin.ini`:
 
-   - `SharedMemoryOutput=0` — off, upstream behaviour unchanged (the default)
+   - `SharedMemoryOutput=0` — off, upstream behavior unchanged (the default)
    - `SharedMemoryOutput=1` — publish *and* render as normal
    - `SharedMemoryOutput=2` — publish only, leaving the device alone
    - `SharedMemoryOutputFallbackMs=3000` — in mode 2, resume rendering when no

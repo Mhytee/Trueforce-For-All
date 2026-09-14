@@ -10,7 +10,7 @@ The bridge sits in that slot. It does not shape anything. It reads the force at 
 
 - **The wheel feels exactly as you tuned it.** The force the bridge hands over is the finished one, after your in-game gain and every CSP FFB tweak, so your tuning carries through untouched.
 - **The Dynamic OLED and LED pattern changes stop costing force.** With the plugin carrying the force, the wheel's FFB doesnt cut out when we write to the LEDs or Dynamic OLED. [Why](guide:force-and-lights).
-- **Your lights match the car.** The bridge also reads the car's shift light data out of its files: the revs each light comes on at, the colours it uses, and how fast it flashes at the redline.
+- **Your lights match the car.** The bridge also reads the car's shift light data out of its files: the revs each light comes on at, the colors it uses, and how fast it flashes at the redline.
 
 ## What it does not do
 

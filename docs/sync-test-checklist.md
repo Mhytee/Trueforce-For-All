@@ -27,7 +27,7 @@ Watch the SimHub log while testing for `[Trueforce] Auto-sync ...` lines and any
 - [ ] "Restore from cloud" on the other PC pulls your library.
 - [ ] Local "Back up" (zip) produces a zip; local "Restore" restores it AND you stay signed in as yourself (identity not clobbered).
 - [ ] Export a preset to a file; import it on the other PC -> lands in your library.
-- [ ] Greyed-out upload for a non-supporter (if testable): download stays active, upload disabled with the lapsed message.
+- [ ] Grayed-out upload for a non-supporter (if testable): download stays active, upload disabled with the lapsed message.
 
 ## D. No FFB / performance regression
 - [ ] Drive in a sim -> FFB feels normal; no stutter or blip from the 2s polling (it defers while a game runs).
