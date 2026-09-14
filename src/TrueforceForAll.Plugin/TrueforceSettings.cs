@@ -1505,13 +1505,16 @@ namespace TrueforceForAll.Plugin
         // predictor derived is just a hand-tuned gain wearing a disguise.)
         public float IRacingPredictGain { get; set; } = 1.0f;
 
-        // Soft lock for the iRacing reshape: a wall where the car's steering
-        // stops. iRacing renders its own stop inside the force feedback this
-        // path turns off, and the torque it publishes is the physics torque
+        // Soft lock for the takeover routes (iRacing, and RaceRoom on its
+        // shared-memory route): a wall where the car's steering stops. Named
+        // for iRacing, where it was built first; one setting serves both.
+        // Both sims render their own stop inside the force feedback the
+        // takeover replaces, and the torque they publish is the physics torque
         // with no stop in it, so with nothing authored the wheel turned on to
         // its hard stop past the car's lock (owner rig, 2026-09-13). Built
-        // from the sim's own SteeringWheelAngle and SteeringWheelAngleMax in
-        // CSP's shape, applied last in the chain like the AC lock. On by
+        // from each sim's own steering position and lock (iRacing's angle and
+        // range; RaceRoom's raw axis with the game's wheel rotation and the
+        // car's) in CSP's shape, applied last in the chain like the AC lock. On by
         // default: the sim has this natively, and its absence reads as
         // something broken rather than as a missing extra.
         public bool  IRacingSoftLockEnabled  { get; set; } = true;

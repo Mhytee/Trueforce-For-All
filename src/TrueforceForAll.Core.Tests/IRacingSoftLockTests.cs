@@ -3,8 +3,9 @@ using Xunit;
 
 namespace TrueforceForAll.Core.Tests
 {
-    // The iRacing soft lock's blend inputs (CSP's shape): where the band opens,
-    // where it saturates, which way the wall points, and what speed does to it.
+    // The takeover soft lock's blend inputs (CSP's shape): where the band opens,
+    // where it saturates, which way the wall points, and what speed does to it;
+    // plus RaceRoom's axis mapping and the physical-sign helper.
     public class IRacingSoftLockTests
     {
         // A 540 degree lock-to-lock car: 270 per side.
@@ -85,6 +86,48 @@ namespace TrueforceForAll.Core.Tests
             IRacingSoftLock.Compute(1.5f, 0f, 0f, 1f, out var amount, out var target);
             Assert.Equal(0f, amount);
             Assert.Equal(0f, target);
+        }
+
+        [Fact]
+        public void R3ESteerMapsTheAxisOntoTheCarsLock()
+        {
+            // A 1080 degree wheel driving a 350 degree car (the Formula RaceRoom
+            // 3): the car's lock sits at 350/1080 of the axis, and the full axis
+            // is 3.09 of the lock.
+            Assert.Equal(1080f / 350f, IRacingSoftLock.R3ESteer(1f, 350, 1080), 3);
+            Assert.Equal(1f, IRacingSoftLock.R3ESteer(350f / 1080f, 350, 1080), 4);
+            // Left of centre keeps the axis sign; the lock is then re-signed
+            // from the physical wheel.
+            Assert.Equal(-0.5f, IRacingSoftLock.R3ESteer(-0.25f, 540, 1080), 4);
+            // A car whose rotation exceeds the wheel's never reaches its lock:
+            // the full axis is still inside it, so no wall.
+            Assert.True(IRacingSoftLock.R3ESteer(1f, 1080, 900) < 1f);
+        }
+
+        [Fact]
+        public void R3ESteerIsNaNOnAutoOrUnusableRotation()
+        {
+            Assert.True(float.IsNaN(IRacingSoftLock.R3ESteer(0.5f, 350, 0)));     // Auto
+            Assert.True(float.IsNaN(IRacingSoftLock.R3ESteer(0.5f, 350, -1)));    // N/A
+            Assert.True(float.IsNaN(IRacingSoftLock.R3ESteer(0.5f, 350, 100)));   // below the game's own floor
+            Assert.True(float.IsNaN(IRacingSoftLock.R3ESteer(0.5f, 0, 1080)));    // car rotation not filled
+            Assert.True(float.IsNaN(IRacingSoftLock.R3ESteer(float.NaN, 350, 1080)));
+        }
+
+        [Fact]
+        public void SignedByPhysicalPointsBackTowardCentre()
+        {
+            // Wheel physically right (positive on the HID axis): the lock pulls
+            // left, negative, whatever sign the sim's own axis carried.
+            Assert.Equal(-1.2f, IRacingSoftLock.SignedByPhysical(1.2f, 0.8f), 4);
+            Assert.Equal(-1.2f, IRacingSoftLock.SignedByPhysical(-1.2f, 0.8f), 4);
+            // Wheel physically left: the lock pulls right, positive, again
+            // whatever sign the sim's axis carried.
+            Assert.Equal(1.2f, IRacingSoftLock.SignedByPhysical(1.2f, -0.3f), 4);
+            Assert.Equal(1.2f, IRacingSoftLock.SignedByPhysical(-1.2f, -0.3f), 4);
+            // Unknown or centred physical position: no lock rather than a guess.
+            Assert.Equal(0f, IRacingSoftLock.SignedByPhysical(1.2f, 0f));
+            Assert.Equal(0f, IRacingSoftLock.SignedByPhysical(1.2f, float.NaN));
         }
 
         [Fact]

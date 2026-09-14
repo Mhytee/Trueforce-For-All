@@ -3022,15 +3022,15 @@
                                Text="How much of the strike is taken out. 0.60 keeps the hit but takes the sting off it."/>
                 </StackPanel>
 
-                <!-- Soft lock: the wall at the car's steering limit. iRacing
-                     renders its own inside the force feedback this path turns
-                     off, so the plugin builds one from the sim's angle and
-                     range. Hidden on the RaceRoom route with the peak-force
-                     row: that route publishes no steering angle to build from. -->
+                <!-- Soft lock: the wall at the car's steering limit. The sim
+                     renders its own inside the force feedback the takeover turns
+                     off, so the plugin builds one from the sim's own steering
+                     and lock: iRacing's angle and range, RaceRoom's raw axis,
+                     lock and wheel range. Shown on both takeover routes. -->
                 <StackPanel x:Name="IRacingSoftLockPanel">
                     <CheckBox x:Name="IRacingSoftLockCheck" Content="Soft lock"
                               Margin="0,6,0,2" Checked="IRacingSoftLock_Changed" Unchecked="IRacingSoftLock_Changed"
-                              ToolTip="Stops the wheel where the car's steering stops. iRacing normally does this through its own force feedback, which is off on this path, so the plugin renders the stop itself from the sim's steering angle and range."/>
+                              ToolTip="Stops the wheel where the car's steering stops. The sim normally does this through its own force feedback, which is off while the plugin carries the force, so the plugin renders the stop itself from the sim's steering position and lock."/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6"
                                Text="Stops the wheel where the car's steering stops."/>
                     <Grid Margin="0,0,0,2">

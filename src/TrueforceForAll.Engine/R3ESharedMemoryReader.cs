@@ -35,9 +35,25 @@ namespace TrueforceForAll.Core
         public bool InGarage;
 
         public float CarSpeedMps;
-        /// <summary>Raw steering input, for the sign A/B: a steady corner should
-        /// show force and steer input with a consistent sign relation.</summary>
+        /// <summary>Raw steering input. Normalised to the CAR's lock, not the
+        /// wheel's rotation: +/-1 at full lock, and it clamps there while the
+        /// wheel turns on (rig, 2026-09-13). Used for the sign A/B and to
+        /// measure the axis against the physical position; the soft lock builds
+        /// from the physical position for that reason.</summary>
         public float SteerInputRaw;
+        /// <summary>steer_lock_degrees. The header says "centre to full lock",
+        /// and the rig says which lock: the ROAD wheel's (a Formula RaceRoom 3
+        /// publishes 17). Not the steering wheel's, so the soft lock does not
+        /// use it; kept for the log line.</summary>
+        public int RoadWheelLockDeg;
+        /// <summary>steer_wheel_range_degrees: the CAR's steering wheel rotation,
+        /// full left to full right (that same car publishes 350). Not the
+        /// physical wheel's range.</summary>
+        public int CarRotationDeg;
+        /// <summary>steer_wheel_max_rotation: the wheel rotation in the game's
+        /// controller profile. -1 = N/A, 0 = Auto (the game sets the wheel's own
+        /// range to the car's), 180..1800 = Manual, the range the raw axis spans.</summary>
+        public int WheelMaxRotationDeg;
         public int Gear;
         /// <summary>VehicleInfo.ModelId, the sim's car identity.</summary>
         public int ModelId;
@@ -70,9 +86,10 @@ namespace TrueforceForAll.Core
         /// own RaceRoom reader gates on the same number.</summary>
         internal const int ExpectedVersionMajor = 3;
 
-        // Everything we consume sits in the first 1600 bytes of the ~44 KB
-        // block, so only that much is copied per poll.
-        internal const int BlockBytes = 1600;
+        // Everything we consume sits in the first 1632 bytes of the ~44 KB
+        // block (the last field read is steer_wheel_max_rotation at 1624), so
+        // only that much is copied per poll.
+        internal const int BlockBytes = 1632;
 
         internal const int OFF_VERSION_MAJOR    = 0;
         internal const int OFF_VERSION_MINOR    = 4;
@@ -91,6 +108,13 @@ namespace TrueforceForAll.Core
         internal const int OFF_CAR_SPEED        = 1392;  // m/s (float)
         internal const int OFF_GEAR             = 1408;
         internal const int OFF_STEER_INPUT_RAW  = 1524;  // float
+        internal const int OFF_STEER_LOCK_DEG   = 1528;  // int32, road wheel lock, centre to full
+        internal const int OFF_STEER_WHEEL_RANGE_DEG = 1532;  // int32, car rotation, full left to full right
+        // After the two above: aid_settings (5 int32), drs (4 int32), pit_limiter,
+        // push_to_pass (3 int32 + 2 float), brake_bias, two activation counters,
+        // battery_soc, water_left, abs_setting, headlights, then this. All
+        // 4-byte scalars under Pack = 1: 1536 + 22 * 4 = 1624.
+        internal const int OFF_STEER_WHEEL_MAX_ROTATION = 1624;  // int32, -1 N/A, 0 Auto, 180..1800 Manual
 
         // Poll cadence. 1 ms polling against a counter-deduped block means each
         // new physics tick is picked up within about a millisecond of the sim
@@ -290,6 +314,9 @@ namespace TrueforceForAll.Core
                 InGarage         = BitConverter.ToInt32(b, OFF_IN_GARAGE) > 0,
                 CarSpeedMps      = BitConverter.ToSingle(b, OFF_CAR_SPEED),
                 SteerInputRaw    = BitConverter.ToSingle(b, OFF_STEER_INPUT_RAW),
+                RoadWheelLockDeg = BitConverter.ToInt32(b, OFF_STEER_LOCK_DEG),
+                CarRotationDeg   = BitConverter.ToInt32(b, OFF_STEER_WHEEL_RANGE_DEG),
+                WheelMaxRotationDeg = BitConverter.ToInt32(b, OFF_STEER_WHEEL_MAX_ROTATION),
                 Gear             = BitConverter.ToInt32(b, OFF_GEAR),
                 ModelId          = BitConverter.ToInt32(b, OFF_MODEL_ID),
                 EngineType       = BitConverter.ToInt32(b, OFF_ENGINE_TYPE),

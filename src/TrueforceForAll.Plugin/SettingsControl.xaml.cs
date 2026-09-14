@@ -849,9 +849,9 @@ namespace TrueforceForAll.Plugin
                     // Kerb softening reads iRacing's shock speeds, which the
                     // RaceRoom route does not carry.
                     if (IRacingKerbPanel     != null) IRacingKerbPanel.Visibility     = iracingPeakVis;
-                    // The soft lock needs the sim's steering angle, which the
-                    // RaceRoom route does not publish, so it follows the same flag.
-                    if (IRacingSoftLockPanel != null) IRacingSoftLockPanel.Visibility = iracingPeakVis;
+                    // The soft lock rides both takeover routes (RaceRoom's block
+                    // carries the car's lock and the wheel range), so its panel
+                    // simply follows IRacingTuningPanel.
                     if (R3EAutoStrengthRow   != null) R3EAutoStrengthRow.Visibility   = r3eAutoVis;
                     if (R3EAutoStrengthHelp  != null) R3EAutoStrengthHelp.Visibility  = r3eAutoVis;
                     // Advanced lives outside that panel now, so Damping and

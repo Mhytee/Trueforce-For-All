@@ -34,6 +34,9 @@ namespace TrueforceForAll.Core.Tests
             F32(R3ESharedMemoryReader.OFF_CAR_SPEED, 31.5f);
             I32(R3ESharedMemoryReader.OFF_GEAR, 4);
             F32(R3ESharedMemoryReader.OFF_STEER_INPUT_RAW, 0.32f);
+            I32(R3ESharedMemoryReader.OFF_STEER_LOCK_DEG, 17);
+            I32(R3ESharedMemoryReader.OFF_STEER_WHEEL_RANGE_DEG, 350);
+            I32(R3ESharedMemoryReader.OFF_STEER_WHEEL_MAX_ROTATION, 1080);
             return b;
         }
 
@@ -53,6 +56,9 @@ namespace TrueforceForAll.Core.Tests
             Assert.False(s.InGarage);
             Assert.Equal(31.5f, s.CarSpeedMps, 4);
             Assert.Equal(0.32f, s.SteerInputRaw, 4);
+            Assert.Equal(17, s.RoadWheelLockDeg);
+            Assert.Equal(350, s.CarRotationDeg);
+            Assert.Equal(1080, s.WheelMaxRotationDeg);
             Assert.Equal(4, s.Gear);
             Assert.Equal(4523, s.ModelId);
             Assert.Equal(1, s.EngineType);
@@ -75,8 +81,17 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(1296, R3ESharedMemoryReader.OFF_ENGINE_TYPE);
             Assert.Equal(1388, R3ESharedMemoryReader.OFF_CONTROL_TYPE);
             Assert.Equal(1524, R3ESharedMemoryReader.OFF_STEER_INPUT_RAW);
+            // Straight after steer_input_raw in r3e.h (layout 3.5): the road
+            // wheel's lock, then the car's steering wheel rotation. Both
+            // r3e_int32, Pack = 1, so 1528 and 1532. Then aid_settings (5),
+            // drs (4), pit_limiter, push_to_pass (5), brake_bias, two counters,
+            // battery_soc, water_left, abs_setting, headlights: 22 four-byte
+            // scalars, so steer_wheel_max_rotation is at 1536 + 88 = 1624.
+            Assert.Equal(1528, R3ESharedMemoryReader.OFF_STEER_LOCK_DEG);
+            Assert.Equal(1532, R3ESharedMemoryReader.OFF_STEER_WHEEL_RANGE_DEG);
+            Assert.Equal(1624, R3ESharedMemoryReader.OFF_STEER_WHEEL_MAX_ROTATION);
             Assert.True(R3ESharedMemoryReader.BlockBytes
-                > R3ESharedMemoryReader.OFF_STEER_INPUT_RAW + sizeof(float));
+                >= R3ESharedMemoryReader.OFF_STEER_WHEEL_MAX_ROTATION + sizeof(int));
         }
     }
 }
