@@ -12047,13 +12047,31 @@ namespace TrueforceForAll.Plugin
                 // telemetry, and saying otherwise promises a different feel
                 // than the one that arrives (owner, 2026-08-16).
                 bool reshape = _plugin.ActiveGameIsReshapeGame;
+                // RaceRoom on its handover is a takeover game too, but its switch
+                // is the handover, not Telemetry Based FFB, and its words are its
+                // own: with iRacing's body it told a RaceRoom driver to edit
+                // app.ini (rig, 2026-09-14).
+                bool r3e = reshape && _plugin.ActiveGameIsR3E;
                 // Whether there is anything left to offer. Read BEFORE the body is
                 // built, because the closing sentence points at a button that only
                 // exists when this is true: re-opened from the tab's link with the
                 // feature already on, "Then activate it below" sat above a lone
                 // "Got it".
-                bool canActivate = !_plugin.ModeBEnabledForActiveGame;
-                string body = reshape
+                bool canActivate = r3e
+                    ? !(_plugin.Settings.R3ESharedMemoryFfb)
+                    : !_plugin.ModeBEnabledForActiveGame;
+                string body = r3e
+                    ? "The plugin can carry RaceRoom's force feedback for you. It does not "
+                      + "replace it: RaceRoom still works out what the car is doing and hands "
+                      + "over those same forces, so the feel stays the sim's own.\n\n"
+                      + "What it buys you is your wheel's rev lights and screen. They share a "
+                      + "channel with force feedback, so they can only run when the plugin "
+                      + "owns that channel instead of the sim.\n\n"
+                      + "It needs one thing on RaceRoom's side first: disable the game's own "
+                      + "force feedback, whatever its intensity slider says. Start SimHub "
+                      + "before RaceRoom, or the lights and screen may not come on."
+                      + (canActivate ? " Then activate it below." : "")
+                    : reshape
                     ? "The plugin can carry iRacing's force feedback for you. It does not "
                       + "replace it: iRacing still works out what the car is doing and hands "
                       + "over those same forces, so the feel stays the sim's own.\n\n"
@@ -12074,7 +12092,8 @@ namespace TrueforceForAll.Plugin
                       + "wheel settings, so the plugin is the only force on the wheel."
                       + (canActivate ? " Then activate it below." : "");
                 bool? r = TrueforceDialog.Show(owner,
-                    reshape ? "Let the plugin carry iRacing's force feedback"
+                    r3e     ? "Let the plugin carry RaceRoom's force feedback"
+                  : reshape ? "Let the plugin carry iRacing's force feedback"
                             : "Telemetry Based FFB is available",
                     body,
                     DialogKind.Info,
@@ -12085,7 +12104,8 @@ namespace TrueforceForAll.Plugin
                 _plugin.Settings.HasSeenModeBIntro = true;
                 if (r == true && canActivate)
                 {
-                    _plugin.SetModeBEnabledForActiveGame(true);
+                    if (r3e) _plugin.SetR3ETakeover(true);
+                    else _plugin.SetModeBEnabledForActiveGame(true);
                     if (ModeBEnabledCheck != null)
                     {
                         bool prev = _suppressEvents;

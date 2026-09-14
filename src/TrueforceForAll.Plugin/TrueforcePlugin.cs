@@ -1630,7 +1630,10 @@ namespace TrueforceForAll.Plugin
                     }
                 }
                 catch (Exception ex)
-                { SimHub.Logging.Current.Info("[TF4ALL] iRacing notice failed: " + ex.Message); }
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] iRacing notice failed: " + ex.Message);
+                    _iracingNoticeShownThisSession = false;
+                }
                 finally { _iracingNoticeShowing = false; }
             }), System.Windows.Threading.DispatcherPriority.Background);
         }
@@ -1704,7 +1707,10 @@ namespace TrueforceForAll.Plugin
                     }
                 }
                 catch (Exception ex)
-                { SimHub.Logging.Current.Info("[TF4ALL] RaceRoom notice failed: " + ex.Message); }
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] RaceRoom notice failed: " + ex.Message);
+                    _r3eNoticeShownThisSession = false;   // it was not shown; the next edge may try again
+                }
                 finally { _r3eNoticeShowing = false; }
             }), System.Windows.Threading.DispatcherPriority.Background);
         }
@@ -3495,6 +3501,10 @@ namespace TrueforceForAll.Plugin
             Settings.WelcomeDeclineCount = 0;
             Settings.WelcomeNextShowAt = null;
             Settings.IRacingTrueforceNoticeDismissed = false;
+            // RaceRoom's handover notice and its once-a-session guard, which the
+            // button had missed since the notice was added.
+            Settings.R3ETrueforceNoticeDismissed = false;
+            _r3eNoticeShownThisSession = false;
             // The stepped-aside notice, for every game it was dismissed in, and
             // its once-per-demotion guard.
             Settings.StandDownNoticeDismissedGames?.Clear();
