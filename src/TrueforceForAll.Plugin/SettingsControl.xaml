@@ -2962,7 +2962,7 @@
                             ToolTip="The number on this button is what the plugin has watched this car produce, plus a margin. Drive a clean lap, then press it to take that number and start watching again from scratch. It stays greyed until the reading has held steady. Same idea as iRacing's own auto button."/>
                 </Grid>
                 <TextBlock x:Name="IRacingPeakForceHelp" Style="{StaticResource HelpText}" Margin="140,0,0,6"
-                           Text="Each car keeps its own number. Nudge it down to make this car feel heavier, up to make it lighter."/>
+                           Text="Nudge it down to make this car feel heavier, up to make it lighter."/>
                 <!-- RaceRoom auto-strength (R3EFFB): the press-to-apply counterpart
                      to the iRacing Auto button. Until Apply is pressed the wheel
                      matches the game's own strength; Apply locks in this car's
@@ -2980,7 +2980,7 @@
                             ToolTip="Take what the plugin has watched this car push and use it as the car's max. The number on the button is that value. Greyed until the reading has held steady."/>
                 </Grid>
                 <TextBlock x:Name="R3EAutoStrengthHelp" Style="{StaticResource HelpText}" Margin="140,0,0,6" Visibility="Collapsed"
-                           Text="Each car keeps its own number. Nudge it down to make this car feel heavier, up to make it lighter. Or drive and press Apply to set it from what the car pushes. Use Strength below for overall weight."/>
+                           Text="Nudge it down to make this car feel heavier, up to make it lighter. Or drive and press Apply to set it from what the car pushes. Use Strength below for overall weight."/>
                 <TextBlock x:Name="IRacingAutoMaxForceStatus" Margin="140,0,0,6"
                            FontSize="11" Opacity="0.75" Text="" Visibility="Collapsed"/>
                 <Grid Margin="0,0,0,2">
@@ -2997,54 +2997,6 @@
                            Text="Above this the strongest moments will clip: Auto leaves about 10 percent spare, and past that the top of big corners flattens off instead of building. Fine if you like it, but detail is lost where the car is working hardest."/>
                 <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
                            Text="The only force control you should need day to day. 1.00 delivers what the sim asked for. Raise it if the wheel feels light, lower it if it clips."/>
-
-                <!-- Kerb strike softening: the sim's per-wheel shock speed, six
-                     times a frame, says which torque samples are a strike; those
-                     are eased toward the cornering load before they reach the
-                     wheel. iRacing only (RaceRoom's route carries no shock data),
-                     so the panel follows iracingPeakVis. -->
-                <StackPanel x:Name="IRacingKerbPanel">
-                    <CheckBox x:Name="IRacingKerbCheck" Content="Kerb strike softening"
-                              Margin="0,6,0,2" Checked="IRacingKerb_Changed" Unchecked="IRacingKerb_Changed"
-                              ToolTip="Softens the jolt of a kerb strike and the buzz of a rumble strip, and leaves everything else alone. The sim reports each wheel's suspension speed six times a frame and says when the car is on a strip; the torque samples from those instants are eased toward the cornering load."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6"
-                               Text="Eases the jolt of a kerb strike and the buzz of a rumble strip. Off the kerb, nothing changes."/>
-                    <Grid Margin="0,0,0,2">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Softening:" Style="{StaticResource LabelText}"
-                                   ToolTip="How much of the strike is taken out. 0 leaves it as the sim sent it; 1 flattens it to the cornering load."/>
-                        <Slider     Grid.Column="1" x:Name="IRacingKerbSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
-                                    ToolTip="How much of the strike is taken out. 0 leaves it as the sim sent it; 1 flattens it to the cornering load."
-                                    TickFrequency="0.1" ValueChanged="IRacingKerb_ValueChanged" VerticalAlignment="Center"/>
-                        <Border Visibility="{Binding Visibility, ElementName=IRacingKerbText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="IRacingKerbText" Text="0.60"/></Border>
-                    </Grid>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                               Text="How much of the strike is taken out. 0.60 keeps the hit but takes the sting off it."/>
-                </StackPanel>
-
-                <!-- Soft lock: the wall at the car's steering limit. The sim
-                     renders its own inside the force feedback the takeover turns
-                     off, so the plugin builds one from the sim's own steering
-                     and lock: iRacing's angle and range, RaceRoom's raw axis,
-                     lock and wheel range. Shown on both takeover routes. -->
-                <StackPanel x:Name="IRacingSoftLockPanel">
-                    <CheckBox x:Name="IRacingSoftLockCheck" Content="Soft lock"
-                              Margin="0,6,0,2" Checked="IRacingSoftLock_Changed" Unchecked="IRacingSoftLock_Changed"
-                              ToolTip="Stops the wheel where the car's steering stops. The sim normally does this through its own force feedback, which is off while the plugin carries the force, so the plugin renders the stop itself from the sim's steering position and lock."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6"
-                               Text="Stops the wheel where the car's steering stops."/>
-                    <Grid Margin="0,0,0,2">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Stop strength:" Style="{StaticResource LabelText}"
-                                   ToolTip="How hard the stop pushes back, as a share of the wheel's full force. 1.00 is a wall; lower lets a determined push through."/>
-                        <Slider     Grid.Column="1" x:Name="IRacingSoftLockSlider" Minimum="0.1" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
-                                    ToolTip="How hard the stop pushes back, as a share of the wheel's full force. 1.00 is a wall; lower lets a determined push through."
-                                    TickFrequency="0.1" ValueChanged="IRacingSoftLock_ValueChanged" VerticalAlignment="Center"/>
-                        <Border Visibility="{Binding Visibility, ElementName=IRacingSoftLockText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="IRacingSoftLockText" Text="1.00"/></Border>
-                    </Grid>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                               Text="How hard the stop pushes back. 1.00 is the wheel's full force."/>
-                </StackPanel>
 
             </StackPanel> <!-- /IRacingTuningPanel: Damping and FFB smooth follow,
                  outside it, because they are live in every game. The Advanced
@@ -3064,38 +3016,6 @@
                 <Border Visibility="{Binding Visibility, ElementName=ModeBDamperText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ModeBDamperText" Text="0.07"/></Border>
             </Grid>
             <TextBlock x:Name="ModeBDamperHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Resistance to wheel motion. The heavy, planted feel that is not grip force."/>
-
-            <!-- Stationary friction, for the routes that replace the game's force
-                 outright: RaceRoom's takeover (the shared-memory steering force is
-                 ~0 parked) and Telemetry Based FFB (the synthesis). The game's
-                 low-speed parking resistance goes missing there, so it is
-                 resynthesized: firm parked, fading to nothing by the set speed.
-                 Visibility is driven in code (R3EStationaryDamperApplies). -->
-            <StackPanel x:Name="R3EStationaryDamperPanel" Visibility="Collapsed" Margin="0,0,0,4">
-                <CheckBox x:Name="R3EStationaryDamperCheck" Content="Stationary friction"
-                          Margin="0,2,0,6" Checked="R3EStationaryDamper_Changed" Unchecked="R3EStationaryDamper_Changed"
-                          ToolTip="Adds back the game's low-speed parking resistance, which the handed-over and Telemetry Based routes otherwise drop. Firm when parked, fading to nothing as you gain speed."/>
-                <Grid Margin="0,0,0,2">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Friction strength:" Style="{StaticResource LabelText}"
-                               ToolTip="How firm the parked resistance is, as a share of full wheel force."/>
-                    <Slider     Grid.Column="1" x:Name="R3EDamperStrengthSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
-                                ToolTip="How firm the parked resistance is. Higher is heavier; too high can start to shake, so it tops out where it stays smooth."
-                                TickFrequency="0.05" ValueChanged="R3EDamperSlider_ValueChanged" VerticalAlignment="Center"/>
-                    <Border Visibility="{Binding Visibility, ElementName=R3EDamperStrengthText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="R3EDamperStrengthText" Text="0.40"/></Border>
-                </Grid>
-                <Grid Margin="0,0,0,2">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Fades out by:" Style="{StaticResource LabelText}"
-                               ToolTip="The car speed at which the stationary friction has faded to nothing. Below it the friction eases off as you speed up; above it, only the sim's own force remains."/>
-                    <Slider     Grid.Column="1" x:Name="R3EDamperFadeSlider" Minimum="5" Maximum="80" SmallChange="1" LargeChange="5"
-                                ToolTip="The car speed at which the stationary friction has faded to nothing."
-                                TickFrequency="5" ValueChanged="R3EDamperSlider_ValueChanged" VerticalAlignment="Center"/>
-                    <Border Visibility="{Binding Visibility, ElementName=R3EDamperFadeText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="R3EDamperFadeText" Text="25"/></Border>
-                </Grid>
-                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
-                           Text="Firm when parked, easing off as you gain speed and gone by this speed (km/h)."/>
-            </StackPanel>
 
             <!-- Smoothing moved up here from the old FFB tweaks section (owner,
                  2026-08-16). It belongs beside Damping: both are everyday feel
@@ -3123,49 +3043,68 @@
                 <Button x:Name="MasterSaveBtn"   Content="Save…" Tag="Master" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
             </StackPanel>
 
-            <!-- MOVED OUT of IRacingTuningPanel (owner, 2026-08-16) so Damping
-                 and FFB smooth can sit above it while staying visible in Forza
-                 and Farming Simulator. Visibility is now driven in code beside
-                 the panel's own. Everything in here is expert surface: the tab
-                 needs Strength day to day and Auto once per car, and burying
-                 the rest is the difference between a tab someone can use and
-                 one they scroll past. -->
-            <Expander x:Name="IRacingAdvancedExpander" IsExpanded="False" Margin="0,6,0,4" Visibility="Collapsed">
-                    <Expander.Header>
-                        <TextBlock Text="Advanced" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </Expander.Header>
-                    <StackPanel Margin="0,8,0,0">
-                <!-- The section reads top-down: the situation, then the choice
-                     that follows from it, then the choices that only exist
-                     inside that one. The 360 Hz checkbox used to sit LAST,
-                     below the two controls it governs. -->
-                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="iRacing sends telemetry 60 times a second, and each update carries six force samples from the physics steps in between. These options choose whether to fill the gaps between updates and how much of that extra detail to use."/>
-                <!-- One control, four rungs of a single ladder, replacing a
-                     checkbox plus a conditional dropdown that between them hid
-                     which combinations existed. It writes both underlying
-                     settings (IRacingUse360Hz + IRacingForceMode), so nobody's
-                     stored configuration moves. -->
-                <Grid Margin="0,0,0,2" x:Name="IRacingFeelRow">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Feel:" Style="{StaticResource LabelText}"/>
-                    <ComboBox Grid.Column="1" x:Name="IRacingForceModeCombo" VerticalAlignment="Center"
-                              SelectionChanged="IRacingForceMode_Changed">
-                        <ComboBoxItem Content="Plain"/>
-                        <ComboBoxItem Content="Filled"/>
-                        <ComboBoxItem Content="Detailed"/>
-                        <ComboBoxItem Content="Detailed, predicted"/>
-                    </ComboBox>
+            <!-- The feature sections, in the order they matter day to day, after
+                 the three everyday controls (Strength, Damping, Smoothing; owner,
+                 2026-09-14). Curb softening and the soft lock left IRacingTuningPanel
+                 for this and are shown by the same rules in code. -->
+            <!-- Curb strike softening: the sim's per-wheel shock speed, six
+                 times a frame, says which torque samples are a strike; those
+                 are eased toward the cornering load before they reach the
+                 wheel. iRacing only (RaceRoom's route carries no shock data),
+                 so the expander follows iracingPeakVis. -->
+            <Expander x:Name="IRacingKerbExpander" IsExpanded="False" Visibility="Collapsed" Margin="0,12,0,4">
+                <Expander.Header>
+                    <CheckBox x:Name="IRacingKerbCheck" Content="Curb strike softening"
+                              FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
+                              Checked="IRacingKerb_Changed" Unchecked="IRacingKerb_Changed"
+                              ToolTip="Softens the jolt of a curb strike and the buzz of a rumble strip, and leaves everything else alone. The sim reports each wheel's suspension speed six times a frame and says when the car is on a strip; the torque samples from those instants are eased toward the cornering load."/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6"
+                           Text="Eases the jolt of a curb strike and the buzz of a rumble strip. Off the curb, nothing changes."/>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Softening:" Style="{StaticResource LabelText}"
+                               ToolTip="How much of the strike is taken out. 0 leaves it as the sim sent it; 1 flattens it to the cornering load."/>
+                    <Slider     Grid.Column="1" x:Name="IRacingKerbSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                ToolTip="How much of the strike is taken out. 0 leaves it as the sim sent it; 1 flattens it to the cornering load."
+                                TickFrequency="0.1" ValueChanged="IRacingKerb_ValueChanged" VerticalAlignment="Center"/>
+                    <Border Visibility="{Binding Visibility, ElementName=IRacingKerbText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="IRacingKerbText" Text="0.60"/></Border>
                 </Grid>
-                <!-- Text is set in code, per selection: describing both modes at
-                     once made this three times as long as the one a driver
-                     needs, and buried the difference. Prediction had a slider
-                     here until 2026-08-16; the plugin learns that lead per car,
-                     so it belongs in Smooth's sentence rather than in a knob.
-                     IRacingPredictGain survives as a file-level escape hatch. -->
-                <TextBlock x:Name="IRacingFeelHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text=""/>
-                    </StackPanel>
-                </Expander>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="How much of the strike is taken out. 0.60 keeps the hit but takes the sting off it."/>
+                </StackPanel>
+            </Expander>
+
+            <!-- Soft lock: the wall at the car's steering limit. The sim
+                 renders its own inside the force feedback the takeover turns
+                 off, so the plugin builds one from the sim's own steering
+                 and lock: iRacing's angle and range, RaceRoom's raw axis,
+                 lock and wheel range. Shown on both takeover routes; the
+                 code-behind drives its visibility beside IRacingTuningPanel's. -->
+            <Expander x:Name="IRacingSoftLockExpander" IsExpanded="False" Visibility="Collapsed" Margin="0,12,0,4">
+                <Expander.Header>
+                    <CheckBox x:Name="IRacingSoftLockCheck" Content="Soft lock"
+                              FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
+                              Checked="IRacingSoftLock_Changed" Unchecked="IRacingSoftLock_Changed"
+                              ToolTip="Stops the wheel where the car's steering stops. The sim normally does this through its own force feedback, which is off while the plugin carries the force, so the plugin renders the stop itself from the sim's steering position and lock."/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6"
+                           Text="Stops the wheel where the car's steering stops."/>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Stop strength:" Style="{StaticResource LabelText}"
+                               ToolTip="How hard the stop pushes back, as a share of the wheel's full force. 1.00 is a wall; lower lets a determined push through."/>
+                    <Slider     Grid.Column="1" x:Name="IRacingSoftLockSlider" Minimum="0.1" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                ToolTip="How hard the stop pushes back, as a share of the wheel's full force. 1.00 is a wall; lower lets a determined push through."
+                                TickFrequency="0.1" ValueChanged="IRacingSoftLock_ValueChanged" VerticalAlignment="Center"/>
+                    <Border Visibility="{Binding Visibility, ElementName=IRacingSoftLockText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="IRacingSoftLockText" Text="1.00"/></Border>
+                </Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                           Text="How hard the stop pushes back. 1.00 is the wheel's full force."/>
+                </StackPanel>
+            </Expander>
 
             <!-- Spring-mode enhancements. Visible only in spring-mode games
                  (Farming Simulator); each is its own toggle so they can be
@@ -3296,7 +3235,6 @@
                         <Border Visibility="{Binding Visibility, ElementName=ModeBFloorText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ModeBFloorText" Text="0.50"/></Border>
                     </Grid>
                     <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8" Text="Torque left once the front has fully let go. Lower = a more dramatic gone-light cue."/>
-
 
                     <CheckBox x:Name="ModeBReversalDampCheck" Margin="0,0,0,2" Content="Reversal damping"
                               Checked="ModeBFeel_Changed" Unchecked="ModeBFeel_Changed"/>
@@ -3438,6 +3376,45 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Stationary friction, for the routes that replace the game's force
+                     outright: RaceRoom's takeover (the shared-memory steering force is
+                     ~0 parked) and Telemetry Based FFB (the synthesis). The game's
+                     low-speed parking resistance goes missing there, so it is
+                     resynthesized: firm parked, fading to nothing by the set speed.
+                     Visibility is driven in code (R3EStationaryDamperApplies).
+                     Sits with the stationary spring, its parked-feel sibling
+                     (owner, 2026-09-14). -->
+                <Expander x:Name="R3EStationaryDamperExpander" IsExpanded="False" Visibility="Collapsed" Margin="0,12,0,4">
+                    <Expander.Header>
+                        <CheckBox x:Name="R3EStationaryDamperCheck" Content="Stationary friction"
+                                  FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
+                                  Checked="R3EStationaryDamper_Changed" Unchecked="R3EStationaryDamper_Changed"
+                                  ToolTip="Adds back the game's low-speed parking resistance, which the handed-over and Telemetry Based routes otherwise drop. Firm when parked, fading to nothing as you gain speed."/>
+                    </Expander.Header>
+                    <StackPanel Margin="0,8,0,0">
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Friction strength:" Style="{StaticResource LabelText}"
+                                   ToolTip="How firm the parked resistance is, as a share of full wheel force."/>
+                        <Slider     Grid.Column="1" x:Name="R3EDamperStrengthSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
+                                    ToolTip="How firm the parked resistance is. Higher is heavier; too high can start to shake, so it tops out where it stays smooth."
+                                    TickFrequency="0.05" ValueChanged="R3EDamperSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <Border Visibility="{Binding Visibility, ElementName=R3EDamperStrengthText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="R3EDamperStrengthText" Text="0.40"/></Border>
+                    </Grid>
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Fades out by:" Style="{StaticResource LabelText}"
+                                   ToolTip="The car speed at which the stationary friction has faded to nothing. Below it the friction eases off as you speed up; above it, only the sim's own force remains."/>
+                        <Slider     Grid.Column="1" x:Name="R3EDamperFadeSlider" Minimum="5" Maximum="80" SmallChange="1" LargeChange="5"
+                                    ToolTip="The car speed at which the stationary friction has faded to nothing."
+                                    TickFrequency="5" ValueChanged="R3EDamperSlider_ValueChanged" VerticalAlignment="Center"/>
+                        <Border Visibility="{Binding Visibility, ElementName=R3EDamperFadeText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="R3EDamperFadeText" Text="25"/></Border>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="140,0,0,8"
+                               Text="Firm when parked, easing off as you gain speed and gone by this speed (km/h)."/>
+                    </StackPanel>
+                </Expander>
+
                 <!-- Stationary spring: synthesizes a parked-car centering
                      force the game itself doesn't send (a stationary tire has
                      ~0 self-aligning torque). Deficit-fill + speed-fade, so it
@@ -3451,7 +3428,20 @@
                 <Expander x:Name="StationarySpringExpander" IsExpanded="False" Margin="0,12,0,4">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Stationary Spring" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                            <!-- The toggle lives in the header, as it does for the
+                                 feature expanders on this tab (curb softening, soft
+                                 lock, stationary friction; owner, 2026-09-13): the
+                                 row says whether the spring is on without opening
+                                 it. Sized like the section headers either side of
+                                 it, which this expander sits among. -->
+                            <CheckBox x:Name="StationarySpringCheck"
+                                      Content="Stationary spring"
+                                      FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
+                                      Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
+                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it, in Assetto Corsa, RaceRoom or Forza with Telemetry Based FFB. Ignored for iRacing (the sim already weights the wheel)."/>
+                            <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
+                                       Text="not used in Forza"
+                                       ToolTip="Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games."/>
                             <!-- Hidden: the stationary spring is per-game now and persists on edit,
                                  so it no longer uses the preset Save/Revert. Kept (collapsed) because
                                  the EffectKind machinery still maps to them by name. -->
@@ -3460,16 +3450,6 @@
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <CheckBox x:Name="StationarySpringCheck"
-                                      Content="Stationary spring"
-                                      VerticalAlignment="Center"
-                                      Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it, in Assetto Corsa, RaceRoom or Forza with Telemetry Based FFB. Ignored for iRacing (the sim already weights the wheel)."/>
-                            <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
-                                       Text="not used in Forza"
-                                       ToolTip="Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games."/>
-                        </StackPanel>
                         <StackPanel x:Name="StationarySpringSliders">
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
@@ -3600,6 +3580,51 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Last of the force sections, after Spike reduction (owner,
+                     2026-09-14). Out of IRacingTuningPanel since 2026-08-16 so Damping
+                     and FFB smooth can sit above it while staying visible in Forza
+                     and Farming Simulator. Visibility is now driven in code beside
+                     the panel's own. Everything in here is expert surface: the tab
+                     needs Strength day to day and Auto once per car, and burying
+                     the rest is the difference between a tab someone can use and
+                     one they scroll past. -->
+                <Expander x:Name="IRacingAdvancedExpander" IsExpanded="False" Margin="0,12,0,4" Visibility="Collapsed">
+                        <Expander.Header>
+                            <TextBlock Text="Advanced" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,0">
+                    <!-- The section reads top-down: the situation, then the choice
+                         that follows from it, then the choices that only exist
+                         inside that one. The 360 Hz checkbox used to sit LAST,
+                         below the two controls it governs. -->
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                               Text="iRacing sends telemetry 60 times a second, and each update carries six force samples from the physics steps in between. These options choose whether to fill the gaps between updates and how much of that extra detail to use."/>
+                    <!-- One control, four rungs of a single ladder, replacing a
+                         checkbox plus a conditional dropdown that between them hid
+                         which combinations existed. It writes both underlying
+                         settings (IRacingUse360Hz + IRacingForceMode), so nobody's
+                         stored configuration moves. -->
+                    <Grid Margin="0,0,0,2" x:Name="IRacingFeelRow">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Feel:" Style="{StaticResource LabelText}"/>
+                        <ComboBox Grid.Column="1" x:Name="IRacingForceModeCombo" VerticalAlignment="Center"
+                                  SelectionChanged="IRacingForceMode_Changed">
+                            <ComboBoxItem Content="Plain"/>
+                            <ComboBoxItem Content="Filled"/>
+                            <ComboBoxItem Content="Detailed"/>
+                            <ComboBoxItem Content="Detailed, predicted"/>
+                        </ComboBox>
+                    </Grid>
+                    <!-- Text is set in code, per selection: describing both modes at
+                         once made this three times as long as the one a driver
+                         needs, and buried the difference. Prediction had a slider
+                         here until 2026-08-16; the plugin learns that lead per car,
+                         so it belongs in Smooth's sentence rather than in a knob.
+                         IRacingPredictGain survives as a file-level escape hatch. -->
+                    <TextBlock x:Name="IRacingFeelHelp" Style="{StaticResource HelpText}" Margin="140,0,0,8" Text=""/>
+                        </StackPanel>
+                    </Expander>
+
             <!-- WheelLightsBlock is ONE movable unit, and it is deliberately the
                  LAST child of ModeBSupportedPanel so both directions of the move
                  are a plain append (see ApplyLightsyncTabVisibility). Locked (the
@@ -3702,7 +3727,7 @@
             <StackPanel x:Name="NoRevModeExtras" Margin="0,0,0,2"/>
 
             <TextBlock Style="{StaticResource HelpText}" Margin="170,0,0,12" TextWrapping="Wrap"
-                       Text="Colours come from the pattern above. Your revs always win in a game that reports them."/>
+                       Text="Colors come from the pattern above. Your revs always win in a game that reports them."/>
 
             <!-- Parked here as a starting home; RefreshAmbientLedRows moves each
                  into the host for the picker that wants it, or leaves it hidden

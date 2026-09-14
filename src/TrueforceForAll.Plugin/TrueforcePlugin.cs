@@ -12886,7 +12886,7 @@ namespace TrueforceForAll.Plugin
                         var ci = System.Globalization.CultureInfo.InvariantCulture;
                         double full = maxNm > 0.01f ? maxNm : 1.0;
                         SimHub.Logging.Current.Info(
-                            "[TF4ALL] iRacing kerb strike: shock " + peakShock.ToString("0.00", ci)
+                            "[TF4ALL] iRacing curb strike: shock " + peakShock.ToString("0.00", ci)
                             + " m/s (level " + _kerbLevelMps.ToString("0.00", ci)
                             + ", threshold " + threshold.ToString("0.00", ci) + "), "
                             + n.ToString(ci) + " of 6 samples softened, torque "

@@ -562,10 +562,10 @@ namespace TrueforceForAll.Plugin
                 StationarySpringStrengthText.Text    = StationarySpringStrengthSlider.Value.ToString("F2");
                 StationarySpringCutoffSlider.Value   = _plugin.StationarySpringCutoffForActiveGame;
                 StationarySpringCutoffText.Text      = ((int)StationarySpringCutoffSlider.Value).ToString();
-                // Strength / fade-out sliders only matter when the spring is on.
-                if (StationarySpringSliders != null)
-                    StationarySpringSliders.Visibility =
-                        (StationarySpringCheck.IsChecked == true) ? Visibility.Visible : Visibility.Collapsed;
+                // The sliders stay in the body whether or not the spring is on:
+                // with the switch in the expander's header they are the body,
+                // and hiding them left the section opening onto nothing
+                // (review, 2026-09-13). Same as the other three feature expanders.
                 if (LogUsbBytesCheck != null)
                     LogUsbBytesCheck.IsChecked = _plugin.Settings?.LogUsbBytesEnabled ?? false;
 
@@ -837,6 +837,12 @@ namespace TrueforceForAll.Plugin
                     if (IRacingTuningPanel != null)
                         IRacingTuningPanel.Visibility = (showTuning && reshapeGame)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    // The soft lock's section sits outside that panel now, after
+                    // Damping and Smoothing (owner, 2026-09-14), and follows the
+                    // same rule; the curb section follows iracingPeakVis below.
+                    if (IRacingSoftLockExpander != null)
+                        IRacingSoftLockExpander.Visibility = (showTuning && reshapeGame)
+                            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     // Inside the reshape panel, RaceRoom (R3EFFB) swaps the iRacing
                     // max-force box + Auto (inert on that route, which carries its
                     // own scale) for its own press-to-apply auto-strength row.
@@ -848,10 +854,10 @@ namespace TrueforceForAll.Plugin
                     if (IRacingPeakForceHelp != null) IRacingPeakForceHelp.Visibility = iracingPeakVis;
                     // Kerb softening reads iRacing's shock speeds, which the
                     // RaceRoom route does not carry.
-                    if (IRacingKerbPanel     != null) IRacingKerbPanel.Visibility     = iracingPeakVis;
+                    if (IRacingKerbExpander  != null) IRacingKerbExpander.Visibility  = iracingPeakVis;
                     // The soft lock rides both takeover routes (RaceRoom's block
-                    // carries the car's lock and the wheel range), so its panel
-                    // simply follows IRacingTuningPanel.
+                    // carries the car's lock and the wheel range), so its section
+                    // is set with IRacingTuningPanel above rather than here.
                     if (R3EAutoStrengthRow   != null) R3EAutoStrengthRow.Visibility   = r3eAutoVis;
                     if (R3EAutoStrengthHelp  != null) R3EAutoStrengthHelp.Visibility  = r3eAutoVis;
                     // Advanced lives outside that panel now, so Damping and
@@ -927,8 +933,8 @@ namespace TrueforceForAll.Plugin
                     // Based FFB, since those drop the game's own parking
                     // resistance. Hidden on the capture route, where it still
                     // comes through with the game's force.
-                    if (R3EStationaryDamperPanel != null)
-                        R3EStationaryDamperPanel.Visibility = _plugin.R3EStationaryDamperApplies
+                    if (R3EStationaryDamperExpander != null)
+                        R3EStationaryDamperExpander.Visibility = _plugin.R3EStationaryDamperApplies
                             ? System.Windows.Visibility.Visible
                             : System.Windows.Visibility.Collapsed;
 
@@ -5525,8 +5531,6 @@ namespace TrueforceForAll.Plugin
             if (_suppressEvents || _plugin == null) return;
             bool on = StationarySpringCheck.IsChecked == true;
             _plugin.SetStationarySpringEnabled(on);
-            if (StationarySpringSliders != null)
-                StationarySpringSliders.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // Pause hand-back toggle (shipped default-on since 0.3.0). Global
@@ -7465,10 +7469,10 @@ namespace TrueforceForAll.Plugin
                     IRacingFeelHelp.Text = "Fills the time between updates by continuing the force along its own trend, so it keeps moving instead of holding still.";
                     break;
                 case 2:
-                    IRacingFeelHelp.Text = "Fills the gaps as above, and brings in the detail the sim solves between updates, so kerbs and surface texture reach your hands.";
+                    IRacingFeelHelp.Text = "Fills the gaps as above, and brings in the detail the sim solves between updates, so curbs and surface texture reach your hands.";
                     break;
                 default:
-                    IRacingFeelHelp.Text = "Kerbs and texture arrive whole and in step with the steering weight, instead of split from it. Keeping them together costs a frame of delay, which the plugin predicts forward to cancel.";
+                    IRacingFeelHelp.Text = "Curbs and texture arrive whole and in step with the steering weight, instead of split from it. Keeping them together costs a frame of delay, which the plugin predicts forward to cancel.";
                     break;
             }
         }
@@ -12115,6 +12119,11 @@ namespace TrueforceForAll.Plugin
                     }
                 }
                 _plugin.PersistSettings();
+                // Arming from here bypasses ModeBEnabled_Changed (the box is
+                // ticked under _suppressEvents), so refresh explicitly, or the
+                // Strength, curb, soft lock and Advanced sections stay hidden
+                // until the next car change (review, 2026-09-14).
+                if (r == true && canActivate) RefreshFromPlugin();
             }
             finally { _modeBIntroShowing = false; }
         }
