@@ -9,6 +9,8 @@ Until it is set up, the plugin sits on **Lightsync only** in iRacing and leaves 
 
 If the wheel stays quiet afterwards, one of the two iRacing switches (steps 1 and 2) is still on.
 
+The FFB tab also carries a soft lock at the car's steering limit and curb strike softening for iRacing, both on by default, each with a strength of its own.
+
 ## Running MAIRA
 
 Running MAIRA and TF4ALL at the same time is not supported. Close MAIRA, then set the mode to **Normal** when ready.
