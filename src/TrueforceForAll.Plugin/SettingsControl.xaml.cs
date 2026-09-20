@@ -938,11 +938,10 @@ namespace TrueforceForAll.Plugin
                             ? System.Windows.Visibility.Visible
                             : System.Windows.Visibility.Collapsed;
 
-                    // Hidden only where the game itself rules the spring out
-                    // (iRacing, arcade), one rule shared with the force path.
-                    // Where a session or version state rules it out (Forza,
-                    // the SPRING lock, RaceRoom's friction off) the section
-                    // stays and the badge in RefreshFromPlugin says why. The
+                    // Hidden wherever the spring can do nothing (iRacing, arcade,
+                    // a game it is not offered in, Forza on the capture route);
+                    // it stays with a badge only where a setting the user can
+                    // flip would bring it to life (RaceRoom's friction off). The
                     // takeover is a ROUTE, not an inert state: with it armed
                     // MaybeReshapeFfb renders the spring itself.
                     if (StationarySpringExpander != null)

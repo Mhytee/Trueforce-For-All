@@ -9330,9 +9330,17 @@ namespace TrueforceForAll.Plugin
         /// The Forza exclusion is not here either. That one is a session state
         /// rather than a property of the game, and it already says so through
         /// the unsupported badge instead of vanishing.</summary>
+        /// <summary>The section is not shown where the spring can do nothing:
+        /// iRacing and the arcade cabinets (ruled out by the game), a game it is
+        /// not offered in (no SPRING unlock), and Forza on the capture route.
+        /// It stays, with a badge, only where a setting the user can flip would
+        /// bring it to life: RaceRoom's handover with the friction off (owner,
+        /// 2026-09-19: "if it is inert it should not be showing").</summary>
         public bool ActiveGameHidesStationarySpring
             => string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
-               || ActiveGameIsArcade;
+               || ActiveGameIsArcade
+               || StationarySpringLockedHere
+               || !ActiveSourceSupportsStationarySpring;
 
         /// <summary>True while the device is actually bypassing FfbScale and
         /// FfbInvertSign, which it does under the armed reshape and nowhere
