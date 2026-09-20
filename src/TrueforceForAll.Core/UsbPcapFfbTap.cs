@@ -931,6 +931,26 @@ namespace TrueforceForAll.Core
             System.Threading.Interlocked.Exchange(ref _packed, 0);
         }
 
+        /// <summary>Drop the captured SCALAR force only, leaving every decoded
+        /// effect the game still has loaded exactly where it is. The narrow
+        /// half of <see cref="ClearLastFfbTarget"/>, for a caller that is
+        /// handing the wheel back to pass-through while the game keeps
+        /// driving: spring mode disarming. That disarm needs the stale scalar
+        /// gone (spring mode ignored everything the tap captured while it was
+        /// armed, and on Farming Simulator a misdecoded heartbeat stayed
+        /// "fresh" for ten seconds and drove the wheel to lock), but it must
+        /// NOT wipe the condition table: the game is mid-session, the classic
+        /// spring the mode was rendering is still loaded on the wire, and the
+        /// engine's additive copy of it is the renderer that takes over the
+        /// instant the mode stands down. A full reset here left that copy
+        /// silent until the game re-downloaded the spring, which on Forza
+        /// (menu spring sent once, then left playing) is never.</summary>
+        public void ClearCapturedForceKeepingEffects()
+        {
+            _classicScalarResetRequested = true;
+            System.Threading.Interlocked.Exchange(ref _packed, 0);
+        }
+
         // ---------- reader thread ----------
 
         // Resolve and validate which device the tap should capture. Returns
@@ -1041,6 +1061,9 @@ namespace TrueforceForAll.Core
             // would tell a user with working spring emulation that no FFB is
             // reaching the plugin.
             if (SpringUpdatesCaptured > _springsAtCaptureStart) return false;
+            // Same for classic damper/friction parameters rendered through
+            // the condition engine (a C266 game playing only conditions).
+            if (ClassicConditionUpdatesCaptured > _classicCondAtCaptureStart) return false;
             // The plugin's synthetic spring owns FFB (FS on wheels the game
             // sends only heartbeats to, so not even spring parameters arrive):
             // no game FFB is expected at all, don't escalate or warn.
@@ -1312,6 +1335,7 @@ namespace TrueforceForAll.Core
             // session, and the next watchdog tick.
             _ffbAtCaptureStart = FfbSamplesCaptured;
             _springsAtCaptureStart = SpringUpdatesCaptured;
+            _classicCondAtCaptureStart = ClassicConditionUpdatesCaptured;
             _nextWatchdogMs = Environment.TickCount + WatchdogIntervalMs;
             // Liveness baseline: fresh capture gets a full grace window before
             // a stall can be declared. Uses the same selector the watchdog
@@ -1380,6 +1404,7 @@ namespace TrueforceForAll.Core
             // (first start, or a watchdog restart) knows nothing about them.
             ResetClassicState();
             _classicResetRequested = false;
+            _classicScalarResetRequested = false;
 
             byte[] payload = new byte[1024];
 
@@ -1582,8 +1607,45 @@ namespace TrueforceForAll.Core
         // prefix (rev LEDs on this wheel), not a slot/command pair.
         private const int  ClassicSlotCount   = 4;
         private const byte ClassicTypeVariable = 0x08;   // params: force X at byte 2, offset-binary
+        private const byte ClassicTypeLoResDamper = 0x02; // params: 3-bit K1/K2 (Table 27) + S bits, no clip
         private const byte ClassicTypeHiResSpring = 0x0b; // params: dead band + slopes + clip (see ParseHiResSpring)
-        private const byte ClassicMaxForceType = 0x0e;   // highest defined type (high-res auto-center)
+        private const byte ClassicTypeHiResDamper = 0x0c; // params: 4-bit K1/K2 + S bits; clip byte is a DFP-only extension
+        private const byte ClassicTypeFriction    = 0x0e; // params: 8-bit K1/K2 + clip + S bits
+        // The remaining classic force types (Logitech Force Feedback Protocol
+        // V1.6, Table 23). Every one of the fifteen is rendered: the wheel
+        // accepts them all, so a game may send any of them, and what we do not
+        // decode goes silent under our stream.
+        private const byte ClassicTypeConstant        = 0x00;
+        private const byte ClassicTypeLoResSpring     = 0x01;
+        private const byte ClassicTypeAutoCenter      = 0x03;
+        private const byte ClassicTypeSawtoothUp      = 0x04;
+        private const byte ClassicTypeSawtoothDown    = 0x05;
+        private const byte ClassicTypeTrapezoid       = 0x06;
+        private const byte ClassicTypeRectangle       = 0x07;
+        private const byte ClassicTypeRamp            = 0x09;
+        private const byte ClassicTypeSquare          = 0x0a;
+        private const byte ClassicTypeHiResAutoCenter = 0x0d;
+
+        // Force levels are offset binary across the wheel's full range:
+        // 127/128 is no force, 0 and 255 are full force each way (Table 22).
+        private static float ClassicLevel(float b) => (b - 127.5f) / 127.5f;
+
+        // Every timing parameter in the classic protocol counts main loops,
+        // and a main loop is 2 ms with fixed loop mode on (Table 18).
+        private const float ClassicLoopMs = 2f;
+
+        // A decoded periodic or ramp, in the engine's normalized units.
+        private struct ClassicWaveform
+        {
+            public byte  EngineType;
+            public bool  IsRamp;
+            public float Magnitude, Offset, Phase;
+            public int   PeriodMs, LengthMs;
+            public float TrapRise, TrapHigh, TrapFall;
+            public float RampStart, RampEnd;
+            public string Shape;
+        }
+        private const byte ClassicMaxForceType = 0x0e;   // highest defined type (0x0e friction; 0x0d is hi-res auto-center)
         private const byte ClassicCmdDownload        = 0x0;
         private const byte ClassicCmdDownloadAndPlay = 0x1;
         private const byte ClassicCmdPlay            = 0x2;
@@ -1602,6 +1664,39 @@ namespace TrueforceForAll.Core
         // so the slot state is only ever mutated on the parser thread. Without
         // it a bare PLAY after a pause could republish the pre-pause force.
         private volatile bool _classicResetRequested;
+        // The narrow sibling, set by ClearCapturedForceKeepingEffects: clear
+        // the per-slot SCALAR force only and leave the decoded effects (the
+        // engine's external slots, the classic spring records, the play
+        // flags) alone. Same deferred contract, same reason: slot state is
+        // parser-owned.
+        private volatile bool _classicScalarResetRequested;
+
+        /// <summary>Render the game's classic force slots through the
+        /// DirectInput condition engine, the same one the HID++ wheels'
+        /// conditions use. The G923 PS/PC's game force is this protocol and
+        /// nothing else, and the firmware ignores every slot while our stream
+        /// runs. Default off (CLASSICCOND, persisted on the plugin side); the
+        /// parser reads it per download.
+        ///
+        /// What it routes: every classic type except the two scalars (the
+        /// variable force 0x08 and the constant 0x00, which keep the
+        /// pass-through path). Damper (0x0c, 0x02), friction (0x0e), the four
+        /// springs (low-res 0x01, hi-res 0x0b, auto-center 0x03 and 0x0d) and
+        /// the periodics and ramp (0x04-0x07, 0x09, 0x0a) all land in the
+        /// engine's external slots and sum additively on top of whatever
+        /// force is streaming.
+        ///
+        /// The hi-res spring 0x0b is the one type with TWO renderers: it
+        /// keeps its own ClassicSpring record in parallel, because spring
+        /// mode uses that as the base force when it arms, and the engine copy
+        /// stands down while that mode owns the wheel (see
+        /// ClassicSpringModeActive). Its slope reads linear on both
+        /// renderers under this gate (see TryEvaluateClassicSprings).</summary>
+        public volatile bool ClassicConditionsEnabled;
+
+        // Parser-thread only. One first-decode log line per classic type per
+        // tap instance (bit = type byte), the _parametricLogged pattern.
+        private int _classicConditionLoggedTypes;
 
         private void ResetClassicState()
         {
@@ -1610,6 +1705,23 @@ namespace TrueforceForAll.Core
             Array.Clear(_classicSlotPlaying, 0, ClassicSlotCount);
             Array.Clear(_classicSlotSpring, 0, ClassicSlotCount);
             _playingSprings = null;
+            // The engine's classic slots go with the rest of the slot state
+            // (capture start, and the deferred pause reset armed by
+            // ClearLastFfbTarget). The HID++ pool is retained, as today.
+            _hidppEffects.ResetExternal();
+            _classicLastPublished = 0;
+            _classicHavePublished = false;
+        }
+
+        // The scalar half of the reset above: the force values the slots hold
+        // and the published target derived from them, and nothing else. A
+        // bare PLAY after this finds an undecoded slot and publishes nothing
+        // (the issue #13 guard), while a spring or a condition the game still
+        // has loaded keeps rendering.
+        private void ResetClassicScalarState()
+        {
+            Array.Clear(_classicSlotForce, 0, ClassicSlotCount);
+            Array.Clear(_classicSlotDecoded, 0, ClassicSlotCount);
             _classicLastPublished = 0;
             _classicHavePublished = false;
         }
@@ -1659,6 +1771,13 @@ namespace TrueforceForAll.Core
         public long SpringUpdatesCaptured { get; private set; }
         private long _springsAtCaptureStart;
 
+        /// <summary>Classic damper/friction parameter writes captured into a
+        /// playing slot (the condition analogue of SpringUpdatesCaptured):
+        /// proof the game commands FFB even though no force value appears on
+        /// the wire and no HID++ effect is ever downloaded.</summary>
+        public long ClassicConditionUpdatesCaptured { get; private set; }
+        private long _classicCondAtCaptureStart;
+
         /// <summary>Set by the plugin while its synthetic spring owns the
         /// wheel's FFB (FS spring mode): no game FFB is expected on the bus,
         /// so the no-FFB watchdog must not escalate capture modes or warn.
@@ -1666,6 +1785,42 @@ namespace TrueforceForAll.Core
         /// the parse loop, and a stale read for one watchdog interval is
         /// harmless.</summary>
         public bool SyntheticFfbActive { get; set; }
+
+        /// <summary>Set by the plugin while FS spring mode is armed, on the
+        /// same tick as <see cref="SyntheticFfbActive"/>. The captured hi-res
+        /// spring (0x0b) has TWO renderers: its own ClassicSpring path, which
+        /// spring mode uses as the base force, and the additive engine copy
+        /// this gate silences, so the wheel never gets one spring twice.
+        ///
+        /// WHERE THE STAND-DOWN ACTS, and why it is here rather than in the
+        /// parse loop: refusing the upsert at parse time would leave whatever
+        /// the engine already held when the mode armed later (spring mode can
+        /// arm with no further download in sight: Forza sends its menu spring
+        /// once and leaves it playing), so the spring would be stuck ON.
+        /// Removing the slot on the transition instead would need the parser
+        /// to notice the transition, and the parser only runs when a packet
+        /// arrives, so on that same quiet bus the spring would be stuck on
+        /// until the next download and stuck OFF after a disarm. Carrying the
+        /// flag into the engine and reading it per evaluation costs one
+        /// volatile read per effect per tick and cannot go stale in either
+        /// direction: the very next 1 kHz tick after an arm renders without
+        /// it, and the very next tick after a disarm renders with it again.
+        /// The slot table is never rewritten, so nothing about the game's
+        /// effect is lost across the round trip: the plugin's disarm clears
+        /// only the captured scalar (ClearCapturedForceKeepingEffects), not
+        /// the effects the game still has loaded.
+        ///
+        /// It silences the copy only for a caller that really is substituting
+        /// its own spring. The pause and focus releases evaluate the game's
+        /// conditions on their own and never reach that substitution, so they
+        /// pass allowSpringModeStandDown false and get the captured spring:
+        /// standing it down there would leave a menu wheel limp, which is the
+        /// failure those releases exist to prevent.</summary>
+        public bool ClassicSpringModeActive
+        {
+            get { return _hidppEffects.SpringModeActive; }
+            set { _hidppEffects.SpringModeActive = value; }
+        }
 
         /// <summary>True while any captured classic spring is playing. LED /
         /// OLED writes gate on "game FFB is quiet"; a playing spring is game
@@ -1781,14 +1936,15 @@ namespace TrueforceForAll.Core
                                               float damperGain, float inertiaGain,
                                               int velTermSign = 1, float springGain = 1f,
                                               float frictionGain = 1f, float periodicGain = 1f,
-                                              float rampGain = 1f)
+                                              float rampGain = 1f,
+                                              bool allowSpringModeStandDown = true)
         {
             if (!_parametricArmed || SimulateNoFfbCapture) return null;
             float f = _hidppEffects.Evaluate(posNorm, velNormPerSec, accel,
                                              damperGain, inertiaGain,
                                              _sw.ElapsedTicks, Stopwatch.Frequency,
                                              out bool anyPlaying, velTermSign, springGain, frictionGain,
-                                             periodicGain, rampGain);
+                                             periodicGain, rampGain, allowSpringModeStandDown);
             if (!anyPlaying) return _hidppEffects.AnyPlaying ? (short?)0 : null;
             int v = (int)(f * 32767f);
             if (v > 32767) v = 32767; else if (v < -32768) v = -32768;
@@ -1955,6 +2111,369 @@ namespace TrueforceForAll.Core
             }
         }
 
+        // One decoded classic condition (damper or friction), already in the
+        // engine's normalized units plus the raw wire fields for the log line.
+        private struct ClassicCondition
+        {
+            public byte  EngineType;                 // HidppEffectEngine.TypeDamper / TypeFriction
+            public float LeftCoeff, RightCoeff;      // -1..1, sign per the S bits
+            public float LeftSat, RightSat;          // 0..1
+            public int   K1, K2, Clip;               // raw; Clip = -1 when the type carries none
+            public bool  S1, S2, ClipIgnored;
+            public float Deadband, Center;            // springs only
+            public string MapName;                   // which inverse produced the coefficients
+        }
+
+        // Logitech Table 27 (low-res 3-bit K): 1/4, 1/2, 3/4, 1, 3/2, 2, 3, 4
+        // times the offset, normalized to K = 7. Note K = 0 is a real slope.
+        private static readonly float[] ClassicLowResCoeff =
+            { 1f / 16f, 1f / 8f, 3f / 16f, 1f / 4f, 3f / 8f, 1f / 2f, 3f / 4f, 1f };
+
+        // Classic damper/friction -> engine condition. Layouts from Logitech's
+        // Force Feedback Protocol V1.6 (Tables 29, 49, 51), byte-identical to
+        // new-lg4ff's encoder. K is LINEAR per that document ("Linear slope
+        // with 0 being the weakest force and 15 being the strongest"; the
+        // Windows driver encodes a 50 % DirectInput damper as K = 8), so the
+        // inverse is K/15 for the 4-bit form and K/255 for the 8-bit one; the
+        // absolute factor is device dependent and DAMPCAL's damperGain fits
+        // it. The spring path keeps its older 2^K guess with the gate off and
+        // goes linear only under the gate (TryEvaluateClassicSprings); do not
+        // copy either way without a rig session.
+        //
+        // K1/S1 is the low (left, push, velocity < 0) side = the engine's
+        // LeftCoeff, K2/S2 the high (right, pull) side = RightCoeff; S = 1
+        // inverts (an "ice" anti-damper), which the engine's signed
+        // coefficient carries as is. No dead band or center on the wire.
+        //
+        // The hi-res damper's byte 6 CLIP is a Driving Force Pro extension
+        // ("only for PID_C298"); the G923 ignores it and the Windows driver
+        // writes 0x01 there for a full-saturation effect, so honoring it
+        // would render every Windows damper at 1/255. Saturation 1.0, raw
+        // byte kept for the log. Friction's CLIP (byte 4) is real.
+        private static bool TryParseClassicCondition(byte type, byte[] p, int off, int len,
+                                                     out ClassicCondition c)
+        {
+            c = default(ClassicCondition);
+            if (len < 7) return false;
+            switch (type)
+            {
+                case ClassicTypeHiResDamper:
+                    c.EngineType  = HidppEffectEngine.TypeDamper;
+                    c.K1 = p[off + 2] & 0x0f;   c.S1 = (p[off + 3] & 0x01) != 0;
+                    c.K2 = p[off + 4] & 0x0f;   c.S2 = (p[off + 5] & 0x01) != 0;
+                    c.Clip = p[off + 6];        c.ClipIgnored = true;
+                    c.LeftCoeff  = (c.S1 ? -1f : 1f) * c.K1 / 15f;
+                    c.RightCoeff = (c.S2 ? -1f : 1f) * c.K2 / 15f;
+                    c.LeftSat = c.RightSat = 1f;
+                    c.MapName = "K/15 linear, clip ignored";
+                    return true;
+                case ClassicTypeLoResDamper:
+                    c.EngineType  = HidppEffectEngine.TypeDamper;
+                    c.K1 = p[off + 2] & 0x07;   c.S1 = (p[off + 3] & 0x01) != 0;
+                    c.K2 = p[off + 4] & 0x07;   c.S2 = (p[off + 5] & 0x01) != 0;
+                    c.Clip = -1;
+                    c.LeftCoeff  = (c.S1 ? -1f : 1f) * ClassicLowResCoeff[c.K1];
+                    c.RightCoeff = (c.S2 ? -1f : 1f) * ClassicLowResCoeff[c.K2];
+                    c.LeftSat = c.RightSat = 1f;
+                    c.MapName = "Table 27, no clip";
+                    return true;
+                case ClassicTypeFriction:
+                    c.EngineType  = HidppEffectEngine.TypeFriction;
+                    c.K1 = p[off + 2];          c.K2 = p[off + 3];
+                    c.Clip = p[off + 4];
+                    c.S1 = (p[off + 5] & 0x01) != 0;
+                    c.S2 = (p[off + 5] & 0x10) != 0;
+                    c.LeftCoeff  = (c.S1 ? -1f : 1f) * c.K1 / 255f;
+                    c.RightCoeff = (c.S2 ? -1f : 1f) * c.K2 / 255f;
+                    c.LeftSat = c.RightSat = c.Clip / 255f;
+                    c.MapName = "K/255 linear, clip/255";
+                    return true;
+                case ClassicTypeLoResSpring:
+                    // Table 25/26: D1/D2 are the dead band edges in axis
+                    // counts, K per Table 27, CLIP the per-side saturation.
+                    // S inverts that side's slope.
+                    c.EngineType = HidppEffectEngine.TypeSpring;
+                    c.K1 = p[off + 4] & 0x07;   c.S1 = (p[off + 5] & 0x01) != 0;
+                    c.K2 = (p[off + 4] >> 4) & 0x07; c.S2 = (p[off + 5] & 0x10) != 0;
+                    c.Clip = p[off + 6];
+                    {
+                        int d1 = p[off + 2], d2 = p[off + 3];
+                        if (d2 < d1) { int t = d1; d1 = d2; d2 = t; }
+                        c.Center   = ClassicLevel((d1 + d2) / 2f);
+                        c.Deadband = (d2 - d1) / 2f / 127.5f;
+                    }
+                    c.LeftCoeff  = (c.S1 ? -1f : 1f) * ClassicLowResCoeff[c.K1];
+                    c.RightCoeff = (c.S2 ? -1f : 1f) * ClassicLowResCoeff[c.K2];
+                    c.LeftSat = c.RightSat = c.Clip / 255f;
+                    c.MapName = "Table 27, clip/255";
+                    return true;
+                case ClassicTypeHiResSpring:
+                {
+                    // The hi-res spring ALSO lands here, additively, beside
+                    // its own ClassicSpring path. That path only ever renders
+                    // under spring mode, which is a REPLACEMENT mode gated on
+                    // a bus with no constant force for two seconds, so in any
+                    // game that streams road force and a centering spring
+                    // together (Forza: 5,955 force commands beside 276 of
+                    // these springs in the owner's capture) the spring was
+                    // never rendered at all. As an engine condition it sums
+                    // on top of the pass-through force like the dampers do.
+                    //
+                    // Parameters come from ParseHiResSpring, unchanged, so
+                    // there is one decode of the wire bytes. Its D1/D2 are
+                    // band edges in p = (steerNorm + 1) / 2, the 0..1
+                    // lock-to-lock axis; the engine measures steerNorm, which
+                    // is -1..1. So s = 2p - 1, and:
+                    //   band edges  s1 = 2*D1 - 1, s2 = 2*D2 - 1
+                    //   center      (s1 + s2) / 2 = D1 + D2 - 1
+                    //   half-width  (s2 - s1) / 2 = D2 - D1
+                    // A p-distance d is a steerNorm distance 2d, which is
+                    // exactly why the classic path carries the factor 2 in
+                    // its slope (2 * K/15 per unit of p) and the engine does
+                    // not (K/15 per unit of steerNorm): the two render the
+                    // same force.
+                    //
+                    // Slope is LINEAR, K/15 per side, matching the hi-res
+                    // auto-center below; sign inverted by that side's S bit.
+                    // Sign check against the engine's contract (positive
+                    // force pulls toward LOWER steer; ConditionTerm applies
+                    // RightCoeff when dev > deadband): right of the band with
+                    // S2 clear the classic path adds +f, so RightCoeff is
+                    // positive there, and left of it with S1 clear it adds
+                    // -f, which ConditionTerm produces from a POSITIVE
+                    // LeftCoeff times a negative deviation. Both sides carry
+                    // the S bit as a plain sign, as on every other type.
+                    var hs = ParseHiResSpring(p, off, len);
+                    if (hs == null) return false;
+                    c.EngineType = HidppEffectEngine.TypeSpring;
+                    c.K1 = hs.K1; c.S1 = hs.S1;
+                    c.K2 = hs.K2; c.S2 = hs.S2;
+                    c.Clip = (int)(hs.Clip * 255f + 0.5f);
+                    c.Center   = hs.D1 + hs.D2 - 1f;
+                    c.Deadband = hs.D2 - hs.D1;
+                    c.LeftCoeff  = (hs.S1 ? -1f : 1f) * hs.K1 / 15f;
+                    c.RightCoeff = (hs.S2 ? -1f : 1f) * hs.K2 / 15f;
+                    c.LeftSat = c.RightSat = hs.Clip;
+                    c.MapName = "K/15 linear, clip/255, band in steerNorm";
+                    return true;
+                }
+                case ClassicTypeAutoCenter:
+                case ClassicTypeHiResAutoCenter:
+                {
+                    // Tables 31 and 50. The wheel centers this on the axis
+                    // midpoint with a two-count dead band, so center 0 and a
+                    // dead band small enough to be inaudible. The low-res form
+                    // takes Table 27, the high-res one the linear 4-bit scale.
+                    bool hi = type == ClassicTypeHiResAutoCenter;
+                    c.EngineType = HidppEffectEngine.TypeSpring;
+                    c.K1 = p[off + 2] & (hi ? 0x0f : 0x07);
+                    c.K2 = p[off + 3] & (hi ? 0x0f : 0x07);
+                    c.Clip = p[off + 4];
+                    c.Center = 0f;
+                    c.Deadband = 1f / 127.5f;
+                    float lo = hi ? c.K1 / 15f : ClassicLowResCoeff[c.K1];
+                    float hg = hi ? c.K2 / 15f : ClassicLowResCoeff[c.K2];
+                    c.LeftCoeff = lo; c.RightCoeff = hg;
+                    c.LeftSat = c.RightSat = c.Clip / 255f;
+                    c.MapName = hi ? "auto-center, K/15 linear, clip/255"
+                                   : "auto-center, Table 27, clip/255";
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        }
+
+        // The periodics and the ramp. Levels are offset binary (Table 22) and
+        // every duration counts 2 ms main loops. A zero step or zero interval
+        // means "as fast as the loop runs", which is one loop, and a zero step
+        // size would never move at all, so it renders as a steady level.
+        private static bool TryParseClassicWaveform(byte type, byte[] p, int off, int len,
+                                                    out ClassicWaveform w)
+        {
+            w = default(ClassicWaveform);
+            if (len < 7) return false;
+            switch (type)
+            {
+                case ClassicTypeSawtoothUp:
+                case ClassicTypeSawtoothDown:
+                {
+                    // Tables 32-35: L1 max, L2 min, L0 initial, then an
+                    // increment of INC every T3 loops.
+                    int l1 = p[off + 2], l2 = p[off + 3];
+                    int t3 = (p[off + 6] >> 4) & 0x0f, inc = p[off + 6] & 0x0f;
+                    if (l2 > l1) { int t = l1; l1 = l2; l2 = t; }
+                    w.EngineType = type == ClassicTypeSawtoothUp
+                        ? HidppEffectEngine.TypeSawtoothUp : HidppEffectEngine.TypeSawtoothDown;
+                    w.Magnitude = (ClassicLevel(l1) - ClassicLevel(l2)) / 2f;
+                    w.Offset    = (ClassicLevel(l1) + ClassicLevel(l2)) / 2f;
+                    int steps = inc > 0 ? (l1 - l2) / inc : 0;
+                    if (steps < 1) { steps = 1; w.Magnitude = 0f; w.Offset = ClassicLevel(p[off + 4]); }
+                    w.PeriodMs = (int)(steps * (t3 > 0 ? t3 : 1) * ClassicLoopMs);
+                    if (w.PeriodMs < 1) w.PeriodMs = 1;
+                    w.Shape = type == ClassicTypeSawtoothUp ? "sawtooth up" : "sawtooth down";
+                    return true;
+                }
+                case ClassicTypeTrapezoid:
+                case ClassicTypeRectangle:
+                {
+                    // Tables 36-39. The rectangle is the trapezoid with no
+                    // ramps, which is why one engine shape renders both.
+                    int l1 = p[off + 2], l2 = p[off + 3];
+                    int t1 = p[off + 4], t2 = p[off + 5];
+                    if (l2 > l1) { int t = l1; l1 = l2; l2 = t; }
+                    int rampLoops = 0;
+                    if (type == ClassicTypeTrapezoid)
+                    {
+                        int t3 = (p[off + 6] >> 4) & 0x0f, stp = p[off + 6] & 0x0f;
+                        rampLoops = stp > 0 ? (l1 - l2) / stp * (t3 > 0 ? t3 : 1) : 0;
+                    }
+                    float total = t1 + t2 + 2f * rampLoops;
+                    if (total < 1f) total = 1f;
+                    w.EngineType = HidppEffectEngine.TypeTrapezoid;
+                    w.Magnitude  = (ClassicLevel(l1) - ClassicLevel(l2)) / 2f;
+                    w.Offset     = (ClassicLevel(l1) + ClassicLevel(l2)) / 2f;
+                    w.TrapRise   = rampLoops / total;
+                    w.TrapHigh   = t1 / total;
+                    w.TrapFall   = rampLoops / total;
+                    w.PeriodMs   = (int)(total * ClassicLoopMs);
+                    if (w.PeriodMs < 1) w.PeriodMs = 1;
+                    if (type == ClassicTypeRectangle)
+                    {
+                        // Table 39: phase counts main loops into the cycle.
+                        int ph = p[off + 6];
+                        w.Phase = ph > total ? 0f : ph / total;
+                        w.Shape = "rectangle";
+                    }
+                    else w.Shape = "trapezoid";
+                    return true;
+                }
+                case ClassicTypeSquare:
+                {
+                    // Tables 44-45: amplitude, then a 16-bit half-period in
+                    // main loops, low byte first, and a repeat count where
+                    // zero means 256.
+                    int amp = p[off + 2];
+                    int half = p[off + 3] | (p[off + 4] << 8);
+                    int n = p[off + 5];
+                    if (half < 1) half = 1;
+                    w.EngineType = HidppEffectEngine.TypeSquare;
+                    w.Magnitude  = amp / 255f;
+                    w.Offset     = 0f;
+                    w.PeriodMs   = (int)(2 * half * ClassicLoopMs);
+                    if (w.PeriodMs < 1) w.PeriodMs = 1;
+                    w.LengthMs   = (n > 0 ? n : 256) * w.PeriodMs;
+                    w.Shape = "square wave";
+                    return true;
+                }
+                case ClassicTypeRamp:
+                {
+                    // Tables 42-43. It stops when it reaches the target, so
+                    // the ramp carries a finite length.
+                    int l1 = p[off + 2], l2 = p[off + 3];
+                    bool down = (p[off + 4] & 0x01) != 0;
+                    int t = (p[off + 5] >> 4) & 0x0f, stp = p[off + 5] & 0x0f;
+                    if (l2 > l1) { int q = l1; l1 = l2; l2 = q; }
+                    int steps = stp > 0 ? (l1 - l2) / stp : 0;
+                    if (steps < 1) steps = 1;
+                    w.EngineType = HidppEffectEngine.TypeRamp;
+                    w.IsRamp     = true;
+                    w.RampStart  = down ? ClassicLevel(l1) : ClassicLevel(l2);
+                    w.RampEnd    = down ? ClassicLevel(l2) : ClassicLevel(l1);
+                    w.LengthMs   = (int)(steps * (t > 0 ? t : 1) * ClassicLoopMs);
+                    if (w.LengthMs < 1) w.LengthMs = 1;
+                    w.Shape = "ramp";
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        }
+
+        private static string ClassicTypeLabel(byte type)
+            => type == ClassicTypeFriction ? "friction"
+             : type == ClassicTypeLoResDamper ? "low-res damper"
+             : type == ClassicTypeHiResDamper ? "damper"
+             : type == ClassicTypeHiResSpring ? "hi-res spring"
+             : type == ClassicTypeVariable ? "variable"
+             : type == ClassicTypeConstant ? "constant"
+             : type == ClassicTypeLoResSpring ? "low-res spring"
+             : type == ClassicTypeAutoCenter ? "auto-center spring"
+             : type == ClassicTypeHiResAutoCenter ? "hi-res auto-center spring"
+             : type == ClassicTypeSawtoothUp ? "sawtooth up"
+             : type == ClassicTypeSawtoothDown ? "sawtooth down"
+             : type == ClassicTypeTrapezoid ? "trapezoid"
+             : type == ClassicTypeRectangle ? "rectangle"
+             : type == ClassicTypeRamp ? "ramp"
+             : type == ClassicTypeSquare ? "square wave" : "type";
+
+        private static string ClassicCmdLabel(int cmd)
+        {
+            switch (cmd)
+            {
+                case ClassicCmdDownload:        return "download";
+                case ClassicCmdDownloadAndPlay: return "download-and-play";
+                case ClassicCmdPlay:            return "play";
+                case ClassicCmdStop:            return "stop";
+                case ClassicCmdRefreshForce:    return "refresh";
+                default:                        return "cmd";
+            }
+        }
+
+        // First decoded classic damper/friction of each type per tap instance
+        // (the _parametricLogged pattern). Raw K/S/clip beside the derived
+        // coefficients on purpose: the raw nibble is what settles the
+        // driver's coefficient map on a real C266, and a normalized float
+        // hides a scaling mistake.
+        private void LogFirstClassicCondition(byte type, int slotIndex, int cmd, ref ClassicCondition c)
+        {
+            int bit = 1 << type;
+            if ((_classicConditionLoggedTypes & bit) != 0) return;
+            _classicConditionLoggedTypes |= bit;
+            string clip = c.Clip < 0 ? "n/a" : $"0x{c.Clip:X2}{(c.ClipIgnored ? " (ignored on this type)" : "")}";
+            Log($"FFB tap: classic {ClassicTypeLabel(type)} 0x{type:X2} slot={slotIndex + 1} cmd={ClassicCmdLabel(cmd)}" +
+                $" raw K1={c.K1} S1={(c.S1 ? 1 : 0)} K2={c.K2} S2={(c.S2 ? 1 : 0)} clip={clip}" +
+                $" -> leftCoeff={c.LeftCoeff:+0.000;-0.000} rightCoeff={c.RightCoeff:+0.000;-0.000}" +
+                $" sat={c.RightSat:0.000} ({c.MapName})" +
+                // The band, on the types that carry one. For the damper and
+                // friction both fields are zero on the wire, but on the
+                // spring family the center and the half-width ARE the
+                // decode this line exists to check: a rig reading a Forza
+                // autocenter has to be able to see where the band landed,
+                // and a slope printed beside no band cannot show that.
+                (c.EngineType == HidppEffectEngine.TypeSpring
+                    ? $" band center={c.Center:+0.000;-0.000} halfWidth={c.Deadband:0.000}" : "") +
+                (SimulateNoFfbCapture ? "; NOFFB simulation, not rendered." : "; rendering into the stream."));
+        }
+
+        // One line per waveform type per tap instance, the periodic sibling
+        // of LogFirstClassicCondition.
+        private void LogFirstClassicWaveform(byte type, int slotIndex, int cmd, ref ClassicWaveform w)
+        {
+            if ((_classicConditionLoggedTypes & (1 << (type & 0x0f))) != 0) return;
+            _classicConditionLoggedTypes |= 1 << (type & 0x0f);
+            Log($"FFB tap: classic {w.Shape} 0x{type:X2} slot={slotIndex + 1} cmd={ClassicCmdLabel(cmd)}"
+                + (w.IsRamp
+                    ? $" ramp {w.RampStart:+0.000;-0.000} to {w.RampEnd:+0.000;-0.000} over {w.LengthMs} ms"
+                    : $" magnitude={w.Magnitude:0.000} offset={w.Offset:+0.000;-0.000} period={w.PeriodMs} ms"
+                      + (w.LengthMs > 0 ? $" for {w.LengthMs} ms" : " until stopped"))
+                + (SimulateNoFfbCapture ? "; NOFFB simulation, not rendered." : "; rendering into the stream."));
+        }
+
+        // FXDUMP's classic sibling: every slot command that passes the
+        // firewall, raw, so a C266 corpus can be read straight from the log.
+        private void TraceClassicSlotCommand(byte[] p, int off, int len, int slots, int cmd, byte type)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("FFB tap: CLASSIC slots=0x").Append(slots.ToString("X"))
+              .Append(" cmd=0x").Append(cmd.ToString("X")).Append(" (").Append(ClassicCmdLabel(cmd)).Append(")")
+              .Append(" type=0x").Append(type.ToString("X2")).Append(" (").Append(ClassicTypeLabel(type)).Append(")")
+              .Append(" raw=");
+            int n = len < 7 ? len : 7;
+            for (int i = 0; i < n; i++) sb.Append(p[off + i].ToString("x2")).Append(i + 1 < n ? " " : "");
+            Log(sb.ToString());
+        }
+
         private static ClassicSpring ParseHiResSpring(byte[] p, int off, int len)
         {
             if (len < 7) return null;
@@ -2002,19 +2521,36 @@ namespace TrueforceForAll.Core
             if (springs == null) return null;
             if (steerNorm < -1f) steerNorm = -1f; else if (steerNorm > 1f) steerNorm = 1f;
             float p = (steerNorm + 1f) * 0.5f;
+            // Slope per unit of p (the 0..1 lock-to-lock axis). Two readings
+            // of the hi-res K nibble coexist here on purpose:
+            //   gate OFF: the shipped 2^K guess, byte-identical to before.
+            //   gate ON (CLASSICCOND): LINEAR, per Logitech's Force Feedback
+            //   Protocol document (hi-res K is "scaled linearly from 0 to
+            //   15") and the Windows driver's damper data point (WINCAP,
+            //   new-lg4ff issue #86: a DirectInput 0.5 damper arrives as
+            //   K = 8), carried over to the spring by the document's statement
+            //   that 0x0c uses the same 4-bit K scale as 0x0b; no spring data
+            //   point with a known DirectInput coefficient exists. The
+            //   DirectInput coefficient is defined per unit of the -1..1 axis,
+            //   so the factor 2 converts it into the p domain:
+            //   slope = 2 * K / 15. The absolute factor is unvalidated until a
+            //   spring calibration exists.
+            bool linear = ClassicConditionsEnabled;
             float sum = 0f;
             for (int i = 0; i < springs.Length; i++)
             {
                 var s = springs[i];
                 if (p > s.D2)
                 {
-                    float f = (p - s.D2) * (1 << s.K2);
+                    float slope = linear ? 2f * (s.K2 / 15f) : (1 << s.K2);
+                    float f = (p - s.D2) * slope;
                     if (f > s.Clip) f = s.Clip;
                     sum += s.S2 ? -f : f;
                 }
                 else if (p < s.D1)
                 {
-                    float f = (s.D1 - p) * (1 << s.K1);
+                    float slope = linear ? 2f * (s.K1 / 15f) : (1 << s.K1);
+                    float f = (s.D1 - p) * slope;
                     if (f > s.Clip) f = s.Clip;
                     sum += s.S1 ? f : -f;
                 }
@@ -2029,7 +2565,13 @@ namespace TrueforceForAll.Core
             if (_classicResetRequested)
             {
                 _classicResetRequested = false;
+                _classicScalarResetRequested = false;   // subsumed by the full reset
                 ResetClassicState();
+            }
+            else if (_classicScalarResetRequested)
+            {
+                _classicScalarResetRequested = false;
+                ResetClassicScalarState();
             }
             if (len < 2) return;
 
@@ -2051,10 +2593,13 @@ namespace TrueforceForAll.Core
             // type or an unused zero here.
             byte typeOrPad = payload[off + 1];
             if (typeOrPad > ClassicMaxForceType) return;
+            if (LogEffectDownloads) TraceClassicSlotCommand(payload, off, len, slots, cmd, typeOrPad);
 
             bool decodedForce = false;
             bool springsTouched = false;
             bool springIntoPlayingSlot = false;
+            bool conditionPlaced = false;
+            bool conditionIntoPlayingSlot = false;
             switch (cmd)
             {
                 case ClassicCmdDownload:          // load a slot, do NOT play it
@@ -2068,9 +2613,26 @@ namespace TrueforceForAll.Core
                     // nothing: guessing at an undecoded payload is how you
                     // invent a force the game never asked for.
                     bool isVariable = typeOrPad == ClassicTypeVariable && len >= 3;
+                    // Type 0x00 carries one level PER SLOT (Table 24), so its
+                    // value is read inside the loop rather than once here.
+                    bool isConstant = typeOrPad == ClassicTypeConstant && len >= 6;
                     short f = isVariable ? (short)((payload[off + 2] - 0x80) << 8) : (short)0;
                     ClassicSpring spring = typeOrPad == ClassicTypeHiResSpring
                         ? ParseHiResSpring(payload, off, len) : null;
+                    // DAMPER / FRICTION decode to condition parameters the
+                    // engine evaluates against the wheel's physical velocity
+                    // (and position, for friction). Gated: off by default.
+                    // (Pre-assigned: with the gate off the && short-circuits
+                    // and C# definite assignment would otherwise reject the
+                    // use below.)
+                    ClassicCondition cond = default(ClassicCondition);
+                    bool isCondition = ClassicConditionsEnabled
+                        && TryParseClassicCondition(typeOrPad, payload, off, len, out cond);
+                    // The periodics and the ramp take the same external slots
+                    // through the engine's waveform ingest.
+                    ClassicWaveform wave = default(ClassicWaveform);
+                    bool isWaveform = ClassicConditionsEnabled && !isCondition
+                        && TryParseClassicWaveform(typeOrPad, payload, off, len, out wave);
                     for (int i = 0; i < ClassicSlotCount; i++)
                     {
                         if ((slots & (1 << i)) == 0) continue;
@@ -2079,9 +2641,14 @@ namespace TrueforceForAll.Core
                         // a spring replaced by a variable force (or any other
                         // type) must stop contributing spring torque.
                         if (_classicSlotSpring[i] != null) { _classicSlotSpring[i] = null; springsTouched = true; }
-                        if (isVariable)
+                        // Same rule for an engine-owned damper/friction: any
+                        // other download into the slot ends it (no-op when the
+                        // engine holds nothing there).
+                        if (!isCondition && !isWaveform) _hidppEffects.RemoveExternal(i);
+                        if (isVariable || isConstant)
                         {
-                            _classicSlotForce[i]   = f;
+                            _classicSlotForce[i]   = isConstant
+                                ? (short)((payload[off + 2 + i] - 0x80) << 8) : f;
                             _classicSlotDecoded[i] = true;
                             decodedForce = true;
                         }
@@ -2090,6 +2657,60 @@ namespace TrueforceForAll.Core
                             _classicSlotSpring[i]  = spring;
                             _classicSlotDecoded[i] = false;   // no scalar; the spring path owns this slot
                             springsTouched = true;
+                            // The SAME download also lands in the engine as
+                            // an additive spring (isCondition is true for
+                            // 0x0b under the gate). Two renderers, one at a
+                            // time: this copy stands down while spring mode
+                            // is armed, and the spring-mode path is the one
+                            // that stands down the rest of the time by never
+                            // arming. Not counted into
+                            // ClassicConditionUpdatesCaptured: the spring
+                            // counter below already counts this very
+                            // download, and one packet must not show up as
+                            // two captures.
+                            if (isCondition)
+                            {
+                                bool springPlays = cmd == ClassicCmdDownloadAndPlay || _classicSlotPlaying[i];
+                                _hidppEffects.UpsertExternalCondition(i, cond.EngineType,
+                                    cond.LeftCoeff, cond.RightCoeff, cond.LeftSat, cond.RightSat,
+                                    cond.Deadband, cond.Center, springPlays, _sw.ElapsedTicks,
+                                    standsDownForSpringMode: true);
+                                conditionPlaced = true;
+                                LogFirstClassicCondition(typeOrPad, i, cmd, ref cond);
+                            }
+                        }
+                        else if (isCondition)
+                        {
+                            bool willPlay = cmd == ClassicCmdDownloadAndPlay || _classicSlotPlaying[i];
+                            // Deadband and center are real on the spring
+                            // family (the low-res spring carries a band, the
+                            // auto-centers a two-count one) and zero on the
+                            // damper and friction, which have neither on the
+                            // wire; passing the decoded pair is what lets an
+                            // off-center band render where the game put it.
+                            _hidppEffects.UpsertExternalCondition(i, cond.EngineType,
+                                cond.LeftCoeff, cond.RightCoeff, cond.LeftSat, cond.RightSat,
+                                cond.Deadband, cond.Center, willPlay, _sw.ElapsedTicks);
+                            _classicSlotDecoded[i] = false;   // no scalar; the engine owns this slot
+                            conditionPlaced = true;
+                            if (willPlay) conditionIntoPlayingSlot = true;
+                            LogFirstClassicCondition(typeOrPad, i, cmd, ref cond);
+                        }
+                        else if (isWaveform)
+                        {
+                            bool willPlay = cmd == ClassicCmdDownloadAndPlay || _classicSlotPlaying[i];
+                            if (wave.IsRamp)
+                                _hidppEffects.UpsertExternalRamp(i, wave.RampStart, wave.RampEnd,
+                                    wave.LengthMs, willPlay, _sw.ElapsedTicks);
+                            else
+                                _hidppEffects.UpsertExternalPeriodic(i, wave.EngineType,
+                                    wave.Magnitude, wave.Offset, wave.PeriodMs, wave.Phase,
+                                    wave.LengthMs, wave.TrapRise, wave.TrapHigh, wave.TrapFall,
+                                    willPlay, _sw.ElapsedTicks);
+                            _classicSlotDecoded[i] = false;   // no scalar; the engine owns this slot
+                            conditionPlaced = true;
+                            if (willPlay) conditionIntoPlayingSlot = true;
+                            LogFirstClassicWaveform(typeOrPad, i, cmd, ref wave);
                         }
                         else
                         {
@@ -2106,6 +2727,7 @@ namespace TrueforceForAll.Core
                         {
                             _classicSlotPlaying[i] = true;
                             if (_classicSlotSpring[i] != null) springsTouched = true;
+                            _hidppEffects.SetExternalPlaying(i, true, _sw.ElapsedTicks);
                         }
                     break;
                 case ClassicCmdStop:
@@ -2114,6 +2736,7 @@ namespace TrueforceForAll.Core
                         {
                             _classicSlotPlaying[i] = false;
                             if (_classicSlotSpring[i] != null) springsTouched = true;
+                            _hidppEffects.SetExternalPlaying(i, false, _sw.ElapsedTicks);
                         }
                     break;
                 default:
@@ -2132,6 +2755,18 @@ namespace TrueforceForAll.Core
             {
                 SpringUpdatesCaptured++;
                 NoteExtraction("interrupt-out", -1, -1, "classic-spring 0x0b (hi-res spring params)");
+            }
+            // Arm the parametric gates on the first classic condition placed:
+            // the HID++ path's 4-download streak guards fn2 packets on a wrong
+            // feature index, a class the classic firewall above already
+            // excludes. Never confirms the HID++ index, never stamps a sample
+            // (spring precedent). Landing in a PLAYING slot is captured game
+            // FFB for the no-FFB escalation, like a spring.
+            if (conditionPlaced && !SimulateNoFfbCapture) _parametricArmed = true;
+            if (conditionIntoPlayingSlot && !SimulateNoFfbCapture)
+            {
+                ClassicConditionUpdatesCaptured++;
+                NoteExtraction("interrupt-out", -1, -1, "classic-condition (damper/friction params)");
             }
 
             int sum = 0;
@@ -2317,6 +2952,9 @@ namespace TrueforceForAll.Core
                 $"matched={FfbSamplesCaptured} tuples=[{tuples}]" +
                 (SpringUpdatesCaptured > 0
                     ? $" springs={SpringUpdatesCaptured}{(_playingSprings != null ? " (playing)" : "")}"
+                    : "") +
+                (ClassicConditionUpdatesCaptured > 0
+                    ? $" classiccond={ClassicConditionUpdatesCaptured}"
                     : "") +
                 (_hidppEffects.ParametricDownloads > 0
                     ? $" dieffects={_hidppEffects.ParametricDownloads}{(_hidppEffects.AnyPlaying ? " (playing)" : "")}" +

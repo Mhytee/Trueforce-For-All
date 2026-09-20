@@ -239,6 +239,10 @@ namespace TrueforceForAll.Plugin
             // troublesome path back on for a PC that never asked to test it. Same
             // reasoning as the arcade master switch.
             "StationarySpringUnlocked",
+            // Same class of testing gate: classic damper/friction rendering on
+            // the G923 PS/PC is unvalidated, and a restore must not switch it
+            // on for a wheel that never asked. Move to Portable once validated.
+            "ClassicConditionEmulationEnabled",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
             "IRacingTrueforceNoticeDismissed", "R3ETrueforceNoticeDismissed", "StandDownNoticeDismissedGames", "MairaTapNoticeDismissed", "HasSeenModeBIntro", "GameModeMapMigratedV1",

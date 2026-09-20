@@ -52,9 +52,11 @@ namespace TrueforceForAll.Core
         /// <summary>Cutoff of the published-velocity one-pole, Hz.</summary>
         public double VelocityCutoffHz { get; set; } = 60;
 
-        /// <summary>Time constant of the washout differentiator that
-        /// produces Acceleration, seconds. Sets both its smoothing and its
-        /// lag; inertia rendering wants trend over tick detail.</summary>
+        /// <summary>Time constant of the band-limited differentiator that
+        /// produces Acceleration, seconds, used for both of its poles. Sets
+        /// the corner (~3 Hz), the smoothing and the lag; inertia rendering
+        /// wants trend over tick detail. See the note in Publish for why the
+        /// second pole is not optional.</summary>
         public const double AccelTauSec = 0.05;
 
         public double Position => _directMode ? _posDirect : _pos.Value;
@@ -180,11 +182,40 @@ namespace TrueforceForAll.Core
             //     v_slow += (v - v_slow) x dt/(tau+dt);  a = (v - v_slow)/tau
             //
             // which is a first-order high-pass scaled by 1/tau: exact for
-            // steady acceleration, band-limited to ~1/(2 pi tau) ~ 3 Hz.
-            // Inertia wants trend, not tick detail.
+            // steady acceleration below the corner at ~1/(2 pi tau) ~ 3 Hz.
+            //
+            // ONE POLE IS NOT ENOUGH, and that was the G923 inertia buzz
+            // (2026-09-15 diagnosis, fixed 2026-09-17). A single-pole
+            // filtered derivative stops rising at the corner and then holds
+            // FLAT at 1/tau for every frequency above it, all the way to the
+            // packet rate: at 50 Hz it reports velocity times twenty and
+            // calls it acceleration. Rendered as inertia that is a twenty
+            // times damper, and through the loop delay to the motor a damper
+            // that far out is negative damping, which self-excites on a
+            // geared wheel whose rotor sits in the gear lash.
+            //
+            // A real differentiator's response keeps rising, which no
+            // sampled system can do (it is unbounded noise gain on a
+            // quantized encoder), so every practical one adds a second pole
+            // and rolls off after the corner. That is what this is: the same
+            // derivative below 3 Hz, falling instead of flat above it.
+            // Simucube and OpenFFBoard both run second-order filters on
+            // their velocity input for the same reason.
+            //
+            //     a_raw = (v - v_slow)/tau ;  a += (a_raw - a) x dt/(tau+dt)
+            //
+            // Response: s / (1 + s tau)^2, magnitude w/(1+(w tau)^2). At
+            // 50 Hz that is about 1.27 times velocity where one pole gave 20,
+            // a sixteenfold cut in the band that buzzes, and it keeps falling
+            // above that where one pole never did. Below the corner it is the
+            // same derivative: at 1 Hz it reads 5.72 against a true 6.28,
+            // which is the band hands actually drive. The cost is
+            // a little phase lag between about 3 and 15 Hz, so a fast flick
+            // reads its peak a few milliseconds late.
             double at = dt / (AccelTauSec + dt);
             _velSlow += (_velFiltered - _velSlow) * at;
-            _accel = (_velFiltered - _velSlow) / AccelTauSec;
+            double accelRaw = (_velFiltered - _velSlow) / AccelTauSec;
+            _accel += (accelRaw - _accel) * at;
             _prevVel = _velFiltered;
         }
     }

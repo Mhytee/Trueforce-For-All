@@ -659,7 +659,8 @@ namespace TrueforceForAll.Plugin
             { "MasterGain", "Master gain" },
             { "FfbScale", "FFB scale" },
             { "PulseFreq", "Pulse rate (Hz)" },
-            { "Freq", "Carrier (Hz)" },
+            { "Freq", "Frequency (Hz)" },
+            { "PulseDuty", "Pulse length" },
         };
 
         private static string PrettyFieldName(string raw)

@@ -8,7 +8,7 @@ When a force value exists on the Trueforce connection, the wheel prefers it, ign
 
 That is the whole trick. The plugin reads what the game is sending, folds it into Trueforce, adds its own effects on top, and never has to fight the game for the wheel.
 
-This method works for all games, as long as they aren't sending Trueforce signal themselves, but it does have a downside.
+This method works for all games, as long as they aren't sending Trueforce signal themselves.
 
 ## Why the lights are the hard part
 

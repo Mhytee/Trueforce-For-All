@@ -362,18 +362,22 @@ between the current build and 1:1; ranked.
 
 ### Classic C266 path (separate work item, pre-dates this project phase)
 
-Only variable force (0x08) and hi-res spring (0x0b) of the fifteen classic
-types are rendered; low/hi-res damper (0x02/0x0c), friction (0x0e),
-auto-center (0x03/0x0d), periodics (0x04-0x07/0x0a), ramp and constant are
-tracked-for-STOP but render as ZERO, and the default-spring command family
-(cmds 0x4/0x5/0xe/0xf, present in the FH5 capture) is ignored. Springs
-render only in exclusive spring mode (spring-ONLY bus + 2 s + 1 s dwell,
-80% strength, ramps), so FH5-class mixed traffic gets road force with no
-autocenter. Audit also flagged a sign-contradiction between the variable
-decode and the spring evaluator that needs one on-wheel C266 A/B, the 2^K
-spring slope guess vs lg4ff's table, and byte3 for the second variable
-slot. Fix shape: per-type parsers + the same additive rendering path the
-HID++ engine now has.
+Variable force (0x08) and hi-res spring (0x0b) render unconditionally. All
+fifteen types decode as of 2026-09-17, everything except the two scalars
+through the condition engine behind the CLASSICCOND gate: damper
+(0x02/0x0c) and friction (0x0e) since 2026-09-16, and the low-res spring
+(0x01), the auto-centers (0x03/0x0d), the periodics (0x04-0x07/0x09/0x0a)
+and the ramp since 2026-09-17. Since 2026-09-18 the hi-res spring lands in
+the engine as well, additively, while keeping its own ClassicSpring record
+for spring mode, which closes the FH5-class mixed-traffic gap where road
+force arrived with no autocenter because the spring had only the exclusive
+spring-mode renderer (spring-ONLY bus + 2 s + 1 s dwell, 80% strength,
+ramps). See the three dated entries at the end of this file. The
+default-spring command family (cmds 0x4/0x5/0xe/0xf, present in the FH5
+capture) is still ignored. Audit also flagged a sign-contradiction between
+the variable decode and the spring evaluator that needs one on-wheel C266
+A/B, the 2^K spring slope guess vs lg4ff's table (the gate reads it linear
+instead), and byte3 for the second variable slot.
 
 ### Tap-free CSP mode (no USBPcap)
 
@@ -1014,3 +1018,404 @@ already halved while he halves the evdev value himself, and he cannot
 settle it because on Linux he never downloads conditions to the wheel.
 FXDUMP can, but the bench hardcodes `DeadBand = 0`, so testing it needs
 a one-line change there first.
+
+## Classic-protocol damper and friction (G923 PS/PC), 2026-09-16 (built, gated OFF)
+
+**The C266 gets its DirectInput conditions from the classic slot protocol,
+and they now reach the same engine.** The G923 PS/PC speaks no HID++, so
+its games' damper, friction and inertia effects arrive as classic slot
+downloads (types 0x0c hi-res damper, 0x02 low-res damper, 0x0e friction),
+which the firmware ignores while the ep3 stream is live. The tap decodes
+them into the engine's normalized condition form and feeds a new external
+slot region of `HidppEffectEngine` (`ExternalSlotCount = 4`, above the
+HID++ pool): `UpsertExternalCondition` on download / download-and-play /
+refresh, `SetExternalPlaying` on PLAY / STOP, `RemoveExternal` when any
+other type overwrites the slot, `ResetExternal` from `ResetClassicState`
+(capture start and the deferred pause reset). Everything downstream
+(`AnyHidppParametricPlaying`, `AnyHidppDamperPlayingNow`,
+`TryEvaluateHidppEffects`, the active-shape gate, the motion source, the
+CSP damper dedup, DICOND, DAMPSIGN, DAMPCAL, the output LPFs) is shared and
+unchanged. Springs stay on the classic-spring path.
+
+**K is linear, not 2^K.** Logitech's Force Feedback Protocol V1.6, Table 47:
+"K1, K2 0...15 Linear slope with 0 being the weakest force and 15 being
+the strongest. The actual coefficient factor is device dependent." The
+Windows driver on a c266 encodes a 50 % DirectInput damper as K = 8
+(new-lg4ff issue #86 capture), new-lg4ff encodes `(2 * abs(coeff)) >> 12`,
+GIMX decodes `K / 15`. The decode is therefore `K / 15` (4-bit), `K / 255`
+(8-bit friction) and Logitech's Table 27 for the 3-bit low-res form
+(1/4 .. 4 times offset, normalized to K = 7). `K / 15` reads a K = 0
+damper as zero where new-lg4ff's bucket midpoint `(K + 0.5) / 16` would
+read 1/32; the two differ by at most 1/32 and an FFBInspector sweep on the
+rig settles which the Windows driver means. The absolute factor is the
+one unknown and it is exactly what DAMPCAL fits.
+
+**The classic spring's slope goes linear under the same gate.** The hi-res
+spring (0x0b) stays on `TryEvaluateClassicSprings`, not in the engine, but
+while CLASSICCOND is on its per-side slope is `2 x K / 15` per unit of the
+0..1 lock-to-lock axis (the factor 2 converts a DirectInput coefficient
+defined per unit of the -1..1 axis into that domain), per the same
+document ("scaled linearly from 0 to 15") and the Windows driver's damper
+data point (WINCAP, new-lg4ff issue #86: a DirectInput 0.5 damper arrives
+as K = 8), carried over to the spring by the document's statement that
+0x0c uses the same 4-bit K scale as 0x0b; no spring data point with a
+known DirectInput coefficient exists. With the gate off the shipped `1 << K`
+guess is untouched, so nothing changes for FS25 users who never type the
+code. Under the linear model a K = 0 spring renders zero and the FS25
+corpus (mostly K = 0) renders very differently; that is one reason the
+gate stays off until a spring calibration exists. The absolute factor is
+unvalidated either way.
+
+**The hi-res damper's CLIP byte is ignored.** The document scopes byte 6
+to the Driving Force Pro ("only for PID_C298"), GIMX honors it only there,
+the Windows driver writes 0x01 in it for a full-saturation damper, and
+the wheel's owner-reported behavior is that it ignores the byte. Honoring
+it would render every Windows damper at 1/255. Saturation is 1.0 and the
+raw byte is in the log line. Friction's CLIP (byte 4) is real and honored.
+
+**What the Windows driver sends on a C266.** DirectInput Damper, Friction
+and Inertia all arrive as 0x0c dampers in slots 2, 3 and 4 (the document
+lists friction for DFP/G25/DFGT/G27 only; new-lg4ff casts friction and
+inertia to a damper on the G923 "as the Windows driver does"). Three
+dampers can therefore play at once and must sum, so the external region
+is exempt from the one-copy-per-type rule that guards missed HID++
+destroys. The 0x0e branch exists and is tested but no Logitech Windows
+title is expected to exercise it.
+
+**Decisions recorded.** Pause wipes classic-fed conditions (the classic
+spring precedent; the HID++ pool retains); a refresh into a stopped slot
+stays ignored; the first placed condition arms the parametric gates with
+no streak (the classic firewall already excludes the wrong-feature-index
+class the streak guards); `ClassicConditionUpdatesCaptured` stands the
+no-FFB watchdog down; `_lastSampleTicks` is not stamped. `ResetExternal`
+republishes only when it removed something: it runs at every capture
+start, and on a HID++ wheel an unconditional republish there would
+render the retained pool during a pause instead of when the game drives
+again. The setting (`ClassicConditionEmulationEnabled`, CLASSICCOND) is
+default OFF and sits in BackupProjection's Excluded set as a testing gate
+until a C266 rig session validates it. Render scope is the HID++
+conditions' scope: pass-through, the pause release and the Mode B
+slip-starved pass-through; the reshape paths replace the base as before.
+
+**What to watch on the rig.** The sign frame from the DirectInput axis to
+ep3 torque has never been checked on a C266: if the wheel speeds up when
+turned, it is DAMPSIGN. The first-decode line shows the raw K next to the
+derived coefficient; a coefficient sweep in FFBInspector with FXDUMP on
+(the classic trace prints every slot command) confirms the driver's map.
+DAMPCAL then fits the absolute factor. If the wheel ever renders a classic
+damper natively under the stream, the game's damper doubles; DICOND is
+the A/B that shows it.
+
+## Inertia fixed at the source, 2026-09-17 (built, always on)
+
+**Owner call: inertia renders to spec on every wheel, and the fix is not a
+guard.** Logitech's own rendering of the effect is a damper on every wheel
+measured or captured so far (the PS G923 by driver cast, the Xbox G923 by
+mescon's fixed-push test, the G PRO by feel twice over). The owner reads
+that as a defect in the wheel, not a model to copy. A stability guard was
+built on 2026-09-16 (gain ceiling, own output pole, rest fade, behind a
+bench checkbox) and REMOVED the next day, owner: "I don't see why a guard
+is needed, what we need is a fixed inertia effect." He was right: a gain
+cap limits how far the effect can be turned up, it does not make the
+effect correct.
+
+**The defect was never in the inertia effect.** The engine computes
+coefficient times acceleration with deadband and saturation, which is what
+DirectInput inertia is. What was wrong is the acceleration handed to it.
+`WheelMotionEstimator` produced it with a single-pole filtered derivative,
+`a = (v - v_slow)/tau`. Below the corner at `1/(2 pi tau)` = 3.2 Hz that is
+a true derivative. Above it the response stops rising and holds FLAT at
+`1/tau` = 20 for every frequency to the packet rate, so at 50 Hz it
+reported velocity times twenty and called it acceleration. Rendered as
+inertia that is a twenty times damper, and through the 8 to 11 ms loop
+delay to the motor a damper that far out is negative damping, which
+self-excites on a geared wheel whose rotor sits in the lash. The G923
+buzzed at rest and louder with gain; the G PRO, a heavier lash-free plant,
+held at the same numbers.
+
+**The fix is the second pole.** A real differentiator's response keeps
+rising, which no sampled system can do (unbounded noise gain on a
+quantized encoder), so every practical one adds a pole and rolls off after
+the corner. Ours had only one. Now:
+
+```
+a_raw = (v - v_slow)/tau ;  a += (a_raw - a) x dt/(tau+dt)
+```
+
+which is `s/(1+s tau)^2`, magnitude `w/(1+(w tau)^2)`. Measured on the
+discrete implementation at 1 kHz, tau 0.05, against the single pole:
+
+| Hz | one pole | two poles | cut | true derivative |
+|---|---|---|---|---|
+| 1 | 5.99 | 5.71 | none | 6.28 |
+| 10 | 18.89 | 5.68 | 3.3x | 62.83 |
+| 50 | 19.72 | 1.25 | 15.8x | 314.16 |
+| 250 | 19.80 | 0.20 | 99x | 1570.80 |
+
+Unchanged where hands live, sixteen times less in the buzz band, and still
+falling above it where one pole never did. The cost is phase lag between
+about 3 and 15 Hz, so a fast flick reads its peak a few milliseconds late.
+No cap, no gate, no per-chassis fallback, nothing to turn on: the loop gain
+that self-excited is gone at its source.
+
+**Also unlocked, untried.** With one pole, shortening tau to give inertia
+more bandwidth RAISED the flat gain (`1/tau`) and made the buzz worse, so
+the corner could never be moved. With rolloff after the corner that trade
+is gone, and a shorter tau is now a safe thing to try on the rig if inertia
+wants to feel more alive in the 5 to 15 Hz band. Default stays 0.05, so the
+G PRO tuning the owner signed off on is preserved exactly.
+
+**Tests** (`WheelMotionEstimatorTests`): `AccelGainAt` drives a sinusoidal
+velocity and reads back the peak acceleration, which measures the response
+directly rather than by feel. It asserts the true derivative below the
+corner, about 1.27 at 50 Hz with a hard ceiling of 3 (the single pole would
+read 20), a still-falling response at 100 Hz, and a one-count encoder
+dither at rest staying under 0.01 range/s^2.
+
+**What still needs the rig.** That the G923 buzz is actually gone, from the
+tester who reported it. That the G PRO feels unchanged at the owner's saved
+inertia of 0.84, which is the regression check, since nothing below 3 Hz
+moved. Both are feel tests; the frequency response itself is now pinned by
+the suite.
+
+## All fifteen classic force types, 2026-09-17 (built, behind CLASSICCOND)
+
+**Owner call: coverage follows capability, not observed demand.** "If we
+have proof that these wheels can accept an effect we should support it. The
+PS wheel needs to have equal coverage to the other wheels. We need to be
+able to replicate any game's force." The captures we had were all from
+troubleshooting sessions, so they say nothing about what games do in
+general, and two of the three were not even tests (Assetto Corsa was
+driving Trueforce natively, Farming Simulator uses a spring model).
+
+**All fifteen types in Table 23 now render.** Previously five did. Added:
+constant (0x00, one level per slot, Table 24), low-res spring (0x01),
+auto-centering spring (0x03) and its hi-res form (0x0d), sawtooth up and
+down (0x04/0x05), trapezoid (0x06), rectangle (0x07), ramp (0x09) and
+square wave (0x0a). Levels are offset binary per Table 22
+(`ClassicLevel`), and every duration counts 2 ms main loops per Table 18
+(`ClassicLoopMs`).
+
+**One new engine waveform covers three shapes.** `TypeTrapezoid` (0x20,
+above the wire range so a download can never collide) carries independent
+rise, hold-high, fall and hold-low fractions. A rectangle is that shape
+with zero ramps and a triangle is one with zero holds, so the classic
+trapezoid and rectangle both render through it. `Wave` now takes the effect
+rather than its type byte so the shape can read its own fractions.
+
+**Two new external ingest methods**, `UpsertExternalPeriodic` and
+`UpsertExternalRamp`, beside the condition one, sharing a `PlaceExternal`
+tail that carries the slot's play state and start tick. A periodic with a
+zero period is refused rather than divided by.
+
+**Known inconsistency, deliberate.** (Superseded 2026-09-18, see the entry
+below: the hi-res spring now goes through the engine too.) The hi-res
+spring (0x0b) still renders
+on the older classic-spring path with its own slope model, while the three
+springs added here go through the engine. Routing 0x0b into the engine
+would be the tidier end state but it is the path Farming Simulator depends
+on and it is validated on hardware, so it was left alone rather than
+risked. The two should be unified once a rig session can check the spring
+slope.
+
+**Rig plan unchanged**: FXDUMP alone first, which traces every classic slot
+command without rendering anything, to learn what games actually send; then
+CLASSICCOND on for feel; then the bench gain, which absorbs the absolute
+scale (the document says the coefficient factor is device dependent, so
+there is nothing to measure, only something to set).
+
+## The hi-res spring reaches the engine, 2026-09-18 (built, behind CLASSICCOND)
+
+**The bug this closes: the commonest classic condition on a PS wheel was
+silent in mixed traffic.** The hi-res spring (0x0b) had exactly one
+renderer, the classic-spring path, and that path only ever runs under
+SPRING MODE, which is a replacement mode: it takes over the whole force and
+arms only when the toggle is on, a spring is playing, and the tap has seen
+NO constant force for two seconds, plus a one second dwell. So in any game
+that streams road force and a centering spring together the spring was
+dropped. Forza is exactly that case: 5,955 variable-force commands beside
+276 hi-res springs in the owner's capture, which means its autocenter has
+never been rendered during normal driving. Only Farming Simulator, which
+sends nothing but springs, satisfies the gate.
+
+The 2026-09-17 work made that worse rather than better: the three springs
+added then (low-res 0x01, auto-center 0x03 and 0x0d) go through the
+engine's external slots and sum on top of pass-through force like the
+dampers, so the rare spring types rendered during normal driving and the
+one games actually send did not. That entry called it a deliberate
+inconsistency in the slope model. It was a coverage hole.
+
+**0x0b now decodes into an engine external slot as well**, as a
+`TypeSpring` condition, additively, beside its existing ClassicSpring
+record. One decode of the wire bytes feeds both: `TryParseClassicCondition`
+calls `ParseHiResSpring` and converts, so there is no second reading of the
+layout to drift. Everything the Farming Simulator path depends on is
+byte-identical: `ParseHiResSpring`, `TryEvaluateClassicSprings`,
+`PublishSpringSnapshot`, `AnyClassicSpringPlaying` and the arming logic are
+untouched. Same CLASSICCOND gate as the rest; with the gate off nothing
+reaches the engine and the shipped path behaves exactly as before.
+
+**The domain conversion.** The classic path works in `p = (steerNorm+1)/2`,
+the 0..1 lock-to-lock axis the 11-bit D1/D2 fields are expressed in. The
+engine works in `steerNorm`, -1..1. With `s = 2p - 1`:
+
+```
+band edges    s1 = 2*D1 - 1,  s2 = 2*D2 - 1
+center        (s1 + s2)/2 = D1 + D2 - 1
+half-width    (s2 - s1)/2 = D2 - D1
+```
+
+A p-distance `d` is a steerNorm distance `2d`, which is why the classic
+path carries a factor 2 in its slope (`2 * K/15` per unit of p) and the
+engine does not (`K/15` per unit of steerNorm): the two render the same
+force. Slope is LINEAR, `K/15` per side, matching the hi-res auto-center
+already in that switch; saturation is `CLIP/255`; each side's S bit is a
+plain sign on that side's coefficient. Sign checked against the engine's
+contract (positive force pulls toward lower steer; `ConditionTerm` applies
+`RightCoeff` when `dev > deadband`) and against what the classic path does
+today: right of the band with S2 clear it adds `+f`, so `RightCoeff` is
+positive, and left of it with S1 clear it adds `-f`, which `ConditionTerm`
+produces from a POSITIVE `LeftCoeff` times a negative deviation. Both sides
+therefore carry the S bit unchanged. `HiResSpring_EngineCopy_MatchesTheClassicPath`
+asserts the two agree within two counts at nine positions on an off-center
+band, which is the real proof of the conversion.
+
+**Also fixed on the way past**: the external condition upsert was passing a
+hardcoded deadband and center of zero, so the low-res spring's decoded band
+was discarded. It now passes `cond.Deadband, cond.Center`. Damper and
+friction carry neither on the wire and are unaffected.
+
+**The stand-down, and where it acts.** Under spring mode the plugin renders
+the captured spring itself and returns it as the base force, so the engine
+copy must go silent or the wheel gets one spring twice. The flag is
+`UsbPcapFfbTap.ClassicSpringModeActive`, asserted from the plugin tick in
+`UpdateSpringModeArming` on the same line as `SyntheticFfbActive`; it
+proxies `HidppEffectEngine.SpringModeActive`, and `Evaluate` skips any
+effect flagged `StandsDownForSpringMode` while it is set.
+
+It acts at EVALUATION time, not at ingest, and that choice is the whole
+design:
+
+- Refusing the upsert in the parse loop would leave whatever the engine
+  already held when the mode armed later, and spring mode can arm with no
+  further download in sight (Forza sends its menu spring once and leaves it
+  playing). The spring would be stuck ON.
+- Removing the slot on the transition would need the parser to notice the
+  transition, and the parser only runs when a packet arrives. On that same
+  quiet bus the spring would be stuck on until the next download, and stuck
+  OFF after a disarm.
+- Reading the flag per evaluation costs one volatile read per effect per
+  tick and cannot go stale in either direction: the first 1 kHz tick after
+  an arm renders without it, the first tick after a disarm renders with it
+  again. The slot table is never rewritten, so nothing about the game's
+  effect is lost across the round trip.
+
+A stood-down spring still counts as playing, because it IS on the wire: the
+quiet probes, the LED gating and the no-FFB watchdog must keep seeing it.
+The stand-down is scoped to the effect, not the slot, so a damper that
+replaces the spring in the same slot renders immediately even while the
+mode is armed.
+
+**Which callers stand down, and which must not.** `MaybeReshapeFfb` already
+REPLACES the target with `ComputeSpringModeForce` while spring mode is
+armed, and `AddHidppDiEffects` runs before it, so on the main pump path a
+double spring would be discarded by the substitution anyway. The stand-down
+is there so that ordering does not have to hold by accident, which is the
+kind of thing a later edit breaks.
+
+The other caller is the opposite case. `ReleasedWheelForce` (the pause and
+focus release) calls `AddHidppDiEffects` itself and RETURNS THAT VALUE, so
+it never reaches the substitution and never renders a spring of its own:
+standing the captured spring down there subtracts the only copy, and a
+spring-mode game that pauses gets a limp wheel instead of the game's menu
+centering, which is the failure that release was written to prevent. So the
+stand-down is a per-call argument, not engine state alone:
+`Evaluate` and `TryEvaluateHidppEffects` take
+`allowSpringModeStandDown`, and `AddHidppDiEffects` passes `!conditionsOnly`
+so the release path renders the captured spring while the main path stands
+it down. (`SpringModeActive` earned a first draft where the skip was
+unconditional; the release path made it wrong in exactly the place the copy
+is most useful.)
+
+**The disarm must not wipe the table.** `UpdateSpringModeArming`'s disarm
+used to call `tap.ClearLastFfbTarget()`, which arms a full classic reset:
+`ResetClassicState` then calls `HidppEffectEngine.ResetExternal` and the
+engine's copy of the spring is gone. The HID++ path has a deferred
+republish for exactly this (`_hidppResetRequested` -> `RepublishFromTable`),
+but it is honored only in `HandleHidppFfbFunction` and a C266 never sends
+one, so there was no recovery on the classic side. The sequence is the
+target scenario itself: a Forza menu arms spring mode, driving resumes, the
+first scalar disarms it, and the autocenter the change exists to render is
+silent until Forza re-downloads the spring, which it does not (it sends the
+menu spring once and leaves it playing).
+
+What the disarm actually needs is the stale SCALAR gone, which is what its
+own comment says: spring mode ignored everything the tap captured while it
+was armed, and on Farming Simulator a misdecoded heartbeat stayed "fresh"
+for ten seconds and drove the wheel to lock. So it now calls
+`UsbPcapFfbTap.ClearCapturedForceKeepingEffects()`, which clears `_packed`
+from the plugin thread and arms `_classicScalarResetRequested`, a deferred
+reset that clears `_classicSlotForce`, `_classicSlotDecoded` and the
+published-target latch and touches nothing else. A bare PLAY after it still
+finds an undecoded slot and publishes nothing (the issue #13 guard), while
+the springs, the conditions and the play flags the game genuinely has
+loaded stay where they are. `ClearLastFfbTarget` keeps its full reset for
+the callers that want a wipe: the pause gate, the game change and capture
+start.
+
+**The flag follows `_forceMode`, not the tick.** `ClassicSpringModeActive`
+was asserted once at the top of `UpdateSpringModeArming`, before the same
+call decides to arm or disarm, so it lagged a full DataUpdate pass on both
+edges: about 16 ms rendering the spring beside our own copy of it after an
+arm, and 16 ms of no spring at all after a disarm. It is now asserted from
+`AssertSpringModeStandDown()`, called from the per-pass line (the re-attach
+backstop), from both `_forceMode` writes inside that method, and from
+`ApplyModeBFromSettings`, where the neighboring `FfbBypassTapCorrections`
+line was hardened against the same window for the same reason.
+
+**Tests** (`ClassicConditionEmulationTests`, twenty new): the gate on
+lands an engine spring with the right center, deadband, coefficients and
+saturation; the engine copy matches the classic path count for count on an
+off-center band; the band is silent between its edges and off-center where
+the game put it; CLIP saturates; an S bit inverts that side; the gate off
+changes nothing; a bare download waits for its PLAY; a STOP silences both
+renderers and a PLAY restores them; a variable force and a damper each
+evict the spring; the stand-down silences the engine copy with no packet in
+between and a disarm restores it; it leaves a damper in another slot alone;
+it applies to a spring downloaded while already armed; and it does not
+follow the slot onto a damper that replaces the spring.
+`Spring_ReplacesDamper_DamperGone` was updated: the slot is no longer empty
+after a spring lands, so what it now asserts is that the DAMPER is gone
+(velocity renders nothing) rather than that nothing is playing.
+
+Six more cover the review's findings: the stand-down survives a classic
+STOP/PLAY round trip (the flag rides on the effect, and `CloneWith` is a
+`MemberwiseClone`, so a future explicit field copy would drop it silently);
+it does not reach the release path, which still renders the captured spring
+while the mode is armed; a disarm keeps the engine copy across a bare PLAY
+and the road force that follows, on the live-capture harness; the low-res
+spring's band lands where the wire bytes put it, probed at two positions an
+uncentered band would get backwards; the hi-res auto-center centers on zero
+with its two-count band; and the first-decode log line carries the band for
+the spring family and not for the damper.
+`SpringMode_StandDown_LeavesTheOtherConditionsAlone` was strengthened: it
+probed at position zero, where the centered spring is worth eight counts
+and a leaked term could not move the result out of a 1000-count band, so it
+now probes where the spring is worth 3495 and compares the armed and
+disarmed sums.
+
+**What still needs a rig.** That a Forza autocenter now renders at a
+sensible strength beside road force on a C266, which is the whole point of
+the change, and that it does not fight the wheel at the lock. That the
+linear `K/15` reading is right for the spring specifically: it is the
+document's reading and it matches the damper's Windows data point, but no
+spring capture with a known DirectInput coefficient exists, so the absolute
+scale is still set rather than measured (the bench spring gain absorbs it).
+That Farming Simulator is unchanged, which is the regression check: the
+stand-down should make the engine copy invisible there, and the suite
+covers the mechanism but not the feel. That a pause in a spring-mode game
+now centers on the game's own spring rather than going limp, which is the
+release-path scoping above and has only ever been reasoned about. And that
+the low-res spring's band, live on the wire only since the upsert started
+carrying the decoded pair, lands where a game actually puts it: the tests
+prove the arithmetic against the wire bytes, not against a wheel.

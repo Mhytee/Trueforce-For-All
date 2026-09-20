@@ -1,5 +1,3 @@
-# Assetto Corsa: the TF4ALL CSP Bridge
-
 Assetto Corsa can hand the plugin its own force feedback. The wheel feels exactly as you have tuned it, and the Dynamic OLED display and LIGHTSYNC pattern changes keep working without cutting the force. This needs Custom Shaders Patch (CSP) and a small script, the TF4ALL CSP Bridge, that the plugin installs for you. ([What the bridge is](guide:csp-bridge).)
 
 ## Installing it
@@ -27,7 +25,7 @@ The CSP FFB tweaks themselves (understeer effect, dampers, curbs, and the rest) 
 
 ## Removing it
 
-**Remove** in the Game mods section deletes the script from Assetto Corsa and unselects it in CSP's FFB Tweaks. Your force feedback keeps working through the USB capture; you just lose the OLED and drop-free pattern changes. The script stops loading the next time the game starts.
+**Remove** in the Game mods section deletes the script from Assetto Corsa and unselects it in CSP's FFB Tweaks. Your force feedback keeps working through the USB capture. The script stops loading the next time the game starts.
 
 ## Manual install
 

@@ -1,8 +1,8 @@
 Some cars carry their own rev-light data: the RPM each gear really lights up at, how fast the redline warning blinks, and the colors and fill direction of the real car's strip. The per-gear redlines set where the shift cue arrives. Reading the data needs community features on.
 
-Tick **Match my wheel to the car I'm driving** on the LIGHTSYNC tab and your wheel takes on the car's own colors and fill direction as you get in it, lighting at the points that car really lights at. A car with no entry keeps whatever pattern you have chosen and whatever redline the game reports, so nothing is lost by leaving this on.
+Tick **Match my wheel to the car I'm driving** on the LIGHTSYNC tab and your wheel takes on the car's own colors and fill direction as you get in it, lighting at the points that car really lights at. A car with no entry keeps whatever pattern you have chosen and whatever redline the game reports.
 
-Data is fetched the first time you drive a car and kept on this PC, then re-checked about once a week so corrections reach you.
+Data arrives the first time you drive a car and stays on your PC, then is rechecked about once a week so corrections reach you.
 
 ## Where the data comes from
 

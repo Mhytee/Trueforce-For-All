@@ -2135,12 +2135,12 @@
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="AbsFreqSlider" Minimum="30" Maximum="150" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="AbsFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AbsFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AbsFreqText" Text="80"/></Border>
                         </Grid>
-                        <!-- Pulse rate / duty are only meaningful in Pulse mode.
+                        <!-- Pulse rate / length are only meaningful in Pulse mode.
                              Greyed when AbsMode = PerTick. -->
                         <StackPanel x:Name="AbsPulseControls">
                             <Grid Margin="0,0,0,8">
@@ -2152,7 +2152,7 @@
                             </Grid>
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Pulse duty:" Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Column="0" Text="Pulse length:" Style="{StaticResource LabelText}"/>
                                 <Slider     Grid.Column="1" x:Name="AbsDutyCycleSlider" Minimum="0.1" Maximum="0.9" SmallChange="0.05" LargeChange="0.1"
                                             TickFrequency="0.1" ValueChanged="AbsDutyCycleSlider_ValueChanged" VerticalAlignment="Center"/>
                                 <Border Visibility="{Binding Visibility, ElementName=AbsDutyCycleText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AbsDutyCycleText" Text="0.40"/></Border>
@@ -2199,7 +2199,7 @@
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"
+                            <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"
                                        ToolTip="Tone within each pulse. Lower = deeper thud; higher = brighter."/>
                             <Slider     Grid.Column="1" x:Name="PitLimiterFreqSlider" Minimum="20" Maximum="150" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="PitLimiterFreqSlider_ValueChanged" VerticalAlignment="Center"/>
@@ -2215,8 +2215,8 @@
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Pulse duty:" Style="{StaticResource LabelText}"
-                                       ToolTip="Fraction of each pulse during which the carrier is audible. Higher = more sustained; lower = more punctuated."/>
+                            <TextBlock Grid.Column="0" Text="Pulse length:" Style="{StaticResource LabelText}"
+                                       ToolTip="How much of each pulse is filled with sound. Higher = more sustained; lower = more punctuated."/>
                             <Slider     Grid.Column="1" x:Name="PitLimiterDutyCycleSlider" Minimum="0.1" Maximum="0.9" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="PitLimiterDutyCycleSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=PitLimiterDutyCycleText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="PitLimiterDutyCycleText" Text="0.60"/></Border>
@@ -2272,7 +2272,7 @@
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsActivationFreqSlider" Minimum="40" Maximum="200" SmallChange="1" LargeChange="5"
                                         TickFrequency="20" ValueChanged="DrsActivationFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=DrsActivationFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DrsActivationFreqText" Text="120"/></Border>
@@ -2302,7 +2302,7 @@
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsSustainedFreqSlider" Minimum="20" Maximum="150" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="DrsSustainedFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=DrsSustainedFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DrsSustainedFreqText" Text="70"/></Border>
@@ -2366,7 +2366,7 @@
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"
+                            <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"
                                        ToolTip="Lower = deeper thud. 50 Hz default."/>
                             <Slider     Grid.Column="1" x:Name="CollisionFreqSlider" Minimum="20" Maximum="120" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="CollisionFreqSlider_ValueChanged" VerticalAlignment="Center"/>
@@ -2470,7 +2470,7 @@
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Carrier (Hz):" Style="{StaticResource LabelText}"
+                            <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"
                                        ToolTip="Tone within each pulse. Higher reads as a more urgent buzz."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterFreqSlider" Minimum="30" Maximum="200" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="RevLimiterFreqSlider_ValueChanged" VerticalAlignment="Center"/>
@@ -2486,8 +2486,8 @@
                         </Grid>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Pulse duty:" Style="{StaticResource LabelText}"
-                                       ToolTip="Fraction of each pulse during which the carrier is audible. Higher = more sustained; lower = more punctuated."/>
+                            <TextBlock Grid.Column="0" Text="Pulse length:" Style="{StaticResource LabelText}"
+                                       ToolTip="How much of each pulse is filled with sound. Higher = more sustained; lower = more punctuated."/>
                             <Slider     Grid.Column="1" x:Name="RevLimiterDutyCycleSlider" Minimum="0.1" Maximum="0.9" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="RevLimiterDutyCycleSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=RevLimiterDutyCycleText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="RevLimiterDutyCycleText" Text="0.50"/></Border>

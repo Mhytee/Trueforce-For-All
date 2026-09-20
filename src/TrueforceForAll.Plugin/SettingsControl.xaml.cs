@@ -13504,6 +13504,7 @@ namespace TrueforceForAll.Plugin
             "DIDAMP [pct]   DEV: drive the wheel's NATIVE DirectInput damper from the plugin (default 75%) with the Trueforce stream fully stopped (the wheel exactly as without the plugin), and log the position read rate: the DAMPCAL feasibility spike. DIDAMP OFF ends it (auto-off after 60 s).\n" +
             "DAMPCAL        Damper calibration wizard, NO GAME NEEDED: three conditions x three hand flicks (the plugin stands aside and drives the wheel's own damper = the native reference; stream at raw zero = friction only; synthesized at the current gain). Fits each flick's decay on the wheel's DirectInput position, cancels friction and inertia, and sets the synthesized gain to match the native damper for this session. Progress on the status line and the wheel screen. DAMPCAL OFF cancels. CSPFFB DAMPSIGN flips the damper if it feels like an anti-damper.\n" +
             "DICOND         A/B: the game's DirectInput condition effects (damper, spring, friction, inertia) and rumble, decoded from the USB wire and rendered into the Trueforce stream (the wheel firmware ignores them while any stream is live). ON by default; type to disable or re-enable. Session only.\n" +
+            "CLASSICCOND    G923 PS/PC only: render the game's classic-protocol damper, friction and spring slots (the DirectInput effects a game plays on this wheel, which the firmware ignores while Trueforce streams) through the same condition engine the HID++ wheels use. Expect centering as well as damping: the game's spring now plays on top of the streamed force instead of only in spring mode, so a game that sends road force and an autocenter together gives you both. Spring mode is unchanged and still takes over when it arms, and the captured spring stands down while it does. Unvalidated on hardware: the first decoded effect of each type is logged with its raw bytes, DICOND is the A/B, CSPFFB DAMPSIGN flips the direction, DAMPCAL sets the strength. Persists, does not travel in a backup. Toggle.\n" +
             "FXTEST         Shows or hides the effect test bench at the bottom of the FFB tab (type it again to hide it). NO GAME NEEDED: the bench plays the wheel's own DirectInput effect with the Trueforce stream fully STOPPED, so the firmware renders it exactly as it would without the plugin (the reference feel), then the identical effect through the plugin's renderer, so you can alternate the two and tune until they match. It also carries the hands-free Auto-tune. The typed forms still work: 'FXTEST NATIVE <effect>' and 'FXTEST ENGINE <effect>'; effects DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP, with optional strength% (default 50) and period ms (default 250). FXTEST OFF ends a running test; auto-off after 30 s.\n" +
             "FXDUMP         Effect-download trace: one log line per effect the wheel is asked to download, decoded straight off the USB wire, with its type byte and its raw parameters (coefficients, saturations, deadband, centre, or magnitude and period). Answers whether the wheel was asked for what you think you asked for: on the bench a native effect passes through DirectInput, Windows and Logitech's driver first, and a substituted type or reshaped parameter cannot be told apart by feel. Session only. Toggle.\n" +
             "SOFTLOCK       Soft-lock diagnostic (Assetto Corsa, iRacing and RaceRoom): a '[TF4ALL] SOFTLOCK' line twice a second with the steering position, how far the soft lock has engaged, the force it is aiming for, and what the stationary spring is contributing. Fires from 0.9 of the car's steering limit whether or not a lock results, so a lock that never engages shows up as clearly as one that does. In Assetto Corsa it needs CUSTOM_SOFT_LOCK enabled in CSP's FFB Tweaks and the TF4ALL CSP Bridge installed; in iRacing and RaceRoom (takeover on) it needs the Soft lock option on. Session only. Toggle.\n" +
@@ -14462,6 +14463,38 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 string msg = _plugin.ToggleEffectDownloadTrace();
                 if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                return;
+            }
+            // CLASSICCOND: G923 PS/PC experiment. The game's classic-protocol
+            // damper and friction slots (types 0x0c, 0x02, 0x0e), which the
+            // firmware ignores while Trueforce streams, rendered through the
+            // DirectInput condition engine. OFF by default, unvalidated on
+            // hardware; persisted so a tester can restart into it.
+            if (code.Equals("CLASSICCOND", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                bool on = _plugin.ToggleClassicConditionEmulation();
+                if (AccessCodeStatus != null)
+                {
+                    if (!on)
+                        AccessCodeStatus.Text =
+                            "Classic effect rendering OFF: the game's classic-protocol damper, friction "
+                            + "and spring slots are tracked but not played (the shipping default).";
+                    else if (_plugin.WheelDetected && !_plugin.WheelIsLegacyF8)
+                        AccessCodeStatus.Text =
+                            "Set, but this wheel does not use the classic slot protocol for its force "
+                            + "feedback, so nothing changes here. It applies to the G923 PS/PC only; every "
+                            + "other wheel's condition effects already arrive over HID++ and are rendered.";
+                    else
+                        AccessCodeStatus.Text =
+                            "Classic effect rendering ON: the game's classic-protocol damper, friction and "
+                            + "spring slots are decoded and played into the stream. Watch SimHub.txt for the "
+                            + "first 'classic' effect line, then drive: the wheel should resist turning where "
+                            + "the game asks for damping, and it should also pull back toward center where the "
+                            + "game commands a spring, on top of the force you already feel. CSPFFB DAMPSIGN "
+                            + "flips the direction if it feels like an anti-damper, DICOND turns the rendering "
+                            + "off for an A/B, DAMPCAL sets the strength. Type CLASSICCOND again to turn it off.";
+                }
                 return;
             }
             // ACLEDS: the rev-light contention diagnostic. Reports what the

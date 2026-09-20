@@ -16,6 +16,6 @@ It allows us to control the wheel's other surfaces. The rev lights and the Dynam
 
 In iRacing, do **not** set its strength to 0: the plugin reads that number and a 0 leaves you with a dead wheel. Turn its force feedback off and leave the number alone.
 
-In RaceRoom, disable force feedback and set its intensity to 0.
+In RaceRoom, disable force feedback. Its intensity slider can stay where it is.
 
 Follow that sim's own setup guide rather than reusing settings from another.

@@ -216,6 +216,40 @@ namespace TrueforceForAll.Plugin
 
                 new GuideEntry
                 {
+                    Key = "car-facts", Group = GroupAbout,
+                    Title = "Car facts",
+                    ActionLabel = "Open Car Facts",
+                    Action = JumpToCarFacts,
+                },
+                new GuideEntry
+                {
+                    Key = "tuning-effects", Group = GroupAbout,
+                    Title = "Tuning the effects",
+                    ActionLabel = "Open the Effects tab",
+                    Action = () => SelectTab(EffectsTab),
+                },
+                // Gated the same way the lights guide's own entry is not: the
+                // screen is G PRO / RS50 only, so on a detected wheel without one
+                // the entry would open a page about hardware the reader does not
+                // have. Fails OPEN on an undetected wheel, like the LIGHTSYNC tab.
+                new GuideEntry
+                {
+                    Key = "wheel-screen", Group = GroupAbout,
+                    Title = "The wheel's screen",
+                    Visible = () => !(_plugin != null && _plugin.WheelDetected
+                                      && !_plugin.WheelHasOledScreen),
+                    ActionLabel = "Open the screen settings",
+                    Action = JumpToWheelScreen,
+                },
+                new GuideEntry
+                {
+                    Key = "backup-sync", Group = GroupAbout,
+                    Title = "Backup and sync",
+                    ActionLabel = "Open Backup & Sync",
+                    Action = JumpToBackupSync,
+                },
+                new GuideEntry
+                {
                     // Gated on the tab existing, which is BOTH terms of the rule in
                     // ApplyLightsyncTabVisibility, not just the unlock. A detected
                     // wheel whose strip has a fixed look (the G923) never gets the
@@ -244,6 +278,27 @@ namespace TrueforceForAll.Plugin
                     ActionLabel = "Open the full table",
                     Action = () => OpenUrl(
                         "https://github.com/Mhytee/Trueforce-For-All#games-with-native-trueforce"),
+                },
+                // TF4ALL Dash. The phone button in the header and the Settings
+                // section are both entry points to the QR dialog, which carries
+                // the getting-it-there steps; what neither surface says is what
+                // the dash IS, which is the thing a user has to know before
+                // they would ever press a phone-shaped button.
+                new GuideEntry
+                {
+                    Key = "dash", Group = GroupAbout,
+                    Title = "TF4ALL Dash",
+                    ActionLabel = "Open it on your phone",
+                    Action = () => DashPhoneAccess_Click(null, null),
+                },
+                // The home-screen tile. Its two sliders carry one word each, in
+                // someone else's UI, with no room for a sentence: "Master" reads
+                // to a wheel user as the wheel's own force strength, which is the
+                // one thing it is not. The "?" in the tile's corner opens this.
+                new GuideEntry
+                {
+                    Key = "home-tile", Group = GroupAbout,
+                    Title = "The Trueforce widget",
                 },
                 new GuideEntry
                 {
@@ -374,6 +429,40 @@ namespace TrueforceForAll.Plugin
             var tab = FindAncestorTab(WheelLightsBlock);
             if (tab != null) SelectTab(tab);
             Dispatcher.BeginInvoke(new Action(() => WheelLightsBlock.BringIntoView()),
+                DispatcherPriority.Background);
+        }
+
+        /// <summary>The OLED block, wherever it currently lives. The twin of
+        /// JumpToWheelLights, and reparented the same way: the screen settings sit
+        /// on the LIGHTSYNC tab when that tab is unlocked and on the FFB tab when
+        /// it is not, so the tab cannot be named here without being wrong for half
+        /// of users.</summary>
+        private void JumpToWheelScreen()
+        {
+            if (WheelScreenBlock == null) return;
+            var tab = FindAncestorTab(WheelScreenBlock);
+            if (tab != null) SelectTab(tab);
+            Dispatcher.BeginInvoke(new Action(() => WheelScreenBlock.BringIntoView()),
+                DispatcherPriority.Background);
+        }
+
+        /// <summary>The Car Facts block in the pinned header. No tab to select:
+        /// the header card sits above the tabs and is on screen whatever is
+        /// selected, so this only opens the expander and scrolls to it.</summary>
+        private void JumpToCarFacts()
+        {
+            if (CarFactsExpander == null) return;
+            CarFactsExpander.IsExpanded = true;
+            Dispatcher.BeginInvoke(new Action(() => CarFactsExpander.BringIntoView()),
+                DispatcherPriority.Background);
+        }
+
+        /// <summary>Settings tab, Backup &amp; Sync open and scrolled to.</summary>
+        private void JumpToBackupSync()
+        {
+            SelectTab(SettingsTab);
+            if (BackupExpander != null) BackupExpander.IsExpanded = true;
+            Dispatcher.BeginInvoke(new Action(() => BackupExpander?.BringIntoView()),
                 DispatcherPriority.Background);
         }
 

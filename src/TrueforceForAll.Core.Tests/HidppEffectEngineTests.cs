@@ -643,5 +643,268 @@ namespace TrueforceForAll.Core.Tests
             Assert.False(e.AnyPlaying);
             Assert.Equal(1, e.UnknownTypeDownloads);
         }
+
+        // ---------------- external slots ----------------
+        //
+        // The classic Logitech slot protocol (G923 PS/PC) feeds its decoded
+        // damper/friction conditions into four external slots that sit ABOVE
+        // the HID++ pool in the same table. Same sign contract, same
+        // evaluate, but explicitly addressed and exempt from the
+        // one-copy-per-type rule: the Windows driver plays a damper, a
+        // friction and an inertia as three 0x0c dampers at once on a C266
+        // and expects them to sum.
+
+        private static void Ext(HidppEffectEngine e, int slot, float coeff, bool play)
+            => e.UpsertExternalCondition(slot, HidppEffectEngine.TypeDamper,
+                                         coeff, coeff, 1f, 1f, 0f, 0f, play, 0);
+
+        [Fact]
+        public void ExternalDamper_OpposesMotion_SignContract()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            Ext(e, 0, 0.748f, true);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out bool playing), 0.74f, 0.76f);
+            Assert.True(playing);
+            Assert.InRange(Eval(e, 0f, -1f, 0f, 11, out _), -0.76f, -0.74f);
+        }
+
+        [Fact]
+        public void ExternalUpsert_WithoutPlay_StaysSilentUntilSetPlaying()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            Ext(e, 0, 0.5f, false);
+            Assert.False(e.AnyPlaying);
+            Assert.Equal(0f, Eval(e, 0f, 1f, 0f, 1, out bool playing), 3);
+            Assert.False(playing);
+            e.SetExternalPlaying(0, true, 5);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out _), 0.49f, 0.51f);
+        }
+
+        [Fact]
+        public void ExternalUpsert_OnPlayingSlot_KeepsPlaying_WithNewParams()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            Ext(e, 0, 0.5f, true);
+            // A classic REFRESH (or a bare re-download) into a playing slot:
+            // play=false must not stop it, and the new coefficient wins.
+            Ext(e, 0, 0.25f, false);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out bool playing), 0.24f, 0.26f);
+            Assert.True(playing);
+        }
+
+        [Fact]
+        public void SetExternalPlaying_False_ThenTrue_ResumesTheSameParams()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            Ext(e, 0, 0.5f, true);
+            e.SetExternalPlaying(0, false, 5);
+            Assert.False(e.AnyPlaying);
+            e.SetExternalPlaying(0, true, 6);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out _), 0.49f, 0.51f);
+        }
+
+        [Fact]
+        public void SetExternalPlaying_OnEmptySlot_IsANoOp()
+        {
+            var e = new HidppEffectEngine();
+            e.SetExternalPlaying(2, true, 0);
+            Assert.False(e.AnyPlaying);
+        }
+
+        [Fact]
+        public void RemoveExternal_SilencesTheSlot()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            Ext(e, 1, 0.5f, true);
+            e.RemoveExternal(1);
+            Assert.False(e.AnyPlaying);
+            e.RemoveExternal(1);   // empty: no throw
+            Assert.False(e.AnyPlaying);
+        }
+
+        // Contrast OnlyTheNewestCopyOfAConditionSurvives: the HID++ pool
+        // keeps one damper because a second is a missed destroy; the classic
+        // slots are addressed explicitly and three Windows dampers must sum.
+        [Fact]
+        public void ExternalSlots_Sum_NoOneCopyRule()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            Ext(e, 0, 0.5f, true);
+            Ext(e, 1, 0.5f, true);
+            Ext(e, 2, 0.5f, true);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out _), 1.48f, 1.52f);
+            Assert.Equal(0, e.ReplacedStaleConditions);
+        }
+
+        [Fact]
+        public void HidppAndExternalDampers_DoNotRetireEachOther()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            e.HandleDownload(AcDamper, 0, AcDamper.Length, 0);
+            Ext(e, 0, 0.5f, true);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out _), 1.23f, 1.27f);   // 0.748 + 0.5
+            Assert.Equal(0, e.ReplacedStaleConditions);
+            // A fresh HID++ download of the same type retires HID++ copies
+            // only; the external one is still there.
+            e.HandleDownload(AcDamper, 0, AcDamper.Length, 20);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 30, out _), 1.23f, 1.27f);
+            Assert.Equal(0, e.ReplacedStaleConditions);
+        }
+
+        [Fact]
+        public void ResetExternal_LeavesTheHidppPoolAlone_ResetAllClearsBoth()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            e.HandleDownload(AcDamper, 0, AcDamper.Length, 0);
+            Ext(e, 0, 0.5f, true);
+            e.ResetExternal();
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out _), 0.74f, 0.76f);
+            e.ResetAll();
+            Assert.False(e.AnyPlaying);
+            Assert.Equal(0f, Eval(e, 0f, 1f, 0f, 11, out _), 3);
+        }
+
+        [Fact]
+        public void ExternalSlot_IsNeverMovedByAWheelReply()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            // HID++ new effect, provisional at slot 1.
+            var dl = Download(0, (byte)(HidppEffectEngine.TypeDamper | 0x80), 0, 0,
+                ConditionBlock(0x7fff, 0x4000, 0, 0, 0x4000, 0x7fff));
+            e.HandleDownload(dl, 0, dl.Length, 0);
+            Ext(e, 0, 0.25f, true);
+            // The wheel's reply moves the HID++ effect to slot 5, and a stop
+            // there ends it. The external slot never took part.
+            e.AssignSlotFromReply(5);
+            e.HandleSetState(5, HidppEffectEngine.StateStop, 10);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 20, out bool playing), 0.24f, 0.26f);
+            Assert.True(playing);
+        }
+
+        [Fact]
+        public void ExternalConditions_AreInfinite()
+        {
+            var e = new HidppEffectEngine();
+            Ext(e, 0, 0.5f, true);
+            Assert.True(e.AnyPlayingAt(10_000_000, TicksPerSec));
+            Assert.True(e.AnyDamperPlayingAt(10_000_000, TicksPerSec));
+        }
+
+        // Documents the fn8 interplay; moot on a C266, which never sends fn8.
+        [Fact]
+        public void GlobalGain_ScalesExternalToo()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            e.HandleSetGain(0x7fff);
+            Ext(e, 0, 0.5f, true);
+            Assert.InRange(Eval(e, 0f, 1f, 0f, 10, out _), 0.24f, 0.26f);
+        }
+
+        // Mirror of Friction_StickSlipLockPoint through the external path.
+        [Fact]
+        public void ExternalFriction_LockPoint_AndCountsAsDamperForTheGate()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            e.UpsertExternalCondition(0, HidppEffectEngine.TypeFriction,
+                                      0.25f, 0.25f, 1f, 1f, 0f, 0f, true, 0);
+            Assert.True(e.AnyDamperPlayingAt(10, TicksPerSec));
+            Assert.Equal(0f, Eval(e, 0f, 0f, 0f, 10, out _), 3);   // seeds the lock point
+            Assert.InRange(Eval(e, 0.0125f, 0f, 0f, 11, out _), 0.115f, 0.135f);
+        }
+
+        [Fact]
+        public void ExternalUpsert_OutOfRangeSlot_IsIgnored()
+        {
+            var e = new HidppEffectEngine();
+            Ext(e, 4, 0.5f, true);
+            Ext(e, -1, 0.5f, true);
+            Assert.False(e.AnyPlaying);
+            Assert.Equal(0, e.ExternalConditionUpdates);
+        }
+
+        [Fact]
+        public void ExternalUpsert_CountsUpdates_NotParametricDownloads()
+        {
+            var e = new HidppEffectEngine();
+            Ext(e, 0, 0.5f, true);
+            Ext(e, 0, 0.5f, true);
+            Assert.Equal(2, e.ExternalConditionUpdates);
+            Assert.Equal(0, e.ParametricDownloads);
+        }
+
+        // ---------------- classic waveforms in external slots ----------------
+
+        [Fact]
+        public void ExternalPeriodic_Square_AlternatesFullScale()
+        {
+            // The anti-click slew is off here so the shape is read raw; it
+            // rounds every waveform edge over a few ms in production.
+            var e = new HidppEffectEngine { WaveformMaxStepPerMs = 0f };
+            e.UpsertExternalPeriodic(0, HidppEffectEngine.TypeSquare,
+                magnitude: 0.5f, offset: 0f, periodMs: 100, phase: 0f, lengthMs: 0,
+                trapRise: 0f, trapHigh: 0f, trapFall: 0f, play: true, nowTicks: 0);
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 10, out bool playing), 0.49f, 0.51f);
+            Assert.True(playing);
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 60, out _), -0.51f, -0.49f);
+        }
+
+        [Fact]
+        public void ExternalPeriodic_Rectangle_HoldsEachLevelForItsOwnTime()
+        {
+            // A trapezoid with no ramps is a rectangle: high for a quarter of
+            // the cycle, low for the other three quarters.
+            var e = new HidppEffectEngine { WaveformMaxStepPerMs = 0f };
+            e.UpsertExternalPeriodic(0, HidppEffectEngine.TypeTrapezoid,
+                magnitude: 1f, offset: 0f, periodMs: 100, phase: 0f, lengthMs: 0,
+                trapRise: 0f, trapHigh: 0.25f, trapFall: 0f, play: true, nowTicks: 0);
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 10, out _), 0.99f, 1.01f);   // inside the high quarter
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 30, out _), -1.01f, -0.99f); // past it
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 90, out _), -1.01f, -0.99f);
+        }
+
+        [Fact]
+        public void ExternalPeriodic_Trapezoid_RampsBetweenItsHolds()
+        {
+            // Rise over the first fifth, hold high for the second, fall over
+            // the third, hold low for the rest.
+            var e = new HidppEffectEngine { WaveformMaxStepPerMs = 0f };
+            e.UpsertExternalPeriodic(0, HidppEffectEngine.TypeTrapezoid,
+                magnitude: 1f, offset: 0f, periodMs: 100, phase: 0f, lengthMs: 0,
+                trapRise: 0.2f, trapHigh: 0.2f, trapFall: 0.2f, play: true, nowTicks: 0);
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 10, out _), -0.05f, 0.05f);  // mid-rise
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 30, out _), 0.99f, 1.01f);   // holding high
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 50, out _), -0.05f, 0.05f);  // mid-fall
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 80, out _), -1.01f, -0.99f); // holding low
+        }
+
+        [Fact]
+        public void ExternalRamp_TravelsThenStops()
+        {
+            // Started past tick 0, which the engine reads as "never
+            // evaluated" and which would leave the next step with no elapsed
+            // time to work from.
+            var e = new HidppEffectEngine { WaveformMaxStepPerMs = 0f };
+            e.UpsertExternalRamp(0, rampStart: -1f, rampEnd: 1f, lengthMs: 100,
+                                 play: true, nowTicks: 100);
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 100, out _), -1.01f, -0.99f);
+            Assert.InRange(Eval(e, 0f, 0f, 0f, 150, out _), -0.05f, 0.05f);
+            // Past its length the ramp stops contributing, the way the classic
+            // protocol says it does once the target is reached.
+            Eval(e, 0f, 0f, 0f, 300, out bool stillPlaying);
+            Assert.False(stillPlaying);
+        }
+
+        [Fact]
+        public void ExternalPeriodic_RefusesAZeroPeriod_RatherThanDividingByIt()
+        {
+            var e = new HidppEffectEngine();
+            e.UpsertExternalPeriodic(0, HidppEffectEngine.TypeSquare,
+                magnitude: 1f, offset: 0f, periodMs: 0, phase: 0f, lengthMs: 0,
+                trapRise: 0f, trapHigh: 0f, trapFall: 0f, play: true, nowTicks: 0);
+            Eval(e, 0f, 0f, 0f, 10, out bool playing);
+            Assert.False(playing);
+            Assert.Equal(0, e.ExternalConditionUpdates);
+        }
+
     }
 }

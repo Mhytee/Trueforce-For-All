@@ -1,4 +1,4 @@
-Farming Simulator does not publish the physics the plugin needs, so we ship a small mod that does. It adds ground texture through the wheel, the implement thud as your equipment drops into work, and the vibration cut while your wheels are off the ground.
+Our TF4ALL Enhanced Telemetry mod adds ground texture through the wheel, the implement thud as your equipment drops into work, and the vibration cut while your wheels are off the ground. Farming Simulator does not publish the physics those need, so the mod sends it.
 
 Your steering force does not depend on it. The plugin replaces the game's centering spring with a force of its own either way{{guide: ([what that is](guide:telemetry-ffb))|panel:}}.
 

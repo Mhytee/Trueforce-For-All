@@ -2041,6 +2041,22 @@ namespace TrueforceForAll.Plugin
         // unreachable. Real Mode B (value 1) wins; spring only arms from 0.
         private long _springArmCandidateSinceTicks;   // 0 = no candidate window open
 
+        // The engine's additive copy of the game's classic spring (type 0x0b
+        // under CLASSICCOND) renders zero while our own spring model owns the
+        // force. Called wherever _forceMode changes rather than only once per
+        // DataUpdate pass: a disarm that landed a pass late left the copy
+        // silent for that window with nothing replacing it, and an arm that
+        // landed a pass late left it summing beside ComputeSpringModeForce.
+        // Same reasoning as the FfbBypassTapCorrections assertion in
+        // ApplyModeBFromSettings, and the per-pass call in
+        // UpdateSpringModeArming stays as the re-attach backstop.
+        private void AssertSpringModeStandDown()
+        {
+            var tapStandDown = _ffbTap;
+            if (tapStandDown != null)
+                tapStandDown.ClassicSpringModeActive = _forceMode == ForceModeSpring;
+        }
+
         private void UpdateSpringModeArming()
         {
             var tap = _ffbTap;
@@ -2054,6 +2070,13 @@ namespace TrueforceForAll.Plugin
             // minutes into a session (2026-08-08 log). Asserted every pass
             // so a recreated tap (self-heal restart) re-learns it.
             if (tap != null) tap.SyntheticFfbActive = _forceMode == ForceModeSpring;
+            // Same assertion, one layer down: while spring mode renders the
+            // game's captured spring itself, the engine's additive copy of
+            // that same spring (classic type 0x0b, CLASSICCOND) must stand
+            // down, or the wheel gets the spring twice. This pass-level call
+            // is the re-attach backstop; the arm and the disarm below assert
+            // it again on the spot, so neither edge lags by a DataUpdate.
+            AssertSpringModeStandDown();
             // The iRacing reshape authors its own sign and takes its strength
             // from its own control, so the tapped-path corrections are switched
             // off under it. Asserted every pass rather than on mode change, so a
@@ -2089,6 +2112,7 @@ namespace TrueforceForAll.Plugin
                 if (!toggleOn || tapGone || scalar)
                 {
                     _forceMode = ForceModeOff;
+                    AssertSpringModeStandDown();
                     _springArmCandidateSinceTicks = 0;
                     // Anything the tap captured while armed was IGNORED (the
                     // spring path replaces the target), so it must not be
@@ -2096,7 +2120,17 @@ namespace TrueforceForAll.Plugin
                     // was a wheel-slam: the misdecoded heartbeat scalar
                     // stayed "fresh" for up to 10 s after the game closed
                     // and pass-through drove the wheel to full lock with it.
-                    tap?.ClearLastFfbTarget();
+                    //
+                    // The SCALAR half only, not the full ClearLastFfbTarget
+                    // this used to call. The game is mid-session here, not
+                    // paused, and the full reset also wiped the decoded
+                    // effect table: the engine's additive copy of the very
+                    // spring this mode was rendering went with it, and Forza
+                    // sends its menu spring once and leaves it playing, so
+                    // the autocenter stayed silent for the rest of the
+                    // session. The pause and game-change callers keep the
+                    // full reset, where a wipe is what is wanted.
+                    tap?.ClearCapturedForceKeepingEffects();
                     SimHub.Logging.Current.Info("[TF4ALL] Spring mode disarmed"
                         + (scalar ? " (the game is streaming force values; pass-through resumes)." : "."));
                 }
@@ -2122,6 +2156,7 @@ namespace TrueforceForAll.Plugin
             _springRamp = 0f;
             _springRampPrevTicks = 0;
             _forceMode = ForceModeSpring;
+            AssertSpringModeStandDown();
             SimHub.Logging.Current.Info(fsGame
                 ? "[TF4ALL] Spring mode armed for Farming Simulator: the plugin's steering model "
                   + "replaces the game's force feedback on every wheel, rendered at the wheel's "
@@ -3972,6 +4007,10 @@ namespace TrueforceForAll.Plugin
             // for us), the cleanest first-run signal ReadCommonSettings gives.
             bool wasFreshInstall = false;
             Settings = this.ReadCommonSettings("GeneralSettings", () => { wasFreshInstall = true; return new TrueforceSettings(); });
+            // Kept for the whole session: wheel detection runs later (and again
+            // on a replug) and needs to know this PC had no settings file, so
+            // first-run-only defaults can never reach an existing setup.
+            _wasFreshInstall = wasFreshInstall;
             // Defensive nulls in case an older settings file was deserialized
             // without one of these dictionaries.
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
@@ -4773,6 +4812,57 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Rate limit for the G923 PlayStation-mode switch, deliberately not a
+        // one-shot: that wheel forgets PC mode whenever it loses power, which is
+        // why the G HUB workaround it replaces had to be repeated at every boot.
+        // A wheel arriving in PlayStation mode mid-session is therefore normal
+        // and must be switched again. A latch would have to catch the gap
+        // between the old device leaving and the new one arriving, and
+        // rediscovery ticks are far enough apart to miss it, leaving us latched
+        // against a wheel we could have fixed. One attempt a minute instead, the
+        // same rhythm LogDiscoveryDiagnostic uses: it costs a log line and
+        // cannot get stuck.
+        private long _lastPcModeSwitchTicks;
+
+        /// <summary>Offer a PlayStation-mode G923 the PC-mode switch, so the user
+        /// does not have to run G HUB after every computer start to get the wheel
+        /// out of a mode where it exposes no Trueforce interface. Only ever reached from the
+        /// no-wheel-found path, and only ever aimed at product id 0xC267: a
+        /// working setup is never touched, and no other wheel sees the command.
+        /// See WheelPcModeSwitch for why this is a refusal rather than a risk if
+        /// Windows will not carry the report.</summary>
+        private void MaybeSwitchG923PsToPcMode()
+        {
+            try
+            {
+                // Cheap check first, so the cooldown only ever governs real
+                // attempts: a wheel that arrives seconds after a failed one still
+                // gets switched on the next discovery pass rather than waiting out
+                // a minute it had nothing to do with.
+                if (!WheelPcModeSwitch.AnyPresent()) return;
+
+                long now = Stopwatch.GetTimestamp();
+                if (_lastPcModeSwitchTicks != 0
+                    && now - _lastPcModeSwitchTicks < Stopwatch.Frequency * 60)
+                    return;
+                _lastPcModeSwitchTicks = now;
+
+                var result = WheelPcModeSwitch.TrySwitch(
+                    m => SimHub.Logging.Current.Info("[TF4ALL] " + m));
+
+                // On success the wheel USB-resets and comes back as 0xC266, which
+                // the recovery watchdog picks up on its next pass; nothing here
+                // waits for it.
+                if (result == WheelPcModeSwitch.Result.Sent)
+                    WheelStatus = "Switching the wheel to PC mode...";
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] PC-mode switch failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         /// <summary>Find the wheel and take its identity WITHOUT opening it.
         ///
         /// Split out of bring-up because lights-only mode never opens the Trueforce
@@ -4797,6 +4887,7 @@ namespace TrueforceForAll.Plugin
                     "finish detecting the wheel, then close G HUB (it must stay closed while this " +
                     "plugin runs) and restart SimHub.");
                 LogDiscoveryDiagnostic();
+                MaybeSwitchG923PsToPcMode();
                 return false;
             }
 
@@ -4873,6 +4964,25 @@ namespace TrueforceForAll.Plugin
                 {
                     var target = new TrueforceSettings();
                     ApplyWheelDefaults(target, shortModel);
+
+                    // Trueforce master gain, FRESH INSTALLS ONLY: the wheel's
+                    // own starting level (the G923's belt renders the haptic
+                    // stream fainter than the direct drives, so it starts at
+                    // 1.5). Gated on the first-run signal AND on the gain still
+                    // sitting exactly on the factory value, and it runs before
+                    // the latch is stamped, so it happens at most once on a PC
+                    // and an update never moves a level someone chose.
+                    if (_wasFreshInstall && string.IsNullOrEmpty(Settings.WheelDefaultsApplied)
+                        && Settings.MasterGain == new TrueforceSettings().MasterGain
+                        && target.MasterGain != Settings.MasterGain)
+                    {
+                        float gainBefore = Settings.MasterGain;
+                        Settings.MasterGain = target.MasterGain;
+                        if (_mixer != null) _mixer.MasterGain = Settings.MasterGain;
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] New install: master gain {gainBefore:0.00} to {Settings.MasterGain:0.00} (the {shortModel} starting level).");
+                        try { MasterGainChangedExternally?.Invoke(); } catch { }
+                    }
 
                     var oldRecipes = new System.Collections.Generic.List<TrueforceSettings>
                     {
@@ -9358,6 +9468,10 @@ namespace TrueforceForAll.Plugin
             // 2026-09-13). The per-pass assertion stays as the re-attach backstop.
             var devMode = _device;
             if (devMode != null) devMode.FfbBypassTapCorrections = _forceMode == ForceModeIRacing;
+            // Same window, same fix: leaving spring mode here would otherwise
+            // keep the engine's copy of the game's classic spring stood down
+            // until the next DataUpdate pass.
+            AssertSpringModeStandDown();
 
             if (save) PersistSettings();
         }
@@ -10702,6 +10816,13 @@ namespace TrueforceForAll.Plugin
         /// perceptible; the wheel now takes the same 0.05 as the others.
         /// Damping is the only thing still separating the G923 from the G PRO.
         ///
+        /// The table also carries the Trueforce master gain (1.5 on the G923,
+        /// the factory 1.0 elsewhere), but that field is read ONLY by the
+        /// fresh-install seed on first wheel detection. It is not in
+        /// ModeBRecipeFields, so the defaults merge never moves it, and
+        /// "Reset FFB tuning to defaults" does not copy it: an existing
+        /// user's gain is theirs and is never changed under them.
+        ///
         /// Used by "Reset FFB tuning to defaults" (wheel-aware) and by the one-time
         /// fresh-install specialization on wheel detection.</summary>
         public static void ApplyWheelDefaults(TrueforceSettings s, string wheelModel)
@@ -10713,6 +10834,14 @@ namespace TrueforceForAll.Plugin
                     s.ModeBSatGain  = 0.60f;   // "Strength": RS50 defaults
                     break;
                 case "G923":
+                    // Trueforce master gain (owner call 2026-09-15): the belt
+                    // motor renders the haptic stream fainter than the direct
+                    // drives, so the G923 starts at 1.5 where every other
+                    // wheel starts at the factory 1.0. Global, not preset
+                    // scoped, so a built-in preset applied on a G923 inherits
+                    // it (presets never carry MasterGain). Read only by the
+                    // fresh-install seed; never merged onto an existing setup.
+                    s.MasterGain    = 1.5f;
                     s.ModeBSatGain  = 1.00f;   // "Strength": headroom on the weaker motor, retuned down from 1.25
                     s.ModeBDamper   = 0.09f;   // belt friction already damps; two clicks under the G PRO
                     // Min force is NOT set here any more: the G923 takes the
@@ -10757,8 +10886,15 @@ namespace TrueforceForAll.Plugin
         /// 0.15 per wheel). Generation 7 = the 2026-08-10 FS strength
         /// re-snapshot: SpringModeStrength 1.0 to 0.80, the owner's own G PRO
         /// value, with the G923 pinned at the outgoing 1.0 in the per-wheel
-        /// table so the belt wheel keeps its headroom.</summary>
+        /// table so the belt wheel keeps its headroom. The 2026-09-15 G923
+        /// master gain did NOT bump this: it is seeded on fresh installs only
+        /// and never merged, so no latched install needs to re-evaluate.</summary>
         private const int ModeBDefaultsGeneration = 7;
+
+        /// <summary>True when this session started with no settings file for us
+        /// (see Init). Gates first-run-only defaults such as the per-wheel
+        /// starting master gain.</summary>
+        private bool _wasFreshInstall;
 
         /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
         /// current factory values: every previously SHIPPED defaults-set, expressed
@@ -10849,6 +10985,11 @@ namespace TrueforceForAll.Plugin
         // feel toggle; ModeBGameEnabled is per-user, not recipe). Drives the
         // per-field defaults merge, so a field added to the recipe only needs
         // listing here plus its initializer.
+        // NOTE: MasterGain is deliberately NOT a recipe field. The wheel table
+        // carries a master gain (the G923's 1.5), but it is seeded on a FRESH
+        // INSTALL only, never merged: master gain is the control users reach
+        // for constantly, and 1.0 is a value plenty of people chose on purpose,
+        // so the merge could not tell "untouched" from "deliberately 1.0".
         private static readonly string[] ModeBRecipeFields =
         {
             "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil", "ModeBDropFloor",
@@ -12298,7 +12439,7 @@ namespace TrueforceForAll.Plugin
                         : "SteeringForcePercentage")
                     + (_r3eInvert ? " INVERTED" : "")
                     + ", tick rate " + (rd != null ? rd.MeasuredHz.ToString("F0", ci) : "?")
-                    + "/s. Set RaceRoom's FFB intensity to 0 so the game is not also driving the wheel.");
+                    + "/s. Disable RaceRoom's force feedback so the game is not also driving the wheel.");
             }
         }
 
@@ -36367,7 +36508,16 @@ namespace TrueforceForAll.Plugin
                 // issue #13 class the release exists to prevent (review,
                 // 2026-09-13). Springs and dampers are what a menu needs.
                 conditionsOnly ? 0f : _periodicGain,
-                conditionsOnly ? 0f : _rampGain);
+                conditionsOnly ? 0f : _rampGain,
+                // The spring-mode stand-down belongs to the MAIN pump path,
+                // where MaybeReshapeFfb replaces the whole target with our
+                // own spring model and a second copy from the engine would
+                // double it. The releases below never reach that
+                // substitution: they return this value directly, so standing
+                // the captured spring down here would leave a pause menu with
+                // no centering at all, which is what these releases were
+                // written to restore.
+                allowSpringModeStandDown: !conditionsOnly);
             if (!term.HasValue || term.Value == 0) return force;
             int t = term.Value;
             _lastConditionTerm = t;
@@ -36872,7 +37022,8 @@ namespace TrueforceForAll.Plugin
             }
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] FXTEST {(native ? "NATIVE" : "ENGINE")} {kind.ToUpperInvariant()} at {strengthPct}%"
-                + (native ? "." : $" ({FxGainFamilyLabel(kind).TrimEnd(':')} {FxKindGainNow(kind):F2}; a low gain reads as a weak effect until tuned)."));
+                + (native ? "." : $" ({FxGainFamilyLabel(kind).TrimEnd(':')} {FxKindGainNow(kind):F2}; a low gain reads as a weak effect until tuned).")
+                + FxTestRigNote(kind));
             return null;
         }
 
@@ -36951,6 +37102,16 @@ namespace TrueforceForAll.Plugin
         // more than an order of magnitude, so "which one is it right now" is
         // the first question worth answering when a rendered damper rings.
         private string _motionSourceNoted;
+
+        // One bracket of rig facts on every FXTEST start line, so a field
+        // report identifies its wheel, its position source and its reader
+        // rate without a second round trip.
+        private string FxTestRigNote(string kind)
+        {
+            var wheel = _wheelMotion;
+            string reads = wheel != null && wheel.IsRunning ? $"{wheel.ReadsPerSecond}/s" : "off";
+            return $" [wheel 0x{_hidWheelPid:X4}, motion source {(_motionSourceNoted ?? "not yet chosen")}, DirectInput {reads}]";
+        }
 
         private void NoteMotionSource(string what)
         {
@@ -38946,6 +39107,21 @@ namespace TrueforceForAll.Plugin
         internal void NotePanel(SettingsControl panel)
             => _panelRef = panel == null ? null : new WeakReference<SettingsControl>(panel);
 
+        /// <summary>Whether SimHub has built the settings panel yet this run.
+        /// A caller that wants the guides and can also NAVIGATE to the plugin
+        /// page (the home-screen tile) checks this first, so a session where the
+        /// page was never opened lands on the guide rather than on the web
+        /// fallback below.</summary>
+        internal bool HasSettingsPanel
+        {
+            get
+            {
+                SettingsControl panel = null;
+                try { _panelRef?.TryGetTarget(out panel); } catch { panel = null; }
+                return panel != null;
+            }
+        }
+
         internal void OpenGuideFromAnywhere(string key)
         {
             SettingsControl panel = null;
@@ -39848,6 +40024,10 @@ namespace TrueforceForAll.Plugin
             // Re-apply the dev/test no-FFB simulation across tap restarts.
             tap.SimulateNoFfbCapture = _simulateNoFfb;
 
+            // Classic damper/friction rendering (CLASSICCOND, persisted):
+            // re-applied on every tap (re)start like the flag above.
+            tap.ClassicConditionsEnabled = Settings?.ClassicConditionEmulationEnabled ?? false;
+
             // Per-wheel identity (mescon, 2026-07): seed the HID++ 0x8123
             // feature-index resolver (RS50 = 0x10, else the G PRO's 0x0e) and
             // open the RS50 report-0x12 path without the experimental opt-in. Seed
@@ -40006,6 +40186,32 @@ namespace TrueforceForAll.Plugin
             if (_ffbTap == null) return;
             bool enabled = Settings?.LogUsbBytesEnabled ?? false;
             _ffbTap.SetRawPacketLogPath(enabled ? GetUsbTraceLogPath() : null);
+        }
+
+        // CLASSICCOND: render the G923 PS/PC's classic-protocol damper and
+        // friction slots through the DirectInput condition engine. Persists
+        // (does not travel in a backup), applies to the live tap now and is
+        // re-applied by WireFfbTapCallbacks on every tap restart. Turning it
+        // OFF goes through the pause primitive so the engine's classic slots
+        // are dropped on the parser thread, never from here; only when the
+        // region was ever fed (a HID++ wheel never feeds it, so there is
+        // nothing to wipe and its own condition snapshot stays). Returns the
+        // new state.
+        public bool ToggleClassicConditionEmulation()
+        {
+            if (Settings == null) return false;
+            bool on = !Settings.ClassicConditionEmulationEnabled;
+            Settings.ClassicConditionEmulationEnabled = on;
+            try { PersistSettingsCore(); } catch { }
+            var tap = _ffbTap;
+            if (tap != null)
+            {
+                tap.ClassicConditionsEnabled = on;
+                if (!on && tap.HidppEffects.ExternalConditionUpdates > 0) tap.ClearLastFfbTarget();
+            }
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Classic damper/friction rendering {(on ? "ON" : "OFF")} (G923 PS/PC slot protocol into the condition engine).");
+            return on;
         }
 
         // Toggle the raw USB packet log. Persists the new state and applies

@@ -651,6 +651,12 @@ namespace TrueforceForAll.Plugin
         // HydrateModeToggles / PersistManagerMode in PresetManagerControl.)
         public bool ManagerCommunityForCars    { get; set; } = false;
 
+        // Trueforce master gain: the overall level of the haptic stream.
+        // Global (never preset-scoped) and auto-persisted. 1.0 is the G PRO
+        // and RS50 starting level; a G923 starts at 1.5 (ApplyWheelDefaults),
+        // seeded on a FRESH INSTALL only. Nothing ever rewrites this field
+        // afterwards: it is the user's own level, so no defaults generation,
+        // preset or reset moves it (owner call 2026-09-15).
         public float MasterGain { get; set; } = 1.0f;
 
         // Step master gain moves on each press of a bound Controls-tab action
@@ -993,6 +999,19 @@ namespace TrueforceForAll.Plugin
         // (owner call 2026-08-07): arming requires spring-only FFB on the
         // bus, so games with streamed FFB never see it.
         public bool ClassicSpringEmulationEnabled { get; set; } = true;
+
+        // Classic-condition emulation (G923 PS/PC, PID C266): the game's
+        // classic-protocol force slots, which the firmware ignores while our
+        // stream runs, rendered through the DirectInput condition engine the
+        // HID++ wheels already use. Covers the damper (0x0c, 0x02), friction
+        // (0x0e), the four springs (0x01, 0x03, 0x0b, 0x0d) and the periodics
+        // and ramp; the variable and constant scalars keep the pass-through
+        // path. OFF by default and behind the CLASSICCOND code: unvalidated
+        // on hardware (2026-09-16). The hi-res spring 0x0b renders twice
+        // over: additively through the engine during normal driving, and as
+        // the base force under spring mode, with the engine copy standing
+        // down while that mode is armed so the wheel never gets it twice.
+        public bool ClassicConditionEmulationEnabled { get; set; } = false;
 
         // Spring-mode enhancements, each its own toggle so they can be
         // hardware-tested one at a time. Terrain feel: ground roughness from

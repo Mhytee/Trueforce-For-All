@@ -13,7 +13,7 @@ namespace TrueforceForAll.Core.Tests
     //
     //   11 08 <force> ...   5955x  slot 1, download-and-play, variable force
     //   13 00 00 ...         109x  slot 1, STOP force
-    //   21 0b 80 80 ...      276x  slot 2, download-and-play, double constant
+    //   21 0b 80 80 ...      276x  slot 2, download-and-play, hi-res spring (auto-center)
     //   14 00 / f5 00          5x  default spring on / off
     //   f8 12 <mask> ...   12984x  extended command (rev LEDs), ACC capture
     //   01 00 ...         207378x  our own ep3 Trueforce stream, ACC capture
@@ -122,8 +122,8 @@ namespace TrueforceForAll.Core.Tests
         [Fact]
         public void UndecodedForceType_ContributesNothing_AndIsNotGuessedAt()
         {
-            // 21 0b: slot 2, double constant. We cannot decode it, so it must
-            // neither invent a force nor disturb the slot we can decode.
+            // 21 0b: slot 2, hi-res spring (its own path, never a scalar). It
+            // must neither invent a scalar force nor disturb the slot we can decode.
             var tap = Run(Record(Cmd(0x11, 0x08, 0xC0)),
                           Record(new byte[] { 0x21, 0x0b, 0x80, 0x80, 0x88, 0x00, 0xff }));
             Assert.Equal((short)(64 << 8), tap.TryGetFreshFfbTarget(1000));

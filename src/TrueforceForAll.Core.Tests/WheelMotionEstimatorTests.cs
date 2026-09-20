@@ -145,5 +145,78 @@ namespace TrueforceForAll.Core.Tests
             Assert.True(arrMax - arrMin < (pumpMax - pumpMin) / 4,
                 $"arrival ripple {arrMax - arrMin:F4} vs pump ripple {pumpMax - pumpMin:F4}");
         }
+
+        // ---- frequency response of the differentiator ----
+        //
+        // The G923 inertia buzz was a property of this response, so these
+        // measure it directly rather than by feel. Drive a sinusoidal
+        // velocity, read back the peak acceleration, divide by the velocity
+        // amplitude: that ratio is the differentiator's gain at that
+        // frequency, in units of 1/s. The velocity one-pole is off so the
+        // measurement isolates the differentiator.
+        //
+        // Two poles, s/(1+s tau)^2 with tau 0.05, predict
+        // |H| = w/(1+(w tau)^2). One pole predicted w/sqrt(1+(w tau)^2),
+        // which flattens at 1/tau = 20 and stays there forever.
+        private static double AccelGainAt(double hz)
+        {
+            var e = new WheelMotionEstimator { VelocityCutoffHz = 0 };
+            const double amp = 1.0;
+            double pos = 0, peak = 0;
+            for (int ms = 0; ms <= 3000; ms++)
+            {
+                double t = ms / 1000.0;
+                double vel = amp * Math.Sin(2 * Math.PI * hz * t);
+                e.UpdateWithVelocity(pos, vel, ms, TicksPerSec);
+                pos += vel * 0.001;
+                if (t > 2.5 && Math.Abs(e.Acceleration) > peak) peak = Math.Abs(e.Acceleration);
+            }
+            return peak / amp;
+        }
+
+        [Fact]
+        public void Acceleration_IsTheTrueDerivativeBelowTheCorner()
+        {
+            // At 1 Hz a unit-amplitude velocity sine has a true peak
+            // acceleration of 2 pi = 6.283. The band-limited differentiator
+            // reads 5.72 of that, within about 10 %, which is the band hands
+            // actually drive.
+            double gain = AccelGainAt(1.0);
+            Assert.InRange(gain, 5.3, 6.1);
+        }
+
+        [Fact]
+        public void Acceleration_RollsOffAboveTheCorner_RatherThanHoldingFlat()
+        {
+            // 50 Hz is the buzz band. One pole held 20 here, which rendered
+            // as inertia is a twenty times damper and through the loop delay
+            // is negative damping. Two poles give about 1.27.
+            double gain = AccelGainAt(50.0);
+            Assert.InRange(gain, 1.0, 1.6);
+            Assert.True(gain < 3.0, $"50 Hz gain {gain:F2} is near the single-pole 20, so the second pole is missing");
+
+            // Still falling higher up, where a single pole would not be.
+            double higher = AccelGainAt(100.0);
+            Assert.True(higher < gain, $"100 Hz gain {higher:F2} should be under the 50 Hz {gain:F2}");
+        }
+
+        [Fact]
+        public void Acceleration_OneCountEncoderDitherAtRest_StaysNearZero()
+        {
+            // A 16-bit axis flipping between two adjacent counts every 2 ms,
+            // which is what an idle wheel's encoder does. A real flywheel
+            // makes no force standing still, so the estimate must not either.
+            const double count = 1.0 / 32767.5;
+            var e = new WheelMotionEstimator();
+            double peak = 0;
+            for (int ms = 0; ms <= 600; ms++)
+            {
+                if (ms % 2 == 0) e.Update((ms / 2) % 2 == 0 ? 0.0 : count, ms, TicksPerSec);
+                if (ms > 200 && Math.Abs(e.Acceleration) > peak) peak = Math.Abs(e.Acceleration);
+            }
+            // Full scale is 2.0 of range, so 0.01 range/s^2 into an inertia
+            // effect at any sane gain is inaudible.
+            Assert.True(peak < 0.01, $"rest dither produced {peak:F5} range/s^2");
+        }
     }
 }

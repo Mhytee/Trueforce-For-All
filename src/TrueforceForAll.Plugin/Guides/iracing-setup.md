@@ -13,4 +13,4 @@ If the wheel stays quiet afterwards, one of the two iRacing switches (steps 1 an
 
 Running MAIRA and TF4ALL at the same time is not supported. Close MAIRA, then set the mode to **Normal** when ready.
 
-Making the two work together needs changes on MAIRA's side. We have offered them to MAIRA's author and are waiting to hear back. If you would like MAIRA and TF4ALL to be compatible, say so on [MAIRA's GitHub](https://github.com/mherbold/MarvinsAIRARefactored) or in [MAIRA's Discord](https://discord.gg/Y7JN3BAz72).
+Making the two work together needs changes on MAIRA's side. We have offered them to MAIRA's author and are waiting to hear back.

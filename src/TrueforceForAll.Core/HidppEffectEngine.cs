@@ -66,6 +66,14 @@ namespace TrueforceForAll.Core
         public const byte TypeRamp         = 0x0a;
         public const byte AutostartBit     = 0x80;
 
+        /// <summary>Engine-internal waveform with no HID++ wire equivalent: a
+        /// trapezoid with independent rise, hold-high, fall and hold-low
+        /// segments. One shape covers three of the classic Logitech protocol's
+        /// periodics, since a rectangle is a trapezoid whose ramps are zero
+        /// and a triangle is one whose holds are zero. Numbered above the wire
+        /// range so a downloaded type can never collide with it.</summary>
+        public const byte TypeTrapezoid    = 0x20;
+
         /// <summary>Name for an effect type byte, for logs that have to be read
         /// by a human deciding whether the wheel was asked for the right
         /// thing.</summary>
@@ -84,6 +92,7 @@ namespace TrueforceForAll.Core
                 case TypeFriction:     return "friction";
                 case TypeInertia:      return "inertia";
                 case TypeRamp:         return "ramp";
+                case TypeTrapezoid:    return "trapezoid";
                 default:               return "unknown";
             }
         }
@@ -93,6 +102,16 @@ namespace TrueforceForAll.Core
         public const byte StatePause = 0x03;
 
         private const int SlotCount = 16;   // mainline GET_INFO reports the pool; 16 covers it
+
+        /// <summary>Slots owned by an external decoder: the classic Logitech
+        /// slot protocol has four (the G923 PS/PC, which speaks no HID++ at
+        /// all). They live ABOVE the HID++ pool in the same table, so no
+        /// HID++ function can address, move, retire or destroy them, and the
+        /// one-copy-per-type rule never applies: classic slots are addressed
+        /// explicitly and overwritten in place, and the Windows driver plays
+        /// several of them at once (damper, friction and inertia all land as
+        /// separate 0x0c dampers on a C266) and expects them to sum.</summary>
+        public const int ExternalSlotCount = 4;
 
         /// <summary>True for a type this engine renders (everything except
         /// the constant, which stays on the scalar path).</summary>
@@ -117,6 +136,12 @@ namespace TrueforceForAll.Core
             // half-width in position units).
             public float LeftSat, LeftCoeff, Deadband, Center, RightCoeff, RightSat;
 
+            // Set on the classic hi-res spring (0x0b) only: the plugin has a
+            // second renderer for that one force (FS spring mode), so this
+            // copy must go silent while that renderer owns the wheel. See
+            // SpringModeActive.
+            public bool StandsDownForSpringMode;
+
             // Periodic (magnitude/offset -1..1, phase 0..1 of a cycle) and
             // ramp (start/end -1..1). Envelope levels are fractions of the
             // magnitude; lengths in ms.
@@ -124,6 +149,10 @@ namespace TrueforceForAll.Core
             public int   PeriodMs;
             public float Phase;
             public float RampStart, RampEnd;
+
+            // Trapezoid segment lengths as fractions of one cycle; the
+            // hold-low segment is whatever is left over.
+            public float TrapRise, TrapHigh, TrapFall;
             public float AttackLevel, FadeLevel;
             public int   AttackMs, FadeMs;
 
@@ -159,8 +188,10 @@ namespace TrueforceForAll.Core
         // provisionally, so a device reply naming a different slot can move
         // it (new downloads carry slot 0; the wheel assigns the real one in
         // its interrupt-IN reply, params[0]).
-        private readonly Fx[] _slots = new Fx[SlotCount + 1];
+        private readonly Fx[] _slots = new Fx[SlotCount + ExternalSlotCount + 1];
         private int _provisionalSlot;
+
+        private static int ExternalIndex(int externalSlot) => SlotCount + 1 + externalSlot;
 
         // Pump-side snapshot: playing effects only. Null when nothing plays.
         private volatile Fx[] _playing;
@@ -382,7 +413,7 @@ namespace TrueforceForAll.Core
         /// cross-thread half).</summary>
         public void ResetAll()
         {
-            for (int i = 0; i <= SlotCount; i++) _slots[i] = null;
+            for (int i = 0; i < _slots.Length; i++) _slots[i] = null;   // both regions
             _provisionalSlot = 0;
             _playing = null;
         }
@@ -420,6 +451,174 @@ namespace TrueforceForAll.Core
             _globalGain = gain / 65535f;
         }
 
+        // ---------------- external slots (parser thread) ----------------
+        //
+        // Ingest for a decoder that already holds normalized condition
+        // parameters and its own slot numbering: the tap's classic Logitech
+        // slot machine (G923 PS/PC). Same threading contract as the HID++
+        // ingest above: parser thread only, Publish() reference-swaps the
+        // snapshot the pump reads.
+
+        /// <summary>The plugin's own spring model owns the wheel right now
+        /// (FS spring mode): every effect flagged StandsDownForSpringMode
+        /// renders zero until this clears. Written from the plugin tick, read
+        /// by Evaluate on the pump thread, so it is volatile; consulted at
+        /// EVALUATION time rather than at ingest on purpose (see the comment
+        /// on the flag in the tap), which is what makes an arm or a disarm
+        /// take effect on the very next tick with no parser traffic needed
+        /// and leaves nothing stale in the slot table either way.</summary>
+        public volatile bool SpringModeActive;
+
+        /// <summary>Upsert a condition into external slot 0..ExternalSlotCount-1.
+        /// type is an engine condition type (TypeSpring/TypeDamper/TypeFriction/
+        /// TypeInertia); coefficients -1..1, saturations 0..1, deadband
+        /// half-width and center in the measure's units. Infinite duration.
+        /// play=true marks the slot playing (download-and-play); play=false
+        /// keeps the slot's current flag (a bare download into a stopped slot
+        /// stays stopped; a refresh into a playing slot keeps playing and its
+        /// StartTicks). standsDownForSpringMode marks the effect as one the
+        /// plugin renders itself while spring mode is armed. Never touches
+        /// the HID++ pool, the provisional slot or ParametricDownloads.</summary>
+        public void UpsertExternalCondition(int externalSlot, byte type,
+                                            float leftCoeff, float rightCoeff,
+                                            float leftSat, float rightSat,
+                                            float deadband, float center,
+                                            bool play, long nowTicks,
+                                            bool standsDownForSpringMode = false)
+        {
+            if (externalSlot < 0 || externalSlot >= ExternalSlotCount) return;
+            if (!IsConditionType(type)) return;
+            int idx = ExternalIndex(externalSlot);
+            var fx = new Fx
+            {
+                Type       = type,
+                LengthMs   = 0,        // a classic slot plays until it is stopped
+                DelayMs    = 0,
+                LeftSat    = leftSat  > 1f ? 1f : leftSat  < 0f ? 0f : leftSat,
+                LeftCoeff  = leftCoeff,
+                Deadband   = deadband,
+                Center     = center,
+                RightCoeff = rightCoeff,
+                RightSat   = rightSat > 1f ? 1f : rightSat < 0f ? 0f : rightSat,
+                StandsDownForSpringMode = standsDownForSpringMode,
+            };
+            var old = _slots[idx];
+            fx.Playing    = play || (old != null && old.Playing);
+            fx.StartTicks = (old != null && old.Playing && fx.Playing) ? old.StartTicks : nowTicks;
+            // Same opt-in filter carry as HandleDownload; the tap leaves it off.
+            if (PreserveConditionFilterOnUpdate && old != null && old.Type == fx.Type)
+            {
+                fx.LpfState = old.LpfState;
+                fx.LpfInit  = old.LpfInit;
+            }
+            _slots[idx] = fx;
+            ExternalConditionUpdates++;
+            Publish();
+        }
+
+        /// <summary>Classic PLAY / STOP on an external slot. No-op on an
+        /// empty slot and when the flag does not change (a repeated PLAY on
+        /// an infinite condition has nothing to restart).</summary>
+        /// <summary>Upsert a periodic into an external slot. Same ownership
+        /// rules as UpsertExternalCondition. lengthMs 0 plays until stopped;
+        /// the trapezoid fractions are ignored by every other shape.</summary>
+        public void UpsertExternalPeriodic(int externalSlot, byte type,
+                                           float magnitude, float offset,
+                                           int periodMs, float phase, int lengthMs,
+                                           float trapRise, float trapHigh, float trapFall,
+                                           bool play, long nowTicks)
+        {
+            if (externalSlot < 0 || externalSlot >= ExternalSlotCount) return;
+            if (periodMs <= 0) return;
+            var fx = new Fx
+            {
+                Type      = type,
+                LengthMs  = lengthMs,
+                Magnitude = magnitude,
+                Offset    = offset,
+                PeriodMs  = periodMs,
+                Phase     = phase,
+                TrapRise  = trapRise,
+                TrapHigh  = trapHigh,
+                TrapFall  = trapFall,
+            };
+            PlaceExternal(externalSlot, fx, play, nowTicks);
+        }
+
+        /// <summary>Upsert a ramp into an external slot. A classic ramp stops
+        /// when it reaches its target, which lengthMs carries.</summary>
+        public void UpsertExternalRamp(int externalSlot, float rampStart, float rampEnd,
+                                       int lengthMs, bool play, long nowTicks)
+        {
+            if (externalSlot < 0 || externalSlot >= ExternalSlotCount) return;
+            var fx = new Fx
+            {
+                Type      = TypeRamp,
+                LengthMs  = lengthMs,
+                RampStart = rampStart,
+                RampEnd   = rampEnd,
+            };
+            PlaceExternal(externalSlot, fx, play, nowTicks);
+        }
+
+        // Shared tail of every external upsert: carry the slot's play state
+        // and start tick, publish, count.
+        private void PlaceExternal(int externalSlot, Fx fx, bool play, long nowTicks)
+        {
+            int idx = ExternalIndex(externalSlot);
+            var old = _slots[idx];
+            fx.Playing    = play || (old != null && old.Playing);
+            fx.StartTicks = (old != null && old.Playing && fx.Playing) ? old.StartTicks : nowTicks;
+            _slots[idx] = fx;
+            Publish();
+            ExternalConditionUpdates++;
+        }
+
+        public void SetExternalPlaying(int externalSlot, bool playing, long nowTicks)
+        {
+            if (externalSlot < 0 || externalSlot >= ExternalSlotCount) return;
+            int idx = ExternalIndex(externalSlot);
+            var fx = _slots[idx];
+            if (fx == null || fx.Playing == playing) return;
+            _slots[idx] = fx.CloneWith(playing, playing ? nowTicks : fx.StartTicks);
+            Publish();
+        }
+
+        /// <summary>The classic slot was overwritten by something this engine
+        /// does not render (a variable force, a hi-res spring on its own
+        /// path, an undecoded type): drop it. No-op on an empty slot.</summary>
+        public void RemoveExternal(int externalSlot)
+        {
+            if (externalSlot < 0 || externalSlot >= ExternalSlotCount) return;
+            int idx = ExternalIndex(externalSlot);
+            if (_slots[idx] == null) return;
+            _slots[idx] = null;
+            Publish();
+        }
+
+        /// <summary>Classic-side reset (capture start, the deferred pause
+        /// reset): the external region is gone, the HID++ pool is untouched.
+        /// Republishes when it removed something (ClearPlayingSnapshot may
+        /// have dropped the snapshot ahead of this call). An already-empty
+        /// region is a no-op: this runs at every capture start, and on a
+        /// HID++ wheel a republish here would render the retained pool
+        /// during a pause instead of when the game drives again (the HID++
+        /// path's own deferred republish).</summary>
+        public void ResetExternal()
+        {
+            bool any = false;
+            for (int i = 0; i < ExternalSlotCount; i++)
+            {
+                int idx = ExternalIndex(i);
+                if (_slots[idx] != null) { _slots[idx] = null; any = true; }
+            }
+            if (any) Publish();
+        }
+
+        /// <summary>External upserts seen (the classic analogue of
+        /// ParametricDownloads). Diagnostics.</summary>
+        public int ExternalConditionUpdates { get; private set; }
+
         // ---------------- evaluate (pump thread) ----------------
 
         /// <summary>Sum of the playing parametric effects, in fractions of
@@ -432,12 +631,15 @@ namespace TrueforceForAll.Core
         /// spring's sign is pinned by the validated convention. Every effect
         /// family carries its own gain so the test bench can tune them one at
         /// a time. Returns 0 with <paramref name="anyPlaying"/> false when
-        /// nothing plays.</summary>
+        /// nothing plays. allowSpringModeStandDown false renders the
+        /// stand-down effects anyway, for a caller that is NOT substituting
+        /// its own copy of them (see SpringModeActive).</summary>
         public float Evaluate(float posNorm, float velNormPerSec, float accel,
                               float damperGain, float inertiaGain,
                               long nowTicks, double ticksPerSecond, out bool anyPlaying,
                               int velTermSign = 1, float springGain = 1f, float frictionGain = 1f,
-                              float periodicGain = 1f, float rampGain = 1f)
+                              float periodicGain = 1f, float rampGain = 1f,
+                              bool allowSpringModeStandDown = true)
         {
             var playing = _playing;
             anyPlaying = false;
@@ -458,6 +660,17 @@ namespace TrueforceForAll.Core
                 elapsedMs -= fx.DelayMs;
                 if (fx.LengthMs > 0 && elapsedMs > fx.LengthMs) continue;
                 anyPlaying = true;
+                // The plugin renders this one itself right now. It still
+                // counts as playing (it IS on the wire, and the quiet probes
+                // and the no-FFB watchdog must keep seeing it), it just adds
+                // no force, or the wheel would get the same spring twice.
+                // Only where the caller really is substituting its own copy:
+                // the pause and focus releases evaluate conditions on their
+                // own and never reach the substitution, so standing down
+                // there would hand the menu a limp wheel instead of the
+                // game's centering, which is the failure that path exists to
+                // prevent.
+                if (allowSpringModeStandDown && SpringModeActive && fx.StandsDownForSpringMode) continue;
 
                 float term;
                 bool condition = true;
@@ -501,7 +714,7 @@ namespace TrueforceForAll.Core
                         if (fx.PeriodMs <= 0) { term = 0f; break; }
                         double cycle = elapsedMs / fx.PeriodMs + fx.Phase;
                         cycle -= Math.Floor(cycle);
-                        term = (fx.Offset + fx.Magnitude * Wave(fx.Type, cycle)
+                        term = (fx.Offset + fx.Magnitude * Wave(fx, cycle)
                                 * Envelope(fx, elapsedMs)) * periodicGain;
                         break;
                     }
@@ -758,17 +971,31 @@ namespace TrueforceForAll.Core
         private static double WaveTriangle(double c)
             => c < 0.25 ? 4 * c : c < 0.75 ? 2 - 4 * c : 4 * c - 4;
 
-        private static float Wave(byte type, double cycle)
+        private static float Wave(Fx fx, double cycle)
         {
-            switch (type)
+            switch (fx.Type)
             {
                 case TypeSine:         return (float)Math.Sin(2 * Math.PI * cycle);
                 case TypeSquare:       return cycle < 0.5 ? 1f : -1f;
                 case TypeTriangle:     return (float)WaveTriangle(cycle);
                 case TypeSawtoothUp:   return (float)(2 * cycle - 1);
                 case TypeSawtoothDown: return (float)(1 - 2 * cycle);
+                case TypeTrapezoid:    return WaveTrapezoid(fx, cycle);
                 default:               return 0f;
             }
+        }
+
+        // Rise from -1 to +1, hold high, fall back, hold low, each segment a
+        // fraction of the cycle. A zero-length segment is legal and is never
+        // divided by, which is what lets the same shape render a rectangle.
+        private static float WaveTrapezoid(Fx fx, double c)
+        {
+            if (c < fx.TrapRise) return (float)(2.0 * (c / fx.TrapRise) - 1.0);
+            c -= fx.TrapRise;
+            if (c < fx.TrapHigh) return 1f;
+            c -= fx.TrapHigh;
+            if (c < fx.TrapFall) return (float)(1.0 - 2.0 * (c / fx.TrapFall));
+            return -1f;
         }
 
         // Standard attack/fade envelope over a magnitude (ff.rst semantics):
@@ -822,13 +1049,15 @@ namespace TrueforceForAll.Core
 
         private void Publish()
         {
+            // Whole table: the HID++ pool and the external region both reach
+            // the snapshot, so Evaluate and the liveness gates see them alike.
             int n = 0;
-            for (int i = 1; i <= SlotCount; i++)
+            for (int i = 1; i < _slots.Length; i++)
                 if (_slots[i] != null && _slots[i].Playing) n++;
             if (n == 0) { _playing = null; return; }
             var arr = new Fx[n];
             int j = 0;
-            for (int i = 1; i <= SlotCount; i++)
+            for (int i = 1; i < _slots.Length; i++)
                 if (_slots[i] != null && _slots[i].Playing) arr[j++] = _slots[i];
             _playing = arr;
         }
@@ -854,6 +1083,9 @@ namespace TrueforceForAll.Core
         ///
         /// Conditions only. A game builds rumble from several periodics at
         /// once and the firmware sums those too.
+        ///
+        /// HID++ pool only: the external region (classic slots) is explicitly
+        /// addressed and exempt. Three Windows dampers on a C266 must sum.
         private void RetireOtherCopies(int keepSlot)
         {
             var kept = _slots[keepSlot];
@@ -867,7 +1099,7 @@ namespace TrueforceForAll.Core
                 _replacedStaleConditions++;
             }
         }
-ushort U16(byte[] p, int off) => (ushort)((p[off] << 8) | p[off + 1]);
+        private static ushort U16(byte[] p, int off) => (ushort)((p[off] << 8) | p[off + 1]);
         private static short  S16(byte[] p, int off) => (short)((p[off] << 8) | p[off + 1]);
     }
 }
