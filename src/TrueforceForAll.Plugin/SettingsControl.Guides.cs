@@ -109,21 +109,21 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "iracing-setup", Group = GroupSetup,
-                    Title = "iRacing: setup guide",
+                    Title = "iRacing",
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
                 new GuideEntry
                 {
                     Key = "raceroom-setup", Group = GroupSetup,
-                    Title = "RaceRoom: setup guide",
+                    Title = "RaceRoom",
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
                 new GuideEntry
                 {
                     Key = "forza-setup", Group = GroupSetup,
-                    Title = "Forza: UDP & Data Out setup",
+                    Title = "Forza",
                     ActionLabel = "Open the UDP settings",
                     Action = () => JumpToForzaTelemetrySetup(openTroubleshooter: false),
                     // The forwarding half lives in its own file because the panel
@@ -135,14 +135,14 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "farming-sim", Group = GroupSetup,
-                    Title = "Farming Simulator: install the telemetry mod",
+                    Title = "Farming Simulator",
                     ActionLabel = "Open the mod installer",
                     Action = JumpToFsModSetup,
                 },
                 new GuideEntry
                 {
                     Key = "assetto-corsa-setup", Group = GroupSetup,
-                    Title = "Assetto Corsa: the TF4ALL CSP Bridge",
+                    Title = "Assetto Corsa",
                     ActionLabel = "Install the TF4ALL CSP Bridge",
                     Action = () => _plugin.InstallAcCspBridgeInteractive(),
                 },
@@ -153,25 +153,25 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "csp-bridge", Group = GroupSetup,
-                    Title = "What the TF4ALL CSP Bridge is",
+                    Title = "The TF4ALL CSP Bridge",
                     ActionLabel = "Install the TF4ALL CSP Bridge",
                     Action = () => _plugin.InstallAcCspBridgeInteractive(),
+                },
+                // Game-specific like the rows above it, and the thing to read
+                // when a title the plugin stands aside in is the one you want to
+                // drive: the cure is a game-side switch, which is setup.
+                new GuideEntry
+                {
+                    Key = "native-trueforce", Group = GroupSetup,
+                    Title = "Games with native Trueforce",
+                    ActionLabel = "Open the full table",
+                    Action = () => OpenUrl(
+                        "https://github.com/Mhytee/Trueforce-For-All#games-with-native-trueforce"),
                 },
                 new GuideEntry
                 {
                     Key = "telemetry-ffb", Group = GroupSetup,
-                    Title = "Telemetry Based FFB: what it does",
-                    ActionLabel = TelemetryFfbTabLabel(),
-                    Action = () => SelectTab(TelemetryFfbTab),
-                },
-                // Why the lights and screen are conditional at all. Sits with the
-                // two force guides because it is the thing both of them point at
-                // to explain themselves, and wheel-lights.md links here for the
-                // mechanism rather than restating it in a clause.
-                new GuideEntry
-                {
-                    Key = "force-and-lights", Group = GroupSetup,
-                    Title = "Why your rev lights and screen only work in some games",
+                    Title = "Telemetry Based FFB",
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
@@ -182,7 +182,7 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "force-handover", Group = GroupSetup,
-                    Title = "Force handover: carrying the sim's own force",
+                    Title = "Force handover",
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
@@ -197,7 +197,7 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "weak-effects", Group = GroupTrouble,
-                    Title = "Effects feel weak, and the dial on the wheel does nothing",
+                    Title = "Effects feel weak",
                     ActionLabel = "Open the gain controls",
                     Action = () =>
                     {
@@ -206,14 +206,6 @@ namespace TrueforceForAll.Plugin
                             DispatcherPriority.Background);
                     },
                 },
-                new GuideEntry
-                {
-                    Key = "wheel-lights", Group = GroupTrouble,
-                    Title = "Rev lights and wheel screen: why they only work in some games",
-                    ActionLabel = "Open the lights settings",
-                    Action = JumpToWheelLights,
-                },
-
                 new GuideEntry
                 {
                     Key = "car-facts", Group = GroupAbout,
@@ -232,6 +224,19 @@ namespace TrueforceForAll.Plugin
                 // screen is G PRO / RS50 only, so on a detected wheel without one
                 // the entry would open a page about hardware the reader does not
                 // have. Fails OPEN on an undetected wheel, like the LIGHTSYNC tab.
+                // Why the lights and screen are conditional at all: the page the
+                // two force guides, the bridge and the screen guide all point at
+                // to explain themselves. Sits beside the screen guide rather than
+                // in Game setup, since it is an explainer and not a procedure;
+                // the titles keep them apart (this one is WHERE they work, the
+                // other is what you put on the screen).
+                new GuideEntry
+                {
+                    Key = "force-and-lights", Group = GroupAbout,
+                    Title = "Where your rev lights and screen work",
+                    ActionLabel = "Open the lights settings",
+                    Action = JumpToWheelLights,
+                },
                 new GuideEntry
                 {
                     Key = "wheel-screen", Group = GroupAbout,
@@ -258,7 +263,7 @@ namespace TrueforceForAll.Plugin
                     // pane. Fails OPEN on an undetected wheel, same as the tab does,
                     // so a wheel powered on after SimHub does not lose the entry.
                     Key = "light-patterns", Group = GroupAbout,
-                    Title = "Light patterns: the library, cycling, and color tuning",
+                    Title = "Light patterns",
                     Visible = () => _plugin?.Settings?.LightsyncTabUnlocked == true
                                  && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern),
                     ActionLabel = "Open the LIGHTSYNC tab",
@@ -267,17 +272,9 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "lovely-car-data", Group = GroupAbout,
-                    Title = "Per-car data: what it sets, and where it comes from",
+                    Title = "Per-car rev light data",
                     ActionLabel = "Open the Lovely dataset",
                     Action = () => OpenUrl("https://github.com/Lovely-Sim-Racing/lovely-car-data"),
-                },
-                new GuideEntry
-                {
-                    Key = "native-trueforce", Group = GroupAbout,
-                    Title = "Games with native Trueforce: why the plugin steps aside",
-                    ActionLabel = "Open the full table",
-                    Action = () => OpenUrl(
-                        "https://github.com/Mhytee/Trueforce-For-All#games-with-native-trueforce"),
                 },
                 // TF4ALL Dash. The phone button in the header and the Settings
                 // section are both entry points to the QR dialog, which carries
@@ -303,7 +300,7 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "bindings", Group = GroupAbout,
-                    Title = "Bindings: what you can control without opening the panel",
+                    Title = "Bindings",
                     ActionLabel = "Open the Controls tab",
                     Action = () => SelectTab(ControlsTab),
                 },
@@ -410,7 +407,7 @@ namespace TrueforceForAll.Plugin
         }
 
         private void WheelLightsWhy_Click(object sender, RoutedEventArgs e)
-            => OpenGuides("wheel-lights");
+            => OpenGuides("force-and-lights");
 
         /// <summary>The "What this covers" link beside the Lovely credit. The
         /// credit itself stays in the panel because the licence asks for it;

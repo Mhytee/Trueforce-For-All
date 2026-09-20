@@ -10,7 +10,7 @@ The line beside a value says where it came from: from the game, from the communi
 
 ## What you can set
 
-- **Car name.** What it is called, for cars the game names poorly or not at all.
+- **Car name.** For cars the game names poorly or not at all.
 - **Engine.** The layout, from a single cylinder to a four-rotor. Auto picks the usual choice for the cylinder count.
 - **Redline.** Where the tachometer turns red and you would upshift. **Set** saves it.
 - **Per-gear redlines.** For cars that want the shift cue at a different point in particular gears.

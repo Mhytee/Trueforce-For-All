@@ -28,4 +28,4 @@ Then the plugin is not driving the wheel.
 4. On a PlayStation G923, open G HUB once to put the wheel back into PC mode, then close it again. That wheel can drop out of PC mode after a restart or a replug.
 5. Restart SimHub, then check Diagnostics on the Settings tab says the wheel is detected.
 
-If the wheel responds but everything feels faint, that is a different problem: see [Effects feel weak, and the dial on the wheel does nothing](guide:weak-effects).
+If the wheel responds but everything feels faint, that is a different problem: see [Effects feel weak](guide:weak-effects).
