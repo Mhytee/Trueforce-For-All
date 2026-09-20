@@ -230,7 +230,7 @@ namespace TrueforceForAll.Plugin
             "FoldersRestructuredV3", "UserSlotsMigratedV1", "SlotsKeyedByUserIdV1", "GamesWithRedlineRevalidated",
             "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
             "CommunityDefaultOnRepitchedV1", "EngineChoiceMovedToCarFactsV1", "EngineOnlyOverridesPrunedV1",
-            "MasterModeMigratedV1", "FfbConditionInertiaSpecMigrated",
+            "MasterModeMigratedV1", "FfbConditionInertiaSpecMigrated", "FfbConditionDefaultsGeneration",
             // Backend config (release bakes constants; a dev override must not travel).
             "CommunityBackendUrl", "CommunityBackendAnonKey",
             // Testing gate, NOT an earned unlock, so it sits here rather than with

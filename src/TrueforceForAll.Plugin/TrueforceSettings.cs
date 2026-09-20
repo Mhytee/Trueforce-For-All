@@ -895,7 +895,13 @@ namespace TrueforceForAll.Plugin
         // output low-pass in Hz (anti-ringing; 0 = off). Written by the
         // bench's Save button; the session knobs (CSPFFB DAMPK / DAMPSIGN)
         // do not persist until saved.
-        public double FfbConditionDamperGain   { get; set; } = 0.25;
+        // Generation 1 of these numbers (G PRO effect test bench, owner,
+        // 2026-09-19): every effect re-matched against the wheel's own
+        // rendering after the engine changes in 0.4.0, measured at scale 1.0.
+        // The inertia default is a step under the owner's own 0.20, which
+        // read a little heavy. FfbConditionDefaultsGeneration moves a stored
+        // value still on the OLD default to these; bench-tuned values stay.
+        public double FfbConditionDamperGain   { get; set; } = 1.0;
         public bool   FfbConditionSignInverted { get; set; } = false;
         public double FfbConditionLpfHz        { get; set; } = 200;
         // Per-effect condition low-pass, the filter counterpart of the per-effect
@@ -904,9 +910,9 @@ namespace TrueforceForAll.Plugin
         // filter is tuned on the bench. Set below the wheel's damper-buzz band
         // (~70 Hz) to smooth a grainy damper at the source. Conditions only
         // (spring/damper/friction/inertia); waveforms use their own slew.
-        public double FfbConditionDamperLpfHz   { get; set; } = -1;
-        public double FfbConditionSpringLpfHz   { get; set; } = -1;
-        public double FfbConditionFrictionLpfHz { get; set; } = -1;
+        public double FfbConditionDamperLpfHz   { get; set; } = 10;
+        public double FfbConditionSpringLpfHz   { get; set; } = 0;
+        public double FfbConditionFrictionLpfHz { get; set; } = 3.3;
         public double FfbConditionInertiaLpfHz  { get; set; } = -1;
         // Per-effect scales the auto-tuner measures (1.0 = the DI model's
         // own scale, the pre-measurement assumption). Each effect family the
@@ -920,9 +926,9 @@ namespace TrueforceForAll.Plugin
         // number saturates the inertia term on every push, which on the rig
         // read as grain (2026-09-01). 0.05 keeps a full-coefficient inertia
         // effect inside its saturation over a normal turn.
-        public double FfbConditionSpringGain   { get; set; } = 1.0;
-        public double FfbConditionFrictionGain { get; set; } = 1.0;
-        public double FfbConditionInertiaGain  { get; set; } = 0.05;
+        public double FfbConditionSpringGain   { get; set; } = 4.5;
+        public double FfbConditionFrictionGain { get; set; } = 0.15;
+        public double FfbConditionInertiaGain  { get; set; } = 0.15;
         // Whether rendered inertia coasts (a lossless flywheel: it resists
         // the push, then hands the stored energy back) or only ever resists.
         // ON by default since 2026-09-09: coasting is what DirectInput means
@@ -949,6 +955,10 @@ namespace TrueforceForAll.Plugin
         // first launch after the change flips both switches and resets the
         // gain. Anything the user sets afterward stands.
         public bool   FfbConditionInertiaSpecMigrated { get; set; } = false;
+        // Which generation of the shipped condition gains and filters this file
+        // has been brought up to. 0 = written before the 2026-09-19 retune.
+        // Machine-local: a migration marker, not a preference.
+        public int    FfbConditionDefaultsGeneration { get; set; } = 0;
         // Reveals the effect test bench at the bottom of the FFB tab. Off by
         // default and unlocked with the FXTEST access code: the bench drives
         // the wheel directly and stops the Trueforce stream to do it, which
@@ -969,8 +979,8 @@ namespace TrueforceForAll.Plugin
         // earlier version warned the calibration had drifted and told the user
         // to re-run auto-tune, which was wrong advice for the normal case.
         public double FfbConditionMeasuredAtScale { get; set; } = 0.0;
-        public double FfbConditionPeriodicGain { get; set; } = 1.0;
-        public double FfbConditionRampGain     { get; set; } = 1.0;
+        public double FfbConditionPeriodicGain { get; set; } = 0.9;
+        public double FfbConditionRampGain     { get; set; } = 0.5;
         public float FfbSmoothTimeConstantMs  { get; set; } = 0.0f;
 
         // Stationary-spring "parking force". The plugin passes the game's own

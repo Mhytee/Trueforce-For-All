@@ -4055,6 +4055,28 @@ namespace TrueforceForAll.Plugin
                 }
                 Settings.FfbConditionInertiaCoasts = true;
             }
+            // Condition-engine defaults, generation 1 (G PRO bench, 2026-09-19):
+            // the engine changed underneath the old numbers (the estimator's
+            // second pole, the classic types), and every effect was re-matched
+            // against the wheel's own rendering. A stored value still sitting
+            // on the OLD shipped default was never a choice, so it moves to the
+            // new one; anything bench-tuned stays. A fresh install carries the
+            // new numbers already, so this finds nothing to move there.
+            if (Settings.FfbConditionDefaultsGeneration < 1)
+            {
+                Settings.FfbConditionDefaultsGeneration = 1;
+                var fresh = new TrueforceSettings();
+                Func<double, double, bool> onOld = (v, old) => Math.Abs(v - old) < 1e-4;
+                if (onOld(Settings.FfbConditionDamperGain,   0.25)) Settings.FfbConditionDamperGain   = fresh.FfbConditionDamperGain;
+                if (onOld(Settings.FfbConditionSpringGain,   1.0))  Settings.FfbConditionSpringGain   = fresh.FfbConditionSpringGain;
+                if (onOld(Settings.FfbConditionFrictionGain, 1.0))  Settings.FfbConditionFrictionGain = fresh.FfbConditionFrictionGain;
+                if (onOld(Settings.FfbConditionInertiaGain,  0.05)) Settings.FfbConditionInertiaGain  = fresh.FfbConditionInertiaGain;
+                if (onOld(Settings.FfbConditionPeriodicGain, 1.0))  Settings.FfbConditionPeriodicGain = fresh.FfbConditionPeriodicGain;
+                if (onOld(Settings.FfbConditionRampGain,     1.0))  Settings.FfbConditionRampGain     = fresh.FfbConditionRampGain;
+                if (onOld(Settings.FfbConditionDamperLpfHz,   -1))  Settings.FfbConditionDamperLpfHz   = fresh.FfbConditionDamperLpfHz;
+                if (onOld(Settings.FfbConditionSpringLpfHz,   -1))  Settings.FfbConditionSpringLpfHz   = fresh.FfbConditionSpringLpfHz;
+                if (onOld(Settings.FfbConditionFrictionLpfHz, -1))  Settings.FfbConditionFrictionLpfHz = fresh.FfbConditionFrictionLpfHz;
+            }
             // The two spike-reduction methods used to share one number, read as
             // a rate under the rate limiter and as a magnitude threshold under
             // the peak limiter. Give the peak limiter its own: someone already
