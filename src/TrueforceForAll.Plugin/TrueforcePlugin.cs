@@ -4121,7 +4121,7 @@ namespace TrueforceForAll.Plugin
                 Settings.FfbConditionInertiaLpfHz  = fresh.FfbConditionInertiaLpfHz;
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] Condition-engine tuning brought to the generation 1 defaults (damper 1.0 at 10 Hz, "
-                    + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.15, waveforms 0.9, ramp 0.5).");
+                    + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.10, waveforms 0.9, ramp 0.5).");
             }
             // The two spike-reduction methods used to share one number, read as
             // a rate under the rate limiter and as a magnitude threshold under
@@ -39338,6 +39338,34 @@ namespace TrueforceForAll.Plugin
 
             if (!_nativeProbeHold)
             {
+                // iRacing does not need watching: whether the sim loads the
+                // Trueforce API at all is a line in app.ini, so read the answer
+                // instead of measuring it. Only a value we actually read
+                // counts, since "no file, no key" is not "switched off", and
+                // the contention watch stays armed behind both answers in case
+                // the file was edited after the sim launched.
+                if (IsIRacingReshapeGame(_activeGame))
+                {
+                    bool? api = IRacingTrueforceApiEnabled();
+                    if (api == true)
+                    {
+                        NativeProbeStandDown(0,
+                            "read from Documents\\iRacing\\app.ini (loadTrueForceAPI is on), not from the wire");
+                        return;
+                    }
+                    // app.ini answers for the SIM, not for the endpoint. MAIRA
+                    // streams over the same channel with its lights on, and a
+                    // MAIRA rig is exactly the rig that has loadTrueForceAPI at
+                    // 0, so that answer is not enough to skip the hold there.
+                    if (api == false && !IsMairaRunning())
+                    {
+                        NativeProbePromote(
+                            $"'{_activeGame}' has loadTrueForceAPI = 0 in app.ini, so the sim streams no Trueforce "
+                            + "of its own; starting our stream without holding off first.");
+                        return;
+                    }
+                }
+
                 // Arm. Pause with no Stop command: on a native title the
                 // wheel's engine may already belong to the game's session, and
                 // Stop is the one command that halts an engine that is not
@@ -39379,51 +39407,71 @@ namespace TrueforceForAll.Plugin
                 if (foreign < 0) foreign = 0;
             }
 
-            _nativeProbeSettled = true;
-            _nativeProbeHold    = false;
-
             if (foreign >= TrueforceStreamContentionDetector.OnPackets)
             {
                 // The game is streaming. Stand down now rather than let the
                 // contention watch measure the same thing a second time; the
                 // hold has already proved it, and it proved it without our
                 // packets on the endpoint.
-                _nativeStreamFromMaira     = IsMairaRunning();
-                _nativeStreamIRacingApiOff = IsIRacingReshapeGame(_activeGame) && IRacingTrueforceApiOff();
-                int perSec = (int)(foreign * 1000L / Math.Max(1L, heldMs));
-                lock (_enableDeviceLock)
-                {
-                    dev.Pause();
-                    _nativeStreamDemoted = true;
-                }
-                SimHub.Logging.Current.Warn("[TF4ALL] " + NativeStreamStandDownText(perSec));
-                ApplyEffectiveMode("a second Trueforce stream on the wheel");
-                ShowStandDownNotice();
+                NativeProbeStandDown((int)(foreign * 1000L / Math.Max(1L, heldMs)), "measured while we held off");
                 return;
             }
 
+            NativeProbePromote(foreign >= 0
+                ? $"'{_activeGame}' is not streaming its own Trueforce ({foreign} packet(s) while we held off); starting our stream."
+                : $"'{_activeGame}' brings Trueforce of its own and there is no FFB capture running to check it "
+                  + "with, so we cannot tell whether it is streaming; starting our stream. If the wheel whines or feels "
+                  + "harsh, switch the game's own Trueforce off or set this game to Lightsync only.");
+        }
+
+        /// <summary>End the probe by handing the wheel to the game: the same
+        /// stand-down the contention watch performs, from whichever evidence
+        /// the probe had.</summary>
+        private void NativeProbeStandDown(int perSec, string evidence)
+        {
+            _nativeProbeSettled = true;
+            _nativeProbeHold    = false;
+            _nativeStreamFromMaira     = IsMairaRunning();
+            _nativeStreamIRacingApiOff = IsIRacingReshapeGame(_activeGame) && IRacingTrueforceApiOff();
+            lock (_enableDeviceLock)
+            {
+                // No stop command: the engine is the game's now (see
+                // ApplyEffectiveMode's leaving branch, which the mode change
+                // below runs through).
+                _device?.Pause();
+                _nativeStreamDemoted = true;
+            }
+            SimHub.Logging.Current.Warn($"[TF4ALL] {NativeStreamStandDownText(perSec)} [{evidence}]");
+            ApplyEffectiveMode("a second Trueforce stream on the wheel");
+            ShowStandDownNotice();
+        }
+
+        /// <summary>End the probe by letting our stream onto the wheel.</summary>
+        private void NativeProbePromote(string message)
+        {
+            _nativeProbeSettled = true;
+            _nativeProbeHold    = false;
+            bool resumed = false;
+            var dev = _device;
             lock (_enableDeviceLock)
             {
                 // PluginEnabled is re-read here for the same reason every other
                 // holder re-reads it: a mode change can land between the tick
                 // that decided and this line, and the loser must not resume a
                 // device the winner just parked.
-                if (Settings.PluginEnabled)
+                if (dev != null && Settings != null && Settings.PluginEnabled)
                 {
                     dev.BeginResumeRamp();
                     dev.Resume();
                     dev.SendStartCommand();
+                    resumed = true;
                 }
                 else
                 {
                     _nativeProbeSettled = false;   // decide again under the mode that wins
                 }
             }
-            SimHub.Logging.Current.Info(foreign >= 0
-                ? $"[TF4ALL] '{_activeGame}' is not streaming its own Trueforce ({foreign} packet(s) while we held off); starting our stream."
-                : $"[TF4ALL] '{_activeGame}' brings Trueforce of its own and there is no FFB capture running to check it "
-                  + "with, so we cannot tell whether it is streaming; starting our stream. If the wheel whines or feels "
-                  + "harsh, switch the game's own Trueforce off or set this game to Lightsync only.");
+            if (resumed) SimHub.Logging.Current.Info($"[TF4ALL] {message}");
         }
 
         private void UpdateNativeTrueforceStreamWatch()
@@ -39558,13 +39606,24 @@ namespace TrueforceForAll.Plugin
         // True when Documents\iRacing\app.ini carries loadTrueForceAPI=0, so
         // iRacing itself cannot be streaming. Unknown reads as false: the
         // default advice (set it to 0) is then still the right one.
-        private static bool IRacingTrueforceApiOff()
+        private static bool IRacingTrueforceApiOff() => IRacingTrueforceApiEnabled() == false;
+
+        /// <summary>What Documents\iRacing\app.ini says about loadTrueForceAPI:
+        /// true = the sim loads the Trueforce API and will stream to the wheel
+        /// itself, false = it is switched off, null = no file, no key, or the
+        /// file could not be read, which is not the same answer as "off".
+        ///
+        /// iRacing reads app.ini when it launches, so this describes the
+        /// RUNNING session only while nobody has edited the file underneath it.
+        /// Every caller that acts on it leaves the contention watch armed
+        /// behind it, which is what catches an edit made mid-session.</summary>
+        private static bool? IRacingTrueforceApiEnabled()
         {
             try
             {
                 string ini = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "iRacing", "app.ini");
-                if (!File.Exists(ini)) return false;
+                if (!File.Exists(ini)) return null;
                 foreach (var raw in File.ReadAllLines(ini))
                 {
                     string line = raw.Trim();
@@ -39574,11 +39633,15 @@ namespace TrueforceForAll.Plugin
                     string val = line.Substring(eq + 1).Trim();
                     int semi = val.IndexOf(';');
                     if (semi >= 0) val = val.Substring(0, semi).Trim();
-                    return val == "0";
+                    if (val == "0") return false;
+                    // Anything else on a key that exists is the API loading:
+                    // iRacing writes 1, and a hand-typed "true" or "01" means
+                    // the same thing to it.
+                    return val.Length > 0 ? (bool?)true : null;
                 }
             }
             catch { }
-            return false;
+            return null;   // key absent: iRacing's own default is not ours to guess
         }
 
         // ---- MAIRA on the capture path ----------------------------------------

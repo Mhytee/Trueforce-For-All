@@ -898,8 +898,8 @@ namespace TrueforceForAll.Plugin
         // Generation 1 of these numbers (G PRO effect test bench, owner,
         // 2026-09-19): every effect re-matched against the wheel's own
         // rendering after the engine changes in 0.4.0, measured at scale 1.0.
-        // The inertia default is a step under the owner's own 0.20, which
-        // read a little heavy. FfbConditionDefaultsGeneration brings EVERY
+        // The inertia default sits well under the owner's own 0.20, which
+        // read heavy (0.15 first, 0.10 on 2026-09-20). FfbConditionDefaultsGeneration brings EVERY
         // stored file to these once, bench-tuned or not: one right tuning per
         // wheel, the bench finds it, nobody keeps a tune of their own.
         public double FfbConditionDamperGain   { get; set; } = 1.0;
@@ -929,7 +929,7 @@ namespace TrueforceForAll.Plugin
         // effect inside its saturation over a normal turn.
         public double FfbConditionSpringGain   { get; set; } = 4.5;
         public double FfbConditionFrictionGain { get; set; } = 0.15;
-        public double FfbConditionInertiaGain  { get; set; } = 0.15;
+        public double FfbConditionInertiaGain  { get; set; } = 0.10;
         // Whether rendered inertia coasts (a lossless flywheel: it resists
         // the push, then hands the stored energy back) or only ever resists.
         // ON by default since 2026-09-09: coasting is what DirectInput means
