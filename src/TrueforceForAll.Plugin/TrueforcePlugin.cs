@@ -9405,7 +9405,8 @@ namespace TrueforceForAll.Plugin
         /// R3EFFB route, since that path replaces the game force that carried it).</summary>
         public bool R3EStationaryDamperApplies
             => (IsR3EGame(_activeGame) && (Settings?.R3ESharedMemoryFfb ?? false))
-               || (IsForzaGameName(_activeGame) && ModeBEnabledForActiveGame);
+               || (IsForzaGameName(_activeGame) && ModeBEnabledForActiveGame)
+               || IsSpringModeGame(_activeGame);   // spring mode is how Farming Simulator works
 
         /// <summary>True while a spring-mode game (Farming Simulator) is the
         /// active game. Deliberately not folded into ActiveGameSupportsModeB:
@@ -14751,10 +14752,14 @@ namespace TrueforceForAll.Plugin
             // the sim's shared-memory steering force (that value is ~0 parked). It
             // needs the physical wheel velocity below, so fold it into needPhys.
             var stFrCfg = Settings;
-            // Also under Telemetry Based FFB: the synthesis replaces the game's
-            // force outright, parking resistance included (owner, 2026-09-13).
-            // Same setting and controls; the sign follows the route below.
-            bool wantR3EFriction = ((reshapeMode && IsR3EGame(_activeGame)) || _forceMode == ForceModeModeB)
+            // Also under Telemetry Based FFB and Farming Simulator's spring
+            // mode: both replace the game's force outright, parking resistance
+            // included (owner, 2026-09-13 and 2026-09-19). Same setting and
+            // controls; the sign follows the route below, and spring mode
+            // shares the synthesis's frame (the device scales and negates both).
+            bool wantR3EFriction = ((reshapeMode && IsR3EGame(_activeGame))
+                                    || _forceMode == ForceModeModeB
+                                    || _forceMode == ForceModeSpring)
                 && stFrCfg != null
                 && stFrCfg.R3EStationaryDamper
                 && stFrCfg.R3EStationaryDamperStrength > 0.0001;

@@ -3389,7 +3389,7 @@
                         <CheckBox x:Name="R3EStationaryDamperCheck" Content="Stationary friction"
                                   FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
                                   Checked="R3EStationaryDamper_Changed" Unchecked="R3EStationaryDamper_Changed"
-                                  ToolTip="Adds back the game's low-speed parking resistance, which the handed-over and Telemetry Based routes otherwise drop. Firm when parked, fading to nothing as you gain speed."/>
+                                  ToolTip="Adds back the game's low-speed parking resistance, which the handed-over, Telemetry Based and Farming Simulator routes otherwise drop. Firm when parked, fading to nothing as you gain speed."/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                     <Grid Margin="0,0,0,2">
