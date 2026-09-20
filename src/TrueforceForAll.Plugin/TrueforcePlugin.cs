@@ -3649,8 +3649,9 @@ namespace TrueforceForAll.Plugin
             // call back into this method with inSynthesis for the synthesis,
             // whose sign space is the same as the tap's). Anything added here
             // would be computed and thrown away.
-            if (!inSynthesis && (_forceMode == ForceModeIRacing || _forceMode == ForceModeModeB))
-                return gameTarget;
+            if (!inSynthesis && (_forceMode == ForceModeIRacing || _forceMode == ForceModeModeB
+                                 || _forceMode == ForceModeSpring))
+                return gameTarget;   // spring mode assigns over the chain too, and renders no spring of ours
             // Forza exclusion (user's call, 2026-05-28). The spring conflicted
             // with Forza's FFB during the matchmaking-found transition and
             // could pull the wheel to the rotational stop, sometimes with
@@ -9339,6 +9340,7 @@ namespace TrueforceForAll.Plugin
         public bool ActiveGameHidesStationarySpring
             => string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
                || ActiveGameIsArcade
+               || IsSpringModeGame(_activeGame)          // spring mode assigns over the chain; ours never reaches the wheel
                || StationarySpringLockedHere
                || !ActiveSourceSupportsStationarySpring;
 
