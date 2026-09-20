@@ -899,8 +899,9 @@ namespace TrueforceForAll.Plugin
         // 2026-09-19): every effect re-matched against the wheel's own
         // rendering after the engine changes in 0.4.0, measured at scale 1.0.
         // The inertia default is a step under the owner's own 0.20, which
-        // read a little heavy. FfbConditionDefaultsGeneration moves a stored
-        // value still on the OLD default to these; bench-tuned values stay.
+        // read a little heavy. FfbConditionDefaultsGeneration brings EVERY
+        // stored file to these once, bench-tuned or not: one right tuning per
+        // wheel, the bench finds it, nobody keeps a tune of their own.
         public double FfbConditionDamperGain   { get; set; } = 1.0;
         public bool   FfbConditionSignInverted { get; set; } = false;
         public double FfbConditionLpfHz        { get; set; } = 200;

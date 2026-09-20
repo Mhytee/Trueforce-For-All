@@ -644,6 +644,18 @@ namespace TrueforceForAll.Plugin
         public string ActiveGame        => _activeGame;
         public string ActivePresetName  => _activePresetName;
 
+        // The game SimHub already had running when Init ran. _activeGame is
+        // filled by DataUpdate, so between Init and the first tick it is empty
+        // and the mode resolves to the global default, ignoring the game on
+        // screen. That window is where a SimHub start (or a plugin reload)
+        // inside a native-Trueforce title opened our ep3 stream, init burst and
+        // all, straight into the game's own: the endpoint takes one writer, and
+        // the two alternate until the first tick stands us down. Read from
+        // SimHub at Init, consulted by ResolveChosenMode only while _activeGame
+        // is empty, and dropped on the first DataUpdate, whose data is
+        // authoritative from then on.
+        private string _startupGameName;
+
         // Cached variant signature from the last CarFacts apply, compared
         // against the live one in DispatchFrame so a mid-session change (Forza
         // engine swap; maxrpm arriving as telemetry warms) re-resolves and
@@ -1470,6 +1482,11 @@ namespace TrueforceForAll.Plugin
                 return stored == TrueforceMasterMode.LightsyncOnly ? stored : TrueforceMasterMode.Normal;
 
             string g = _activeGame;
+            // Init to the first tick: _activeGame is empty but a game can
+            // already be on screen, and resolving to the global default there
+            // is what let a native-Trueforce title get our stream on top of
+            // its own. See _startupGameName.
+            if (string.IsNullOrEmpty(g)) g = _startupGameName;
             if (string.IsNullOrEmpty(g)) return stored;
             // The mode map is authoritative. The bool map is still read behind it
             // for a settings file that reached this build without the migration
@@ -1488,6 +1505,22 @@ namespace TrueforceForAll.Plugin
             return IsNativeTrueforceGame(g)
                 ? TrueforceMasterMode.LightsyncOnly
                 : TrueforceMasterMode.Normal;
+        }
+
+        /// <summary>The game SimHub has running right now, or null. Asked at
+        /// Init, where no GameData has arrived yet: GameProcessDetected is the
+        /// process-level fact, and GameName without it is the last profile the
+        /// user selected, which can name a game that closed days ago.</summary>
+        private string ReadRunningGameFromSimHub()
+        {
+            try
+            {
+                var pm = PluginManager;
+                if (pm == null || pm.GameManager == null) return null;
+                if (!pm.GameManager.GameProcessDetected) return null;
+                return string.IsNullOrEmpty(pm.GameName) ? null : pm.GameName;
+            }
+            catch { return null; }   // never let a host-API shape change block Init
         }
 
         /// <summary>Land on whatever mode the stored choice plus the active game now
@@ -1782,6 +1815,10 @@ namespace TrueforceForAll.Plugin
             // (owner, 2026-08-30). The per-game "don't show" still wins.
             _nativeStreamDemoted = false;
             _standDownNoticeShownThisDemotion = false;
+            // "Try again" includes the probe that runs ahead of the watch: the
+            // user picking Normal here has usually just switched the game's own
+            // Trueforce off, which is exactly the question the hold answers.
+            _nativeProbeSettled = false;
 
             bool inGame = persistForActiveGame && !string.IsNullOrEmpty(_activeGame);
 
@@ -1916,7 +1953,8 @@ namespace TrueforceForAll.Plugin
                     dev.Pause();
                     outcome = "plugin is disabled; left Trueforce mode so the wheel stays on native FFB";
                 }
-                else if (dev.IsPaused && !_stopStreamPauseActive && !_nativeTestStreamSuspended)
+                else if (dev.IsPaused && !_stopStreamPauseActive && !_nativeTestStreamSuspended
+                         && !_nativeProbeHold)
                 {
                     // Enabled but the device sits paused (e.g. cold start with
                     // the toggle off, then a restore/import lands "enabled").
@@ -4059,24 +4097,31 @@ namespace TrueforceForAll.Plugin
             // Condition-engine defaults, generation 1 (G PRO bench, 2026-09-19):
             // the engine changed underneath the old numbers (the estimator's
             // second pole, the classic types), and every effect was re-matched
-            // against the wheel's own rendering. A stored value still sitting
-            // on the OLD shipped default was never a choice, so it moves to the
-            // new one; anything bench-tuned stays. A fresh install carries the
-            // new numbers already, so this finds nothing to move there.
+            // against the wheel's own rendering. There is one right tuning per
+            // wheel, and the bench exists to find it, not to keep a tune of
+            // one's own, so EVERY file is brought to the new numbers once,
+            // bench-tuned or not (owner, 2026-09-20: reset them all, the goal is
+            // no tuning needed or possible). A fresh install carries the new
+            // numbers already. The direction flip and the inertia mode are
+            // wheel facts, not tuning, and stay.
             if (Settings.FfbConditionDefaultsGeneration < 1)
             {
                 Settings.FfbConditionDefaultsGeneration = 1;
                 var fresh = new TrueforceSettings();
-                Func<double, double, bool> onOld = (v, old) => Math.Abs(v - old) < 1e-4;
-                if (onOld(Settings.FfbConditionDamperGain,   0.25)) Settings.FfbConditionDamperGain   = fresh.FfbConditionDamperGain;
-                if (onOld(Settings.FfbConditionSpringGain,   1.0))  Settings.FfbConditionSpringGain   = fresh.FfbConditionSpringGain;
-                if (onOld(Settings.FfbConditionFrictionGain, 1.0))  Settings.FfbConditionFrictionGain = fresh.FfbConditionFrictionGain;
-                if (onOld(Settings.FfbConditionInertiaGain,  0.05)) Settings.FfbConditionInertiaGain  = fresh.FfbConditionInertiaGain;
-                if (onOld(Settings.FfbConditionPeriodicGain, 1.0))  Settings.FfbConditionPeriodicGain = fresh.FfbConditionPeriodicGain;
-                if (onOld(Settings.FfbConditionRampGain,     1.0))  Settings.FfbConditionRampGain     = fresh.FfbConditionRampGain;
-                if (onOld(Settings.FfbConditionDamperLpfHz,   -1))  Settings.FfbConditionDamperLpfHz   = fresh.FfbConditionDamperLpfHz;
-                if (onOld(Settings.FfbConditionSpringLpfHz,   -1))  Settings.FfbConditionSpringLpfHz   = fresh.FfbConditionSpringLpfHz;
-                if (onOld(Settings.FfbConditionFrictionLpfHz, -1))  Settings.FfbConditionFrictionLpfHz = fresh.FfbConditionFrictionLpfHz;
+                Settings.FfbConditionDamperGain    = fresh.FfbConditionDamperGain;
+                Settings.FfbConditionSpringGain    = fresh.FfbConditionSpringGain;
+                Settings.FfbConditionFrictionGain  = fresh.FfbConditionFrictionGain;
+                Settings.FfbConditionInertiaGain   = fresh.FfbConditionInertiaGain;
+                Settings.FfbConditionPeriodicGain  = fresh.FfbConditionPeriodicGain;
+                Settings.FfbConditionRampGain      = fresh.FfbConditionRampGain;
+                Settings.FfbConditionLpfHz         = fresh.FfbConditionLpfHz;
+                Settings.FfbConditionDamperLpfHz   = fresh.FfbConditionDamperLpfHz;
+                Settings.FfbConditionSpringLpfHz   = fresh.FfbConditionSpringLpfHz;
+                Settings.FfbConditionFrictionLpfHz = fresh.FfbConditionFrictionLpfHz;
+                Settings.FfbConditionInertiaLpfHz  = fresh.FfbConditionInertiaLpfHz;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Condition-engine tuning brought to the generation 1 defaults (damper 1.0 at 10 Hz, "
+                    + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.15, waveforms 0.9, ramp 0.5).");
             }
             // The two spike-reduction methods used to share one number, read as
             // a rate under the rate limiter and as a magnitude threshold under
@@ -4183,6 +4228,16 @@ namespace TrueforceForAll.Plugin
                 Settings.GameModeMapMigratedV1 = true;
                 try { PersistSettingsCore(); } catch { }
             }
+            // Ask SimHub what is already running before the mode is latched: a
+            // game on screen at Init decides the mode as surely as one that
+            // starts later, and the force path is opened further down this
+            // method, long before the first DataUpdate could say so.
+            _startupGameName = ReadRunningGameFromSimHub();
+            if (!string.IsNullOrEmpty(_startupGameName))
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] '{_startupGameName}' is already running: resolving its master mode now, "
+                    + "before the wheel's force path is opened.");
+
             // Latch the effective mode from what we just loaded, so nothing reads
             // the field's compile-time default before the first game arrives.
             ApplyEffectiveMode("settings loaded");
@@ -7093,6 +7148,12 @@ namespace TrueforceForAll.Plugin
             // is a few field reads, and any reopen runs off-thread inside.
             _steeringReader?.EnsureAlive();
 
+            // A native-Trueforce title we are set to Normal in: hold our stream
+            // off the wheel until the endpoint proves quiet (see
+            // UpdateNativeTrueforceProbe). Runs first: while it holds, there is
+            // no stream of ours for the watch below to compare against.
+            UpdateNativeTrueforceProbe();
+
             // A game streaming its own Trueforce beside ours: drop to Lightsync
             // only (see UpdateNativeTrueforceStreamWatch). Runs before the pause
             // gate so that gate sees the mode change on the same tick.
@@ -7341,6 +7402,10 @@ namespace TrueforceForAll.Plugin
             // (IsKnownGameProcessRunning) has a target to fuzzy-match against
             // after a pause nulls _activeGame.
             if (!string.IsNullOrEmpty(gameName)) _lastNamedGame = gameName;
+            // The startup seed bridges Init to this first tick and no further:
+            // from here SimHub's own data says what is running, including that
+            // nothing is.
+            _startupGameName = null;
             // While offline-editing a CAR, _activeGame is pinned to that car's game
             // (EnterOfflineEditCar) so the Car-facts panel keys against the right
             // (game, carId). IsOfflineEditing is keyed on the PRESET-edit flag, so it
@@ -7353,6 +7418,10 @@ namespace TrueforceForAll.Plugin
                 // game session that earned it. The resolve below lands the new
                 // game on its own default.
                 _nativeStreamDemoted = false;
+                // Same for the probe that precedes it: whether the LAST game
+                // streamed says nothing about this one, so the new title earns
+                // its own verdict.
+                _nativeProbeSettled = false;
                 // "Does this game report an engine" is a fact about one game,
                 // so the next one gets to answer it for itself. Until it does,
                 // the audio meter may take the rev bar.
@@ -38884,6 +38953,7 @@ namespace TrueforceForAll.Plugin
                            && Settings.PluginEnabled && _device != null
                            && src != null && !string.IsNullOrEmpty(_activeGame)
                            && _forceMode == ForceModeOff
+                           && !_nativeProbeHold
                            && !_activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
             if (!canGate)
             {
@@ -38891,7 +38961,13 @@ namespace TrueforceForAll.Plugin
                 {
                     lock (_enableDeviceLock)
                     {
-                        if (Settings != null && Settings.PluginEnabled && _device != null)
+                        // Not while the native-Trueforce probe holds the wheel:
+                        // that hold outranks this gate's release, and letting it
+                        // resume here would put our stream on an endpoint the
+                        // probe is still listening to. The probe resumes on its
+                        // own verdict.
+                        if (Settings != null && Settings.PluginEnabled && _device != null
+                            && !_nativeProbeHold)
                         {
                             _ffbTap?.ClearLastFfbTarget();
                             _device.BeginResumeRamp();
@@ -39043,6 +39119,44 @@ namespace TrueforceForAll.Plugin
         /// <summary>The stream that demoted us was MAIRA's, not the game's.</summary>
         public bool NativeTrueforceStreamFromMaira => _nativeStreamFromMaira;
 
+        // ---- Native-Trueforce probe ------------------------------------------
+        // A title on the native list that the user has put on Normal is the one
+        // place we deliberately stream into a game that may stream too, and
+        // waiting for the contention verdict means two writers on the endpoint
+        // for as long as the verdict takes, on every launch. The endpoint takes
+        // one writer: two alternate, the motor steps between two targets every
+        // millisecond, and a wheel whines (a direct-drive base has more to lose
+        // than that). So the default is inverted here. On such a title the
+        // stream starts PAUSED and is promoted only once the tap has watched
+        // the endpoint stay quiet, which makes the damaging state the one that
+        // has to be proven absent rather than present.
+        //
+        // Nothing of ours reaches the wire while the hold is on (StreamTick
+        // emits nothing when paused), so what the tap counts is the game's. Our
+        // own writes are subtracted anyway, because a queued command packet is
+        // still dispatched while paused.
+        //
+        // The settle delay is for the capture, not the wheel: USBPcap can only
+        // ever trail the wire, so packets we wrote just before the hold can
+        // land inside it. Baselining after the backlog has drained keeps them
+        // from reading as somebody else's.
+        private const int NativeProbeSettleMs = 500;
+        private const int NativeProbeHoldMs   = 3000;
+        private volatile bool _nativeProbeHold;      // the hold is on the device right now
+        private bool _nativeProbeSettled;            // this game on this device has its verdict
+        private bool _nativeProbeBaselined;          // the settle delay is over, counters taken
+        private TrueforceDevice _nativeProbeDevice;  // whose verdict it is (compared, never used)
+        private long _nativeProbeArmedMs;
+        private long _nativeProbeMeasuredFromMs;
+        private long _nativeProbeTapBaseline;
+        private long _nativeProbeOursBaseline;
+
+        /// <summary>True while our stream is deliberately held out of the wheel
+        /// on a native-Trueforce title, waiting to see whether the game streams
+        /// (UI surface, and the reason the pause gate and the enable reconciler
+        /// must not resume the device).</summary>
+        public bool NativeTrueforceProbeHolding => _nativeProbeHold;
+
         // ---- "The plugin stepped aside" notice --------------------------------
         // A stand-down is a surprise from the driver's seat: the wheel goes
         // quiet with no gesture from the user, and nothing in the game (or in
@@ -39180,6 +39294,136 @@ namespace TrueforceForAll.Plugin
                 { UseShellExecute = true });
             }
             catch { }
+        }
+
+        /// <summary>Hold the stream paused on a native-Trueforce title set to
+        /// Normal until the tap has watched the wheel's stream endpoint stay
+        /// quiet, then promote (or stand down, if the game is streaming after
+        /// all). Ticks before the contention watch and owns the device's pause
+        /// state while it holds. See the NativeProbe fields for why.</summary>
+        private void UpdateNativeTrueforceProbe()
+        {
+            if (_shuttingDown) return;
+            var dev = _device;
+
+            // Only "Normal on a native title with a live device" is a hold.
+            // Every other state releases the flag without promoting, and is
+            // safe to: the mode that replaced Normal pauses the device itself,
+            // and a device that went away is not streaming anything.
+            bool wanted = dev != null && Settings != null
+                          && MasterMode == TrueforceMasterMode.Normal
+                          && IsNativeTrueforceGame(_activeGame);
+            if (!wanted)
+            {
+                _nativeProbeHold = false;
+                if (dev == null) _nativeProbeDevice = null;
+                return;
+            }
+
+            // The verdict belongs to the GAME session, not to the device: a
+            // re-attach into a title we already proved quiet must not stop the
+            // wheel again for another hold, mid-race. It is cleared on a game
+            // change and on an explicit mode choice ("Normal = try again").
+            //
+            // A device swap DURING a hold is different: the counters were
+            // baselined against the old device, and the new one starts its
+            // write count at zero, which would read as somebody else's packets.
+            // Drop the hold and let the arm below start it again on this one.
+            if (_nativeProbeHold && !ReferenceEquals(dev, _nativeProbeDevice))
+                _nativeProbeHold = false;
+            if (_nativeProbeSettled) return;
+
+            var tap = _ffbTap;
+            long nowMs = Stopwatch.GetTimestamp() * 1000L / Stopwatch.Frequency;
+
+            if (!_nativeProbeHold)
+            {
+                // Arm. Pause with no Stop command: on a native title the
+                // wheel's engine may already belong to the game's session, and
+                // Stop is the one command that halts an engine that is not
+                // ours (the stand-down sends nothing for the same reason).
+                lock (_enableDeviceLock)
+                {
+                    dev.Pause();
+                    _nativeProbeHold = true;
+                }
+                _nativeProbeDevice    = dev;
+                _nativeProbeArmedMs   = nowMs;
+                _nativeProbeBaselined = false;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] '{_activeGame}' brings Trueforce of its own and is set to Normal: holding our stream "
+                    + "off the wheel for a moment to check the game is not streaming its own.");
+                return;
+            }
+
+            if (!_nativeProbeBaselined)
+            {
+                if (nowMs - _nativeProbeArmedMs < NativeProbeSettleMs) return;
+                _nativeProbeTapBaseline     = tap?.TrueforceStreamPacketsOnOurDevice ?? 0;
+                _nativeProbeOursBaseline    = dev.Ep3Writes;
+                _nativeProbeMeasuredFromMs  = nowMs;
+                _nativeProbeBaselined       = true;
+                return;
+            }
+
+            long heldMs = nowMs - _nativeProbeMeasuredFromMs;
+            if (heldMs < NativeProbeHoldMs) return;
+
+            // Verdict. Negative means nothing was watching: without the tap
+            // there is no way to tell a quiet endpoint from a busy one.
+            long foreign = -1;
+            if (tap != null && tap.IsRunning)
+            {
+                foreign = (tap.TrueforceStreamPacketsOnOurDevice - _nativeProbeTapBaseline)
+                        - (dev.Ep3Writes - _nativeProbeOursBaseline);
+                if (foreign < 0) foreign = 0;
+            }
+
+            _nativeProbeSettled = true;
+            _nativeProbeHold    = false;
+
+            if (foreign >= TrueforceStreamContentionDetector.OnPackets)
+            {
+                // The game is streaming. Stand down now rather than let the
+                // contention watch measure the same thing a second time; the
+                // hold has already proved it, and it proved it without our
+                // packets on the endpoint.
+                _nativeStreamFromMaira     = IsMairaRunning();
+                _nativeStreamIRacingApiOff = IsIRacingReshapeGame(_activeGame) && IRacingTrueforceApiOff();
+                int perSec = (int)(foreign * 1000L / Math.Max(1L, heldMs));
+                lock (_enableDeviceLock)
+                {
+                    dev.Pause();
+                    _nativeStreamDemoted = true;
+                }
+                SimHub.Logging.Current.Warn("[TF4ALL] " + NativeStreamStandDownText(perSec));
+                ApplyEffectiveMode("a second Trueforce stream on the wheel");
+                ShowStandDownNotice();
+                return;
+            }
+
+            lock (_enableDeviceLock)
+            {
+                // PluginEnabled is re-read here for the same reason every other
+                // holder re-reads it: a mode change can land between the tick
+                // that decided and this line, and the loser must not resume a
+                // device the winner just parked.
+                if (Settings.PluginEnabled)
+                {
+                    dev.BeginResumeRamp();
+                    dev.Resume();
+                    dev.SendStartCommand();
+                }
+                else
+                {
+                    _nativeProbeSettled = false;   // decide again under the mode that wins
+                }
+            }
+            SimHub.Logging.Current.Info(foreign >= 0
+                ? $"[TF4ALL] '{_activeGame}' is not streaming its own Trueforce ({foreign} packet(s) while we held off); starting our stream."
+                : $"[TF4ALL] '{_activeGame}' brings Trueforce of its own and there is no FFB capture running to check it "
+                  + "with, so we cannot tell whether it is streaming; starting our stream. If the wheel whines or feels "
+                  + "harsh, switch the game's own Trueforce off or set this game to Lightsync only.");
         }
 
         private void UpdateNativeTrueforceStreamWatch()
