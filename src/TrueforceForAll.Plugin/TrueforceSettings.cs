@@ -643,8 +643,11 @@ namespace TrueforceForAll.Plugin
         // hardware-derived, like CarFactsAnonId, and kept SEPARATE from it so the
         // two anonymous datasets cannot be cross-linked). Sent as the
         // telemetry_ping p_anon_id (migration 0127) so unique installs / DAU / MAU
-        // can be counted without an account. Travels in backups so one human
-        // counts once across PCs.
+        // can be counted without an account. Deliberately does NOT travel in
+        // backups (BackupProjection Excluded): a backup is stored under the user's
+        // account, so carrying this id would put account -> anon-id in the backend
+        // and make the telemetry joinable to a real identity. A second PC mints its
+        // own and counts as a second install, which is the right trade.
         public string AnalyticsAnonId { get; set; } = "";
 
         // Master switch for the anonymous usage statistics: the once-a-day
@@ -657,6 +660,24 @@ namespace TrueforceForAll.Plugin
         // Local bookkeeping: the UTC day (yyyy-MM-dd) of the last usage ping, so
         // it fires at most once per day. Per-PC; never backed up.
         public string LastTelemetryPingDay { get; set; } = "";
+
+        // Local bookkeeping: hash of the settings snapshot we last sent, so the
+        // once-a-day ping omits the snapshot on days it has not changed (the
+        // server keeps the last non-null snapshot per device). Keeps storage
+        // scaling with installs, not install-days. Per-PC; never backed up.
+        public string LastTelemetrySettingsHash { get; set; } = "";
+
+        // Local bookkeeping: (game|yyyy-MM-dd) pairs the device has played since
+        // the last usage ping, drained into the ping so we learn per-game daily
+        // activity a day late. Deduped per game+day, capped in code. Per-PC;
+        // never backed up. Defaults empty (the settings loader appends).
+        public List<string> TelemetryGameDays { get; set; } = new List<string>();
+
+        // Local bookkeeping: per game, the hash of the default-preset body we
+        // last sent, so a game's preset rides the ping only when it changed.
+        // Per-PC; never backed up. Defaults empty (the settings loader appends).
+        public Dictionary<string, string> TelemetryGamePresetHashes { get; set; }
+            = new Dictionary<string, string>();
 
         // One-time latch for the community-default flip: existing installs
         // whose settings file carries CommunityEnabled=false from the old

@@ -34,10 +34,14 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Fire-and-forget anonymous usage ping. Safe to call often: the
-        /// server upserts one row per (anon_id, day). Never throws to the caller
-        /// and never blocks; a dropped ping just means one missed day.</summary>
+        /// server upserts one row per (anon_id, day). Never throws to the caller and
+        /// never blocks. <paramref name="onSent"/> runs ONLY on a 2xx, on a
+        /// ThreadPool thread, so the caller can commit "already sent" state (day
+        /// stamp, payload hashes, queue drain) after the server accepted it rather
+        /// than before; a failed send then simply retries on the next tick.</summary>
         public void SendPing(string anonId, string pluginVersion, string wheel,
-            string game, string settingsJson)
+            string game, string settingsJson, string gamesJson = null, string gamePresetsJson = null,
+            Action onSent = null)
         {
             if (string.IsNullOrWhiteSpace(anonId)) return;
             if (!TryResolve(out string baseUrl, out string anonKey)) return;
@@ -45,22 +49,15 @@ namespace TrueforceForAll.Plugin
             string body;
             try
             {
-                JToken settings;
-                try
-                {
-                    settings = string.IsNullOrEmpty(settingsJson)
-                        ? (JToken)JValue.CreateNull()
-                        : JToken.Parse(settingsJson);
-                }
-                catch { settings = JValue.CreateNull(); }
-
                 body = new JObject
                 {
                     ["p_anon_id"]        = anonId.Trim(),
                     ["p_plugin_version"] = NullIfEmpty(pluginVersion),
                     ["p_wheel"]          = NullIfEmpty(wheel),
                     ["p_game"]           = NullIfEmpty(game),
-                    ["p_settings"]       = settings,
+                    ["p_settings"]       = ParseOrNull(settingsJson),
+                    ["p_games"]          = ParseOrNull(gamesJson),        // [{g,d}] games played since the last ping
+                    ["p_game_presets"]   = ParseOrNull(gamePresetsJson),  // [{g,p}] per-game preset bodies, only when changed
                 }.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)
@@ -89,8 +86,16 @@ namespace TrueforceForAll.Plugin
                         using (var resp = await _http.SendAsync(req,
                             HttpCompletionOption.ResponseHeadersRead, CancellationToken.None).ConfigureAwait(false))
                         {
-                            if (!resp.IsSuccessStatusCode)
+                            if (resp.IsSuccessStatusCode)
+                            {
+                                try { onSent?.Invoke(); }
+                                catch (Exception cex)
+                                { _log?.Invoke("[TF4ALL] Telemetry ping commit error: " + cex.Message); }
+                            }
+                            else
+                            {
                                 _log?.Invoke($"[TF4ALL] Telemetry ping failed: {(int)resp.StatusCode} {resp.ReasonPhrase}");
+                            }
                         }
                     }
                 }
@@ -103,6 +108,13 @@ namespace TrueforceForAll.Plugin
 
         private static JToken NullIfEmpty(string s) =>
             string.IsNullOrWhiteSpace(s) ? (JToken)JValue.CreateNull() : new JValue(s.Trim());
+
+        // A pre-serialized JSON fragment, or JSON null when absent / malformed.
+        private static JToken ParseOrNull(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return JValue.CreateNull();
+            try { return JToken.Parse(json); } catch { return JValue.CreateNull(); }
+        }
 
         private bool TryResolve(out string baseUrl, out string anonKey)
         {

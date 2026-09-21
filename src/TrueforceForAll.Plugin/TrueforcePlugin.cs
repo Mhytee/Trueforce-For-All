@@ -7062,6 +7062,9 @@ namespace TrueforceForAll.Plugin
             ArcadeBridgeSpikeRestore(pluginManager, data);
 
             _currentGameName = data?.GameRunning == true ? data.GameName : null;
+            // Usage stats: note game-day activity on a transition into a game
+            // (one ordinal compare per frame; the record runs only on change).
+            try { NoteTelemetryGameActivity(_currentGameName); } catch { /* never disturb DataUpdate */ }
             // Radar dots and proximity, from this frame's opponents.
             try { DashUpdateRadar(data); } catch { /* display only, never fatal */ }
 
@@ -25345,17 +25348,299 @@ namespace TrueforceForAll.Plugin
                 if (!string.IsNullOrEmpty(game)
                     && game.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
                     game = "Custom";
+                // Settings snapshot, only when it changed since the last accepted
+                // send, so storage scales with installs rather than install-days.
+                // The new hash is held locally and committed only on success.
+                string snapshot     = BuildUsageSettingsSnapshot();
+                string snapshotHash = string.IsNullOrEmpty(snapshot) ? null : HashSnapshot(snapshot);
+                bool   sendSnapshot = !string.IsNullOrEmpty(snapshotHash)
+                    && !string.Equals(snapshotHash, Settings.LastTelemetrySettingsHash ?? "",
+                                      StringComparison.Ordinal);
+
+                // Per-game-day activity accumulated since the last ping. Fold in the
+                // live game too: NoteTelemetryGameActivity only fires on a game
+                // TRANSITION, so a session that spans UTC midnight, or one that began
+                // with the plugin switched off, would otherwise never be recorded.
+                string gamesJson = null;
+                int    gameDaysSent = 0;
+                var    played = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                lock (_carFactsLock)
+                {
+                    var list = Settings.TelemetryGameDays;
+                    if (list != null)
+                    {
+                        if (!string.IsNullOrEmpty(game))
+                        {
+                            string liveKey = game + "|" + today;
+                            if (list.Count < UsageGameDayCap && !list.Contains(liveKey)) list.Add(liveKey);
+                        }
+                        if (list.Count > 0)
+                        {
+                            var games = new Newtonsoft.Json.Linq.JArray();
+                            foreach (var entry in list)
+                            {
+                                int bar = entry.IndexOf('|');
+                                if (bar <= 0 || bar >= entry.Length - 1) continue;
+                                string g = entry.Substring(0, bar);
+                                games.Add(new Newtonsoft.Json.Linq.JObject
+                                    { ["g"] = g, ["d"] = entry.Substring(bar + 1) });
+                                played.Add(g);
+                            }
+                            gameDaysSent = list.Count;                  // dropped only once accepted
+                            if (games.Count > 0)
+                                gamesJson = games.ToString(Newtonsoft.Json.Formatting.None);
+                        }
+                    }
+                }
+
+                // Per-game preset bodies for those games, staged (not stamped) so a
+                // lost send re-sends them rather than marking them already delivered.
+                var stagedPresetHashes =
+                    new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+                string gamePresetsJson = BuildChangedGamePresetsJson(played, stagedPresetHashes);
+
+                string commitHash = sendSnapshot ? snapshotHash : null;
+                int    commitDays = gameDaysSent;
                 _telemetryClient.SendPing(anonId, CurrentVersionString(),
-                    Settings.LastUsedWheel, game, BuildUsageSettingsSnapshot());
-                // Stamp the day up front: the send is fire-and-forget, so we do not
-                // wait for the POST. A dropped ping just means one missed day, never
-                // a retry storm.
-                Settings.LastTelemetryPingDay = today;
-                try { PersistSettingsCore(); } catch { }
+                    Settings.LastUsedWheel, game, sendSnapshot ? snapshot : null,
+                    gamesJson, gamePresetsJson,
+                    () => CommitUsagePing(today, commitHash, commitDays, stagedPresetHashes));
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Usage ping error: " + ex.Message);
+            }
+        }
+
+        // Stable hex SHA-256 of the snapshot JSON, for the once-a-day
+        // settings-changed check. Property order is stable (reflection order over
+        // a fixed set), so an unchanged snapshot hashes the same across runs; a
+        // reorder at worst re-sends the snapshot once, which is harmless.
+        private static string HashSnapshot(string snapshot)
+        {
+            if (string.IsNullOrEmpty(snapshot)) return "";
+            try
+            {
+                using (var sha = System.Security.Cryptography.SHA256.Create())
+                {
+                    byte[] h = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(snapshot));
+                    var sb = new System.Text.StringBuilder(h.Length * 2);
+                    foreach (byte b in h) sb.Append(b.ToString("x2"));
+                    return sb.ToString();
+                }
+            }
+            catch { return ""; }
+        }
+
+        private string _telemetryLastNotedGame;
+
+        // The server takes at most 200 game-days and 10 preset bodies per call and
+        // ignores anything past that, so the client never builds more than it will
+        // accept (an over-long array used to be dropped whole, silently).
+        private const int UsageGameDayCap  = 200;
+        private const int UsagePresetBatch = 10;
+
+        // Called every DataUpdate with the live game name (or null). Cheap on the
+        // hot path: one ordinal compare; the record runs only on a transition into
+        // a game, and only while usage stats are on and the plugin is not off.
+        // Accumulates a (game|UTC-day) entry that the once-a-day ping drains, so we
+        // learn per-game daily activity without extra pings.
+        private void NoteTelemetryGameActivity(string game)
+        {
+            if (string.Equals(game, _telemetryLastNotedGame, StringComparison.Ordinal)) return;
+            _telemetryLastNotedGame = game;
+            if (string.IsNullOrEmpty(game)) return;                 // game stopped: reset only
+            try
+            {
+                if (_shuttingDown || Settings == null || !Settings.ShareUsageStats) return;
+                if (StoredMasterMode == TrueforceMasterMode.Off) return;
+                string g = game.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase) ? "Custom" : game;
+                string key = g + "|" + DateTime.UtcNow.ToString("yyyy-MM-dd");
+                bool added = false;
+                // _carFactsLock, not a private lock: this is a structural mutation of a
+                // collection in the Settings graph on the data thread, and
+                // PersistSettingsCore / BuildEnvelopeLocked walk that whole graph with
+                // Newtonsoft. Same contract as the GamesWithRedline add above.
+                lock (_carFactsLock)
+                {
+                    var list = Settings.TelemetryGameDays;
+                    if (list != null && list.Count < UsageGameDayCap && !list.Contains(key))
+                    {
+                        list.Add(key);
+                        added = true;
+                    }
+                }
+                // Persist off the hot path so the entry survives a close before the
+                // next ping. Game transitions are rare, so this is an occasional save.
+                if (added) System.Threading.Tasks.Task.Run(() => { try { PersistSettingsCore(); } catch { } });
+            }
+            catch { /* telemetry must never disturb DataUpdate */ }
+        }
+
+        // Identity / attribution fields that must never ride a preset body: author
+        // and description (free text), pack name, and the community-upload ids (one
+        // is a user uuid). Also the per-car override map (the payload is the GAME
+        // default; per-car is a separate, much larger question) and the custom-
+        // engine id. Stripped at any depth.
+        private static readonly System.Collections.Generic.HashSet<string> PresetPayloadDeny =
+            new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+        {
+            "Author", "AuthorVersion", "PackName", "Description",
+            "CommunitySourceId", "CommunityUploadedById", "CommunityUploadedByUserId",
+            "CommunityUploadedBodyHash", "CommunityUploadedVersion",
+            "CarOverrides", "DeclinedCommunityRedlineSig", "UserCustomEngineId",
+            // Reachable from EnginePulseSettings and user-authored:
+            // CustomFiringPatternName is a name the user types. They are also kept
+            // out by ShouldSerialize* on those properties, but that block is
+            // documented as migration hygiene for retired fields, so it must not be
+            // this payload's only defense.
+            "CustomEngineId", "CustomFiringPattern", "CustomFiringPatternName",
+        };
+
+        private static void StripPresetIdentity(Newtonsoft.Json.Linq.JToken tok)
+        {
+            if (tok is Newtonsoft.Json.Linq.JObject o)
+            {
+                foreach (var name in System.Linq.Enumerable.ToList(
+                    System.Linq.Enumerable.Select(o.Properties(), p => p.Name)))
+                    if (PresetPayloadDeny.Contains(name)) o.Remove(name);
+                foreach (var p in o.Properties()) StripPresetIdentity(p.Value);
+            }
+            else if (tok is Newtonsoft.Json.Linq.JArray a)
+            {
+                foreach (var item in a) StripPresetIdentity(item);
+            }
+        }
+
+        private static bool IsTextLeaf(Newtonsoft.Json.Linq.JToken t)
+        {
+            var v = t as Newtonsoft.Json.Linq.JValue;
+            if (v == null) return false;
+            switch (v.Type)
+            {
+                case Newtonsoft.Json.Linq.JTokenType.String:
+                case Newtonsoft.Json.Linq.JTokenType.Uri:
+                case Newtonsoft.Json.Linq.JTokenType.Guid:
+                case Newtonsoft.Json.Linq.JTokenType.Date:
+                case Newtonsoft.Json.Linq.JTokenType.Bytes:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>Second pass, and the one that actually holds the line: drop every
+        /// TEXT leaf. A preset's real content is numbers and booleans (the serializer
+        /// below writes enums as integers), so nothing of value is lost, while a
+        /// free-text, path or id field added to GameSettingsSnapshot or any of its
+        /// effect classes later cannot reach the payload by default. Name-based
+        /// denial alone is a blocklist over a surface that grows.</summary>
+        private static void StripTextLeaves(Newtonsoft.Json.Linq.JToken tok)
+        {
+            if (tok is Newtonsoft.Json.Linq.JObject o)
+            {
+                foreach (var name in System.Linq.Enumerable.ToList(
+                    System.Linq.Enumerable.Select(o.Properties(), p => p.Name)))
+                {
+                    var val = o[name];
+                    if (IsTextLeaf(val)) o.Remove(name);
+                    else StripTextLeaves(val);
+                }
+            }
+            else if (tok is Newtonsoft.Json.Linq.JArray a)
+            {
+                for (int i = a.Count - 1; i >= 0; i--)
+                {
+                    if (IsTextLeaf(a[i])) a.RemoveAt(i);
+                    else StripTextLeaves(a[i]);
+                }
+            }
+        }
+
+        /// <summary>For each played game, its DEFAULT preset body (identity and text
+        /// stripped) as [{g, p}], but only for games whose body changed since we last
+        /// sent it. New hashes are STAGED into <paramref name="staged"/> rather than
+        /// written to Settings, so a send that never lands cannot mark a body as
+        /// "already sent". Takes _carFactsLock: it walks the Settings preset graph,
+        /// which is the documented rule (see BuildEnvelopeLocked).</summary>
+        private string BuildChangedGamePresetsJson(
+            System.Collections.Generic.HashSet<string> played,
+            System.Collections.Generic.Dictionary<string, string> staged)
+        {
+            try
+            {
+                if (played == null || played.Count == 0 || staged == null) return null;
+                var arr = new Newtonsoft.Json.Linq.JArray();
+                lock (_carFactsLock)
+                {
+                    if (Settings?.GameDefaults == null || Settings.Presets == null) return null;
+                    var known = Settings.TelemetryGamePresetHashes;
+                    foreach (var g in played)
+                    {
+                        if (arr.Count >= UsagePresetBatch) break;        // server takes 10
+                        if (!Settings.GameDefaults.TryGetValue(g, out var presetName)
+                            || string.IsNullOrEmpty(presetName)) continue;
+                        if (!Settings.Presets.TryGetValue(presetName, out var snap) || snap == null) continue;
+                        // Explicit serializer, not JObject.FromObject(snap): the parameterless
+                        // overload picks up JsonConvert.DefaultSettings, so a globally
+                        // registered StringEnumConverter would turn enums into text and
+                        // StripTextLeaves would then silently drop them.
+                        var body = Newtonsoft.Json.Linq.JObject.FromObject(
+                            snap, new Newtonsoft.Json.JsonSerializer());
+                        StripPresetIdentity(body);
+                        StripTextLeaves(body);
+                        string hash = HashSnapshot(body.ToString(Newtonsoft.Json.Formatting.None));
+                        if (known != null && known.TryGetValue(g, out var last)
+                            && string.Equals(last, hash, StringComparison.Ordinal)) continue;   // unchanged
+                        staged[g] = hash;
+                        arr.Add(new Newtonsoft.Json.Linq.JObject { ["g"] = g, ["p"] = body });
+                    }
+                }
+                return arr.Count > 0 ? arr.ToString(Newtonsoft.Json.Formatting.None) : null;
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Game preset payload build failed: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>Commit the ping's local state, called ONLY after the server
+        /// accepted it. Nothing is stamped or dropped before that, so a failed or
+        /// rejected send retries on the next tick instead of silently losing the
+        /// settings snapshot, a preset body, or a day of game activity.</summary>
+        private void CommitUsagePing(string day, string snapshotHash, int gameDaysSent,
+            System.Collections.Generic.Dictionary<string, string> presetHashes)
+        {
+            try
+            {
+                if (Settings == null) return;
+                lock (_carFactsLock)
+                {
+                    Settings.LastTelemetryPingDay = day;
+                    if (!string.IsNullOrEmpty(snapshotHash))
+                        Settings.LastTelemetrySettingsHash = snapshotHash;
+                    // Drop exactly what we sent, from the front. Anything the data
+                    // thread appended while the POST was in flight stays queued.
+                    var list = Settings.TelemetryGameDays;
+                    if (list != null && gameDaysSent > 0)
+                        list.RemoveRange(0, Math.Min(gameDaysSent, list.Count));
+                    if (presetHashes != null && presetHashes.Count > 0)
+                    {
+                        var h = Settings.TelemetryGamePresetHashes;
+                        if (h == null)
+                        {
+                            h = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+                            Settings.TelemetryGamePresetHashes = h;
+                        }
+                        foreach (var kv in presetHashes) h[kv.Key] = kv.Value;
+                    }
+                }
+                PersistSettingsCore();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage ping commit failed: " + ex.Message);
             }
         }
 

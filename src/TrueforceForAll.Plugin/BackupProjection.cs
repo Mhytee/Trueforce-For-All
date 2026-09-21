@@ -95,11 +95,12 @@ namespace TrueforceForAll.Plugin
             "OledGreetingEnabled", "OledGreetingText", "OledWriteIntervalMs",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
-            // Anonymous usage statistics: the random analytics id and the opt-out
-            // toggle. Both travel like CarFactsAnonId (one human counts once; a
-            // privacy choice follows the person). The once-a-day ping stamp is
-            // per-PC bookkeeping and sits in Excluded.
-            "AnalyticsAnonId", "ShareUsageStats",
+            // The usage-stats opt-out travels: it is a privacy choice, and it should
+            // follow the person to a second PC. AnalyticsAnonId deliberately does
+            // NOT (see Excluded): a backup is stored under the user's account, so
+            // carrying the id there would put account -> anon-id in the backend and
+            // make the telemetry joinable to a real identity.
+            "ShareUsageStats",
             "MotdLevel", "ShowEffectsTabShareButtons", "ShowPerGearRedlineEditor",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
             "DashRevStripOutsideIn", "DashRevStripAuto",
@@ -257,8 +258,18 @@ namespace TrueforceForAll.Plugin
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
             "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed", "LightsyncCycleHintDismissed", "HasSeenLightsyncIntro",
-            // Once-a-day usage-ping stamp: per-PC bookkeeping, re-pings harmlessly on PC2.
-            "LastTelemetryPingDay",
+            // Usage-ping bookkeeping (once-a-day stamp, last-sent settings hash,
+            // accumulated game-days, per-game preset hashes): per-PC, re-pings
+            // harmlessly on PC2.
+            "LastTelemetryPingDay", "LastTelemetrySettingsHash",
+            "TelemetryGameDays", "TelemetryGamePresetHashes",
+            // The anonymous analytics id is EXCLUDED on purpose, not for safety on
+            // PC2 but for privacy at the backend: a backup is stored under the
+            // user's account, so travelling would record account -> anon-id and
+            // make every telemetry row joinable to a real identity. PC2 mints its
+            // own via EnsureAnalyticsAnonId; the cost is that one human with two
+            // PCs counts as two installs, which is the right trade.
+            "AnalyticsAnonId",
             // Migration latch: PC2 needs to run its own, so this must not travel.
             "LightsyncReleasedMigrated",
             // MOTD client state: re-fetchable cache + transient per-message dismiss bookkeeping.
