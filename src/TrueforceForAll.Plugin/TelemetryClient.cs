@@ -17,6 +17,30 @@ using Newtonsoft.Json.Linq;
 
 namespace TrueforceForAll.Plugin
 {
+    /// <summary>What the server said it actually STORED. Every filter in
+    /// telemetry_ping (size caps, date window, per-install game cap) drops its
+    /// input silently and still answers 2xx, so "the POST succeeded" is not the
+    /// same as "the payload landed". Committing local already-sent state on a
+    /// bare 2xx therefore marked discarded payloads as delivered, and since the
+    /// resend test is a hash compare, they were then never resent: permanent,
+    /// and invisible from both ends. The caller commits only what is listed
+    /// here and leaves the rest queued for the next ping.</summary>
+    internal sealed class TelemetryReceipt
+    {
+        /// <summary>The settings snapshot was stored (false when it was dropped
+        /// for size, in which case the caller must not stamp its hash).</summary>
+        public bool SettingsStored;
+
+        /// <summary>Accepted game-day keys, echoed in the caller's own
+        /// "&lt;game&gt;|yyyy-MM-dd" form so they can be matched by value.</summary>
+        public readonly System.Collections.Generic.HashSet<string> Games =
+            new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>Game names whose preset body was stored.</summary>
+        public readonly System.Collections.Generic.HashSet<string> Presets =
+            new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+    }
+
     internal sealed class TelemetryClient
     {
         private static readonly HttpClient _http = new HttpClient
@@ -38,10 +62,13 @@ namespace TrueforceForAll.Plugin
         /// never blocks. <paramref name="onSent"/> runs ONLY on a 2xx, on a
         /// ThreadPool thread, so the caller can commit "already sent" state (day
         /// stamp, payload hashes, queue drain) after the server accepted it rather
-        /// than before; a failed send then simply retries on the next tick.</summary>
+        /// than before; a failed send then simply retries on the next tick. It is
+        /// handed the server's receipt (migration 0131) naming exactly what was
+        /// stored, or null if the response carried none, so the caller can commit
+        /// per item instead of trusting the status code.</summary>
         public void SendPing(string anonId, string pluginVersion, string wheel,
             string game, string settingsJson, string gamesJson = null, string gamePresetsJson = null,
-            Action onSent = null)
+            Action<TelemetryReceipt> onSent = null)
         {
             if (string.IsNullOrWhiteSpace(anonId)) return;
             if (!TryResolve(out string baseUrl, out string anonKey)) return;
@@ -81,14 +108,23 @@ namespace TrueforceForAll.Plugin
                         // never a user token, so a report is never tied to an account.
                         req.Headers.Add("apikey", key);
                         req.Headers.Add("Authorization", "Bearer " + key);
-                        req.Headers.Add("Prefer", "return=minimal");
+                        // No "Prefer: return=minimal": the receipt IS the response body,
+                        // and it is the only way to tell an accepted payload from a
+                        // silently filtered one. It is a few hundred bytes once a day.
                         req.Content = new StringContent(body, Encoding.UTF8, "application/json");
                         using (var resp = await _http.SendAsync(req,
-                            HttpCompletionOption.ResponseHeadersRead, CancellationToken.None).ConfigureAwait(false))
+                            HttpCompletionOption.ResponseContentRead, CancellationToken.None).ConfigureAwait(false))
                         {
                             if (resp.IsSuccessStatusCode)
                             {
-                                try { onSent?.Invoke(); }
+                                TelemetryReceipt receipt = null;
+                                try
+                                {
+                                    string text = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                    receipt = ParseReceipt(text);
+                                }
+                                catch { /* no receipt: the caller commits the day stamp only */ }
+                                try { onSent?.Invoke(receipt); }
                                 catch (Exception cex)
                                 { _log?.Invoke("[TF4ALL] Telemetry ping commit error: " + cex.Message); }
                             }
@@ -104,6 +140,40 @@ namespace TrueforceForAll.Plugin
                     _log?.Invoke("[TF4ALL] Telemetry ping error: " + ex.Message);
                 }
             });
+        }
+
+        /// <summary>Read the server's receipt. Returns null for anything it cannot
+        /// read as one (an old server, an empty body, a proxy's error page), which
+        /// the caller treats as "nothing confirmed" rather than "everything
+        /// confirmed": a payload that may not have landed stays queued and is
+        /// retried, which costs one more ping and can never lose data.</summary>
+        private static TelemetryReceipt ParseReceipt(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            JObject o;
+            try { o = JToken.Parse(text) as JObject; } catch { return null; }
+            if (o == null || o["ok"] == null) return null;
+            if (o["ok"].Type != JTokenType.Boolean || !(bool)o["ok"]) return null;
+            var r = new TelemetryReceipt
+            {
+                SettingsStored = o["settings"] != null
+                                 && o["settings"].Type == JTokenType.Boolean
+                                 && (bool)o["settings"],
+            };
+            AddStrings(o["games"]   as JArray, r.Games);
+            AddStrings(o["presets"] as JArray, r.Presets);
+            return r;
+        }
+
+        private static void AddStrings(JArray a, System.Collections.Generic.HashSet<string> into)
+        {
+            if (a == null) return;
+            foreach (var t in a)
+                if (t != null && t.Type == JTokenType.String)
+                {
+                    string s = (string)t;
+                    if (!string.IsNullOrEmpty(s)) into.Add(s);
+                }
         }
 
         private static JToken NullIfEmpty(string s) =>

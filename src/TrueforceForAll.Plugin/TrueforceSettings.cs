@@ -2760,7 +2760,9 @@ namespace TrueforceForAll.Plugin
     /// is persisted across sessions. In Manual, ring sizes are user-fixed
     /// no automatic changes, for users who want guaranteed-stable behavior
     /// (streamers) or to force-test lower values.</summary>
-    public enum PerformanceMode { Auto, Manual }
+    // Values pinned: these ordinals ride the anonymous preset-body payload as
+    // integers. Append only.
+    public enum PerformanceMode { Auto = 0, Manual = 1 }
 
     /// <summary>Forza Data Out UDP listener. The user enables UDP RACE
     /// TELEMETRY in Forza's Settings → HUD and Gameplay menu and sets the

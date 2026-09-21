@@ -15,10 +15,13 @@ using TrueforceForAll.Core;
 
 namespace TrueforceForAll.Plugin.Effects
 {
+    // Values pinned: these ordinals ride the anonymous preset-body payload as
+    // integers, so a member inserted in the middle would reinterpret stored rows.
+    // Append only.
     public enum AbsMode
     {
-        Pulse,    // continuous carrier × internal pulse modulator
-        PerTick,  // one click envelope per ABSActive rising edge
+        Pulse   = 0,  // continuous carrier × internal pulse modulator
+        PerTick = 1,  // one click envelope per ABSActive rising edge
     }
 
     public sealed class AbsClickEffect : TelemetryEffect

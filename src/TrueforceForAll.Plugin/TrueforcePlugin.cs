@@ -25228,9 +25228,13 @@ namespace TrueforceForAll.Plugin
 
         // ---- Anonymous usage statistics (telemetry_ping, migration 0127) ----
 
-        /// <summary>Mint the analytics id if missing. Separate from the car-fact
-        /// anon id so the two anonymous datasets can't be cross-linked. Random,
-        /// never hardware-derived. Travels in backups so one human counts once.</summary>
+        /// <summary>Mint the analytics id if missing. Separate from the car-fact anon id
+        /// so the two anonymous datasets can't be cross-linked. Random, never
+        /// hardware-derived. Unlike CarFactsAnonId it deliberately does NOT travel in
+        /// backups (BackupProjection Excluded): a backup lives under the user's account,
+        /// so carrying it would record account -> anon-id and make the telemetry
+        /// joinable to a real identity. A second PC mints its own and counts as a second
+        /// install, which is the accepted trade.</summary>
         internal void EnsureAnalyticsAnonId()
         {
             if (Settings == null) return;
@@ -25244,6 +25248,11 @@ namespace TrueforceForAll.Plugin
         // values. Non-portable fields (USB pins, paths, auth, migration latches,
         // nag / UI state, caches) need no entry here: the Portable gate in
         // BuildUsageSettingsSnapshot already drops everything outside Portable.
+        // AnalyticsAnonId is the exception that proves that rule: it is Excluded,
+        // not Portable, so the gate above already drops it and this entry can never
+        // fire. It stays listed deliberately, so that reclassifying it (which is how
+        // it reached the backup envelope once already) cannot silently start
+        // stamping the anon id into its own settings snapshot.
         private static readonly System.Collections.Generic.HashSet<string> UsageSnapshotDeny =
             new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
         {
@@ -25328,6 +25337,13 @@ namespace TrueforceForAll.Plugin
         /// startup and on a timer. Fire-and-forget; never blocks.</summary>
         internal void MaybeSendUsagePing()
         {
+            // Serializes the BUILD only. It is released as soon as the POST is
+            // dispatched, so two requests can still be in flight at once (the day stamp
+            // no longer suppresses re-entry until a 2xx lands). That overlap is
+            // tolerated rather than prevented: CommitUsagePing is idempotent, and the
+            // server upserts. What this does prevent is two threads building the
+            // payload, which walks the preset graph under _carFactsLock.
+            if (System.Threading.Interlocked.CompareExchange(ref _usagePingBusy, 1, 0) != 0) return;
             try
             {
                 if (_shuttingDown || Settings == null || _telemetryClient == null) return;
@@ -25336,7 +25352,7 @@ namespace TrueforceForAll.Plugin
                 // active user. Skip when the plugin is turned off entirely.
                 // LightsyncOnly still counts (the wheel's lights are in use).
                 if (StoredMasterMode == TrueforceMasterMode.Off) return;
-                string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                string today = UsageDayKey();
                 if (string.Equals(Settings.LastTelemetryPingDay, today, StringComparison.Ordinal))
                     return;                                            // already pinged today
                 EnsureAnalyticsAnonId();
@@ -25362,8 +25378,8 @@ namespace TrueforceForAll.Plugin
                 // TRANSITION, so a session that spans UTC midnight, or one that began
                 // with the plugin switched off, would otherwise never be recorded.
                 string gamesJson = null;
-                int    gameDaysSent = 0;
-                var    played = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                System.Collections.Generic.List<string> sentGameDays = null;
+                var played = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
                 lock (_carFactsLock)
                 {
                     var list = Settings.TelemetryGameDays;
@@ -25377,7 +25393,8 @@ namespace TrueforceForAll.Plugin
                         if (list.Count > 0)
                         {
                             var games = new Newtonsoft.Json.Linq.JArray();
-                            foreach (var entry in list)
+                            sentGameDays = new System.Collections.Generic.List<string>(list);
+                            foreach (var entry in sentGameDays)
                             {
                                 int bar = entry.IndexOf('|');
                                 if (bar <= 0 || bar >= entry.Length - 1) continue;
@@ -25386,7 +25403,6 @@ namespace TrueforceForAll.Plugin
                                     { ["g"] = g, ["d"] = entry.Substring(bar + 1) });
                                 played.Add(g);
                             }
-                            gameDaysSent = list.Count;                  // dropped only once accepted
                             if (games.Count > 0)
                                 gamesJson = games.ToString(Newtonsoft.Json.Formatting.None);
                         }
@@ -25399,18 +25415,29 @@ namespace TrueforceForAll.Plugin
                     new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
                 string gamePresetsJson = BuildChangedGamePresetsJson(played, stagedPresetHashes);
 
-                string commitHash = sendSnapshot ? snapshotHash : null;
-                int    commitDays = gameDaysSent;
+                string commitHash  = sendSnapshot ? snapshotHash : null;
+                var    commitDays  = sentGameDays;
+                var    commitOwner = Settings;              // identity checked at commit
                 _telemetryClient.SendPing(anonId, CurrentVersionString(),
                     Settings.LastUsedWheel, game, sendSnapshot ? snapshot : null,
                     gamesJson, gamePresetsJson,
-                    () => CommitUsagePing(today, commitHash, commitDays, stagedPresetHashes));
+                    receipt => CommitUsagePing(commitOwner, today, commitHash, commitDays,
+                                               stagedPresetHashes, receipt));
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Usage ping error: " + ex.Message);
             }
+            finally
+            {
+                // Released once the POST is DISPATCHED (it is fire-and-forget), not
+                // when it completes: the commit is idempotent, and the day stamp
+                // suppresses the next tick once the server has accepted one.
+                System.Threading.Interlocked.Exchange(ref _usagePingBusy, 0);
+            }
         }
+
+        private int _usagePingBusy;
 
         // Stable hex SHA-256 of the snapshot JSON, for the once-a-day
         // settings-changed check. Property order is stable (reflection order over
@@ -25432,7 +25459,20 @@ namespace TrueforceForAll.Plugin
             catch { return ""; }
         }
 
-        private string _telemetryLastNotedGame;
+        private string   _telemetryLastNotedGame;
+        private DateTime _telemetryLastNotedDate;   // UTC date component, MinValue until first note
+
+        /// <summary>Today's UTC date as the wire format expects it. InvariantCulture
+        /// is load-bearing, not tidiness: ToString on the current culture uses that
+        /// culture's CALENDAR, so a th-TH install writes 2569-09-21, ar-SA writes
+        /// 1448-04-10 and fa-IR writes 1405-06-30. All three are ISO-shaped, so they
+        /// pass the server's regex and then fall outside its date window, which
+        /// discards them while still answering 2xx. Those installs would count toward
+        /// DAU and never toward per-game DAU, silently.</summary>
+        private static string UsageDayKey() => UsageDayKey(DateTime.UtcNow);
+
+        private static string UsageDayKey(DateTime utc) =>
+            utc.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
         // The server takes at most 200 game-days and 10 preset bodies per call and
         // ignores anything past that, so the client never builds more than it will
@@ -25441,21 +25481,34 @@ namespace TrueforceForAll.Plugin
         private const int UsagePresetBatch = 10;
 
         // Called every DataUpdate with the live game name (or null). Cheap on the
-        // hot path: one ordinal compare; the record runs only on a transition into
-        // a game, and only while usage stats are on and the plugin is not off.
-        // Accumulates a (game|UTC-day) entry that the once-a-day ping drains, so we
-        // learn per-game daily activity without extra pings.
+        // hot path: two ordinal compares with no allocation; the record runs only on
+        // a transition into a game, and only while usage stats are on and the plugin
+        // is not off. Accumulates a (game|UTC-day) entry that the once-a-day ping
+        // drains, so we learn per-game daily activity without extra pings.
         private void NoteTelemetryGameActivity(string game)
         {
-            if (string.Equals(game, _telemetryLastNotedGame, StringComparison.Ordinal)) return;
-            _telemetryLastNotedGame = game;
-            if (string.IsNullOrEmpty(game)) return;                 // game stopped: reset only
+            // The latch is keyed on game AND UTC date. Game alone made it blind to
+            // midnight: a session starting 20:30 and ending 01:00 never re-noted, so
+            // the new day got no entry at all unless the six-hour timer happened to
+            // tick before the user quit (it is MaybeSendUsagePing, not this method,
+            // that folds the live game in, and End() does not flush). Comparing the
+            // DateTime.Date rather than a formatted string keeps the hot path
+            // allocation-free; the string is built only once a transition is real.
+            DateTime utcNow = DateTime.UtcNow;
+            if (string.Equals(game, _telemetryLastNotedGame, StringComparison.Ordinal)
+                && utcNow.Date == _telemetryLastNotedDate) return;
+            if (string.IsNullOrEmpty(game)) { _telemetryLastNotedGame = null; return; }  // stopped
             try
             {
+                // Gates BEFORE latching: latching first would consume the transition, so
+                // a game launched while stats were off (or the plugin was Off) could
+                // never be noted once the gate opened, even though it is still running.
                 if (_shuttingDown || Settings == null || !Settings.ShareUsageStats) return;
                 if (StoredMasterMode == TrueforceMasterMode.Off) return;
+                _telemetryLastNotedGame = game;
+                _telemetryLastNotedDate = utcNow.Date;
                 string g = game.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase) ? "Custom" : game;
-                string key = g + "|" + DateTime.UtcNow.ToString("yyyy-MM-dd");
+                string key = g + "|" + UsageDayKey(utcNow);
                 bool added = false;
                 // _carFactsLock, not a private lock: this is a structural mutation of a
                 // collection in the Settings graph on the data thread, and
@@ -25470,8 +25523,11 @@ namespace TrueforceForAll.Plugin
                         added = true;
                     }
                 }
-                // Persist off the hot path so the entry survives a close before the
-                // next ping. Game transitions are rare, so this is an occasional save.
+                // Persist off the hot path so the entry survives a close before the next
+                // ping. At most one save per game per UTC day, and it lands at game
+                // START, where PersistSettingsCore's whole-graph write holds
+                // _carFactsLock and can briefly stall the data thread. Accepted: the
+                // alternative is losing the day's activity when SimHub closes.
                 if (added) System.Threading.Tasks.Task.Run(() => { try { PersistSettingsCore(); } catch { } });
             }
             catch { /* telemetry must never disturb DataUpdate */ }
@@ -25495,6 +25551,11 @@ namespace TrueforceForAll.Plugin
             // documented as migration hygiene for retired fields, so it must not be
             // this payload's only defense.
             "CustomEngineId", "CustomFiringPattern", "CustomFiringPatternName",
+            // Retired legacy car-fact values. Not personal data, but they are NUMBERS,
+            // so StripTextLeaves cannot backstop them: today they are only kept out by
+            // ShouldSerialize* on those properties, and that block is documented as
+            // removable migration hygiene.
+            "Cylinders", "FiringOrderEnabled",
         };
 
         private static void StripPresetIdentity(Newtonsoft.Json.Linq.JToken tok)
@@ -25511,6 +25572,47 @@ namespace TrueforceForAll.Plugin
                 foreach (var item in a) StripPresetIdentity(item);
             }
         }
+
+        /// <summary>Serializer for the per-game preset payload. Clears the converter on
+        /// enum members so they serialize as INTEGERS. Newtonsoft applies a member-level
+        /// [JsonConverter(typeof(StringEnumConverter))] regardless of serializer
+        /// settings, so without this every enum in the preset graph becomes a string and
+        /// StripTextLeaves deletes it (verified: 143 leaves -> 119, losing all 14
+        /// Waveform / Mode / ElectricMode / SurfaceWaveform fields). Resolver
+        /// subclassing follows the existing PresetBodyHasher pattern.
+        ///
+        /// BOTH hooks are needed. CreateProperty clears the MEMBER attribute, which is
+        /// what the settings model uses today; CreateContract clears a TYPE-level
+        /// attribute on the enum declaration itself, which nothing uses today but which
+        /// is the obvious tidy-up when someone notices the 14 identical member
+        /// attributes. Without the second hook that refactor silently reinstates the
+        /// bug, because a type-level converter is resolved from the enum's contract and
+        /// never passes through CreateProperty.</summary>
+        private sealed class EnumsAsIntegersResolver : Newtonsoft.Json.Serialization.DefaultContractResolver
+        {
+            protected override Newtonsoft.Json.Serialization.JsonProperty CreateProperty(
+                System.Reflection.MemberInfo member, Newtonsoft.Json.MemberSerialization memberSerialization)
+            {
+                var p = base.CreateProperty(member, memberSerialization);
+                var t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+                if (t != null && t.IsEnum) p.Converter = null;
+                return p;
+            }
+
+            protected override Newtonsoft.Json.Serialization.JsonContract CreateContract(Type objectType)
+            {
+                var c = base.CreateContract(objectType);
+                var t = Nullable.GetUnderlyingType(objectType) ?? objectType;
+                if (t != null && t.IsEnum) c.Converter = null;
+                return c;
+            }
+        }
+
+        private static readonly Newtonsoft.Json.JsonSerializer PresetPayloadSerializer =
+            new Newtonsoft.Json.JsonSerializer
+            {
+                ContractResolver = new EnumsAsIntegersResolver(),
+            };
 
         private static bool IsTextLeaf(Newtonsoft.Json.Linq.JToken t)
         {
@@ -25530,11 +25632,21 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Second pass, and the one that actually holds the line: drop every
-        /// TEXT leaf. A preset's real content is numbers and booleans (the serializer
-        /// below writes enums as integers), so nothing of value is lost, while a
-        /// free-text, path or id field added to GameSettingsSnapshot or any of its
-        /// effect classes later cannot reach the payload by default. Name-based
-        /// denial alone is a blocklist over a surface that grows.</summary>
+        /// TEXT leaf, so a free-text, path or id field added to GameSettingsSnapshot or
+        /// any of its effect classes later cannot reach the payload by default (name
+        /// denial alone is a blocklist over a surface that grows).
+        ///
+        /// This is only safe because the payload is serialized with
+        /// <see cref="PresetPayloadSerializer"/>, which forces enums to integers. The
+        /// enums here carry a [JsonConverter(StringEnumConverter)] attribute, which
+        /// beats serializer settings, so a plain serializer writes them as TEXT and
+        /// this pass would delete all 14 of them (Waveform, Mode, ElectricMode,
+        /// SurfaceWaveform, ...). Anything serialized here that is genuinely text and
+        /// genuinely wanted has the same problem and must be given a non-text
+        /// representation, not an exemption. Property NAMES are not inspected: no
+        /// dictionary is reachable from the snapshot today (CarOverrides is denied by
+        /// name), but a dictionary added later would carry its user-controlled KEYS
+        /// through this pass untouched.</summary>
         private static void StripTextLeaves(Newtonsoft.Json.Linq.JToken tok)
         {
             if (tok is Newtonsoft.Json.Linq.JObject o)
@@ -25571,6 +25683,12 @@ namespace TrueforceForAll.Plugin
             {
                 if (played == null || played.Count == 0 || staged == null) return null;
                 var arr = new Newtonsoft.Json.Linq.JArray();
+                // Hashes accumulate HERE, not into `staged`, until the payload is fully
+                // built. `staged` is captured by the on-success commit, so writing into
+                // it early meant a mid-loop throw (the catch returns null, sending no
+                // presets) still marked those games delivered, defeating the very
+                // guarantee staging exists to give.
+                var built = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
                 lock (_carFactsLock)
                 {
                     if (Settings?.GameDefaults == null || Settings.Presets == null) return null;
@@ -25581,22 +25699,25 @@ namespace TrueforceForAll.Plugin
                         if (!Settings.GameDefaults.TryGetValue(g, out var presetName)
                             || string.IsNullOrEmpty(presetName)) continue;
                         if (!Settings.Presets.TryGetValue(presetName, out var snap) || snap == null) continue;
-                        // Explicit serializer, not JObject.FromObject(snap): the parameterless
-                        // overload picks up JsonConvert.DefaultSettings, so a globally
-                        // registered StringEnumConverter would turn enums into text and
-                        // StripTextLeaves would then silently drop them.
-                        var body = Newtonsoft.Json.Linq.JObject.FromObject(
-                            snap, new Newtonsoft.Json.JsonSerializer());
+                        // PresetPayloadSerializer, not the parameterless FromObject: it
+                        // both avoids JsonConvert.DefaultSettings AND forces enums to
+                        // integers, without which StripTextLeaves below deletes every
+                        // enum in the body. The hash is taken AFTER stripping, so that
+                        // loss would also have made waveform/mode edits un-resendable.
+                        var body = Newtonsoft.Json.Linq.JObject.FromObject(snap, PresetPayloadSerializer);
                         StripPresetIdentity(body);
                         StripTextLeaves(body);
                         string hash = HashSnapshot(body.ToString(Newtonsoft.Json.Formatting.None));
                         if (known != null && known.TryGetValue(g, out var last)
                             && string.Equals(last, hash, StringComparison.Ordinal)) continue;   // unchanged
-                        staged[g] = hash;
+                        built[g] = hash;
                         arr.Add(new Newtonsoft.Json.Linq.JObject { ["g"] = g, ["p"] = body });
                     }
                 }
-                return arr.Count > 0 ? arr.ToString(Newtonsoft.Json.Formatting.None) : null;
+                if (arr.Count == 0) return null;
+                string json = arr.ToString(Newtonsoft.Json.Formatting.None);   // can throw; staged stays empty
+                foreach (var kv in built) staged[kv.Key] = kv.Value;
+                return json;
             }
             catch (Exception ex)
             {
@@ -25605,35 +25726,89 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Commit the ping's local state, called ONLY after the server
-        /// accepted it. Nothing is stamped or dropped before that, so a failed or
-        /// rejected send retries on the next tick instead of silently losing the
-        /// settings snapshot, a preset body, or a day of game activity.</summary>
-        private void CommitUsagePing(string day, string snapshotHash, int gameDaysSent,
-            System.Collections.Generic.Dictionary<string, string> presetHashes)
+        /// <summary>Drop everything collected but not yet sent, for the opt-out. The
+        /// accumulated (game|day) queue and the settings-changed hash go; the install
+        /// id and the day stamp stay (the id so a later opt-in is still one install
+        /// rather than a second one, the day stamp so re-enabling twice in a day does
+        /// not re-ping). Clearing the hash is what makes the next opt-in send a
+        /// current snapshot rather than assume the server still holds the old one.</summary>
+        internal void DiscardPendingUsageStats()
         {
             try
             {
                 if (Settings == null) return;
                 lock (_carFactsLock)
                 {
-                    Settings.LastTelemetryPingDay = day;
-                    if (!string.IsNullOrEmpty(snapshotHash))
-                        Settings.LastTelemetrySettingsHash = snapshotHash;
-                    // Drop exactly what we sent, from the front. Anything the data
-                    // thread appended while the POST was in flight stays queued.
-                    var list = Settings.TelemetryGameDays;
-                    if (list != null && gameDaysSent > 0)
-                        list.RemoveRange(0, Math.Min(gameDaysSent, list.Count));
-                    if (presetHashes != null && presetHashes.Count > 0)
+                    Settings.TelemetryGameDays?.Clear();
+                    Settings.LastTelemetrySettingsHash = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage stats discard failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>Commit the ping's local state, called ONLY after the server
+        /// accepted it, and then only for what the server's RECEIPT says it actually
+        /// stored. Nothing is stamped or dropped before that, so a failed send, or a
+        /// payload the server filtered (too large, out of its date window, past its
+        /// per-install game cap), retries on the next tick instead of being recorded
+        /// as delivered. That second half matters more than it looks: the resend test
+        /// is a hash compare, so a payload wrongly marked delivered is not lost for
+        /// one ping, it is lost until the user happens to change that setting again.
+        /// A null receipt (an older server, an unreadable body) commits the day stamp
+        /// only, which costs one extra send and can never lose data.</summary>
+        private void CommitUsagePing(TrueforceSettings owner, string day, string snapshotHash,
+            System.Collections.Generic.List<string> sentGameDays,
+            System.Collections.Generic.Dictionary<string, string> presetHashes,
+            TelemetryReceipt receipt)
+        {
+            try
+            {
+                // This runs on a ThreadPool thread up to the HTTP timeout after dispatch.
+                // Bail if we are tearing down (it would write the settings file after
+                // End()'s final save) or if the settings graph was REPLACED meanwhile by
+                // an import / restore: stamping a different object costs that install a
+                // day of DAU under a freshly minted id. Same guard pattern the other
+                // post-async callbacks in this file use.
+                if (owner == null || _shuttingDown || !ReferenceEquals(Settings, owner)) return;
+                // Every write below goes through `owner`, never a fresh read of the
+                // Settings property: the guard has already proven owner is the live
+                // graph, and re-reading a plain auto-property would let an import
+                // landing in between write this ping's state into the NEW object,
+                // which is the exact outcome the guard exists to prevent.
+                lock (_carFactsLock)
+                {
+                    // Re-checked inside the lock: End() sets the flag and then does its
+                    // own final save, so a callback that read it a moment earlier would
+                    // otherwise persist over the top of that save. Leaving the entries
+                    // queued is the right outcome; they go out on the next run.
+                    if (_shuttingDown) return;
+                    owner.LastTelemetryPingDay = day;
+                    if (!string.IsNullOrEmpty(snapshotHash) && receipt != null && receipt.SettingsStored)
+                        owner.LastTelemetrySettingsHash = snapshotHash;
+                    // Drop exactly the entries the server confirmed, BY VALUE. Not by
+                    // index or count: the day stamp now lands only on success, so two
+                    // pings can briefly overlap, and an index-based drop would then
+                    // remove entries that were never sent. Remove(item) on an
+                    // already-removed key is a no-op, which makes a repeated commit
+                    // harmless. Anything unconfirmed, and anything the data thread
+                    // appended meanwhile, stays queued.
+                    var list = owner.TelemetryGameDays;
+                    if (list != null && sentGameDays != null && receipt != null)
+                        foreach (var key in sentGameDays)
+                            if (receipt.Games.Contains(key)) list.Remove(key);
+                    if (presetHashes != null && presetHashes.Count > 0 && receipt != null)
                     {
-                        var h = Settings.TelemetryGamePresetHashes;
+                        var h = owner.TelemetryGamePresetHashes;
                         if (h == null)
                         {
                             h = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
-                            Settings.TelemetryGamePresetHashes = h;
+                            owner.TelemetryGamePresetHashes = h;
                         }
-                        foreach (var kv in presetHashes) h[kv.Key] = kv.Value;
+                        foreach (var kv in presetHashes)
+                            if (receipt.Presets.Contains(kv.Key)) h[kv.Key] = kv.Value;
                     }
                 }
                 PersistSettingsCore();
@@ -34040,6 +34215,42 @@ namespace TrueforceForAll.Plugin
             // file can't change who's signed in, import a foreign slots dict, or desync the active-
             // account library folder. Mirrors the cloud restore, which keeps machine-local fields.
             var preservedMachineLocal = Settings;
+            // Per-PC state is written onto `imported` BEFORE it is published, not
+            // after. `Settings = imported` is visible to every other thread the
+            // instant it runs, and the usage-ping timer reads AnalyticsAnonId, the
+            // day stamp and the game-day queue with no coordination: a tick landing
+            // in the gap used to send the BACKUP's identity, and could persist it.
+            // Reconciling first closes that window for the cross-wheel FFB trio too.
+            //
+            // The two collections are COPIED, not aliased. Assigning the references
+            // would leave the discarded object sharing live collections that the data
+            // thread keeps appending to, so the old graph would go on mutating the new
+            // one. Copied under _carFactsLock, since NoteTelemetryGameActivity appends
+            // to exactly these from DataUpdate.
+            imported.CrossWheelFfbMode          = preservedMachineLocal.CrossWheelFfbMode;
+            imported.PendingCrossWheelFfb       = preservedMachineLocal.PendingCrossWheelFfb;
+            imported.PendingCrossWheelFfbSource = preservedMachineLocal.PendingCrossWheelFfbSource;
+            // Usage-stats identity + bookkeeping are per-INSTALL and must never ride a
+            // settings file. The cloud path is already safe (BackupProjection filters to
+            // Portable), but a zip / settings-file restore replaces Settings wholesale,
+            // and AnalyticsAnonId is only Excluded, not MachineLocal. Without this, PC2
+            // would adopt PC1's anon id (re-linking telemetry to one identity, which is
+            // exactly what moving it to Excluded was meant to prevent), inherit its day
+            // stamp and skip its own ping, replay its undrained game-day queue, and then
+            // both machines would fight over the same (anon_id, day) row.
+            imported.AnalyticsAnonId           = preservedMachineLocal.AnalyticsAnonId;
+            imported.LastTelemetryPingDay      = preservedMachineLocal.LastTelemetryPingDay;
+            imported.LastTelemetrySettingsHash = preservedMachineLocal.LastTelemetrySettingsHash;
+            lock (_carFactsLock)
+            {
+                imported.TelemetryGameDays = preservedMachineLocal.TelemetryGameDays == null
+                    ? new List<string>()
+                    : new List<string>(preservedMachineLocal.TelemetryGameDays);
+                imported.TelemetryGamePresetHashes = preservedMachineLocal.TelemetryGamePresetHashes == null
+                    ? new Dictionary<string, string>(StringComparer.Ordinal)
+                    : new Dictionary<string, string>(preservedMachineLocal.TelemetryGamePresetHashes,
+                                                     StringComparer.Ordinal);
+            }
             Settings = imported;
             PreserveMachineLocalSettings(preservedMachineLocal, Settings);
             // A file written before the master switch had three states carries no
@@ -34053,12 +34264,8 @@ namespace TrueforceForAll.Plugin
                 Settings.MasterMode = TrueforceMasterMode.Normal;
                 Settings.MasterModeMigratedV1 = true;
             }
-            // The cross-wheel FFB policy and any pending prompt are per-PC (Excluded
-            // from backup); a wholesale import would otherwise replace this PC's choice
-            // with the file's. Restore them so the gate below reads this PC's policy.
-            Settings.CrossWheelFfbMode          = preservedMachineLocal.CrossWheelFfbMode;
-            Settings.PendingCrossWheelFfb       = preservedMachineLocal.PendingCrossWheelFfb;
-            Settings.PendingCrossWheelFfbSource = preservedMachineLocal.PendingCrossWheelFfbSource;
+            // (The cross-wheel FFB policy, the pending prompt and the usage-stats
+            // identity were reconciled onto `imported` above, before publication.)
             // The imported file replaced Settings wholesale, so PluginEnabled can flip without a
             // SetPluginEnabled transition. Reconcile the device NOW, before the throw-capable
             // remainder (cross-wheel gating, slot remount, preset migration): PluginEnabled is
@@ -34069,8 +34276,18 @@ namespace TrueforceForAll.Plugin
             // different wheel model does not silently apply its force-feedback tuning.
             // Restore this PC's FFB and, on the Ask policy, surface the apply-anyway
             // prompt. preservedMachineLocal holds this PC's real FFB + wheel.
-            StashCrossWheelFfbIfGated(
-                BackupProjection.GateImportedCrossWheelFfb(imported, preservedMachineLocal, Settings));
+            // Under _carFactsLock: the gate serializes the whole settings graph with
+            // JObject.FromObject, and `imported` IS the live graph by now, so a
+            // concurrent append from DataUpdate would throw a collection-modified
+            // exception out of an unguarded call. Inside RestoreAllFromZip that
+            // exception triggers the FULL rollback. Same contract as
+            // PersistSettingsCore / BuildEnvelopeLocked. Only the serialize is held;
+            // the stash (which can raise UI) runs outside.
+            BackupApplyResult crossWheelGate;
+            lock (_carFactsLock)
+                crossWheelGate = BackupProjection.GateImportedCrossWheelFfb(
+                    imported, preservedMachineLocal, Settings);
+            StashCrossWheelFfbIfGated(crossWheelGate);
             // Re-establish active-account slot consistency (re-point its library folder + stash the
             // restored profile into the slot), exactly as the cloud restore remounts the slot.
             try { MountUserSlot(Settings.ActiveSlotKey ?? ""); }

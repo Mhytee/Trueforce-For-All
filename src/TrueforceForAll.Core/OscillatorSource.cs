@@ -11,13 +11,17 @@ using System;
 
 namespace TrueforceForAll.Core
 {
+    // Values are pinned because these ordinals are a WIRE FORMAT: the anonymous
+    // per-game preset body sends enums as integers (a text leaf would be stripped),
+    // so inserting a member in the middle would silently reinterpret every row
+    // already stored. Append new waveforms at the end with the next value.
     public enum Waveform
     {
-        Sine,
-        Square,
-        Saw,
-        Triangle,
-        Noise,
+        Sine     = 0,
+        Square   = 1,
+        Saw      = 2,
+        Triangle = 3,
+        Noise    = 4,
     }
 
     public sealed class OscillatorSource : ISampleSource

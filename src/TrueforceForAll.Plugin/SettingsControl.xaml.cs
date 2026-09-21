@@ -6736,7 +6736,16 @@ namespace TrueforceForAll.Plugin
                                 "CarFactsAnonId", "SharingAuthor",
                                 "BackupLastSyncedEnvelopeJson", "BackupLastSyncedRevision",
                                 "AchievementBaseline", "DashIdleDriverName",
-                                "OledGreetingText", "OledCustomTexts" })
+                                "OledGreetingText", "OledCustomTexts",
+                                // The anonymous usage-stats id and its bookkeeping, for
+                                // the same reason as CarFactsAnonId beside it: this id
+                                // is the primary key of every telemetry row we hold, so
+                                // a log zip posted on a public issue would hand out the
+                                // join between a real person and the anonymous dataset.
+                                // TelemetryGameDays is a play history besides, and none
+                                // of the four helps diagnose anything.
+                                "AnalyticsAnonId", "TelemetryGameDays",
+                                "LastTelemetryPingDay", "TelemetryGamePresetHashes" })
                                 jo.Remove(secret);
                             // Community lineage stamps live INSIDE CustomEngines[],
                             // Presets[*], CarOverrides[*] and DownloadedCommunityPresets[*]
@@ -8790,8 +8799,21 @@ namespace TrueforceForAll.Plugin
             if (ShareUsageStatsCheck == null) return;
             bool on = ShareUsageStatsCheck.IsChecked == true;
             _plugin.Settings.ShareUsageStats = on;
+            // Turning it OFF discards what was collected but not yet sent, so opting
+            // out means the queued days stop existing rather than waiting to be
+            // flushed the moment it is turned back on. The install id is deliberately
+            // kept: it is not a record of anything on its own, and minting a new one
+            // per opt-out cycle would inflate the unique-install count, which is the
+            // number this whole feature exists to get right.
+            if (!on) _plugin.DiscardPendingUsageStats();
             _plugin.PersistSettings();
-            if (on) { try { _plugin.MaybeSendUsagePing(); } catch { } }
+            // Off the UI thread: the ping BUILDS its payload synchronously (reflection
+            // over every settings property, two SHA-256s, up to ten preset bodies
+            // serialized under _carFactsLock, which PersistSettingsCore may be holding
+            // for a whole-graph write). On the dispatcher that is a visible hitch on a
+            // checkbox. Nothing in it touches UI state, and it single-flights itself.
+            if (on) System.Threading.Tasks.Task.Run(() =>
+            { try { _plugin.MaybeSendUsagePing(); } catch { } });
         }
 
         // UI toggle: show or hide the Car facts per-gear redline editor. Pure UI
