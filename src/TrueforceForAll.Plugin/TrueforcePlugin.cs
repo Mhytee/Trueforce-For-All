@@ -25236,26 +25236,17 @@ namespace TrueforceForAll.Plugin
             try { PersistSettingsCore(); } catch { }
         }
 
-        // Settings whose VALUES never ride the usage snapshot: free text a user can
-        // type (their own name / greeting), identifiers, secrets, and absolute
-        // paths. Everything else that is a scalar preference is included.
+        // Portable settings that must NOT ride the snapshot even though they are
+        // genuine user state: free text the user typed, and account- / id-derived
+        // values. Non-portable fields (USB pins, paths, auth, migration latches,
+        // nag / UI state, caches) need no entry here: the Portable gate in
+        // BuildUsageSettingsSnapshot already drops everything outside Portable.
         private static readonly System.Collections.Generic.HashSet<string> UsageSnapshotDeny =
             new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
         {
-            "AnalyticsAnonId", "CarFactsAnonId", "SharingAuthor",
-            "LastSignInEmail", "LegacyDataOwnerEmail",
-            "CommunityBackendUrl", "CommunityBackendAnonKey",
+            "AnalyticsAnonId", "CarFactsAnonId", "SharingAuthor", "HasEverSupported",
             "OledGreetingText", "OledCustomTexts",
             "DashIdleDriverName", "DashIdleNumber", "DashIdleColor", "DashIdleFont",
-            // USB pins: the string overrides AND the numeric bus/VID/PID pins (the
-            // latter are ints, so the string-only default does not cover them).
-            "UsbPcapCmdPathOverride", "ManualUsbPcapInterface",
-            "ManualUsbPcapDeviceAddress", "ManualUsbPcapVid", "ManualUsbPcapPid",
-            "BuiltinPresetsFolder", "UserImportsFolder", "UserLibraryFolder",
-            "DevSupporterBadgeOverride", "LastTelemetryPingDay", "BetaAutoEnrolledVersion",
-            // Account- / supporter-derived facts about the person, not settings:
-            // kept out so the ping carries no account data (PRIVACY.md).
-            "HasEverSupported", "SupportPromptCount", "SupportPromptDeclineCount",
         };
 
         // The only STRING settings sent by value: short fixed selector strings, no
@@ -25270,12 +25261,13 @@ namespace TrueforceForAll.Plugin
         };
 
         /// <summary>Build the anonymous settings snapshot as a compact JSON object.
-        /// Safe by default: only scalar bool / number / enum properties (harmless
-        /// feel and feature values) plus a small allowlist of enum-like strings are
-        /// sent. Every collection, complex object, free-text string, id, secret,
-        /// path, and migration latch is left out, so no personal or machine data
-        /// can ride along, and a newly added field is excluded unless it is a plain
-        /// scalar.</summary>
+        /// Emits only the genuine user settings (BackupProjection.Portable) that are
+        /// scalar bool / number / enum, plus a short allowlist of enum-like strings,
+        /// minus the portable-but-sensitive fields in UsageSnapshotDeny. Machine
+        /// fields, auth, migration latches, nag / UI state and caches are all
+        /// excluded by the Portable gate, so no personal or machine data rides
+        /// along, and a newly added field is sent only once it is deliberately
+        /// classified Portable and is a plain scalar.</summary>
         internal string BuildUsageSettingsSnapshot()
         {
             try
@@ -25286,8 +25278,13 @@ namespace TrueforceForAll.Plugin
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
                 {
                     if (!p.CanRead || !p.CanWrite) continue;
-                    if (UsageSnapshotDeny.Contains(p.Name)) continue;
-                    if (p.Name.IndexOf("Migrated", StringComparison.Ordinal) >= 0) continue; // migration-latch noise
+                    // Only genuine user settings: BackupProjection's Portable set.
+                    // This drops machine-local fields (USB, paths, auth) and the
+                    // Excluded bucket (migration latches, nag / UI state, caches) in
+                    // one move, and is safe-by-default (a new field is emitted only
+                    // once someone deliberately classifies it Portable).
+                    if (!BackupProjection.Portable.Contains(p.Name)) continue;
+                    if (UsageSnapshotDeny.Contains(p.Name)) continue;   // portable-but-sensitive
                     var t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
                     bool isBool = t == typeof(bool);
                     bool isNum  = t == typeof(int) || t == typeof(long)
@@ -25332,6 +25329,10 @@ namespace TrueforceForAll.Plugin
             {
                 if (_shuttingDown || Settings == null || _telemetryClient == null) return;
                 if (!Settings.ShareUsageStats) return;                 // master off = nothing sent
+                // SimHub can be open with our plugin switched off; that is not an
+                // active user. Skip when the plugin is turned off entirely.
+                // LightsyncOnly still counts (the wheel's lights are in use).
+                if (StoredMasterMode == TrueforceMasterMode.Off) return;
                 string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
                 if (string.Equals(Settings.LastTelemetryPingDay, today, StringComparison.Ordinal))
                     return;                                            // already pinged today

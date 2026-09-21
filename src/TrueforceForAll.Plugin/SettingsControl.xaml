@@ -5162,6 +5162,21 @@
                                    Margin="0,8,0,0" TextWrapping="Wrap"
                                    FontFamily="Consolas" FontSize="12"/>
                         </Grid>
+                        <!-- Anonymous usage statistics. Opt-out (default on). The
+                             plugin's once-a-day telemetry ping: a random id (not
+                             tied to the user or hardware), plugin version, wheel,
+                             current game, and a scalar settings snapshot. Sits with
+                             the other "for support" reporting controls. Handler
+                             flips Settings.ShareUsageStats + persists; the ping
+                             self-gates on it. -->
+                        <CheckBox x:Name="ShareUsageStatsCheck"
+                                  Content="Share anonymous usage statistics"
+                                  Margin="0,16,0,0"
+                                  Checked="ShareUsageStats_Changed" Unchecked="ShareUsageStats_Changed"
+                                  ToolTip="Sends an anonymous once-a-day report (a random id not tied to you or your hardware, the plugin version, your wheel model, the games you play, and your settings) so development can follow real use. Never sends your name, account, anything you type, or your IP. Turn off to send nothing."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,2,0,0" FontSize="12" TextWrapping="Wrap">
+                            <Run Text="Helps decide what to build next. Anonymous. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
+                        </TextBlock>
                         <!-- Issue reporting moved to the bottom of this tab,
                              outside any expander: beta users shouldn't have to
                              know which section to open to file a bug.
@@ -5236,22 +5251,6 @@
                     </TextBlock>
                     <TextBlock Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap" Foreground="#E5C04A"
                                Text="Pre-release: the community backend is in testing. Shared presets, packs, and custom engines are test data and may be reset before the public launch. Your account, achievements, and car data you contribute are kept."/>
-                    <!-- ===== Anonymous usage statistics =====
-                         Independent of the community master above: ships an anonymous
-                         once-a-day usage ping (a random id not tied to the user or
-                         hardware, plugin version, wheel, current game, and a scalar
-                         settings snapshot). Default ON; the box is the opt-out. Handler
-                         flips Settings.ShareUsageStats + persists; the plugin's ping
-                         self-gates on it. -->
-                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
-                        <TextBlock Text="Anonymous usage statistics" Style="{StaticResource SectionHeaderText}"/>
-                    </Border>
-                    <CheckBox x:Name="ShareUsageStatsCheck" Content="Share anonymous usage statistics"
-                              Margin="0,0,0,2" Checked="ShareUsageStats_Changed" Unchecked="ShareUsageStats_Changed"
-                              ToolTip="Sends an anonymous once-a-day report (a random id not tied to you or your hardware, the plugin version, your wheel model, the games you play, and your settings) so development can follow real use. Never sends your name, account, anything you type, or your IP. Separate from community features: works whether they are on or off. Turn off to send nothing."/>
-                    <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap">
-                        <Run Text="Anonymous and separate from community features. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
-                    </TextBlock>
                     <!-- ===== Community car facts: apply (read) + auto-submit (write) ===== -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
                         <TextBlock Text="Community car facts" Style="{StaticResource SectionHeaderText}"/>
