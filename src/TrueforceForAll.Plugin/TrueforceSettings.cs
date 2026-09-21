@@ -268,6 +268,8 @@ namespace TrueforceForAll.Plugin
         public bool IRacingTrueforceNoticeDismissed { get; set; } = false;
         // Same latch for the RaceRoom setup notice.
         public bool R3ETrueforceNoticeDismissed { get; set; } = false;
+        // And for the Le Mans Ultimate one.
+        public bool LmuTrueforceNoticeDismissed { get; set; } = false;
 
         // The games (SimHub names) whose "the plugin stepped aside" notice the
         // user dismissed for good: a stand-down for a second Trueforce stream
@@ -1607,6 +1609,26 @@ namespace TrueforceForAll.Plugin
         // FfbSmoothTimeConstantMs so RaceRoom can carry it without smoothing every
         // other game. The device uses it while RaceRoom is the active game.
         public float R3ESmoothingMs { get; set; } = 3.0f;
+
+        // Le Mans Ultimate handover (the FFB tab's take-over checkbox, the
+        // LMUFFB access code): drive the wheel from the sim's own steering
+        // shaft torque, read straight from its official "LMU_Data" shared
+        // memory, instead of the USB tap. While on, the game counts as a
+        // reshape game and arms the iRacing-style pipeline; the game's own
+        // Trueforce ("Vendor Specific Force Feedback") must be off or the
+        // plugin stands aside, while its force feedback strength can stay
+        // (the wheel drops the game's slots while our stream runs). Off = the
+        // tap route, exactly as before.
+        public bool LmuSharedMemoryFfb { get; set; } = false;
+
+
+        // The shaft torque, in Nm, that is full wheel force before a car's own
+        // peak has been applied (the auto-strength learner then scales per
+        // car, as in RaceRoom). The sim's shaft torque is the rack's, before
+        // any assist: the BMW LMDh pushed 20 to 60 Nm in ordinary cornering
+        // and 100 on a curb (rig, 2026-09-20), so 50 puts a hard corner near
+        // full force and a curb into the clip. LMUFFB NM <n> sets it.
+        public float LmuFullScaleNm { get; set; } = 50f;
         public float ModeBRiseGamma { get; set; } = 0.80f;   // <1 = weight arrives in normal cornering
         public float ModeBPeakUtil  { get; set; } = 1.0f;    // combined-slip value treated as the grip limit
         public float ModeBDropFloor { get; set; } = 0.50f;   // torque left past the limit

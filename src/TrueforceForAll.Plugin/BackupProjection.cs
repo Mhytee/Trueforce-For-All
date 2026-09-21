@@ -71,6 +71,9 @@ namespace TrueforceForAll.Plugin
             "R3ESharedMemoryFfb", "R3EAutoStrength", "R3EStrengthByCar",
             "R3EStationaryDamper", "R3EStationaryDamperStrength", "R3EStationaryDamperFadeKmh",
             "R3ESmoothingMs",
+            // Le Mans Ultimate handover. Travels for the same reason, and the
+            // full scale describes the sim's torque, not this PC.
+            "LmuSharedMemoryFfb", "LmuFullScaleNm",
             // Wheel full-scale in Nm. Travels with the other feel settings: it
             // describes the WHEEL, and the wheel goes to the second PC with the
             // driver, same reasoning as the rev-light and OLED preferences.
@@ -245,7 +248,7 @@ namespace TrueforceForAll.Plugin
             "ClassicConditionEmulationEnabled",
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
-            "IRacingTrueforceNoticeDismissed", "R3ETrueforceNoticeDismissed", "StandDownNoticeDismissedGames", "MairaTapNoticeDismissed", "HasSeenModeBIntro", "GameModeMapMigratedV1",
+            "IRacingTrueforceNoticeDismissed", "R3ETrueforceNoticeDismissed", "LmuTrueforceNoticeDismissed", "StandDownNoticeDismissedGames", "MairaTapNoticeDismissed", "HasSeenModeBIntro", "GameModeMapMigratedV1",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
             "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed", "LightsyncCycleHintDismissed", "HasSeenLightsyncIntro",

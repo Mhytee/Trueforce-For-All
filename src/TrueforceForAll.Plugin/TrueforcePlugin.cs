@@ -1057,13 +1057,14 @@ namespace TrueforceForAll.Plugin
         /// re-levels. A no-op-with-message in games that have neither.</summary>
         public void TriggerAutoForce()
         {
-            if (IsIRacingReshapeGame(_activeGame))
+            if (IRacingStyleAutoHere)
             {
                 double nm = ApplyIRacingAutoMaxForce();
                 if (nm > 0.5) DashReadoutGain("AUTO FORCE", (float)nm);
+                string nmGame = GameNames.Display(_activeGame);
                 SimHub.Logging.Current.Info(nm > 0.5
-                    ? $"[TF4ALL] Auto force (bound): iRacing max force set to {nm:F1} Nm."
-                    : "[TF4ALL] Auto force (bound): iRacing has not learned a peak yet; drive a lap first.");
+                    ? $"[TF4ALL] Auto force (bound): {nmGame} max force set to {nm:F1} Nm."
+                    : $"[TF4ALL] Auto force (bound): {nmGame} has not learned a peak yet; drive a lap first.");
                 return;
             }
             // RaceRoom's press-to-apply is the same gesture as iRacing's Auto
@@ -1621,6 +1622,9 @@ namespace TrueforceForAll.Plugin
             // out, so a later RaceRoom session shows it again until it is dismissed.
             if (IsR3EGame(game)) ShowR3ENotice(null);
             else _r3eNoticeShownThisSession = false;
+            // Le Mans Ultimate's, the same way.
+            if (IsLmuGame(game)) ShowLmuNotice(null);
+            else _lmuNoticeShownThisSession = false;
         }
 
         /// <summary>Show it. Safe from any thread; a null owner centres on screen,
@@ -1745,6 +1749,80 @@ namespace TrueforceForAll.Plugin
                     _r3eNoticeShownThisSession = false;   // it was not shown; the next edge may try again
                 }
                 finally { _r3eNoticeShowing = false; }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        /// <summary>The Le Mans Ultimate setup notice: the RaceRoom one's shape
+        /// with the sim's own Trueforce as the first step, since the game
+        /// streams it itself and the plugin stands aside entirely until that is
+        /// off. The game calls it "Vendor Specific Force Feedback". Its force
+        /// feedback strength can stay: the takeover assigns over the captured
+        /// force and the wheel drops the game's slots while our stream runs
+        /// (owner's rig, 2026-09-20). "Use LEDs" is the game driving the
+        /// wheel's lights itself; off, ours and the screen can.</summary>
+        private string LmuNoticeBody =>
+            "To let the plugin carry Le Mans Ultimate's force feedback, and free your rev lights and the wheel's screen, three steps, once:\n\n" +
+            "1. In the game, Settings > Controls > Force Feedback: set Vendor Specific Force Feedback to Off. That is the game's own Trueforce, and the plugin steps aside while it is on. The force feedback strength and effects can stay as they are.\n" +
+            "2. Settings > Wheel and Pedals > Calibration: switch Use LEDs off, so the game stops driving the wheel's lights.\n" +
+            "3. On the FFB tab, tick \"Take over force feedback for Le Mans Ultimate\".\n\n" +
+            "Start SimHub before the game, or the lights and screen may not come on.\n\n" +
+            "Until then, with Vendor Specific Force Feedback off, Le Mans Ultimate works through the USB capture.";
+
+        private volatile bool _lmuNoticeShowing;
+        private volatile bool _lmuNoticeShownThisSession;
+
+        /// <summary>Show the Le Mans Ultimate setup notice. Same contract as the
+        /// RaceRoom one: once per session until dismissed for good, safe from
+        /// any thread, skipped once the handover is on, and
+        /// <paramref name="force"/> for someone who asked for it.</summary>
+        public void ShowLmuNotice(System.Windows.Window owner, bool force = false)
+        {
+            if (Settings == null) return;
+            if (!force && Settings.LmuTrueforceNoticeDismissed) return;
+            if (!force && Settings.LmuSharedMemoryFfb) return;
+            if (_lmuNoticeShowing) return;
+            if (!force && _lmuNoticeShownThisSession) return;
+
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            _lmuNoticeShownThisSession = true;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_lmuNoticeShowing) return;
+                if (Settings == null) return;
+                if (!force && Settings.LmuTrueforceNoticeDismissed) return;
+                _lmuNoticeShowing = true;
+                try
+                {
+                    var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
+                    var link = new System.Windows.Documents.Hyperlink(
+                        new System.Windows.Documents.Run("Open the Le Mans Ultimate guide"))
+                    {
+                        Foreground = new System.Windows.Media.SolidColorBrush(
+                            System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                    };
+                    link.Click += (s2, e2) => OpenGuideFromAnywhere("lmu-setup");
+                    guideLink.Inlines.Add(link);
+                    bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
+                        "Using Trueforce For All in Le Mans Ultimate",
+                        LmuNoticeBody,
+                        DialogKind.Info,
+                        okLabel: "Got it, don't show again",
+                        cancelLabel: "Remind me later",
+                        goldOk: true,
+                        extraContent: guideLink);
+                    if (r == true)
+                    {
+                        Settings.LmuTrueforceNoticeDismissed = true;
+                        try { PersistSettings(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] Le Mans Ultimate notice failed: " + ex.Message);
+                    _lmuNoticeShownThisSession = false;   // it was not shown; the next edge may try again
+                }
+                finally { _lmuNoticeShowing = false; }
             }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
@@ -3519,6 +3597,7 @@ namespace TrueforceForAll.Plugin
         private static bool StationarySpringShipsIn(string game)
             => string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
                || IsR3EGame(game)
+               || IsLmuGame(game)
                || IsForzaGameName(game);   // Telemetry Based FFB only; the capture route excludes it
 
         /// <summary>The spring's strength for a game: its entry, else that game's
@@ -3578,6 +3657,8 @@ namespace TrueforceForAll.Plugin
             // button had missed since the notice was added.
             Settings.R3ETrueforceNoticeDismissed = false;
             _r3eNoticeShownThisSession = false;
+            Settings.LmuTrueforceNoticeDismissed = false;
+            _lmuNoticeShownThisSession = false;
             // The stepped-aside notice, for every game it was dismissed in, and
             // its once-per-demotion guard.
             Settings.StandDownNoticeDismissedGames?.Clear();
@@ -4123,6 +4204,12 @@ namespace TrueforceForAll.Plugin
                     "[TF4ALL] Condition-engine tuning brought to the generation 1 defaults (damper 1.0 at 10 Hz, "
                     + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.10, waveforms 0.9, ramp 0.5).");
             }
+            // The Le Mans Ultimate full scale's first, provisional default (15
+            // Nm, before the rig had measured what the cars push) was persisted
+            // by the one settings file that ran that build. Move it to the
+            // measured number; a value anyone set by hand is left alone.
+            if (Math.Abs(Settings.LmuFullScaleNm - 15f) < 0.01f)
+                Settings.LmuFullScaleNm = 50f;
             // The two spike-reduction methods used to share one number, read as
             // a rate under the rate limiter and as a magnitude threshold under
             // the peak limiter. Give the peak limiter its own: someone already
@@ -6798,6 +6885,9 @@ namespace TrueforceForAll.Plugin
             try { StopR3EDirect(); } catch { }
             try { _r3e?.Dispose(); } catch { }
             _r3e = null;
+            try { StopLmuDirect(); } catch { }
+            try { _lmu?.Dispose(); } catch { }
+            _lmu = null;
 
             // Restore the process GC latency mode if a game was still streaming.
             ExitStreamingGcMode();
@@ -6975,6 +7065,10 @@ namespace TrueforceForAll.Plugin
             // reader. Normal mode only; returns immediately unless RaceRoom is the
             // live game with the route or its probe switched on.
             R3ETelemetryTick();
+
+            // Le Mans Ultimate handover: run or stop the "LMU_Data" reader.
+            // Same contract.
+            LmuTelemetryTick();
 
             // Re-read the wheel's light slots when a sync could not. Silent
             // unless one is owed; see NoteSlotSyncOutcome for why this exists.
@@ -9376,6 +9470,10 @@ namespace TrueforceForAll.Plugin
         /// R3EFFB shared-memory route.</summary>
         public bool ActiveGameIsR3E => IsR3EGame(_activeGame);
 
+        /// <summary>True while Le Mans Ultimate is the active game, whatever
+        /// the route, for the same reason as ActiveGameIsR3E.</summary>
+        public bool ActiveGameIsLmu => IsLmuGame(_activeGame);
+
         /// <summary>False in the games where the parked-car spring is skipped
         /// outright, so a surface can hide the control rather than offer
         /// something that will do nothing. ApplyStationarySpring reads this, and
@@ -9442,7 +9540,7 @@ namespace TrueforceForAll.Plugin
                && !ActiveGameIsArcade;
 
         /// <summary>True where the spring is switched off for this version:
-        /// outside Assetto Corsa, RaceRoom and Forza with the SPRING code not entered. Kept apart
+        /// outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza with the SPRING code not entered. Kept apart
         /// from "allows" because the tab must DISABLE the checkbox here rather
         /// than dim it. A tick wrote the game's entry and then read back the
         /// gated value, so the box unticked itself and the sliders vanished: a
@@ -9462,8 +9560,8 @@ namespace TrueforceForAll.Plugin
                 if (!ActiveSourceSupportsStationarySpring) return "not used in Forza on the capture route";
                 if (ActiveGameIsArcade) return "not used on an arcade cabinet";
                 if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return "not used in iRacing";
-                if (StationarySpringLockedHere) return "off outside Assetto Corsa, RaceRoom and Forza in this version";
-                if (_forceMode == ForceModeIRacing && IsR3EGame(_activeGame)
+                if (StationarySpringLockedHere) return "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version";
+                if (_forceMode == ForceModeIRacing && IsSharedMemoryTakeoverGame(_activeGame)
                     && !((Settings?.R3EStationaryDamper ?? false) && (Settings?.R3EStationaryDamperStrength ?? 0.0) > 0.0001))
                     return "needs the stationary friction on";
                 return null;
@@ -9475,7 +9573,7 @@ namespace TrueforceForAll.Plugin
         /// FFB tab's stationary-friction controls (shown only for RaceRoom on the
         /// R3EFFB route, since that path replaces the game force that carried it).</summary>
         public bool R3EStationaryDamperApplies
-            => (IsR3EGame(_activeGame) && (Settings?.R3ESharedMemoryFfb ?? false))
+            => SharedMemoryTakeoverOn(_activeGame)   // RaceRoom or Le Mans Ultimate handed over
                || (IsForzaGameName(_activeGame) && ModeBEnabledForActiveGame)
                || IsSpringModeGame(_activeGame);   // spring mode is how Farming Simulator works
 
@@ -10080,6 +10178,7 @@ namespace TrueforceForAll.Plugin
             // and tearing it down would mean rebuilding it on the way back for no gain.
             try { StopIRacingDirect(); } catch { }
             try { StopR3EDirect(); } catch { }
+            try { StopLmuDirect(); } catch { }
 
             _capturePollStop = true;
             var poll = _capturePollThread;
@@ -11786,11 +11885,26 @@ namespace TrueforceForAll.Plugin
         /// Writes the per-car slot when cars are kept separate, otherwise the
         /// shared one, so the button always sets whatever is actually in use.
         /// Returns the value written, or 0 if there is nothing learned yet.</summary>
+        /// <summary>Whether the Nm max force is kept per car here: the user's
+        /// choice in iRacing, always in Le Mans Ultimate. That game's numbers are
+        /// rack torque, 50 to 130 Nm, and iRacing's shared "for every car"
+        /// figure is a wheel rating of 10 to 20, so the two must never meet:
+        /// this game reads and writes only the per-car map.</summary>
+        public bool MaxForcePerCarHere
+            => (Settings?.IRacingMaxForcePerCar ?? false) || IsLmuGame(_activeGame);
+
+        /// <summary>The games whose Auto is iRacing's: learn the car's peak in
+        /// Nm, adopt it as that car's max force. iRacing, and Le Mans Ultimate
+        /// on its handover (its torque is Nm too). RaceRoom's is the normalized
+        /// press-to-apply, because RaceRoom publishes a percentage.</summary>
+        private bool IRacingStyleAutoHere
+            => IsIRacingReshapeGame(_activeGame) || IsLmuGame(_activeGame);
+
         public double ApplyIRacingAutoMaxForce()
         {
             double learned = IRacingLearnedMaxNm;
             if (learned <= 0.5 || Settings == null) return 0.0;
-            if (Settings.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId))
+            if (MaxForcePerCarHere && !string.IsNullOrEmpty(_activeCarId))
             {
                 if (Settings.IRacingMaxForceByCar == null)
                     Settings.IRacingMaxForceByCar = new Dictionary<string, float>();
@@ -11843,11 +11957,11 @@ namespace TrueforceForAll.Plugin
         {
             var s = Settings;
             if (s == null) return 0.0;
-            if (s.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId)
+            if (MaxForcePerCarHere && !string.IsNullOrEmpty(_activeCarId)
                 && s.IRacingMaxForceByCar != null
                 && s.IRacingMaxForceByCar.TryGetValue(_activeCarId, out float pc) && pc > 0.5f)
                 return pc;
-            return s.IRacingMaxForceNmOverride;
+            return IsLmuGame(_activeGame) ? 0.0 : s.IRacingMaxForceNmOverride;
         }
 
         /// <summary>Write the panel's number to whatever the force path is
@@ -11860,7 +11974,7 @@ namespace TrueforceForAll.Plugin
             var s = Settings;
             if (s == null) return;
             bool clear = v < 0.5;
-            if (s.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId))
+            if (MaxForcePerCarHere && !string.IsNullOrEmpty(_activeCarId))
             {
                 if (s.IRacingMaxForceByCar == null)
                     s.IRacingMaxForceByCar = new Dictionary<string, float>();
@@ -11894,7 +12008,7 @@ namespace TrueforceForAll.Plugin
                 NudgeR3EStrength(delta > 0 ? +1 : -1);
                 return;
             }
-            if (!IsIRacingReshapeGame(_activeGame) || !ModeBEnabledForActiveGame)
+            if (!IRacingStyleAutoHere || !ModeBEnabledForActiveGame)
             {
                 DashReadout("PEAK FORCE","IRACING ONLY");
                 return;
@@ -11907,7 +12021,7 @@ namespace TrueforceForAll.Plugin
                 DashReadout("PEAK FORCE","NO NUMBER YET");
                 return;
             }
-            double v = Math.Max(1.0, Math.Min(50.0, cur + delta));
+            double v = Math.Max(1.0, Math.Min(IsLmuGame(_activeGame) ? 400.0 : 50.0, cur + delta));
             SetEditableMaxForceNm(v);
             DashReadout("PEAK FORCE", v.ToString("0.0",
                 System.Globalization.CultureInfo.InvariantCulture) + " NM");
@@ -11929,7 +12043,7 @@ namespace TrueforceForAll.Plugin
         /// this stays a pure ratchet.</summary>
         private void LearnIRacingPeak(double absTorqueNm, bool racingSurface)
         {
-            if (!racingSurface || absTorqueNm <= 0.0 || absTorqueNm > 200.0) return;
+            if (!racingSurface || absTorqueNm <= 0.0 || absTorqueNm > 400.0) return;
             // A car change resets it: the previous car's ceiling says nothing
             // about this one, which is the entire reason this is per-car.
             string car = _activeCarId;
@@ -12096,12 +12210,12 @@ namespace TrueforceForAll.Plugin
                 if (s != null)
                 {
                     float perCar;
-                    if (s.IRacingMaxForcePerCar && s.IRacingMaxForceByCar != null
+                    if (MaxForcePerCarHere && s.IRacingMaxForceByCar != null
                         && !string.IsNullOrEmpty(_activeCarId)
                         && s.IRacingMaxForceByCar.TryGetValue(_activeCarId, out perCar)
                         && perCar > 0.5f)
                         return perCar;
-                    if (s.IRacingMaxForceNmOverride > 0.5f) return s.IRacingMaxForceNmOverride;
+                    if (!IsLmuGame(_activeGame) && s.IRacingMaxForceNmOverride > 0.5f) return s.IRacingMaxForceNmOverride;
                 }
                 var fr = _irFrame;
                 return fr != null ? fr.MaxNm : 0.0;
@@ -12186,6 +12300,24 @@ namespace TrueforceForAll.Plugin
         private long _r3eProbeLogTicks;
         private volatile float _r3ePrMinF, _r3ePrMaxF, _r3ePrMinP, _r3ePrMaxP;
         private volatile bool _r3ePrHave;
+
+        // Le Mans Ultimate handover (LMUFFB), the RaceRoom route's shape on
+        // the sim's official shared memory. See LmuTelemetryTick.
+        private LmuSharedMemoryReader _lmu;
+        private bool _lmuLive;
+        private volatile bool _lmuProbe;            // LMUPROBE: log signal lines, force not required
+        private volatile bool _lmuInvert;           // LMUFFB INV: flip the published sign (session)
+        private long _lmuProbeLogTicks;
+        private volatile float _lmuPrMinT, _lmuPrMaxT, _lmuPrMinF, _lmuPrMaxF;
+        private volatile bool _lmuPrHave;
+        private long _lmuNoPhysLogMs;               // Warn at most once a minute
+        private long _lmuNoSimHubLogMs;             // same cadence, SimHub not reading the game
+        private float  _lmuAxisRatio;               // |raw| / |physical|, slow average, per car
+        private int    _lmuAxisRatioN;
+        private int    _lmuAxisRatioCarRot = -1;
+        private string _lmuLockLogKey;
+        private float  _lmuPrevRawSteer;
+        private const int LmuAxisRatioSettleN = 200; // ~2 s of steady cornering at the sim's 100 Hz
 
         // RaceRoom's r3e_engine_type. Combustion and hybrid are both "it fires",
         // so only the electric value is acted on; the others are kept for the
@@ -12285,6 +12417,72 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info("[TF4ALL] R3E shared-memory reader stopped.");
         }
 
+        /// <summary>The takeover routes' per-car auto-strength, one physics
+        /// update's worth: load the incoming car's applied max, grow the
+        /// peak-hold observer while genuinely driving, and publish the full
+        /// scale fraction ComputeIRacingForce divides by. Written for RaceRoom
+        /// lifted out of the RaceRoom handler as its own step: the learner is keyed by
+        /// game and car, and <paramref name="latest"/> over
+        /// <paramref name="maxNm"/> is the same normalized force whichever
+        /// units the route publishes in. Reader thread.</summary>
+        private void TakeoverAutoStrengthTick(float latest, float maxNm, float speedMps)
+        {
+            // Auto-strength (iRacing press-to-apply): the reader thread owns the
+            // peak-hold observer and the applied max. ComputeIRacingForce reads
+            // the published fraction, and its low-speed ramp fades the boost out
+            // while parked so the closed loop can't ring at a standstill.
+            if (Settings?.R3EAutoStrength ?? true)
+            {
+                // Per-car load on a car change: bring in the committed max and
+                // start a fresh peak observer for the incoming car.
+                string curCar = _activeCarId;
+                if (!string.Equals(curCar, _r3eLastLoadedCar, StringComparison.Ordinal))
+                {
+                    lock (_r3eStrengthLock)
+                    {
+                        _r3eAppliedPeak = R3ETryLoadStrength(curCar, out float lp) && lp > 0.01f ? lp : 0f;
+                    }
+                    _r3eLastLoadedCar = curCar;
+                    _r3ePeakCarId = curCar;
+                    _r3ePeakObs = 0f;
+                    _r3ePeakGrowthTicks = 0;
+                    _r3ePeakRacingMs = 0.0;
+                    _r3ePrevStrengthTicks = 0;
+                }
+
+                // Peak-hold observer, no decay: while genuinely driving, grow the
+                // peak and accumulate driving time so R3EPeakSettled knows when
+                // Apply is worth pressing. Reset only by an apply.
+                long nowTicks = Stopwatch.GetTimestamp();
+                double dtMs = _r3ePrevStrengthTicks == 0
+                    ? 0.0 : (nowTicks - _r3ePrevStrengthTicks) * 1000.0 / Stopwatch.Frequency;
+                _r3ePrevStrengthTicks = nowTicks;
+                if (dtMs < 0.0) dtMs = 0.0; else if (dtMs > 100.0) dtMs = 100.0;
+                if (speedMps * 3.6 >= 15.0)   // driving, not parked/pitting
+                {
+                    _r3ePeakRacingMs += dtMs;
+                    double norm = maxNm > 0.0001f ? Math.Abs(latest) / maxNm : 0.0;
+                    if (norm > _r3ePeakObs + 0.001)
+                    {
+                        _r3ePeakObs = (float)norm;
+                        _r3ePeakGrowthTicks = nowTicks;
+                    }
+                }
+
+                // Press-to-apply, iRacing style: an unlearned car gets NO boost
+                // (frac 1.0), so R3EFFB matches the sim's own scale and the wheel
+                // feels like the game until the driver applies this car's learned
+                // max. Nothing changes under you until you press it. Only a
+                // committed peak boosts: a weak car's peak sits below target, so
+                // frac < 1 shrinks the divisor and lifts it toward target.
+                float applied = _r3eAppliedPeak;
+                double frac = applied > 0.01f ? applied / AutoStrengthTarget : 1.0;
+                if (frac < 0.08) frac = 0.08; else if (frac > 1.5) frac = 1.5;
+                _r3eFullScaleFrac = (float)frac;
+            }
+            else _r3eFullScaleFrac = 1f;
+        }
+
         /// <summary>Reader thread, once per NEW physics tick: aggregate for
         /// the probe and, while the reshape is armed for RaceRoom, publish the
         /// force frame the iRacing consumer already knows how to render.</summary>
@@ -12349,60 +12547,7 @@ namespace TrueforceForAll.Plugin
             // in-game invert OFF.
             if (_r3eInvert) latest = -latest;
 
-            // Auto-strength (iRacing press-to-apply): the reader thread owns the
-            // peak-hold observer and the applied max. ComputeIRacingForce reads
-            // the published fraction, and its low-speed ramp fades the boost out
-            // while parked so the closed loop can't ring at a standstill.
-            if (Settings?.R3EAutoStrength ?? true)
-            {
-                // Per-car load on a car change: bring in the committed max and
-                // start a fresh peak observer for the incoming car.
-                string curCar = _activeCarId;
-                if (!string.Equals(curCar, _r3eLastLoadedCar, StringComparison.Ordinal))
-                {
-                    lock (_r3eStrengthLock)
-                    {
-                        _r3eAppliedPeak = R3ETryLoadStrength(curCar, out float lp) && lp > 0.01f ? lp : 0f;
-                    }
-                    _r3eLastLoadedCar = curCar;
-                    _r3ePeakCarId = curCar;
-                    _r3ePeakObs = 0f;
-                    _r3ePeakGrowthTicks = 0;
-                    _r3ePeakRacingMs = 0.0;
-                    _r3ePrevStrengthTicks = 0;
-                }
-
-                // Peak-hold observer, no decay: while genuinely driving, grow the
-                // peak and accumulate driving time so R3EPeakSettled knows when
-                // Apply is worth pressing. Reset only by an apply.
-                long nowTicks = Stopwatch.GetTimestamp();
-                double dtMs = _r3ePrevStrengthTicks == 0
-                    ? 0.0 : (nowTicks - _r3ePrevStrengthTicks) * 1000.0 / Stopwatch.Frequency;
-                _r3ePrevStrengthTicks = nowTicks;
-                if (dtMs < 0.0) dtMs = 0.0; else if (dtMs > 100.0) dtMs = 100.0;
-                if (s.CarSpeedMps * 3.6 >= 15.0)   // driving, not parked/pitting
-                {
-                    _r3ePeakRacingMs += dtMs;
-                    double norm = maxNm > 0.0001f ? Math.Abs(latest) / maxNm : 0.0;
-                    if (norm > _r3ePeakObs + 0.001)
-                    {
-                        _r3ePeakObs = (float)norm;
-                        _r3ePeakGrowthTicks = nowTicks;
-                    }
-                }
-
-                // Press-to-apply, iRacing style: an unlearned car gets NO boost
-                // (frac 1.0), so R3EFFB matches the sim's own scale and the wheel
-                // feels like the game until the driver applies this car's learned
-                // max. Nothing changes under you until you press it. Only a
-                // committed peak boosts: a weak car's peak sits below target, so
-                // frac < 1 shrinks the divisor and lifts it toward target.
-                float applied = _r3eAppliedPeak;
-                double frac = applied > 0.01f ? applied / AutoStrengthTarget : 1.0;
-                if (frac < 0.08) frac = 0.08; else if (frac > 1.5) frac = 1.5;
-                _r3eFullScaleFrac = (float)frac;
-            }
-            else _r3eFullScaleFrac = 1f;
+            TakeoverAutoStrengthTick(latest, maxNm, s.CarSpeedMps);
 
             var prev = _irFrame;
             var frR3e = new IRacingTorqueFrame
@@ -12834,6 +12979,386 @@ namespace TrueforceForAll.Plugin
         }
 
         public void UseR3EPctChannel() => _r3eRawFullScaleNm = 0f;
+
+        // ---- Le Mans Ultimate handover (LMUFFB) ----
+        // The RaceRoom route's shape on the sim's official "LMU_Data" shared
+        // memory: the reader publishes the player's physics updates, this
+        // handler turns each into the FixedScale torque frame the iRacing
+        // consumer renders, and the stationary friction, the spring and the
+        // soft lock are the RaceRoom ones, shared. What differs: the force is
+        // mSteeringShaftTorque in Nm (RaceRoom publishes a percentage), so the
+        // strength is iRacing's model, the car's peak force in Nm kept per
+        // car, with LmuFullScaleNm as the scale until a car has one; and the
+        // sim has Trueforce of its own, which must be off in the game before
+        // any of this runs (the native stand-down drops the plugin to
+        // Lightsync only otherwise).
+
+        /// <summary>Once per SimHub tick: run or stop the "LMU_Data" reader
+        /// for the active game. Cheap and silent for every other game.</summary>
+        private void LmuTelemetryTick()
+        {
+            var cfg = Settings;
+            bool want = IsLmuGame(_activeGame)
+                && MasterMode == TrueforceMasterMode.Normal
+                && (_lmuProbe || (cfg?.LmuSharedMemoryFfb ?? false));
+            if (!want) { StopLmuDirect(); return; }
+
+            if (_lmu == null)
+            {
+                _lmu = new LmuSharedMemoryReader
+                {
+                    Logger = msg => SimHub.Logging.Current.Info("[TF4ALL] " + msg),
+                    OnSample = LmuDirectSample,
+                };
+            }
+            if (!_lmuLive)
+            {
+                _lmu.Start();   // the reader retries the open itself while the sim is absent
+                _lmuLive = true;
+                SimHub.Logging.Current.Info("[TF4ALL] LMU shared-memory reader started"
+                    + (_lmuProbe ? " (probe on)" : "") + ".");
+            }
+
+            if (_lmuProbe) MaybeLogLmuProbe();
+
+            // The handover publishes frames from the game's own shared memory,
+            // but the force producer still takes the session state (paused,
+            // menu, not running) from SimHub's telemetry, and SimHub reads
+            // this game through its rFactor 2 plugin, which the driver has to
+            // let SimHub install. With that plugin disabled SimHub delivers
+            // nothing, the producer holds the wheel released as for a pause,
+            // and the route's frames go nowhere (rig, 2026-09-20). Say so.
+            var lmuRd = _lmu;
+            var lmuSrc = _telemetrySource;
+            if ((cfg?.LmuSharedMemoryFfb ?? false) && lmuRd != null
+                && (lmuRd.LastSample?.PlayerHasVehicle ?? false)
+                && (lmuSrc == null || lmuSrc.MsSinceLastFrame > 3000))
+            {
+                long nowMs = Environment.TickCount;
+                if (nowMs - _lmuNoSimHubLogMs >= 60000)
+                {
+                    _lmuNoSimHubLogMs = nowMs;
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] Le Mans Ultimate is on track by its own shared memory, but SimHub has delivered no "
+                        + "telemetry for it, so the force pipeline holds the wheel released as for a pause. SimHub reads "
+                        + "this game through its rFactor 2 plugin: with the game closed, open SimHub's Games page, pick "
+                        + "Le Mans Ultimate and let SimHub configure it (it enables the plugin in the game's "
+                        + "CustomPluginVariables.JSON), then start the game again.");
+                }
+            }
+        }
+
+        private void StopLmuDirect()
+        {
+            if (_lmu == null || !_lmuLive) return;
+            _lmuLive = false;
+            try { _lmu.Stop(); } catch { }
+            SimHub.Logging.Current.Info("[TF4ALL] LMU shared-memory reader stopped.");
+        }
+
+        /// <summary>Reader thread, once per NEW physics update: aggregate for
+        /// the probe and, while the handover is armed, publish the force frame
+        /// the iRacing consumer already knows how to render.</summary>
+        private void LmuDirectSample(LmuFfbSample s)
+        {
+            if (_lmuProbe)
+            {
+                float tv = (float)s.ShaftTorqueNm, fv = s.FfbTorque;
+                if (!_lmuPrHave)
+                {
+                    _lmuPrMinT = _lmuPrMaxT = tv;
+                    _lmuPrMinF = _lmuPrMaxF = fv;
+                    _lmuPrHave = true;
+                }
+                else
+                {
+                    if (tv < _lmuPrMinT) _lmuPrMinT = tv;
+                    if (tv > _lmuPrMaxT) _lmuPrMaxT = tv;
+                    if (fv < _lmuPrMinF) _lmuPrMinF = fv;
+                    if (fv > _lmuPrMaxF) _lmuPrMaxF = fv;
+                }
+            }
+
+            if (_forceMode != ForceModeIRacing || !IsLmuGame(_activeGame)) return;
+            var cfg = Settings;
+            if (cfg == null || !cfg.LmuSharedMemoryFfb) return;
+
+            // Player at the wheel, actually driving: in the car (realtime, not
+            // the monitor), the scoring row says the local player controls it,
+            // and not sat in the garage stall. Anything else (AI, remote,
+            // replay, monitor, garage, a scoring row not found yet) publishes
+            // nothing and the 250 ms age gate in ComputeIRacingForce decays
+            // whatever was last shown: same shape as iRacing's IsOnTrack guard
+            // against the parked-car runaway. A pause freezes the elapsed
+            // time, so no sample arrives and the same gate covers it.
+            bool inCar = s.PlayerHasVehicle && s.InRealtime && s.ScoringMatched
+                && s.Control == 0 && !s.InGarageStall && s.GamePhase != 9;
+            if (!inCar) { _irFrame = null; return; }
+
+            float latest = (float)s.ShaftTorqueNm;
+            if (float.IsNaN(latest) || float.IsInfinity(latest)) return;
+            float maxNm = cfg.LmuFullScaleNm;
+            if (!(maxNm >= 1f)) maxNm = 50f;
+            // Sign. The sim's shaft torque reads OPPOSITE to the takeover's
+            // authored space (owner's rig, 2026-09-20: as published, the wheel
+            // pulled into corners), so it is negated here. LMUFFB INV flips it
+            // back for a rig that reads the other way.
+            latest = -latest;
+            if (_lmuInvert) latest = -latest;
+
+            // iRacing's learner, since the torque is Nm here too: the peak this
+            // car pushes on track, adopted as its max force by the Auto button.
+            // "Racing" = out of the pit lane and moving, iRacing's own bar.
+            LearnIRacingPeak(Math.Abs(latest), !s.InPits && s.SpeedMps > 10f);
+
+            var prev = _irFrame;
+            var fr = new IRacingTorqueFrame
+            {
+                Sub = null,          // no sub-tick history; the scalar holds
+                Latest = latest,
+                MaxNm = maxNm,       // the fallback full scale until this car
+                                     // has a max force of its own
+                GameFfbOn = false,   // LMU publishes no such flag, and needs
+                                     // none: the wheel drops the game's slots
+                                     // while our stream runs
+                FixedScale = false,  // scaled by the car's Nm, as iRacing's are
+                Ticks = Stopwatch.GetTimestamp(),
+            };
+            // Steering for the soft lock, from the PHYSICAL wheel position as
+            // the RaceRoom route does. What the lock needs is the wheel's
+            // rotation over the car's (the car's is the visual range the sim
+            // publishes; its physical range field reads 0 on the rig,
+            // 2026-09-20). Two sources, measured first:
+            //   - the sim's raw axis over the physical position. With "Range
+            //     From Vehicle" and a wheel it could not re-range, the sim
+            //     rescales its axis so the car's lock is +/-1 and clamps
+            //     there, exactly as RaceRoom's does, and that ratio IS the
+            //     wheel's rotation over the car's. Averaged where both are
+            //     well off centre and the raw axis is short of its clamp.
+            //   - a rotation range the tap saw the host set on the wheel.
+            // A ratio near 1 means the sim's axis is the device axis: either
+            // the wheel's stop already is the car's lock, or the sim does not
+            // rescale, and with no range in degrees from anywhere the two
+            // cannot be told apart, so the lock stays quiet and says so.
+            var physRd = _steeringReader;
+            bool physLive = physRd != null && physRd.IsRunning && physRd.LastUpdateTicks != 0;
+            float physNow = physLive ? physRd.SteerNorm : float.NaN;
+            int carRot = (int)Math.Round(s.VisualRangeDeg);
+            if (carRot != _lmuAxisRatioCarRot)
+            {
+                // The ratio is per car (its lock differs); start over.
+                _lmuAxisRatioCarRot = carRot;
+                _lmuAxisRatioN = 0;
+                _lmuAxisRatio = 0f;
+            }
+            float rawSteer = s.SteerUnfiltered;
+            bool steerSlow = Math.Abs(rawSteer - _lmuPrevRawSteer) < 0.01f;   // under 1% per update
+            _lmuPrevRawSteer = rawSteer;
+            if (physLive && steerSlow && Math.Abs(rawSteer) > 0.25f && Math.Abs(rawSteer) < 0.97f
+                && Math.Abs(physNow) > 0.1f)
+            {
+                float ratio = Math.Abs(rawSteer) / Math.Abs(physNow);
+                if (ratio > 0.2f && ratio < 5f)
+                {
+                    _lmuAxisRatio = _lmuAxisRatioN == 0 ? ratio : _lmuAxisRatio + (ratio - _lmuAxisRatio) * 0.02f;
+                    if (_lmuAxisRatioN < int.MaxValue) _lmuAxisRatioN++;
+                }
+            }
+            float wheelOverCar = float.NaN;
+            string lockSrc = null;
+            if (_lmuAxisRatioN >= LmuAxisRatioSettleN)
+            {
+                if (_lmuAxisRatio > 1.03f) { wheelOverCar = _lmuAxisRatio; lockSrc = "measured"; }
+                else lockSrc = "device axis";
+            }
+            if (float.IsNaN(wheelOverCar) && lockSrc == null)
+            {
+                // Only until the measurement settles, and only if the visual
+                // range is the car's lock, which the rig says it is not
+                // (ratio 2.0 against 1080 over 719), so this rarely helps.
+                int tapDeg = _ffbTap?.ObservedRotationRangeDeg ?? 0;
+                if (tapDeg >= 180 && carRot >= 40 && tapDeg > carRot + 10)
+                {
+                    wheelOverCar = (float)tapDeg / carRot;
+                    lockSrc = "range the host set (" + tapDeg + " degrees)";
+                }
+            }
+            MaybeLogLmuSteerLock(carRot, wheelOverCar, lockSrc);
+            if (!float.IsNaN(wheelOverCar) && physLive && !float.IsNaN(physNow))
+            {
+                StampSteerFields(IRacingSoftLock.SignedByPhysical(physNow * wheelOverCar, physNow),
+                                 carRot * 0.5f, fr.Ticks, fr);
+            }
+            else if (!physLive && (Settings?.IRacingSoftLockEnabled ?? false))
+            {
+                long wMs = Environment.TickCount;
+                if (wMs - _lmuNoPhysLogMs >= 60000)
+                {
+                    _lmuNoPhysLogMs = wMs;
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] Le Mans Ultimate soft lock: no physical steering position from the wheel "
+                        + (physRd == null ? "(steering reader not started)"
+                           : "(steering reader stopped; it will try to reopen)")
+                        + ", so no lock is rendered.");
+                }
+            }
+            _irFrame = fr;
+
+            if (prev == null)
+            {
+                var rd = _lmu;
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] LMU FFB: authoring force from mSteeringShaftTorque (full scale "
+                    + maxNm.ToString("F1", ci) + " Nm)"
+                    + (_lmuInvert ? " (sign flipped back by LMUFFB INV)" : "")
+                    + ", update rate " + (rd != null ? rd.MeasuredHz.ToString("F0", ci) : "?")
+                    + "/s.");
+            }
+        }
+
+        /// <summary>Say, once per change, what the soft lock is built from in
+        /// this car: the measured axis ratio, a range the host was seen
+        /// setting, or nothing yet (with why).</summary>
+        private void MaybeLogLmuSteerLock(int carRot, float wheelOverCar, string src)
+        {
+            string key = carRot + "|" + (src ?? "-") + "|"
+                + (float.IsNaN(wheelOverCar) ? "-" : ((int)Math.Round(wheelOverCar * 4f)).ToString());
+            if (key == _lmuLockLogKey) return;
+            _lmuLockLogKey = key;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string head = "[TF4ALL] Le Mans Ultimate soft lock: the car's wheel animates through " + carRot + " degrees; ";
+            if (!float.IsNaN(wheelOverCar))
+            {
+                SimHub.Logging.Current.Info(head
+                    + (src == "measured"
+                        ? "the sim's steering axis reads " + wheelOverCar.ToString("F2", ci) + " times the physical position, so the car's lock"
+                        : "the " + src + " puts the car's lock")
+                    + " sits at " + ((int)Math.Round(100f / wheelOverCar)) + " percent of the wheel's travel, and the wall goes there.");
+            }
+            else if (src == "device axis")
+            {
+                SimHub.Logging.Current.Info(head
+                    + "the sim's raw axis equals the physical position, so either the wheel's stop already is the car's lock "
+                    + "or the sim is not rescaling; with no rotation range in degrees from the sim or the host, the lock stays quiet.");
+            }
+            else
+            {
+                SimHub.Logging.Current.Info(head
+                    + "measuring the sim's raw axis against the wheel (a few seconds of cornering) before the lock is placed.");
+            }
+        }
+
+        /// <summary>One probe line every ~2 s while LMUPROBE is on, kept alive
+        /// even when the sim is paused so the session state stays visible.
+        /// SimHub data thread.</summary>
+        private void MaybeLogLmuProbe()
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_lmuProbeLogTicks != 0 && (now - _lmuProbeLogTicks) < Stopwatch.Frequency * 2) return;
+            _lmuProbeLogTicks = now;
+
+            var rd = _lmu;
+            if (rd == null) return;
+            if (!rd.IsOpen)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] LMUPROBE waiting for Le Mans Ultimate (LMU_Data not found yet).");
+                return;
+            }
+            var s = rd.LastSample;
+            if (s == null)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] LMUPROBE map open (game version " + rd.VersionSeen + "), no sample yet.");
+                return;
+            }
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (!s.PlayerHasVehicle)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] LMUPROBE version=" + rd.VersionSeen
+                    + " no player vehicle (at the monitor or between sessions), ffbHz="
+                    + rd.MeasuredFfbHz.ToString("F0", inv) + ".");
+                return;
+            }
+            string ctrl = s.Control == 0 ? "player" : s.Control == 1 ? "AI"
+                : s.Control == 2 ? "remote" : s.Control == 3 ? "replay"
+                : s.ScoringMatched ? s.Control.ToString(inv) : "unmatched";
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] LMUPROBE version=" + rd.VersionSeen
+                + " updatesPerSec=" + rd.MeasuredHz.ToString("F0", inv)
+                + " ffbHz=" + rd.MeasuredFfbHz.ToString("F0", inv)
+                + " torqueNm=" + s.ShaftTorqueNm.ToString("F3", inv)
+                + " [" + _lmuPrMinT.ToString("F2", inv) + ".." + _lmuPrMaxT.ToString("F2", inv) + "]"
+                + " ffb=" + s.FfbTorque.ToString("F3", inv)
+                + " [" + _lmuPrMinF.ToString("F2", inv) + ".." + _lmuPrMaxF.ToString("F2", inv) + "]"
+                + " steer=" + s.SteerUnfiltered.ToString("F2", inv)
+                + " physRange=" + s.PhysicalRangeDeg.ToString("F0", inv)
+                + " visRange=" + s.VisualRangeDeg.ToString("F0", inv)
+                + " speedKmh=" + (s.SpeedMps * 3.6f).ToString("F0", inv)
+                + " gear=" + s.Gear
+                + " phase=" + s.GamePhase
+                + " realtime=" + (s.InRealtime ? "Y" : "n")
+                + " ctrl=" + ctrl
+                + " garage=" + (s.InGarageStall ? "Y" : "n")
+                + " pits=" + (s.InPits ? "Y" : "n")
+                + " car='" + s.VehicleName + "'.");
+            _lmuPrHave = false;   // fresh min/max window per line
+        }
+
+        /// <summary>LMUFFB: flip the Le Mans Ultimate handover. Enabling also
+        /// opts the game into Telemetry Based FFB so one code is the whole
+        /// switch; disabling returns to the tap route.</summary>
+        public bool ToggleLmuSharedMemoryFfb()
+        {
+            var s = Settings;
+            if (s == null) return false;
+            SetLmuTakeover(!s.LmuSharedMemoryFfb);
+            return s.LmuSharedMemoryFfb;
+        }
+
+        /// <summary>Set the Le Mans Ultimate handover on or off. This is the
+        /// FFB tab's "take over force feedback" checkbox for the game, and the
+        /// LMUFFB access code routes through it too. Keeps the route flag and
+        /// the per-game opt-in in lockstep: on arms the reshape, off returns to
+        /// the tap route. Persists.</summary>
+        public void SetLmuTakeover(bool on)
+        {
+            var s = Settings;
+            if (s == null) return;
+            s.LmuSharedMemoryFfb = on;
+            if (s.ModeBGameEnabled == null) s.ModeBGameEnabled = new Dictionary<string, bool>();
+            s.ModeBGameEnabled["LMU"] = on;
+            ApplyModeBFromSettings(save: true);
+            SimHub.Logging.Current.Info("[TF4ALL] LMU shared-memory FFB route " + (on ? "ON" : "OFF") + ".");
+        }
+
+        public bool ToggleLmuProbe()
+        {
+            _lmuProbe = !_lmuProbe;
+            _lmuPrHave = false;
+            _lmuProbeLogTicks = 0;
+            SimHub.Logging.Current.Info("[TF4ALL] LMUPROBE " + (_lmuProbe ? "ON" : "OFF") + ".");
+            return _lmuProbe;
+        }
+
+        public bool ToggleLmuForceInvert()
+        {
+            _lmuInvert = !_lmuInvert;
+            return _lmuInvert;
+        }
+
+        /// <summary>LMUFFB NM n: the shaft torque, in Nm, that is full wheel
+        /// force before a car's own peak is applied. Persists.</summary>
+        public double SetLmuFullScaleNm(double nm)
+        {
+            float v = (float)(nm < 1.0 ? 1.0 : nm > 100.0 ? 100.0 : nm);
+            var s = Settings;
+            if (s != null)
+            {
+                s.LmuFullScaleNm = v;
+                try { PersistSettings(); } catch { }
+            }
+            return v;
+        }
 
         /// <summary>Called on the reader's own thread, once per sim tick. Builds
         /// exactly the same latches the SimHub path builds, from the same
@@ -14505,7 +15030,7 @@ namespace TrueforceForAll.Plugin
             if (irScale != null && !f.FixedScale)
             {
                 float perCar;
-                if (irScale.IRacingMaxForcePerCar
+                if (MaxForcePerCarHere
                     && irScale.IRacingMaxForceByCar != null
                     && !string.IsNullOrEmpty(_activeCarId)
                     && irScale.IRacingMaxForceByCar.TryGetValue(_activeCarId, out perCar)
@@ -14513,7 +15038,7 @@ namespace TrueforceForAll.Plugin
                 {
                     fullScaleNm = perCar;
                 }
-                else if (irScale.IRacingMaxForceNmOverride > 0.5f)
+                else if (!IsLmuGame(_activeGame) && irScale.IRacingMaxForceNmOverride > 0.5f)
                 {
                     fullScaleNm = irScale.IRacingMaxForceNmOverride;
                 }
@@ -14828,7 +15353,7 @@ namespace TrueforceForAll.Plugin
             // included (owner, 2026-09-13 and 2026-09-19). Same setting and
             // controls; the sign follows the route below, and spring mode
             // shares the synthesis's frame (the device scales and negates both).
-            bool wantR3EFriction = ((reshapeMode && IsR3EGame(_activeGame))
+            bool wantR3EFriction = ((reshapeMode && IsSharedMemoryTakeoverGame(_activeGame))
                                     || _forceMode == ForceModeModeB
                                     || _forceMode == ForceModeSpring)
                 && stFrCfg != null
@@ -18574,6 +19099,32 @@ namespace TrueforceForAll.Plugin
                 || string.Equals(game, "RRRE", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>SimHub's GameName for Le Mans Ultimate ("LMU", from its
+        /// LMUManager in RfactorReader).</summary>
+        private static bool IsLmuGame(string game)
+        {
+            return string.Equals(game, "LMU", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>The games whose handover reads the sim's own shared memory
+        /// (RaceRoom, Le Mans Ultimate), whatever the route's state. The FFB
+        /// tab keeps the take-over checkbox present for these on the tap route
+        /// too, so it is the one switch for the handover.</summary>
+        private static bool IsSharedMemoryTakeoverGame(string game)
+        {
+            return IsR3EGame(game) || IsLmuGame(game);
+        }
+
+        /// <summary>True while the shared-memory handover is switched on for
+        /// <paramref name="game"/>.</summary>
+        private bool SharedMemoryTakeoverOn(string game)
+        {
+            var s = Settings;
+            if (s == null) return false;
+            return (s.R3ESharedMemoryFfb && IsR3EGame(game))
+                || (s.LmuSharedMemoryFfb && IsLmuGame(game));
+        }
+
         /// <summary>True for games whose Telemetry Based FFB is a RESHAPE of
         /// the sim's own steering torque: iRacing always, and RaceRoom while
         /// the R3EFFB shared-memory route is opted in (dev A/B against the USB
@@ -18583,8 +19134,7 @@ namespace TrueforceForAll.Plugin
         private bool IsReshapeGame(string game)
         {
             if (IsIRacingReshapeGame(game)) return true;
-            var s = Settings;
-            return s != null && s.R3ESharedMemoryFfb && IsR3EGame(game);
+            return SharedMemoryTakeoverOn(game);   // RaceRoom, Le Mans Ultimate
         }
 
         /// <summary>True if a game offers Telemetry Based FFB by ANY pipeline.
@@ -36740,7 +37290,7 @@ namespace TrueforceForAll.Plugin
             // route. The frame only carries steering where a route stamped it.
             if (_forceMode == ForceModeIRacing
                 && (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
-                    || IsR3EGame(_activeGame)))
+                    || IsSharedMemoryTakeoverGame(_activeGame)))
                 return TryComputeIRacingSoftLock(out amount, out target, out steer);
             amount = target = steer = 0f;
             return false;

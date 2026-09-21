@@ -2184,7 +2184,7 @@ namespace TrueforceForAll.Plugin
             // garage is exactly where the tap gets used.
             this.AttachDelegate("Dash.IRacingAutoShow",
                 () => ModeBEnabledForActiveGame
-                      && ((IsIRacingReshapeGame(_activeGame)
+                      && ((IRacingStyleAutoHere
                               && (_irFrame != null || IRacingPeakSettled || IRacingPeakConfidence > 0.001))
                           || (IsR3EGame(_activeGame)
                               && (_irFrame != null || R3EPeakSettled || R3EPeakConfidence > 0.001)))
@@ -2200,10 +2200,10 @@ namespace TrueforceForAll.Plugin
             this.AttachDelegate("Dash.ModeBStrengthScale",  () => ModeBAutoStrengthScale);
             this.AttachDelegate("Dash.ModeBAutoStrengthOn", () => Settings?.ModeBAutoStrength == true ? 1 : 0);
             this.AttachDelegate("Dash.IRacingAutoReady",
-                () => (IsIRacingReshapeGame(_activeGame) && IRacingPeakSettled)
+                () => (IRacingStyleAutoHere && IRacingPeakSettled)
                       || (IsR3EGame(_activeGame) && R3EPeakSettled) ? 1 : 0);
             this.AttachDelegate("Dash.IRacingAutoConfidence",
-                () => IsIRacingReshapeGame(_activeGame) ? IRacingPeakConfidence
+                () => IRacingStyleAutoHere ? IRacingPeakConfidence
                     : IsR3EGame(_activeGame) ? R3EPeakConfidence : 0.0);
             // What pressing it would set, so the button can show the number
             // rather than asking the driver to trust it blind. RaceRoom's R3EFFB
@@ -2211,16 +2211,16 @@ namespace TrueforceForAll.Plugin
             // its value is a 0..1 normalized peak, not Nm, so the dash's "NM"
             // suffix reads cosmetically there.
             this.AttachDelegate("Dash.IRacingAutoNm",
-                () => IsIRacingReshapeGame(_activeGame) ? IRacingLearnedMaxNm
+                () => IRacingStyleAutoHere ? IRacingLearnedMaxNm
                     : IsR3EGame(_activeGame) ? (double)R3EObservedPeak : 0.0);
             this.AttachDelegate("Dash.IRacingMaxForceNm",
-                () => IsIRacingReshapeGame(_activeGame) ? IRacingEffectiveMaxForceNm
+                () => IRacingStyleAutoHere ? IRacingEffectiveMaxForceNm
                     : IsR3EGame(_activeGame) ? (double)R3EEffectivePeak : 0.0);
             // Unit for the two numbers above. iRacing's are Nm; RaceRoom's R3EFFB
             // value is a 0..1 normalized peak with no unit, so the dash drops the
             // suffix there instead of mislabeling it "NM".
             this.AttachDelegate("Dash.IRacingAutoUnit",
-                () => IsIRacingReshapeGame(_activeGame) ? "NM" : "");
+                () => IRacingStyleAutoHere ? "NM" : "");
 
             // Live clip state (+1/-1/0, 150 ms hold): drives the rail
             // marker strips on the visualizer.
@@ -2631,7 +2631,7 @@ namespace TrueforceForAll.Plugin
             this.AddAction("CalibrateCarForce", (a, b) =>
             {
                 DashNoteActivity();
-                if (IsIRacingReshapeGame(_activeGame))
+                if (IRacingStyleAutoHere)
                 {
                     // Refusing early is the point: pressing on an out-lap would
                     // set Max force from a peak the car has not reached yet,

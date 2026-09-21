@@ -6,6 +6,7 @@ This is the opposite of [Telemetry Based FFB](guide:telemetry-ffb), where the pl
 
 - **iRacing**, which keeps publishing its steering torque even with its own force feedback switched off. [Setup](guide:iracing-setup).
 - **RaceRoom**, which publishes its steering force in telemetry. [Setup](guide:raceroom-setup).
+- **Le Mans Ultimate**, which publishes its steering shaft torque in its shared memory. [Setup](guide:lmu-setup).
 - **Assetto Corsa**, through [the TF4ALL CSP Bridge](guide:csp-bridge), which hands over the game's finished force after your in-game gain and every CSP tweak. [Setup](guide:assetto-corsa-setup).
 
 ## Why hand it over
@@ -17,5 +18,7 @@ It allows us to control the wheel's other surfaces. The rev lights and the Dynam
 In iRacing, do **not** set its strength to 0: the plugin reads that number and a 0 leaves you with a dead wheel. Turn its force feedback off and leave the number alone.
 
 In RaceRoom, disable force feedback. Its intensity slider can stay where it is.
+
+In Le Mans Ultimate, set Vendor Specific Force Feedback to Off and leave the strength where it is.
 
 Follow that sim's own setup guide rather than reusing settings from another.

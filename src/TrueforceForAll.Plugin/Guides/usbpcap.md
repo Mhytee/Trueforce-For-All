@@ -2,7 +2,7 @@ USBPcap is an open-source USB capture driver, bundled with our installer.
 
 The plugin uses it to read your wheel's own force-feedback traffic off the USB bus, so it can carry that force into the Trueforce stream. That is what keeps your normal force feedback alive while the plugin is driving the wheel. Without it the wheel goes limp in game and only the Trueforce effects are left.
 
-Some sims hand the plugin their force directly and need no capture for it: iRacing, RaceRoom, and Assetto Corsa with the TF4ALL CSP Bridge.
+Some sims hand the plugin their force directly and need no capture for it: iRacing, RaceRoom, Le Mans Ultimate, and Assetto Corsa with the TF4ALL CSP Bridge.
 
 The capture also watches for a second Trueforce stream on the wheel, which is how the plugin knows to step aside for [a game's own Trueforce](guide:native-trueforce).
 

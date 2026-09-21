@@ -44,12 +44,14 @@ three places:
   real cornering load, weight transfer and curb forces keep coming through
   underneath every effect, in any game whose force feedback uses standard
   HID++ (effectively all of them on these wheels).
-- **Handed over directly.** [iRacing](#iracing), RaceRoom, and
-  [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge, give the
-  plugin their force feedback with no capture involved. RaceRoom needs its
-  own force feedback disabled and its intensity set to 0, plus the FFB tab's
-  "Take over force feedback for RaceRoom" ticked; the in-app RaceRoom setup
-  guide has the detail.
+- **Handed over directly.** [iRacing](#iracing), RaceRoom, Le Mans
+  Ultimate, and [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge,
+  give the plugin their force feedback with no capture involved. RaceRoom
+  needs its own force feedback disabled and its intensity set to 0, plus the
+  FFB tab's "Take over force feedback for RaceRoom" ticked. Le Mans Ultimate
+  needs its Vendor Specific Force Feedback (its Trueforce) and Use LEDs
+  switched off, plus the same box ticked for it. The in-app setup guides
+  have the detail.
 - **Built from telemetry.** In some games the plugin can fully replace the
   game's force feedback using telemetry
   ([Telemetry Based FFB](#telemetry-based-ffb)). Currently supported:
@@ -473,7 +475,7 @@ to Normal.
 | WRC Generations | Not tested | Not tested |
 | Project CARS 3 | Not tested | Not tested |
 | Test Drive Unlimited Solar Crown | Not tested | Not tested |
-| Le Mans Ultimate | Not tested | Not tested |
+| Le Mans Ultimate | Settings > Controls > Force Feedback: Vendor Specific Force Feedback off | Yes, through the handover: tick "Take over force feedback for Le Mans Ultimate" on the FFB tab |
 
 **AMS2 is a special case:** per Reiza's devs it loads the Logitech SDK but
 never actually implements Trueforce, so it behaves like a non-Trueforce

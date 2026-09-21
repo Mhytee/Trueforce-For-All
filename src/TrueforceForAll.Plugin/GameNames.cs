@@ -31,6 +31,7 @@ namespace TrueforceForAll.Plugin
                 case "AssettoCorsa": return "Assetto Corsa";
                 case "AssettoCorsaCompetizione": return "Assetto Corsa Competizione";
                 case "IRacing": return "iRacing";
+                case "LMU": return "Le Mans Ultimate";
                 case "Wreckfest2": return "Wreckfest 2";
                 case "RaceRoomRacingExperience":
                 case "RRRE64":

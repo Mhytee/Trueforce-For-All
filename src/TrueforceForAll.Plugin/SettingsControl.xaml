@@ -2946,18 +2946,24 @@
                      own scale), so it hides there and RaceRoom uses Strength plus
                      its own auto-strength Apply instead. -->
                 <Grid Margin="0,0,0,2" x:Name="IRacingPeakForceRow">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="70"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Car's peak force:" Style="{StaticResource LabelText}"
                                ToolTip="The peak steering force this car itself produces, in Nm. Not your wheel's rating: it is the car's number, scaled to fit inside your Strength setting. Lower it and this car leans harder on the wheel; raise it and this car feels lighter."/>
-                    <TextBox   Grid.Column="1" x:Name="IRacingMaxNmBox" VerticalAlignment="Center"
+                    <Button Grid.Column="1" x:Name="IRacingMaxNmDownBtn" Content="-" Width="24" Margin="0,0,4,0"
+                            Style="{StaticResource EffectTestButton}" Click="IRacingMaxNmDown_Click"
+                            ToolTip="Lower this car's peak force a step, so it leans harder on the wheel."/>
+                    <TextBox   Grid.Column="2" x:Name="IRacingMaxNmBox" VerticalAlignment="Center"
                                ToolTip="The peak steering force this car itself produces, in Nm. Not your wheel's rating: it is the car's number, scaled to fit inside your Strength setting. Lower it and this car leans harder on the wheel; raise it and this car feels lighter."
                                LostFocus="IRacingMaxNm_LostFocus" KeyDown="IRacingMaxNm_KeyDown"/>
-                    <TextBlock Grid.Column="2" x:Name="IRacingMaxNmText" VerticalAlignment="Center"
+                    <Button Grid.Column="3" x:Name="IRacingMaxNmUpBtn" Content="+" Width="24" Margin="4,0,0,0"
+                            Style="{StaticResource EffectTestButton}" Click="IRacingMaxNmUp_Click"
+                            ToolTip="Raise this car's peak force a step, so it feels lighter."/>
+                    <TextBlock Grid.Column="4" x:Name="IRacingMaxNmText" VerticalAlignment="Center"
                                Margin="8,0,0,0" Opacity="0.75" FontSize="11" Text=""/>
                     <!-- Width overrides EffectTestButton's 50, which is sized for
                          its four-character "Test" labels. This one grows a number:
                          "Use 23.8". -->
-                    <Button Grid.Column="3" x:Name="IRacingAutoMaxForceBtn" Content="Auto" Margin="8,0,0,0" Width="88" IsEnabled="False"
+                    <Button Grid.Column="5" x:Name="IRacingAutoMaxForceBtn" Content="Auto" Margin="8,0,0,0" Width="88" IsEnabled="False"
                             Style="{StaticResource EffectTestButton}" Click="IRacingAutoMaxForce_Click"
                             ToolTip="The number on this button is what the plugin has watched this car produce, plus a margin. Drive a clean lap, then press it to take that number and start watching again from scratch. It stays greyed until the reading has held steady. Same idea as iRacing's own auto button."/>
                 </Grid>
@@ -2968,14 +2974,20 @@
                      matches the game's own strength; Apply locks in this car's
                      learned max. Shown only on the R3EFFB route. -->
                 <Grid Margin="0,0,0,2" x:Name="R3EAutoStrengthRow" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="70"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Car's max:" Style="{StaticResource LabelText}"
                                ToolTip="The force level this car peaks at, on a 0 to 1 scale. Lower it to make this car lean harder on the wheel; raise it to make it lighter. Apply fills it from what the plugin has watched this car push."/>
-                    <TextBox   Grid.Column="1" x:Name="R3EMaxBox" VerticalAlignment="Center"
+                    <Button Grid.Column="1" x:Name="R3EMaxDownBtn" Content="-" Width="24" Margin="0,0,4,0"
+                            Style="{StaticResource EffectTestButton}" Click="R3EMaxDown_Click"
+                            ToolTip="Lower this car's max a step, so it leans harder on the wheel."/>
+                    <TextBox   Grid.Column="2" x:Name="R3EMaxBox" VerticalAlignment="Center"
                                ToolTip="The force level this car peaks at, on a 0 to 1 scale. Lower it to make this car lean harder on the wheel; raise it to make it lighter."
                                LostFocus="R3EMax_LostFocus" KeyDown="R3EMax_KeyDown"/>
-                    <TextBlock Grid.Column="2" x:Name="R3EAutoStrengthStatus" VerticalAlignment="Center" Margin="8,0,0,0" Opacity="0.75" FontSize="11" Text=""/>
-                    <Button Grid.Column="3" x:Name="R3EApplyStrengthBtn" Content="Apply" Margin="8,0,0,0" Width="88" IsEnabled="False"
+                    <Button Grid.Column="3" x:Name="R3EMaxUpBtn" Content="+" Width="24" Margin="4,0,0,0"
+                            Style="{StaticResource EffectTestButton}" Click="R3EMaxUp_Click"
+                            ToolTip="Raise this car's max a step, so it feels lighter."/>
+                    <TextBlock Grid.Column="4" x:Name="R3EAutoStrengthStatus" VerticalAlignment="Center" Margin="8,0,0,0" Opacity="0.75" FontSize="11" Text=""/>
+                    <Button Grid.Column="5" x:Name="R3EApplyStrengthBtn" Content="Apply" Margin="8,0,0,0" Width="88" IsEnabled="False"
                             Style="{StaticResource EffectTestButton}" Click="R3EApplyStrength_Click"
                             ToolTip="Take what the plugin has watched this car push and use it as the car's max. The number on the button is that value. Greyed until the reading has held steady."/>
                 </Grid>
@@ -3438,7 +3450,7 @@
                                       Content="Stationary spring"
                                       FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
                                       Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it, in Assetto Corsa, RaceRoom or Forza with Telemetry Based FFB. Ignored for iRacing (the sim already weights the wheel)."/>
+                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it, in Assetto Corsa, RaceRoom, Le Mans Ultimate or Forza with Telemetry Based FFB. Ignored for iRacing (the sim already weights the wheel)."/>
                             <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="not used in Forza"
                                        ToolTip="Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games."/>

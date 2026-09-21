@@ -122,6 +122,13 @@ namespace TrueforceForAll.Plugin
                 },
                 new GuideEntry
                 {
+                    Key = "lmu-setup", Group = GroupSetup,
+                    Title = "Le Mans Ultimate",
+                    ActionLabel = TelemetryFfbTabLabel(),
+                    Action = () => SelectTab(TelemetryFfbTab),
+                },
+                new GuideEntry
+                {
                     Key = "forza-setup", Group = GroupSetup,
                     Title = "Forza",
                     ActionLabel = "Open the UDP settings",

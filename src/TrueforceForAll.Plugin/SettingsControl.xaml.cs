@@ -780,7 +780,11 @@ namespace TrueforceForAll.Plugin
                     // tap route, so the one checkbox is the whole R3EFFB A/B switch:
                     // checked = shared-memory reshape, unchecked = tap route.
                     bool r3eHere = _plugin.ActiveGameIsR3E;
-                    bool mbSupported = _plugin.ActiveGameSupportsModeB || r3eHere;
+                    // Le Mans Ultimate's handover is the same shape (its official
+                    // shared memory in place of "$R3E"), so it shares every gate.
+                    bool lmuHere = _plugin.ActiveGameIsLmu;
+                    bool smHere = r3eHere || lmuHere;
+                    bool mbSupported = _plugin.ActiveGameSupportsModeB || smHere;
                     // Spring-mode game (Farming Simulator): the force is the
                     // game's own spring, so the Forza tuning recipe and the
                     // per-game Enable are irrelevant and hide as a block. The
@@ -798,7 +802,7 @@ namespace TrueforceForAll.Plugin
                     // thirty controls that cannot do anything, and a dead knob
                     // reads as broken. Same rule the spring games already use,
                     // extended from a two-way split to a three-way one.
-                    bool reshapeGame = _plugin.ActiveGameIsReshapeGame || r3eHere;
+                    bool reshapeGame = _plugin.ActiveGameIsReshapeGame || smHere;
                     // The FFB tab is slim by default. The Telemetry Based FFB
                     // block (header, enable toggle, and every tuning panel) only
                     // belongs to games that actually have it, and its TUNING only
@@ -850,11 +854,13 @@ namespace TrueforceForAll.Plugin
                         ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     var r3eAutoVis = (showTuning && reshapeGame && r3eHere)
                         ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+                    var kerbVis = (showTuning && reshapeGame && !smHere)
+                        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     if (IRacingPeakForceRow  != null) IRacingPeakForceRow.Visibility  = iracingPeakVis;
                     if (IRacingPeakForceHelp != null) IRacingPeakForceHelp.Visibility = iracingPeakVis;
                     // Kerb softening reads iRacing's shock speeds, which the
                     // RaceRoom route does not carry.
-                    if (IRacingKerbExpander  != null) IRacingKerbExpander.Visibility  = iracingPeakVis;
+                    if (IRacingKerbExpander  != null) IRacingKerbExpander.Visibility  = kerbVis;
                     // The soft lock rides both takeover routes (RaceRoom's block
                     // carries the car's lock and the wheel range), so its section
                     // is set with IRacingTuningPanel above rather than here.
@@ -864,8 +870,12 @@ namespace TrueforceForAll.Plugin
                     // Smoothing can sit above it while staying visible in every
                     // game. Its contents are still iRacing-only, so it follows
                     // the same flag by hand.
+                    // Its Feel combo (Filled, Detailed, predicted) rides iRacing's
+                    // six force samples per update; the shared-memory handovers
+                    // carry one value per update, so only Plain ever runs there
+                    // and the combo would be three dead choices (owner, 2026-09-20).
                     if (IRacingAdvancedExpander != null)
-                        IRacingAdvancedExpander.Visibility = (showTuning && reshapeGame)
+                        IRacingAdvancedExpander.Visibility = (showTuning && reshapeGame && !smHere)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
 
                     // The tapped-path corrections are switched off under the
@@ -1287,6 +1297,8 @@ namespace TrueforceForAll.Plugin
                             // left wherever they like it.
                             string note = r3eHere
                                 ? "Applies to RaceRoom. Checked, the wheel is driven from the sim's own steering force read straight from its shared memory, instead of the USB capture. Unchecked returns to the USB capture (the tap route)."
+                                : lmuHere
+                                ? "Applies to Le Mans Ultimate. Checked, the wheel is driven from the sim's own steering shaft torque read straight from its shared memory, instead of the USB capture. In the game, set Vendor Specific Force Feedback to Off and Use LEDs off; its force feedback strength can stay. Unchecked returns to the USB capture (the tap route)."
                                 : reshapeGame
                                 ? "Applies to iRacing. Turn iRacing's own force feedback OFF (do not set its strength to 0, the plugin reads that number), and set loadTrueForceAPI=0 in app.ini."
                                 : $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
@@ -3160,8 +3172,8 @@ namespace TrueforceForAll.Plugin
                     return "iRacing weights the wheel itself while parked, so the spring is skipped there. Your tuning still applies in other games.";
                 case "needs the stationary friction on":
                     return "With RaceRoom's force handed over, the spring works against the plugin's own stationary friction instead of the game's parked damper. With that friction off there is nothing to settle the spring, so it is skipped. Turn the stationary friction on in the RaceRoom section to use it.";
-                case "off outside Assetto Corsa, RaceRoom and Forza in this version":
-                    return "The spring is offered in Assetto Corsa, RaceRoom and Forza (with Telemetry Based FFB) in this version while it is retested game by game. Type SPRING in the access code box to unlock it for testing. Your saved per-game tuning is kept.";
+                case "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version":
+                    return "The spring is offered in Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza (with Telemetry Based FFB) in this version while it is retested game by game. Type SPRING in the access code box to unlock it for testing. Your saved per-game tuning is kept.";
                 default:
                     return "Not used for the active game. Your tuning still applies in other games.";
             }
@@ -5563,6 +5575,8 @@ namespace TrueforceForAll.Plugin
             // per-game Mode B / reshape opt-in. Both persist + re-arm in the plugin.
             if (_plugin.ActiveGameIsR3E)
                 _plugin.SetR3ETakeover(on);
+            else if (_plugin.ActiveGameIsLmu)
+                _plugin.SetLmuTakeover(on);
             else
                 _plugin.SetModeBEnabledForActiveGame(on);
             // The toggle flips the tuning panels (and for RaceRoom the FFB
@@ -7061,6 +7075,35 @@ namespace TrueforceForAll.Plugin
         // whose peak torque is zero, so the only sane reading of a 0 is the
         // sentinel. Anything unparseable snaps back to what is really in use, so
         // a typo cannot silently leave the wheel somewhere the box does not show.
+        private void IRacingMaxNmDown_Click(object sender, RoutedEventArgs e) => NudgeIRacingMaxNmFromTab(-1);
+        private void IRacingMaxNmUp_Click(object sender, RoutedEventArgs e)   => NudgeIRacingMaxNmFromTab(+1);
+
+        /// <summary>The row's step buttons. A step is five percent of the
+        /// current number, to the half Nm and never under one half: iRacing's
+        /// cars sit at 10 to 30 Nm and Le Mans Ultimate's rack torque at 50 to
+        /// 130, and one fixed step cannot suit both (the bound controls keep
+        /// their half-Nm step). Down is heavier, up is lighter, as the help
+        /// line under the box says.</summary>
+        private void NudgeIRacingMaxNmFromTab(int dir)
+        {
+            if (_plugin == null) return;
+            double cur = _plugin.GetEditableMaxForceNm();
+            if (cur < 0.5) cur = _plugin.IRacingEffectiveMaxForceNm;
+            if (cur < 0.5)
+            {
+                if (IRacingAutoMaxForceStatus != null)
+                {
+                    IRacingAutoMaxForceStatus.Text = "Nothing to nudge yet: press Auto after a clean lap, or type a number.";
+                    IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
+                }
+                return;
+            }
+            double step = Math.Max(0.5, Math.Round(cur * 0.05 * 2.0) / 2.0);
+            _plugin.NudgeIRacingMaxForce(dir * step);
+            UpdateIRacingMaxNmText();
+            UpdateIRacingClipWarning();
+        }
+
         private void CommitIRacingMaxNm()
         {
             if (_suppressEvents || _plugin == null || _plugin.Settings == null
@@ -7077,7 +7120,7 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             if (v < 0.0) v = 0.0;
-            if (v > 200.0) v = 200.0;   // a sanity ceiling, not a wheel rating
+            if (v > 400.0) v = 400.0;   // a sanity ceiling, not a wheel rating; LMU rack torque passes 130
             // Writes whatever the force path is actually using (the active
             // car's slot in per-car mode, else the shared override), so the
             // iRacing-style nudge works: bump the number to make THIS car
@@ -7370,6 +7413,21 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // RaceRoom's step buttons: the same seven percent per step the bound
+        // nudge uses. NudgeR3EStrength counts in the other direction (positive
+        // = stronger = a lower max), so down on the row is +1 there.
+        private void R3EMaxDown_Click(object sender, RoutedEventArgs e) => NudgeR3EMaxFromTab(+1);
+        private void R3EMaxUp_Click(object sender, RoutedEventArgs e)   => NudgeR3EMaxFromTab(-1);
+
+        private void NudgeR3EMaxFromTab(int steps)
+        {
+            if (_plugin == null) return;
+            _plugin.NudgeR3EStrength(steps);
+            if (R3EMaxBox != null && !R3EMaxBox.IsKeyboardFocused)
+                R3EMaxBox.Text = _plugin.R3EEffectivePeak.ToString("0.00");
+            _r3eAutoBtnShown = null;   // let the readiness line/button refresh next tick
+        }
+
         private void CommitR3EMaxBox()
         {
             if (_plugin == null || R3EMaxBox == null) return;
@@ -7408,13 +7466,13 @@ namespace TrueforceForAll.Plugin
             var st = _plugin?.Settings;
             double shown = 0.0;
             string src = "";
-            if (st != null && st.IRacingMaxForcePerCar && st.IRacingMaxForceByCar != null
+            if (st != null && _plugin.MaxForcePerCarHere && st.IRacingMaxForceByCar != null
                 && !string.IsNullOrEmpty(_plugin.ActiveCarId)
                 && st.IRacingMaxForceByCar.TryGetValue(_plugin.ActiveCarId, out float pc) && pc > 0.5f)
             {
                 shown = pc; src = " (this car)";
             }
-            else if (st != null && st.IRacingMaxForceNmOverride > 0.5f)
+            else if (st != null && !_plugin.ActiveGameIsLmu && st.IRacingMaxForceNmOverride > 0.5f)
             {
                 shown = st.IRacingMaxForceNmOverride;
             }
@@ -7437,7 +7495,9 @@ namespace TrueforceForAll.Plugin
             // unable to tell a working fallback from a broken one.
             if (!MaxNmBoxBeingEdited) IRacingMaxNmBox.Text = "";
             double live = _plugin?.IRacingLiveMaxForceNm ?? 0.0;
-            IRacingMaxNmText.Text = live > 0.5
+            IRacingMaxNmText.Text = _plugin != null && _plugin.ActiveGameIsLmu
+                ? "no number for this car yet; " + live.ToString("F0") + " Nm is full force until Auto"
+                : live > 0.5
                 ? "following iRacing, which says " + live.ToString("F1")
                 : "following iRacing";
         }
@@ -12055,6 +12115,7 @@ namespace TrueforceForAll.Plugin
                 // own: with iRacing's body it told a RaceRoom driver to edit
                 // app.ini (rig, 2026-09-14).
                 bool r3e = reshape && _plugin.ActiveGameIsR3E;
+                bool lmu = reshape && _plugin.ActiveGameIsLmu;
                 // Whether there is anything left to offer. Read BEFORE the body is
                 // built, because the closing sentence points at a button that only
                 // exists when this is true: re-opened from the tab's link with the
@@ -12062,8 +12123,23 @@ namespace TrueforceForAll.Plugin
                 // "Got it".
                 bool canActivate = r3e
                     ? !(_plugin.Settings.R3ESharedMemoryFfb)
+                    : lmu
+                    ? !(_plugin.Settings.LmuSharedMemoryFfb)
                     : !_plugin.ModeBEnabledForActiveGame;
-                string body = r3e
+                string body = lmu
+                    ? "The plugin can carry Le Mans Ultimate's force feedback for you. It does not "
+                      + "replace it: the sim still works out what the car is doing and hands "
+                      + "over those same forces, so the feel stays the sim's own.\n\n"
+                      + "What it buys you is your wheel's rev lights and screen. They share a "
+                      + "channel with force feedback, so they can only run when the plugin "
+                      + "owns that channel instead of the sim.\n\n"
+                      + "It needs two things on the game's side first: Vendor Specific Force "
+                      + "Feedback off (Settings > Controls > Force Feedback) and Use LEDs off "
+                      + "(Settings > Wheel and Pedals > Calibration). Its force feedback strength "
+                      + "can stay. Start SimHub before the game, or the lights and screen may "
+                      + "not come on."
+                      + (canActivate ? " Then activate it below." : "")
+                    : r3e
                     ? "The plugin can carry RaceRoom's force feedback for you. It does not "
                       + "replace it: RaceRoom still works out what the car is doing and hands "
                       + "over those same forces, so the feel stays the sim's own.\n\n"
@@ -12095,7 +12171,8 @@ namespace TrueforceForAll.Plugin
                       + "wheel settings, so the plugin is the only force on the wheel."
                       + (canActivate ? " Then activate it below." : "");
                 bool? r = TrueforceDialog.Show(owner,
-                    r3e     ? "Let the plugin carry RaceRoom's force feedback"
+                    lmu     ? "Let the plugin carry Le Mans Ultimate's force feedback"
+                  : r3e     ? "Let the plugin carry RaceRoom's force feedback"
                   : reshape ? "Let the plugin carry iRacing's force feedback"
                             : "Telemetry Based FFB is available",
                     body,
@@ -12108,6 +12185,7 @@ namespace TrueforceForAll.Plugin
                 if (r == true && canActivate)
                 {
                     if (r3e) _plugin.SetR3ETakeover(true);
+                    else if (lmu) _plugin.SetLmuTakeover(true);
                     else _plugin.SetModeBEnabledForActiveGame(true);
                     if (ModeBEnabledCheck != null)
                     {
@@ -13497,7 +13575,9 @@ namespace TrueforceForAll.Plugin
             "CSPFFB         Assetto Corsa: the TF4ALL CSP Bridge is used AUTOMATICALLY when its script is installed (install it from Settings > Game mods, the on-screen prompt, or the guide), otherwise the USB capture is used. This code is a DEV force-off: type it to make AC use the capture even with the bridge installed, type again for automatic. Sub-commands pick the read field: VALUE (default, post-gain, keeps your CSP tweaks), PURE or TORQUE (pre-gain, work at in-game gain 0), FINAL, FINALFF; 'CSPFFB NM 8' sets full-scale torque for TORQUE; 'CSPFFB SUP/NOSUP' is a suppression diagnostic; 'CSPFFB DAMP' toggles the synthesized damper; 'CSPFFB DAMPK <x>' sets its strength (0..2, default 0.25); 'CSPFFB DAMPSIGN' flips its direction; 'CSPFFB DAMPTEST' runs a 28 s damper wiggle (off/on flips, then ramps). Persists.\n" +
             "R3EFFB         RaceRoom: drive the wheel from the sim's own pre-gain steering force (read straight from its shared memory) instead of the USB capture; set in-game FFB intensity to 0 first. Frees the HID++ pipe for the rev lights and screen the way CSPFFB does in Assetto Corsa. Enabling also opts RaceRoom into Telemetry Based FFB, so this one code is the whole A/B switch against the tap route. 'R3EFFB INV' flips the force sign, 'R3EFFB NM 15' reads the raw SteeringForce channel with that full scale, 'R3EFFB PCT' returns to the percentage channel (those three are session only), 'R3EFFB AUTO' toggles per-car auto-strength (persisted, on by default; RaceRoom's percentage tops out well below full scale) and 'R3EFFB APPLY' commits this car's max iRacing-style (drive a couple of clean laps, watch the strength confidence, then apply; nothing drifts under you until you do). Bindable as R3EStrengthApply / R3EStrengthUp / R3EStrengthDown. Persists per car. Toggle.\n" +
             "R3EPROBE       RaceRoom signal probe: '[TF4ALL] R3EPROBE' lines every ~2 s with the sim's SteeringForce and percentage (current + min/max), steering input, tick rate and control state. For verifying, before trusting R3EFFB, that the force survives in-game FFB intensity 0 and that its sign matches the steering direction. Session only. Toggle.\n" +
-            "SPRING         Unlock the stationary spring outside Assetto Corsa, RaceRoom and Forza, where it is locked while it is retested game by game (it has misbehaved before, and the per-game rework has only been driven in those three). Unlocked, tick the spring while each game is running and that game keeps its own enabled/strength/cutoff. Locking again returns every other game to off without deleting what you tuned. Assetto Corsa, RaceRoom and Forza are unaffected either way. Persists, does not travel in a backup. Toggle.\n" +
+            "LMUFFB         Le Mans Ultimate: drive the wheel from the sim's own steering shaft torque (read straight from its official shared memory) instead of the USB capture; set the game's Vendor Specific Force Feedback (its Trueforce) to Off first, its strength can stay. Frees the HID++ pipe for the rev lights and screen the way R3EFFB does in RaceRoom, and it is the same switch as the FFB tab's take-over checkbox. Sub-commands: INV (flip the sign, session only), NM <n> (the shaft torque in Nm that is full force until a car has its own number, persists), APPLY (take this car's learned peak force in Nm, as the FFB tab's Auto button) and DAMP (as R3EFFB). Persists. Toggle.\n" +
+            "LMUPROBE       Le Mans Ultimate signal probe: '[TF4ALL] LMUPROBE' lines every ~2 s with the sim's shaft torque and its own FFB value (current + min/max), their update rates, steering, the wheel ranges and the session state. For checking the torque's sign against the steering direction and what the cars push. Session only. Toggle.\n" +
+            "SPRING         Unlock the stationary spring outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza, where it is locked while it is retested game by game (it has misbehaved before, and the per-game rework has only been driven in those four). Unlocked, tick the spring while each game is running and that game keeps its own enabled/strength/cutoff. Locking again returns every other game to off without deleting what you tuned. Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza are unaffected either way. Persists, does not travel in a backup. Toggle.\n" +
             "ARCADE         Unlock the shelved arcade cabinet path: the TeknoParrot and FFB Arcade Plugin force sources, the Initial D 8 memory map (rpm, gear, speed, steering, slip) and its in-game leaderboards and ladder. Off in shipping builds: the arcade work was built against TeknoParrot, and the other way people run Initial D 8 is micetools plus a server emulator, which fills the game's own leaderboards from a real server and renders its own force feedback. Turning it off also puts the game's own leaderboard rows back. Restart SimHub after typing it: the Arcade.* dash properties are attached at startup. Persists. Toggle.\n" +
             "DRIVER         Driver testing mode: route FFB through the kernel filter driver (sole wheel ownership). Needs the TFFA filter driver installed. Persists. Toggle.\n" +
             "DIDAMP [pct]   DEV: drive the wheel's NATIVE DirectInput damper from the plugin (default 75%) with the Trueforce stream fully stopped (the wheel exactly as without the plugin), and log the position read rate: the DAMPCAL feasibility spike. DIDAMP OFF ends it (auto-off after 60 s).\n" +
@@ -14344,6 +14424,95 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // Le Mans Ultimate handover: the sim's steering shaft torque read
+            // straight from its official "LMU_Data" shared memory and reshaped
+            // onto the wheel the way the iRacing path does. "LMUFFB" toggles
+            // the route (the FFB tab's take-over checkbox is the same switch);
+            // INV flips the sign (session only), NM <n> sets the shaft torque
+            // that is full wheel force (persists); AUTO, APPLY and DAMP are the
+            // RaceRoom ones, which are keyed per game and car already.
+            if (code.Equals("LMUFFB", StringComparison.OrdinalIgnoreCase)
+                || code.StartsWith("LMUFFB ", StringComparison.OrdinalIgnoreCase))
+            {
+                var lmuParts = code.Split(new[] { ' ', '=', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                AccessCodeBox.Text = string.Empty;
+                if (lmuParts.Length == 1)
+                {
+                    bool on = _plugin.ToggleLmuSharedMemoryFfb();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = on
+                            ? "Le Mans Ultimate handover ON: the wheel is driven from the sim's own steering shaft torque, read straight from its shared memory, instead of the USB capture. In the game, set Vendor Specific Force Feedback to Off first; its force feedback strength can stay. Type LMUFFB again for the tap route."
+                            : "Le Mans Ultimate handover OFF: back on the USB capture.";
+                    RefreshFromPlugin();
+                    return;
+                }
+                string lmuArg = lmuParts[1].ToUpperInvariant();
+                if (lmuArg == "INV")
+                {
+                    bool inv = _plugin.ToggleLmuForceInvert();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = inv
+                            ? "Le Mans Ultimate force sign INVERTED (session only). If the wheel now pulls into corners instead of centering, type LMUFFB INV again."
+                            : "Le Mans Ultimate force sign back to normal.";
+                    return;
+                }
+                if (lmuArg == "NM")
+                {
+                    if (lmuParts.Length >= 3 && double.TryParse(lmuParts[2],
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double lmuNm))
+                    {
+                        double set = _plugin.SetLmuFullScaleNm(lmuNm);
+                        if (AccessCodeStatus != null)
+                            AccessCodeStatus.Text = $"Le Mans Ultimate full scale set to {set:F1} Nm of shaft torque: that much is full wheel force before a car's own max is applied. Persists.";
+                    }
+                    else if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = "Usage: LMUFFB NM <number>, e.g. LMUFFB NM 15.";
+                    return;
+                }
+                if (lmuArg == "APPLY")
+                {
+                    double applied = _plugin.ApplyIRacingAutoMaxForce();
+                    if (AccessCodeStatus != null)
+                        AccessCodeStatus.Text = applied > 0.5
+                            ? $"This car's peak force set to {applied:F1} Nm, as the Auto button does. Nudge with IRacingMaxForceUp/Down; APPLY again after a clean lap to re-learn."
+                            : "Nothing learned yet: drive a couple of clean laps first (the Auto button on the FFB tab shows the number once it settles), then APPLY.";
+                    return;
+                }
+                if (lmuArg == "DAMP")
+                {
+                    var ci = System.Globalization.CultureInfo.InvariantCulture;
+                    double? strength = null, fade = null;
+                    if (lmuParts.Length >= 3 && double.TryParse(lmuParts[2],
+                            System.Globalization.NumberStyles.Float, ci, out double dS))
+                        strength = dS;
+                    if (lmuParts.Length >= 4 && double.TryParse(lmuParts[3],
+                            System.Globalization.NumberStyles.Float, ci, out double dF))
+                        fade = dF;
+                    string msg = _plugin.SetR3EStationaryDamper(strength, fade);
+                    if (AccessCodeStatus != null) AccessCodeStatus.Text = msg;
+                    return;
+                }
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "LMUFFB sub-commands: INV (flip sign), NM <n> (shaft torque in Nm that is full force until a car has its own number), APPLY (take this car's learned peak force, as the Auto button), DAMP [strength] [fadeKmh] (stationary friction: firm parked, gone at speed).";
+                return;
+            }
+
+            // Le Mans Ultimate signal probe: no force, just the numbers needed
+            // to trust LMUFFB (does the shaft torque survive in-game strength
+            // 0, does its sign match the steering direction, how fast do the
+            // telemetry and the sim's own FFB value update).
+            if (code.Equals("LMUPROBE", StringComparison.OrdinalIgnoreCase))
+            {
+                bool on = _plugin.ToggleLmuProbe();
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = on
+                        ? "Le Mans Ultimate probe ON: '[TF4ALL] LMUPROBE' lines land in SimHub.txt every ~2 s while the game runs. Drive a steady corner each way (sign check) and a hard one (what the car pushes). Type LMUPROBE again to stop."
+                        : "Le Mans Ultimate probe OFF.";
+                return;
+            }
+
             // Driver testing mode: route FFB through the TFFA kernel filter
             // driver (sole wheel ownership) instead of the USBPcap tap. Needs
             // the TFFA filter driver installed. The code both REVEALS the
@@ -14964,8 +15133,8 @@ namespace TrueforceForAll.Plugin
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
                     AccessCodeStatus.Text = sp.StationarySpringUnlocked
-                        ? "Stationary spring unlocked outside Assetto Corsa, RaceRoom and Forza. Tick it while each game is running to test it there; every game keeps its own strength and cutoff. Type SPRING again to lock it back to those three, which leaves your per-game tuning saved for next time."
-                        : "Stationary spring locked to Assetto Corsa, RaceRoom and Forza (the shipping default). Your per-game settings are kept, not deleted.";
+                        ? "Stationary spring unlocked outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza. Tick it while each game is running to test it there; every game keeps its own strength and cutoff. Type SPRING again to lock it back to those four, which leaves your per-game tuning saved for next time."
+                        : "Stationary spring locked to Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza (the shipping default). Your per-game settings are kept, not deleted.";
                 // The checkbox and its badge read the effective value, so re-read
                 // rather than leaving a tick on a spring that no longer runs.
                 RefreshFromPlugin();
