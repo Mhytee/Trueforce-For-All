@@ -6745,7 +6745,8 @@ namespace TrueforceForAll.Plugin
                                 // TelemetryGameDays is a play history besides, and none
                                 // of the four helps diagnose anything.
                                 "AnalyticsAnonId", "TelemetryGameDays",
-                                "LastTelemetryPingDay", "TelemetryGamePresetHashes" })
+                                "LastTelemetryPingDay", "TelemetryGamePresetHashes",
+                                "LastTelemetrySettingsHash" })
                                 jo.Remove(secret);
                             // Community lineage stamps live INSIDE CustomEngines[],
                             // Presets[*], CarOverrides[*] and DownloadedCommunityPresets[*]
@@ -8799,13 +8800,18 @@ namespace TrueforceForAll.Plugin
             if (ShareUsageStatsCheck == null) return;
             bool on = ShareUsageStatsCheck.IsChecked == true;
             _plugin.Settings.ShareUsageStats = on;
-            // Turning it OFF discards what was collected but not yet sent, so opting
-            // out means the queued days stop existing rather than waiting to be
-            // flushed the moment it is turned back on. The install id is deliberately
-            // kept: it is not a record of anything on its own, and minting a new one
-            // per opt-out cycle would inflate the unique-install count, which is the
-            // number this whole feature exists to get right.
-            if (!on) _plugin.DiscardPendingUsageStats();
+            // Turning it OFF stops collection (every gate reads ShareUsageStats) but
+            // deliberately does NOT discard what is already queued. Those entries were
+            // recorded while the switch was on, which is to say with consent, and
+            // opting out is a decision about the future, not a retraction of it. An
+            // earlier version did discard them, and it was actively harmful: the
+            // toggle is the only way to force a send, so the one gesture a user
+            // reaches for to push their data ALSO deleted it, silently. Verified
+            // against a live session where two games were played and neither arrived.
+            //
+            // Turning it ON re-arms today's ping, so a deliberate opt-in reports now
+            // instead of waiting for tomorrow's first tick.
+            if (on) _plugin.AllowUsagePingAgainToday();
             _plugin.PersistSettings();
             // Off the UI thread: the ping BUILDS its payload synchronously (reflection
             // over every settings property, two SHA-256s, up to ten preset bodies

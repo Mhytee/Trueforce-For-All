@@ -7062,9 +7062,24 @@ namespace TrueforceForAll.Plugin
             ArcadeBridgeSpikeRestore(pluginManager, data);
 
             _currentGameName = data?.GameRunning == true ? data.GameName : null;
+            // Analytics asks a DIFFERENT question from the force path, so it gets a
+            // different signal. GameRunning means the reader is delivering telemetry:
+            // it is false in menus, on loading screens, while paused, and for the whole
+            // life of a title whose data never reaches SimHub at all. _currentGameName
+            // is therefore the right input for the force path (no data, no effects) and
+            // the wrong one for "what did they play": a measured FH6 session sat open
+            // for 96 seconds with Data Out off, emitted nothing, and was recorded as no
+            // game, while the plugin had already adopted it and loaded its preset.
+            //
+            // RunningGameProcessDetected is SimHub's separate "this title's process is
+            // up" flag, which is exactly the question. Taken as a UNION with the old
+            // gate so this can only ever record more than before, never less, and so a
+            // title that is live but somehow not process-detected still counts.
+            _usageGameName = (data?.GameRunning == true || data?.RunningGameProcessDetected == true)
+                ? data.GameName : null;
             // Usage stats: note game-day activity on a transition into a game
             // (one ordinal compare per frame; the record runs only on change).
-            try { NoteTelemetryGameActivity(_currentGameName); } catch { /* never disturb DataUpdate */ }
+            try { NoteTelemetryGameActivity(_usageGameName); } catch { /* never disturb DataUpdate */ }
             // Radar dots and proximity, from this frame's opponents.
             try { DashUpdateRadar(data); } catch { /* display only, never fatal */ }
 
@@ -25320,7 +25335,15 @@ namespace TrueforceForAll.Plugin
                     }
                     else
                     {
-                        o[p.Name] = Newtonsoft.Json.Linq.JToken.FromObject(v);
+                        // PresetPayloadSerializer, not the parameterless FromObject: that
+                        // overload resolves through JsonSerializer.CreateDefault() and so
+                        // honours the process-global JsonConvert.DefaultSettings, which
+                        // any plugin in the host can set. A converter registered there
+                        // that claims double/float would change this snapshot's bytes,
+                        // change its hash, and make it re-send daily with nothing
+                        // actually changed. The preset path was already immune; this
+                        // makes the two paths agree.
+                        o[p.Name] = Newtonsoft.Json.Linq.JToken.FromObject(v, PresetPayloadSerializer);
                     }
                 }
                 return o.ToString(Newtonsoft.Json.Formatting.None);
@@ -25358,9 +25381,12 @@ namespace TrueforceForAll.Plugin
                 EnsureAnalyticsAnonId();
                 string anonId = (Settings.AnalyticsAnonId ?? "").Trim();
                 if (anonId.Length == 0) return;
+                // _usageGameName, not _currentGameName: the same process-presence
+                // signal the game-day recorder uses, so a title open in menus is
+                // reported rather than showing up as no game at all.
                 // Never send a user-added game's label: SimHub names custom titles
                 // "Custom_<label>", whose suffix can be free text the user typed.
-                string game = _currentGameName;
+                string game = _usageGameName;
                 if (!string.IsNullOrEmpty(game)
                     && game.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
                     game = "Custom";
@@ -25385,10 +25411,27 @@ namespace TrueforceForAll.Plugin
                     var list = Settings.TelemetryGameDays;
                     if (list != null)
                     {
+                        // Drop entries the server can no longer accept. Its window is 60
+                        // days; anything older is refused, so it is never echoed in the
+                        // receipt, so CommitUsagePing never removes it. Left alone it is
+                        // immortal: re-serialized into every future ping and occupying a
+                        // cap slot for good. Pruned at 55 days, safely inside the window
+                        // so nothing still deliverable is thrown away.
+                        string cutoff = UsageDayKey(DateTime.UtcNow.AddDays(-55));
+                        list.RemoveAll(e =>
+                        {
+                            int b = e == null ? -1 : e.IndexOf('|');
+                            return b <= 0 || b >= e.Length - 1
+                                || string.CompareOrdinal(e.Substring(b + 1), cutoff) < 0;
+                        });
                         if (!string.IsNullOrEmpty(game))
                         {
                             string liveKey = game + "|" + today;
-                            if (list.Count < UsageGameDayCap && !list.Contains(liveKey)) list.Add(liveKey);
+                            if (!list.Contains(liveKey))
+                            {
+                                if (list.Count >= UsageGameDayCap) list.RemoveAt(0);
+                                list.Add(liveKey);
+                            }
                         }
                         if (list.Count > 0)
                         {
@@ -25409,6 +25452,23 @@ namespace TrueforceForAll.Plugin
                     }
                 }
 
+                // Every game we have ever reported a body for is re-evaluated too, not
+                // just the ones played since the last ping. Without this the preset test
+                // fires only while a game still has an undrained activity entry, so a
+                // preset retuned offline (edit it Tuesday afternoon, do not launch the
+                // game) was never reported until that game was next played, and never at
+                // all if it was not. The global settings snapshot has no such gate, and
+                // the rule should be the same for both: send it when the body differs
+                // from what we last delivered. Also self-heals the 10-body batch limit,
+                // whose overflow games used to lose their activity entry in the same
+                // ping and drop out of the evaluation set entirely.
+                lock (_carFactsLock)
+                {
+                    var knownGames = Settings.TelemetryGamePresetHashes;
+                    if (knownGames != null)
+                        foreach (var kv in knownGames) played.Add(kv.Key);
+                }
+
                 // Per-game preset bodies for those games, staged (not stamped) so a
                 // lost send re-sends them rather than marking them already delivered.
                 var stagedPresetHashes =
@@ -25418,6 +25478,14 @@ namespace TrueforceForAll.Plugin
                 string commitHash  = sendSnapshot ? snapshotHash : null;
                 var    commitDays  = sentGameDays;
                 var    commitOwner = Settings;              // identity checked at commit
+                // One line per ping, so what was sent is answerable from a log alone.
+                // Without it the only telemetry lines are failures, and a ping that
+                // carried nothing looks exactly like a ping that never happened; that
+                // ambiguity already cost a live test. Counts only, never content.
+                SimHub.Logging.Current.Info(string.Format(
+                    "[TF4ALL] Usage ping: game='{0}' snapshot={1} gameDays={2} presets={3}",
+                    game ?? "(none)", sendSnapshot ? "yes" : "unchanged",
+                    commitDays?.Count ?? 0, stagedPresetHashes.Count));
                 _telemetryClient.SendPing(anonId, CurrentVersionString(),
                     Settings.LastUsedWheel, game, sendSnapshot ? snapshot : null,
                     gamesJson, gamePresetsJson,
@@ -25461,6 +25529,12 @@ namespace TrueforceForAll.Plugin
 
         private string   _telemetryLastNotedGame;
         private DateTime _telemetryLastNotedDate;   // UTC date component, MinValue until first note
+
+        /// <summary>The live game as ANALYTICS sees it: set whenever SimHub reports the
+        /// title's process up, even if no telemetry is flowing. Deliberately separate
+        /// from <see cref="_currentGameName"/>, which stays gated on GameRunning because
+        /// the force path must not act on a title that is sending nothing.</summary>
+        private volatile string _usageGameName;
 
         /// <summary>Today's UTC date as the wire format expects it. InvariantCulture
         /// is load-bearing, not tidiness: ToString on the current culture uses that
@@ -25517,8 +25591,19 @@ namespace TrueforceForAll.Plugin
                 lock (_carFactsLock)
                 {
                     var list = Settings.TelemetryGameDays;
-                    if (list != null && list.Count < UsageGameDayCap && !list.Contains(key))
+                    if (list != null && !list.Contains(key))
                     {
+                        // Evict oldest-first at the cap, never refuse the add. Refusing
+                        // was terminal: an entry whose day has aged past the server's
+                        // 60-day window can never be confirmed, so CommitUsagePing never
+                        // removes it. Let 200 of those accumulate (an install that plays
+                        // daily with no successful ping for a couple of months, a rig
+                        // offline in a garage) and the queue is permanently full of
+                        // entries that can never leave: activity stops being recorded for
+                        // good, the live game can no longer be folded in, and the preset
+                        // feed dies with it because `played` comes from this same list.
+                        // Keeping the newest 200 days is what the analytics want anyway.
+                        if (list.Count >= UsageGameDayCap) list.RemoveAt(0);
                         list.Add(key);
                         added = true;
                     }
@@ -25596,6 +25681,12 @@ namespace TrueforceForAll.Plugin
                 var p = base.CreateProperty(member, memberSerialization);
                 var t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
                 if (t != null && t.IsEnum) p.Converter = null;
+                // ItemConverter is the third route: [JsonProperty(ItemConverterType =
+                // typeof(StringEnumConverter))] on a collection-of-enums member would
+                // still write strings, and StripTextLeaves would then empty the array.
+                // Nothing in the graph is a collection of enums today, so this is a
+                // guard against the shape rather than a fix for a live bug.
+                p.ItemConverter = null;
                 return p;
             }
 
@@ -25726,26 +25817,26 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Drop everything collected but not yet sent, for the opt-out. The
-        /// accumulated (game|day) queue and the settings-changed hash go; the install
-        /// id and the day stamp stay (the id so a later opt-in is still one install
-        /// rather than a second one, the day stamp so re-enabling twice in a day does
-        /// not re-ping). Clearing the hash is what makes the next opt-in send a
-        /// current snapshot rather than assume the server still holds the old one.</summary>
-        internal void DiscardPendingUsageStats()
+        /// <summary>Let a deliberate opt-IN send today's activity even though the
+        /// once-a-day stamp has already been spent. Turning the switch on is a fresh,
+        /// explicit consent, so the right response is to report rather than to sit on
+        /// what is already queued until tomorrow. It also makes the toggle the only
+        /// thing a tester needs in order to force a send; there is otherwise no way to
+        /// trigger one, which made the feature untestable by hand.
+        ///
+        /// Cheap to abuse only in the sense that toggling repeatedly re-sends: the
+        /// server upserts on (anon_id, day) so the row count cannot grow, and
+        /// MaybeSendUsagePing single-flights through _usagePingBusy.</summary>
+        internal void AllowUsagePingAgainToday()
         {
             try
             {
                 if (Settings == null) return;
-                lock (_carFactsLock)
-                {
-                    Settings.TelemetryGameDays?.Clear();
-                    Settings.LastTelemetrySettingsHash = null;
-                }
+                Settings.LastTelemetryPingDay = null;
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Usage stats discard failed: " + ex.Message);
+                SimHub.Logging.Current.Info("[TF4ALL] Usage ping re-arm failed: " + ex.Message);
             }
         }
 
@@ -25773,6 +25864,11 @@ namespace TrueforceForAll.Plugin
                 // day of DAU under a freshly minted id. Same guard pattern the other
                 // post-async callbacks in this file use.
                 if (owner == null || _shuttingDown || !ReferenceEquals(Settings, owner)) return;
+                SimHub.Logging.Current.Info(receipt == null
+                    ? "[TF4ALL] Usage ping accepted, no receipt: stamping the day only."
+                    : string.Format("[TF4ALL] Usage ping stored: settings={0} gameDays={1} presets={2}",
+                        receipt.SettingsStored ? "yes" : "no",
+                        receipt.Games.Count, receipt.Presets.Count));
                 // Every write below goes through `owner`, never a fresh read of the
                 // Settings property: the guard has already proven owner is the live
                 // graph, and re-reading a plain auto-property would let an import
