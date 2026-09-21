@@ -4695,6 +4695,22 @@ namespace TrueforceForAll.Plugin
                 msg => SimHub.Logging.Current.Info(msg),
                 async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
 
+            // Anonymous usage statistics (opt-out; migration 0127). No auth wiring:
+            // the ping is deliberately never tied to an account. Fire once shortly
+            // after start, then on a slow timer so a long-running session still
+            // counts each day; MaybeSendUsagePing self-gates on the toggle and the
+            // once-a-day stamp, so the extra ticks are cheap no-ops.
+            _telemetryClient = new TelemetryClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg));
+            try
+            {
+                _usagePingTimer = new System.Threading.Timer(
+                    _ => MaybeSendUsagePing(), null,
+                    TimeSpan.FromMinutes(2), TimeSpan.FromHours(6));
+            }
+            catch { /* timer construction never fatal to boot */ }
+
             // Fire-and-forget plugin-load account sync. If a session was
             // restored from Settings.AuthSession, refresh the profile so
             // SharingAuthor matches whatever the server says
@@ -6898,6 +6914,7 @@ namespace TrueforceForAll.Plugin
             try { _autoPullTimer?.Dispose(); } catch { }
             _autoPullTimer = null;
             try { _sessionHeartbeatTimer?.Dispose(); } catch { }
+            try { _usagePingTimer?.Dispose(); } catch { }
             _sessionHeartbeatTimer = null;
 
             // Flush a pending dash redline share (see DashScheduleRedlineShare)
@@ -25206,6 +25223,141 @@ namespace TrueforceForAll.Plugin
             try { PersistSettingsCore(); } catch { }
         }
 
+        // ---- Anonymous usage statistics (telemetry_ping, migration 0127) ----
+
+        /// <summary>Mint the analytics id if missing. Separate from the car-fact
+        /// anon id so the two anonymous datasets can't be cross-linked. Random,
+        /// never hardware-derived. Travels in backups so one human counts once.</summary>
+        internal void EnsureAnalyticsAnonId()
+        {
+            if (Settings == null) return;
+            if (!string.IsNullOrEmpty((Settings.AnalyticsAnonId ?? "").Trim())) return;
+            Settings.AnalyticsAnonId = Guid.NewGuid().ToString("N");
+            try { PersistSettingsCore(); } catch { }
+        }
+
+        // Settings whose VALUES never ride the usage snapshot: free text a user can
+        // type (their own name / greeting), identifiers, secrets, and absolute
+        // paths. Everything else that is a scalar preference is included.
+        private static readonly System.Collections.Generic.HashSet<string> UsageSnapshotDeny =
+            new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+        {
+            "AnalyticsAnonId", "CarFactsAnonId", "SharingAuthor",
+            "LastSignInEmail", "LegacyDataOwnerEmail",
+            "CommunityBackendUrl", "CommunityBackendAnonKey",
+            "OledGreetingText", "OledCustomTexts",
+            "DashIdleDriverName", "DashIdleNumber", "DashIdleColor", "DashIdleFont",
+            // USB pins: the string overrides AND the numeric bus/VID/PID pins (the
+            // latter are ints, so the string-only default does not cover them).
+            "UsbPcapCmdPathOverride", "ManualUsbPcapInterface",
+            "ManualUsbPcapDeviceAddress", "ManualUsbPcapVid", "ManualUsbPcapPid",
+            "BuiltinPresetsFolder", "UserImportsFolder", "UserLibraryFolder",
+            "DevSupporterBadgeOverride", "LastTelemetryPingDay", "BetaAutoEnrolledVersion",
+            // Account- / supporter-derived facts about the person, not settings:
+            // kept out so the ping carries no account data (PRIVACY.md).
+            "HasEverSupported", "SupportPromptCount", "SupportPromptDeclineCount",
+        };
+
+        // The only STRING settings sent by value: short fixed selector strings, no
+        // free text. Every other string stays out (paths, names, ids, greetings).
+        // Enum-typed selectors (IdleLedMode, OledScreen, ...) are captured by the
+        // enum branch below and need no entry here; dictionaries (CarLightPattern)
+        // are dropped by the scalar rule.
+        private static readonly System.Collections.Generic.HashSet<string> UsageSnapshotStringAllow =
+            new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+        {
+            "DashTheme", "DashIdleStyle", "CspBridgeFfbField",
+        };
+
+        /// <summary>Build the anonymous settings snapshot as a compact JSON object.
+        /// Safe by default: only scalar bool / number / enum properties (harmless
+        /// feel and feature values) plus a small allowlist of enum-like strings are
+        /// sent. Every collection, complex object, free-text string, id, secret,
+        /// path, and migration latch is left out, so no personal or machine data
+        /// can ride along, and a newly added field is excluded unless it is a plain
+        /// scalar.</summary>
+        internal string BuildUsageSettingsSnapshot()
+        {
+            try
+            {
+                if (Settings == null) return null;
+                var o = new Newtonsoft.Json.Linq.JObject();
+                foreach (var p in typeof(TrueforceSettings).GetProperties(
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+                {
+                    if (!p.CanRead || !p.CanWrite) continue;
+                    if (UsageSnapshotDeny.Contains(p.Name)) continue;
+                    if (p.Name.IndexOf("Migrated", StringComparison.Ordinal) >= 0) continue; // migration-latch noise
+                    var t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+                    bool isBool = t == typeof(bool);
+                    bool isNum  = t == typeof(int) || t == typeof(long)
+                               || t == typeof(float) || t == typeof(double);
+                    bool isEnum = t.IsEnum;
+                    bool isStr  = t == typeof(string);
+                    if (!isBool && !isNum && !isEnum && !isStr) continue;   // no collections / objects
+                    if (isStr && !UsageSnapshotStringAllow.Contains(p.Name)) continue;
+                    object v;
+                    try { v = p.GetValue(Settings); } catch { continue; }
+                    if (v == null) continue;
+                    if (isStr)
+                    {
+                        string sv = ((string)v).Trim();
+                        if (sv.Length == 0 || sv.Length > 40) continue;     // enum-like only
+                        o[p.Name] = sv;
+                    }
+                    else if (isEnum)
+                    {
+                        o[p.Name] = v.ToString();                           // enum name, never PII
+                    }
+                    else
+                    {
+                        o[p.Name] = Newtonsoft.Json.Linq.JToken.FromObject(v);
+                    }
+                }
+                return o.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage snapshot build failed: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>Send the anonymous usage ping if it is enabled and has not
+        /// already been sent today (UTC). Self-gating, so it is safe to call on
+        /// startup and on a timer. Fire-and-forget; never blocks.</summary>
+        internal void MaybeSendUsagePing()
+        {
+            try
+            {
+                if (_shuttingDown || Settings == null || _telemetryClient == null) return;
+                if (!Settings.ShareUsageStats) return;                 // master off = nothing sent
+                string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                if (string.Equals(Settings.LastTelemetryPingDay, today, StringComparison.Ordinal))
+                    return;                                            // already pinged today
+                EnsureAnalyticsAnonId();
+                string anonId = (Settings.AnalyticsAnonId ?? "").Trim();
+                if (anonId.Length == 0) return;
+                // Never send a user-added game's label: SimHub names custom titles
+                // "Custom_<label>", whose suffix can be free text the user typed.
+                string game = _currentGameName;
+                if (!string.IsNullOrEmpty(game)
+                    && game.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
+                    game = "Custom";
+                _telemetryClient.SendPing(anonId, CurrentVersionString(),
+                    Settings.LastUsedWheel, game, BuildUsageSettingsSnapshot());
+                // Stamp the day up front: the send is fire-and-forget, so we do not
+                // wait for the POST. A dropped ping just means one missed day, never
+                // a retry storm.
+                Settings.LastTelemetryPingDay = today;
+                try { PersistSettingsCore(); } catch { }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage ping error: " + ex.Message);
+            }
+        }
+
         /// <summary>Fire-and-forget submission of a redline correction.
         /// Mirrors <see cref="SubmitEngineLayoutToCommunity"/>: gated by
         /// CommunityEnabled, plumbs the active car's variant signature
@@ -33687,6 +33839,8 @@ namespace TrueforceForAll.Plugin
         private AchievementClient _achievementClient;
         // Account session list + per-session revoke (Account tab "Active sessions").
         private SessionClient _sessionClient;
+        private TelemetryClient _telemetryClient;
+        private System.Threading.Timer _usagePingTimer;
         private ModerationClient _moderationClient;
 
         internal struct DiscordLinkResult

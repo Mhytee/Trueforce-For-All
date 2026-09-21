@@ -503,6 +503,8 @@ namespace TrueforceForAll.Plugin
                     EffectsTabShareButtonsCheck.IsChecked = _plugin.Settings?.ShowEffectsTabShareButtons ?? true;
                 if (UseCommunityCarFactsCheck != null)
                     UseCommunityCarFactsCheck.IsChecked = _plugin.Settings?.UseCommunityCarFacts == true;
+                if (ShareUsageStatsCheck != null)
+                    ShareUsageStatsCheck.IsChecked = _plugin.Settings?.ShareUsageStats != false;
                 var motdLevel = _plugin.Settings?.MotdLevel ?? MotdLevel.All;
                 if (MotdLevelAllRadio != null)       MotdLevelAllRadio.IsChecked       = motdLevel == MotdLevel.All;
                 if (MotdLevelImportantRadio != null) MotdLevelImportantRadio.IsChecked = motdLevel == MotdLevel.Important;
@@ -8777,6 +8779,19 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.ShowEffectsTabShareButtons = EffectsTabShareButtonsCheck.IsChecked == true;
             _plugin.PersistSettings();
             UpdateHeaderShareButtons();
+        }
+
+        // Anonymous usage-statistics opt-out. Persists the choice; the plugin's
+        // once-a-day ping self-gates on it. Turning it back on lets today's ping
+        // fire now instead of waiting for the next timer tick.
+        private void ShareUsageStats_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            if (ShareUsageStatsCheck == null) return;
+            bool on = ShareUsageStatsCheck.IsChecked == true;
+            _plugin.Settings.ShareUsageStats = on;
+            _plugin.PersistSettings();
+            if (on) { try { _plugin.MaybeSendUsagePing(); } catch { } }
         }
 
         // UI toggle: show or hide the Car facts per-gear redline editor. Pure UI

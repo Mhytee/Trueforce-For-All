@@ -95,6 +95,11 @@ namespace TrueforceForAll.Plugin
             "OledGreetingEnabled", "OledGreetingText", "OledWriteIntervalMs",
             "CommunityEnabled", "UseCommunityCarFacts", "AutoUpdateDownloadedPresets",
             "AutoSubmitCarFacts", "CarFactsConsentAsked", "CarFactsAnonId",
+            // Anonymous usage statistics: the random analytics id and the opt-out
+            // toggle. Both travel like CarFactsAnonId (one human counts once; a
+            // privacy choice follows the person). The once-a-day ping stamp is
+            // per-PC bookkeeping and sits in Excluded.
+            "AnalyticsAnonId", "ShareUsageStats",
             "MotdLevel", "ShowEffectsTabShareButtons", "ShowPerGearRedlineEditor",
             "UpdateCheckIntervalHours", "BetaUpdatesEnabled",
             "DashRevStripOutsideIn", "DashRevStripAuto",
@@ -252,6 +257,8 @@ namespace TrueforceForAll.Plugin
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
             "LastSeenVersion", "ActiveStreamingSeconds", "ShareCtaDismissed", "LightsyncCycleHintDismissed", "HasSeenLightsyncIntro",
+            // Once-a-day usage-ping stamp: per-PC bookkeeping, re-pings harmlessly on PC2.
+            "LastTelemetryPingDay",
             // Migration latch: PC2 needs to run its own, so this must not travel.
             "LightsyncReleasedMigrated",
             // MOTD client state: re-fetchable cache + transient per-message dismiss bookkeeping.

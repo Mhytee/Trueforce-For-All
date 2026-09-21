@@ -639,6 +639,25 @@ namespace TrueforceForAll.Plugin
         // across PCs.
         public string CarFactsAnonId { get; set; } = "";
 
+        // Anonymous usage statistics. A random GUID minted by the plugin (NOT
+        // hardware-derived, like CarFactsAnonId, and kept SEPARATE from it so the
+        // two anonymous datasets cannot be cross-linked). Sent as the
+        // telemetry_ping p_anon_id (migration 0127) so unique installs / DAU / MAU
+        // can be counted without an account. Travels in backups so one human
+        // counts once across PCs.
+        public string AnalyticsAnonId { get; set; } = "";
+
+        // Master switch for the anonymous usage statistics: the once-a-day
+        // telemetry ping (plugin version, wheel, current game, and a scalar
+        // settings snapshot). Default on; off means nothing is ever sent.
+        // Independent of CommunityEnabled. Travels in backups (a privacy choice,
+        // like the community toggles).
+        public bool ShareUsageStats { get; set; } = true;
+
+        // Local bookkeeping: the UTC day (yyyy-MM-dd) of the last usage ping, so
+        // it fires at most once per day. Per-PC; never backed up.
+        public string LastTelemetryPingDay { get; set; } = "";
+
         // One-time latch for the community-default flip: existing installs
         // whose settings file carries CommunityEnabled=false from the old
         // opt-in default get the networked welcome re-shown once (the old

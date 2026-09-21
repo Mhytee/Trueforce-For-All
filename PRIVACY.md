@@ -12,7 +12,9 @@ you is opt-in: sign-in needs only an email address, your username appears
 on presets you choose to share, and anti-abuse protection stores a hashed
 form of your IP address and a device code. You can export everything your
 account holds and delete the account yourself, from inside the plugin.
-Your wheel tuning and game telemetry never leave your PC.
+Your game telemetry never leaves your PC, and your settings leave it only
+as part of the anonymous usage statistics the plugin shares by default,
+with nothing that identifies you and one switch to turn it off.
 
 ## Who runs this
 
@@ -36,12 +38,16 @@ use and points at the off switch. By default the plugin:
 - fills the in-game leaderboards in Initial D: Arcade Stage 8 Infinity
   while that game is running, which fetches community times and
   TeknoParrot's public board (see Arcade leaderboards below);
-- fetches the in-app message of the day and checks GitHub for updates.
+- fetches the in-app message of the day and checks GitHub for updates;
+- reports anonymous usage statistics (see Anonymous usage statistics
+  below).
 
-All of it stops with the "Enable community features (online)" switch in
-Settings (the update check also has its own toggle). Your wheel tuning,
-presets, and settings stay on your PC, and game telemetry is processed
-in real time to drive the wheel and is never uploaded. Signing in, and
+Most of it stops with the "Enable community features (online)" switch in
+Settings. The update check and the anonymous usage statistics each have
+their own separate toggle. Your presets stay on your PC, your game
+telemetry is processed in real time to drive the wheel and is never
+uploaded, and your settings leave your PC only as the anonymous usage
+statistics described below, if you leave them on. Signing in, and
 everything tied to an account, stays strictly opt-in.
 
 ## What each online feature collects
@@ -168,6 +174,25 @@ like any web request (IP address, a user agent containing only the plugin
 version). No account information is sent. Configurable and disableable in
 Settings.
 
+### Anonymous usage statistics
+
+On by default and anonymous. To guide what gets built, the plugin reports
+how it is used. This is separate from community features and has its own
+switch: "Share anonymous usage statistics" in Settings turns it off
+completely, and off means nothing is sent.
+
+A report contains a random id minted by the plugin (not derived from your
+hardware, your identity, or the community car-data id, so reports cannot
+be tied to you or to your car-data submissions), the plugin version, your
+wheel model, the games you play, and your settings. It
+never contains your name, email, or account, or any free text you type
+such as an OLED greeting or a dash driver name, and your IP address is not
+stored on these records. A report is sent at most once a day.
+
+Why: to know how many people use the plugin and which features and
+settings matter, so development follows real use. The lawful basis for EU
+and UK users is legitimate interest, and you can turn it off at any time.
+
 ## Who processes the data
 
 | Service | Role |
@@ -179,8 +204,10 @@ Settings.
 | GitHub | Serves update checks, downloads, and this repository. |
 | TeknoParrot | Serves the public Initial D: Arcade Stage 8 Infinity high-score page the plugin reads to fill that game's boards. Sees the request like any web request; no account information is sent. |
 
-There is no advertising, no analytics, no crash reporting, and no sale or
-sharing of data beyond the services listed above.
+There is no advertising, no third-party analytics, no crash reporting, and
+no sale or sharing of data beyond the services listed above. The plugin's
+own anonymous usage statistics, described above, are the only usage data
+collected, and they can be turned off in Settings.
 
 ## How long data is kept
 
@@ -194,6 +221,7 @@ sharing of data beyond the services listed above.
 | Cloud backup | While supported, plus 2 years after supporter status lapses; deleted on account deletion (removal completes within about a day) |
 | Arcade lap times | Until you delete the account; leaderboard events naming you survive but lose your name |
 | Device ban records | For the ban duration; permanent bans persist |
+| Anonymous usage statistics | Kept as anonymous statistics, not tied to you; not covered by data export or account deletion, since nothing links them to an account |
 | Platform logs (Supabase, Resend) | A limited period, per those providers |
 
 ## Your controls
@@ -218,8 +246,9 @@ record): email **mhytee@gmail.com**.
 
 If you are in the EU/UK: the lawful bases are consent (signing in and
 each account feature), contract (operating the account you asked for),
-and legitimate interest (anti-abuse, and the default community car-data
-exchange, which involves no account data). You also have the right to
+and legitimate interest (anti-abuse, the default community car-data
+exchange, and the anonymous usage statistics, none of which involve
+account data). You also have the right to
 complain to your local data protection authority.
 
 ## Children
