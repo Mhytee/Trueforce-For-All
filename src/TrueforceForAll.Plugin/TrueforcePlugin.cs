@@ -492,6 +492,20 @@ namespace TrueforceForAll.Plugin
         private int _recoveryInProgress;
         private long _lastRecoveryAttemptTicks;
         private static readonly long RecoveryIntervalTicks = Stopwatch.Frequency * 3; // 3 s
+        // Throttle for the stream-fault reason line (LogStreamFaultReason).
+        // A wheel on a dying port or hub re-attaches and re-faults on every
+        // 3 s recovery cycle, and an Error carrying a full stack per cycle is
+        // roughly 1200 an hour: its own kind of log flood, in a change whose
+        // whole point is making SimHub.txt worth reading. So the first fault
+        // of a given signature prints in full and identical repeats collapse
+        // for a minute, after which one compact line reports how many were
+        // swallowed. Same shape as MaybeLogRingHealth's change-plus-interval
+        // gate. Int, not long, because Environment.TickCount fits one and a
+        // 32-bit read is atomic on 32-bit SimHub; int subtraction also wraps
+        // correctly across the 24.9 day rollover.
+        private string _lastFaultLogKey;
+        private int _lastFaultLogMs;
+        private int _suppressedFaultLogs;
         // Throttle for the verbose "wheel not found" discovery diagnostic; the
         // once-a-minute rule and its reason live on LogDiscoveryDiagnostic.
         private long _lastDiscoveryDiagTicks;
@@ -37102,6 +37116,87 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>Report a faulted device's captured cause before the device
+        /// that is holding it gets disposed. Called from CleanupDevice rather
+        /// than from the recovery watchdog because CleanupDevice is the one
+        /// place every teardown funnels through: the watchdog, the Diagnostics
+        /// self-test, the master-mode teardown, a failed bring-up and plugin
+        /// End. Logging only at the watchdog would have lost the reason on the
+        /// most likely support path of all, which is the user noticing the
+        /// dead wheel inside the 3 s retry gate and reaching for the self-test
+        /// or the mode switch themselves. It cannot double-report for one
+        /// fault either, because CleanupDevice nulls _device on its way out.
+        /// </summary>
+        private void LogStreamFaultReason(TrueforceDevice d)
+        {
+            if (d == null || !d.StreamFaulted) return;
+            var fault = d.LastStreamFault;
+            string site = d.LastStreamFaultSite;
+            if (fault == null)
+            {
+                // No exception means nothing actually failed: the only way to
+                // raise the flag without one is the FAULT test code. This
+                // deliberately reads as a simulation, because a support log
+                // that shows a real-sounding hardware failure nobody had is
+                // worse than no line at all.
+                SimHub.Logging.Current.Warn(
+                    "[TF4ALL] Simulated stream fault raised by "
+                    + (site ?? "the FAULT test code")
+                    + ". Nothing failed: the wheel is fine and the recovery path is "
+                    + "being exercised on purpose.");
+                return;
+            }
+            // Collapse a repeating identical fault. The signature is the site
+            // plus the exception type, which is what actually distinguishes
+            // one cause from another; the message text often carries a
+            // changing handle or address and would defeat the match. The
+            // fields are not synchronized: teardown paths are already
+            // single-flighted against each other by _recoveryInProgress, and
+            // the worst a race could do here is print one extra line or
+            // miscount the suppressed total, which is not worth a lock on a
+            // failure path.
+            string key = (site ?? "?") + "|" + fault.GetType().Name;
+            int nowMs = Environment.TickCount;
+            if (key == _lastFaultLogKey && nowMs - _lastFaultLogMs < 60000)
+            {
+                _suppressedFaultLogs++;
+                return;
+            }
+            int suppressed = _suppressedFaultLogs;
+            _suppressedFaultLogs = 0;
+            _lastFaultLogKey = key;
+            _lastFaultLogMs = nowMs;
+            if (suppressed > 0)
+            {
+                // The cooldown expired on a fault we have already explained in
+                // full, so repeat the essentials without the stack: the stack
+                // would be identical to the one already in the log, and the
+                // number that has been swallowed is the new information.
+                SimHub.Logging.Current.Error(
+                    "[TF4ALL] Trueforce stream lost again on " + (site ?? "the wheel stream")
+                    + " (" + fault.GetType().Name + ": " + fault.Message
+                    + "), same cause as the full report earlier in this log, plus "
+                    + suppressed + " more suppressed in the last minute. A wheel failing "
+                    + "this often is usually a failing USB port, hub or cable rather than "
+                    + "a one-off.");
+                return;
+            }
+            // Error, not Info or Warn: the watchdog usually heals this, but
+            // the wheel was dead for as long as the re-attach took, so the
+            // user felt a real dropout in the force. That belongs with the
+            // lines worth grepping a 200k-line SimHub.txt for. The exception
+            // overload puts the type, message and stack in the log beside it.
+            SimHub.Logging.Current.Error(
+                "[TF4ALL] Trueforce stream lost on " + (site ?? "the wheel stream")
+                + ": the wheel stopped accepting force packets, felt as the force cutting "
+                + "out completely. The wheel is being torn down; force stays dead until it "
+                + "re-attaches, which the recovery watchdog retries every few seconds while "
+                + "the plugin is running in Normal mode. The usual causes are the wheel "
+                + "being unplugged or losing power, G HUB starting up and claiming the "
+                + "wheel's HID interface, or a stalled USB port.",
+                fault);
+        }
+
         private void CleanupDevice()
         {
             // _fsPipeSource is deliberately NOT disposed here: this method
@@ -37112,6 +37207,12 @@ namespace TrueforceForAll.Plugin
             // hiccup and, with _fsPipeSource null, also disabled the SimHub
             // fallback evaluator (hit live, 2026-08-07). It is torn down on
             // leaving FS (SwapTelemetrySourceLocked) and at plugin End.
+            //
+            // First, while the device is still alive to be asked: say why it
+            // died, if it died. Everything below disposes the object that is
+            // holding the reason, so this has to come before the first
+            // Dispose call and not after it.
+            LogStreamFaultReason(_device);
             try { _ffbTap?.Dispose(); } catch { }
             _ffbTap = null;
             try { _steeringReader?.Dispose(); } catch { }
