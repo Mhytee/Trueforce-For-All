@@ -11167,6 +11167,22 @@ namespace TrueforceForAll.Plugin
                     // above: the belt eats what the G PRO delivers, so it
                     // keeps the headroom rather than following the retune.
                     s.SpringModeStrength = 1.0;
+                    // Effect-bench render gains (owner call 2026-09-22, from a
+                    // G923 owner's bench session). These are calibration for
+                    // the condition renderer rather than a taste setting, so
+                    // they join the defaults merge and move an install that
+                    // never deliberately tuned them.
+                    //
+                    // Inertia: the tester settled on 0.50. Their waveform
+                    // number came in at 1.2 where the owner judged 1.0 right,
+                    // so the same correction puts inertia near 0.42 and it
+                    // ships at 0.40. That is four times the G PRO's 0.10,
+                    // which still sits under the torque ratio between the two
+                    // wheels, so it is the conservative end of the reading.
+                    s.FfbConditionInertiaGain  = 0.40;
+                    // Waveform: the tester's 1.2 taken down to the owner's
+                    // 1.0, against the factory 0.9 the direct drives use.
+                    s.FfbConditionPeriodicGain = 1.00;
                     break;
                 // G PRO (and anything unrecognized): the coded defaults stand.
             }
@@ -11199,8 +11215,12 @@ namespace TrueforceForAll.Plugin
         /// value, with the G923 pinned at the outgoing 1.0 in the per-wheel
         /// table so the belt wheel keeps its headroom. The 2026-09-15 G923
         /// master gain did NOT bump this: it is seeded on fresh installs only
-        /// and never merged, so no latched install needs to re-evaluate.</summary>
-        private const int ModeBDefaultsGeneration = 7;
+        /// and never merged, so no latched install needs to re-evaluate.
+        /// Generation 8 = the 2026-09-22 effect-bench gains: FfbConditionInertiaGain
+        /// and FfbConditionPeriodicGain joined the merge list, factory stays the
+        /// owner's G PRO calibration (0.10 and 0.9) and the G923 carries 0.40 and
+        /// 1.00 from a G923 owner's bench session.</summary>
+        private const int ModeBDefaultsGeneration = 8;
 
         /// <summary>True when this session started with no settings file for us
         /// (see Init). Gates first-run-only defaults such as the per-wheel
@@ -11290,6 +11310,13 @@ namespace TrueforceForAll.Plugin
             // 0.4 to 62 and forced the soft saturation. Only a machine that ran one
             // of that day's builds can hold a stored 1.0, and it means "the old
             // default" rather than a considered choice.
+
+            // Dev builds only: the effect-bench inertia gain before it was
+            // retuned to the current 0.10. These fields have never appeared in
+            // a published release, so only a dev or beta machine can hold the
+            // older number, and it means "the old default" rather than a bench
+            // session's result.
+            yield return new TrueforceSettings { FfbConditionInertiaGain = 0.15 };
         }
 
         // The Mode B recipe fields the defaults machinery owns (every tunable +
@@ -11322,6 +11349,12 @@ namespace TrueforceForAll.Plugin
             "SpringModeTerrainEnabled", "SpringModeTerrainGain",
             "SpringModeDragEnabled", "SpringModeDragGain", "SpringModeDragStrainFraction",
             "SpringModeChassisWeightEnabled", "SpringModeChassisWeightGain",
+            // Effect-bench render gains (joined the merge with generation 8).
+            // The bench itself is behind an access code, so an install holding
+            // a shipped value here has never been tuned and should follow the
+            // calibration; anyone who did set one on the bench keeps it, the
+            // same contract every other field in this list carries.
+            "FfbConditionInertiaGain", "FfbConditionPeriodicGain",
         };
 
         // Per-field defaults merge: every recipe field in <paramref name="s"/> still
@@ -40014,7 +40047,12 @@ namespace TrueforceForAll.Plugin
         /// SimHub without saving.</summary>
         public void ResetAllFxTuning()
         {
+            // Wheel-aware, like "Reset FFB tuning to defaults": the effect
+            // gains are renderer calibration and the G923 carries its own, so
+            // a reset on that wheel must land on ITS numbers rather than the
+            // G PRO's.
             var d = new TrueforceSettings();
+            ApplyWheelDefaults(d, Settings != null ? Settings.LastUsedWheel : null);
             _damperGain   = (float)d.FfbConditionDamperGain;
             _springGain   = (float)d.FfbConditionSpringGain;
             _frictionGain = (float)d.FfbConditionFrictionGain;

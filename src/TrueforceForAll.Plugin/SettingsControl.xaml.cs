@@ -14762,7 +14762,9 @@ namespace TrueforceForAll.Plugin
                     else
                         AccessCodeStatus.Text =
                             "Classic effect rendering ON: the game's classic-protocol damper, friction and "
-                            + "spring slots are decoded and played into the stream. Watch SimHub.txt for the "
+                            + "spring slots are decoded and played into the stream. None of this has ever run "
+                            + "on a wheel, so treat the first drive as a test and keep a hand ready. "
+                            + "Watch SimHub.txt for the "
                             + "first 'classic' effect line, then drive: the wheel should resist turning where "
                             + "the game asks for damping, and it should also pull back toward center where the "
                             + "game commands a spring, on top of the force you already feel. CSPFFB DAMPSIGN "
