@@ -798,9 +798,43 @@ namespace TrueforceForAll.Plugin
 
         // True when USBPcapCMD.exe is locatable right now (override path, env
         // var, or default Program Files paths). Cheap probe; the settings UI
-        // polls this on its tick to show/hide the Browse + Reinstall buttons.
+        // polls this on its tick to show/hide the Browse button. This is a
+        // question about the FILE, which is all Browse can repair; for "can we
+        // capture at all", ask IsUsbPcapDriverReady.
         public bool IsUsbPcapAvailable =>
             UsbPcapFfbTap.LocateUsbPcapCmd(Settings?.UsbPcapCmdPathOverride) != null;
+
+        // True when the CLI is on disk AND USBPcap's capture driver is attached
+        // to the USB stack. Both halves are needed before pass-through can work
+        // at all, and they fail independently: the driver can be blocked
+        // (Windows 11 Memory integrity, Smart App Control) or its USB-class
+        // filter registration lost while the exe sits there untouched.
+        //
+        // Issue #44: the self-test asked only IsUsbPcapAvailable, so a user
+        // whose driver had never attached was told "[OK] USBPcap installed"
+        // and shown no Reinstall button, because the file half was fine.
+        //
+        // Cached briefly: the settings UI polls this on its tick, and a driver
+        // does not come and go within a second.
+        private const int UsbPcapDriverProbeTtlMs = 1000;
+        private bool _usbPcapDriverReady;
+        private int  _usbPcapDriverProbedMs;
+        private bool _usbPcapDriverProbed;
+        public bool IsUsbPcapDriverReady
+        {
+            get
+            {
+                int now = Environment.TickCount;
+                if (_usbPcapDriverProbed
+                    && unchecked(now - _usbPcapDriverProbedMs) < UsbPcapDriverProbeTtlMs)
+                    return _usbPcapDriverReady;
+                _usbPcapDriverReady  = IsUsbPcapAvailable
+                                    && WheelUsbDiscovery.AnyUsbPcapInterfacePresent();
+                _usbPcapDriverProbedMs = now;
+                _usbPcapDriverProbed   = true;
+                return _usbPcapDriverReady;
+            }
+        }
 
         // Whether SimHub is running elevated. Cached: elevation can't change
         // without a process restart. USBPcap FFB capture is far more reliable
@@ -838,7 +872,11 @@ namespace TrueforceForAll.Plugin
                 if (Settings == null) return false;
                 if (_hidWheelVid == 0 && _hidWheelPid == 0) return false;
                 if (HasManualUsbPcapDevice) return false;
-                if (!IsUsbPcapAvailable) return false;
+                // Driver, not just the file: with no capture interfaces the
+                // picker can only offer an empty list, and a dead driver is
+                // exactly the "other failure" the comment below sends to
+                // Diagnostics, where the Reinstall button lives.
+                if (!IsUsbPcapDriverReady) return false;
                 string status = _ffbTap?.Status ?? "";
                 if (status.StartsWith("Tapping", StringComparison.OrdinalIgnoreCase)) return false;
                 // Only "no supported wheel found" warrants the picker; other
@@ -42286,6 +42324,14 @@ namespace TrueforceForAll.Plugin
                     if (Settings != null) Settings.UsbPcapCmdPathOverride = "";
                     try { PersistSettingsCore(); } catch { }
                     RestartFfbTap();
+
+                    // The tap restart above is worth trying because a reinstall
+                    // that only restored a missing USBPcapCMD.exe works at once.
+                    // A reinstall of the DRIVER does not: it attaches while
+                    // Windows builds the USB stack, so nothing captures until
+                    // the machine restarts. Asked for only when the driver is
+                    // genuinely still absent, so the first case stays silent.
+                    ShowUsbPcapRestartNoticeIfStillDown();
                 }
                 catch (System.ComponentModel.Win32Exception)
                 {
@@ -42298,6 +42344,34 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Error("[TF4ALL] USBPcap install failed", ex);
                 }
             });
+        }
+
+        /// <summary>Told after a reinstall that left the capture driver still
+        /// unattached, which is the normal outcome of actually reinstalling it.
+        /// Called from the installer's worker thread, so it marshals to the UI.
+        /// Silent when the driver came up, so a reinstall that only replaced a
+        /// missing USBPcapCMD.exe does not send anyone to reboot for nothing.</summary>
+        private void ShowUsbPcapRestartNoticeIfStillDown()
+        {
+            if (IsUsbPcapDriverReady) return;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] USBPcap's capture driver is still not attached after the install; a restart is needed.");
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    TrueforceDialog.Show(null, "Restart your computer to finish",
+                        "USBPcap is installed, but its capture driver only attaches to your USB ports while Windows "
+                            + "starts, so FFB pass-through stays off until you restart the computer.\n\n"
+                            + "If it is still off after a restart, check for a BIOS update from your PC or "
+                            + "motherboard maker. Out-of-date Secure Boot keys are the usual reason Windows "
+                            + "refuses to load the driver, and updating the BIOS refreshes them.",
+                        DialogKind.Warning);
+                }
+                catch { }
+            }));
         }
     }
 }

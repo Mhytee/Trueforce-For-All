@@ -2223,16 +2223,26 @@ namespace TrueforceForAll.Plugin
                 // one bool and one visibility compare.
                 RefreshAudioLedsStatus();
 
-                // Surface USBPcap recovery actions only when USBPcap is
-                // missing. Keeps the diagnostics row uncluttered in the
+                // Surface USBPcap recovery actions only when something is
+                // actually wrong. Keeps the diagnostics row uncluttered in the
                 // common case where everything's installed correctly.
+                //
+                // Each button repairs a different half, so each follows its own
+                // signal. Browse points us at a CLI we couldn't find, which is
+                // no use when the file was never the problem. Reinstall is the
+                // one that can bring a missing or unattached capture driver
+                // back, so it also appears when the exe is present but the
+                // driver isn't loaded (issue #44, where it stayed hidden).
                 if (UsbPcapBrowseButton != null && UsbPcapReinstallButton != null)
                 {
-                    var want = _plugin.IsUsbPcapAvailable
+                    var wantBrowse = _plugin.IsUsbPcapAvailable
                         ? System.Windows.Visibility.Collapsed
                         : System.Windows.Visibility.Visible;
-                    if (UsbPcapBrowseButton.Visibility != want)    UsbPcapBrowseButton.Visibility    = want;
-                    if (UsbPcapReinstallButton.Visibility != want) UsbPcapReinstallButton.Visibility = want;
+                    var wantReinstall = _plugin.IsUsbPcapDriverReady
+                        ? System.Windows.Visibility.Collapsed
+                        : System.Windows.Visibility.Visible;
+                    if (UsbPcapBrowseButton.Visibility != wantBrowse)       UsbPcapBrowseButton.Visibility    = wantBrowse;
+                    if (UsbPcapReinstallButton.Visibility != wantReinstall) UsbPcapReinstallButton.Visibility = wantReinstall;
                 }
 
                 // UDP telemetry section: Forza is the only UDP game, so its
@@ -6034,7 +6044,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             var sb = new System.Text.StringBuilder();
 
-            bool usbpcap   = _plugin.IsUsbPcapAvailable;
+            bool usbpcapExe = _plugin.IsUsbPcapAvailable;
+            bool usbpcap    = _plugin.IsUsbPcapDriverReady;
             bool ghub      = _plugin.IsLogitechGHubRunning;
             string wheel   = _plugin.WheelStatus ?? "";
             bool wheelOk   = !wheel.StartsWith("Not detected", StringComparison.OrdinalIgnoreCase)
@@ -6050,8 +6061,20 @@ namespace TrueforceForAll.Plugin
             bool gameRun   = !string.IsNullOrEmpty(_plugin.ActiveGame);
             bool elevated  = _plugin.IsRunningElevated;
 
-            sb.AppendLine((usbpcap ? "[OK]   " : "[FAIL] ") + "USBPcap installed"
-                + (usbpcap ? "" : " (FFB pass-through off; use Reinstall below)"));
+            // Three states, not two. "Installed" used to mean only that the CLI
+            // was on disk, so a machine whose capture driver never attached was
+            // told everything was fine (issue #44). The driver half gets its own
+            // wording because its fix is different: reinstall, then reboot.
+            sb.AppendLine(usbpcap
+                ? "[OK]   USBPcap installed"
+                : !usbpcapExe
+                    ? "[FAIL] USBPcap is not installed (FFB pass-through off; use Reinstall below)"
+                    : "[FAIL] USBPcap is installed but its capture driver is not loaded, so nothing can be "
+                        + "captured (FFB pass-through off). Use Reinstall below, then RESTART THE COMPUTER: "
+                        + "the driver only attaches to the USB ports at boot. If it still fails after a "
+                        + "restart, check for a BIOS update from your PC or motherboard maker: out-of-date "
+                        + "Secure Boot keys are the usual reason Windows refuses to load the driver, and "
+                        + "updating the BIOS refreshes them.");
             sb.AppendLine(elevated
                 ? "[OK]   SimHub running as administrator"
                 : "[FAIL] SimHub is NOT running as administrator. Required for reliable force feedback. "
@@ -19163,11 +19186,19 @@ namespace TrueforceForAll.Plugin
         // triggers a UAC prompt and modifies a kernel driver. The plugin
         // runs the install + tap restart on a background thread; the
         // FFB pass-through status will update through the normal tick.
+        //
+        // The old wording promised "SimHub doesn't need to restart
+        // afterwards", which is true and beside the point: a freshly
+        // installed capture driver does not attach until Windows next
+        // builds the USB stack, so the COMPUTER is what needs restarting.
+        // Said here as well as afterwards so nobody runs the installer,
+        // sees no change, and concludes it failed.
         private void UsbPcapReinstall_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
             if (TrueforceDialog.Show(null, "Trueforce For All",
-                    "Run the bundled USBPcap installer? This needs admin (UAC prompt) and reinstalls the USB capture driver. SimHub doesn't need to restart afterwards.",
+                    "Run the bundled USBPcap installer? This needs admin (UAC prompt) and reinstalls the USB capture driver. "
+                        + "You will need to restart the computer afterwards: the driver only attaches to your USB ports while Windows starts.",
                     DialogKind.Confirm, okLabel: "Run installer", cancelLabel: "Cancel") != true)
                 return;
             _plugin.ReinstallUsbPcapAsync();
