@@ -121,6 +121,9 @@ namespace TrueforceForAll.Core
         private readonly AcCspControlWriter _cspControl = new AcCspControlWriter();
         private bool _cspControlActive;
         private volatile bool _cspSuppressOutput = true;   // false = read but let the game keep the wheel (diagnostic)
+        private volatile bool _cspZeroDamper;               // true = zero the damper too (CSPFFB DAMP A/B; pre-fix feel)
+        private float _cspDamperSeen = float.NaN;           // last damper logged, for the change detector
+        private long  _cspDamperLogTicks;
         private AcCspBridgeSample _cspLast;                 // poll thread writes; status reads (display only)
         private volatile bool _cspHaveSample;
         private long _cspLastNewTicks;
@@ -149,6 +152,72 @@ namespace TrueforceForAll.Core
             set => _cspSuppressOutput = value;
         }
 
+        /// <summary>A/B for the damper pass-through: true tells the script to
+        /// zero the damper channel too (the pre-fix behaviour), so the fix can
+        /// be felt against the bug in one session. Session only.</summary>
+        public bool CspZeroDamper
+        {
+            get => _cspZeroDamper;
+            set => _cspZeroDamper = value;
+        }
+
+        // CSPFFB DAMPTEST: a scripted damper wiggle so the whole question is
+        // answered from the driver's seat: type the code, alt-tab in, feel.
+        // 0..12 s: full damper off/on, three seconds per state (does the
+        // wheel execute the channel at all, and does a change cut the force);
+        // 12..28 s: two 8 s triangle ramps (does it scale smoothly). Restores
+        // itself when done. Session only, rides the control heartbeat.
+        private long _cspDampTestStartTicks;
+
+        public void StartCspDamperTest()
+        {
+            Interlocked.Exchange(ref _cspDampTestStartTicks, _ffbSw.ElapsedTicks);
+            Log("CSP damper test started: 12 s of three-second off/on flips, then two 8 s ramps, then back to normal.");
+        }
+
+        private int CspDamperTestScale255()
+        {
+            long start = Interlocked.Read(ref _cspDampTestStartTicks);
+            if (start == 0) return -1;
+            double t = (double)(_ffbSw.ElapsedTicks - start) / Stopwatch.Frequency;
+            if (t >= 28)
+            {
+                Interlocked.Exchange(ref _cspDampTestStartTicks, 0);
+                Log("CSP damper test done; damper pass-through restored.");
+                return -1;
+            }
+            double scale;
+            if (t < 12) scale = ((int)(t / 3) % 2 == 0) ? 0.0 : 1.0;
+            else
+            {
+                double ph = (t - 12) % 8;
+                scale = ph <= 4 ? 1 - ph / 4 : (ph - 4) / 4;
+            }
+            return (int)Math.Round(scale * 255);
+        }
+
+        // The wheel IGNORES the classic damper channel while the Trueforce
+        // stream is live (proven by parked flick, 2026-08-31: 0.75 handed
+        // back, wheel light either way), so the plugin SYNTHESIZES the damper
+        // into the stream from DirectInput wheel speed (game-agnostic; see
+        // TrueforcePlugin.AddSynthesizedDamper). This source only supplies the
+        // COEFFICIENT: the latest bridge value, shaped by the DAMPTEST wiggle
+        // and zeroed by CSPFFB DAMP.
+        private int   _cspDampTestScaleNow = -1;
+        private float _cspDamperNow;
+
+        public float CspDamperCoefficientNow
+        {
+            get
+            {
+                if (_cspZeroDamper) return 0f;
+                float c = _cspDamperNow;
+                int scale = _cspDampTestScaleNow;
+                if (scale >= 0) c *= scale / 255f;
+                return c;
+            }
+        }
+
         /// <summary>Arms the CSP bridge latch. Off = the map is closed and
         /// TryGetFreshCspFfbTarget always returns null.</summary>
         public bool CspBridgeLatchEnabled
@@ -160,6 +229,15 @@ namespace TrueforceForAll.Core
         public bool CspBridgeOpen => _cspBridge.IsOpen;
         public bool CspBridgeBadHeader => _cspBridge.BadHeader;
         public AcCspBridgeSample CspLastSample => _cspLast;
+
+        /// <summary>The active car's own shift-light switch-on RPMs, ascending,
+        /// or null when the car models none. Constant for a session, so the
+        /// reader hands back the same array until the values change.</summary>
+        public float[] CspAcLedStepRpms => _cspBridge.AcLedStepRpms;
+
+        /// <summary>The active car's own shift-light colours, three bytes per
+        /// LED, or null when the car gives none.</summary>
+        public byte[] CspAcLedStepColors => _cspBridge.AcLedStepColors;
 
         /// <summary>Which bridge field the force comes from. Live-settable from
         /// any thread; the poll thread reads it next tick.</summary>
@@ -278,6 +356,8 @@ namespace TrueforceForAll.Core
             _cspControl.Close();
             _cspControlActive = false;
             _cspHaveSample = false;
+            _cspDamperNow = 0f;
+            _cspDamperSeen = float.NaN;
             _cspLoggedLive = false;
             _cspLoggedBadHeader = false;
             Interlocked.Exchange(ref _running, 0);
@@ -331,12 +411,25 @@ namespace TrueforceForAll.Core
                     {
                         _cspBridge.Close();
                         _cspHaveSample = false;
+                        // The damper coefficient dies with the map. It used to
+                        // outlive it: CSPFFB forced the bridge off, the last
+                        // sample's 0.75 stayed in _cspDamperNow, and on the
+                        // tap route with DirectInput rendering switched off the
+                        // synthesized damper ran on that stale value, so the
+                        // "loose wheel" A/B came out damped and grainy instead
+                        // (rig, 2026-09-12).
+                        _cspDamperNow = 0f;
+                        _cspDamperSeen = float.NaN;
                     }
                     // Once armed this session, heartbeat the control channel
                     // every tick so the script's liveness check stays fresh; the
                     // flag follows the current arm + suppress state.
                     if (_cspControlActive)
-                        _cspControl.Write(_cspLatchEnabled && _cspSuppressOutput);
+                    {
+                        _cspDampTestScaleNow = CspDamperTestScale255();
+                        _cspControl.Write(_cspLatchEnabled && _cspSuppressOutput, _cspZeroDamper,
+                                          _cspDampTestScaleNow);
+                    }
 
                     if (reopenPending)
                     {
@@ -456,6 +549,19 @@ namespace TrueforceForAll.Core
                 _cspLast = s;
                 _cspHaveSample = true;
                 _cspLastNewTicks = ticks;
+                // Change detector: the 2 s sampler would miss a lock-transient
+                // or speed-dependent damper. Logs the moment the INCOMING
+                // damper moves (rate-limited), so a drive answers whether
+                // anything in AC/CSP modulates it.
+                if (float.IsNaN(_cspDamperSeen)) _cspDamperSeen = s.FfbDamper;
+                else if (Math.Abs(s.FfbDamper - _cspDamperSeen) > 0.005f
+                         && ticks - _cspDamperLogTicks > Stopwatch.Frequency / 5)
+                {
+                    Log($"CSP damper changed {_cspDamperSeen:F3} -> {s.FfbDamper:F3}.");
+                    _cspDamperSeen = s.FfbDamper;
+                    _cspDamperLogTicks = ticks;
+                }
+                _cspDamperNow = s.FfbDamper;
                 Interlocked.Exchange(ref _cspPacked, PackFfb(FfbToLsb(SelectCspValue(s)), ticks & FfbTimestampMask));
                 if (!_cspLoggedLive || ticks - _cspLastPeriodicLogTicks > CspPeriodicLogTicks)
                 {
@@ -463,7 +569,8 @@ namespace TrueforceForAll.Core
                     _cspLastPeriodicLogTicks = ticks;
                     Log($"CSP sample (field={(AcCspField)_cspFieldSel}, suppress={_cspSuppressOutput}): "
                       + $"ffbValue={s.FfbValue:F3} ffbPure={s.FfbPure:F3} ffbFinal={s.FfbFinal:F3} "
-                      + $"gain={s.FfbMultiplier:F2} steerTorque={s.SteerTorque:F2} Nm.");
+                      + $"gain={s.FfbMultiplier:F2} steerTorque={s.SteerTorque:F2} Nm "
+                      + $"damper={s.FfbDamper:F3} steerSpd={s.SteerInputSpeed:F2}.");
                 }
                 return;
             }
@@ -477,6 +584,8 @@ namespace TrueforceForAll.Core
                 _cspBridge.Close();
                 _cspLastNewTicks = ticks;
                 _cspLoggedLive = false;
+                _cspDamperNow = 0f;      // no sample, no coefficient (see the latch-off close)
+                _cspDamperSeen = float.NaN;
                 Log("CSP bridge silent for 10 s; closed it, will reopen when it writes again.");
             }
         }

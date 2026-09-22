@@ -4,7 +4,9 @@
 //   Init: load settings → discover wheel → open + init + start stream →
 //         create AudioCaptureSource (per-process loopback, retargeted on
 //         game start/stop) and add it to the Mixer.
-//   DataUpdate: track current game name / process for the capture timer.
+//   DataUpdate: the per-tick hot path. Feeds the SimHub telemetry source and
+//         tracks the game name / process for the capture timer, and polls the
+//         watchdogs (device recovery, G HUB, port discovery, community facts).
 //   End: save settings, stop producer + capture, clean up the device.
 //
 // The producer thread runs independently of the SimHub data tick because
@@ -31,11 +33,10 @@ using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Plugin
 {
-    // Description deliberately omits the version: PluginDescription requires a
-    // compile-time-constant string, and the assembly version (driven by
-    // <Version> in TrueforceForAll.Plugin.csproj) is already surfaced at
-    // runtime by UpdateChecker, the settings panel header, and the changelog
-    // dialog. Adding it here too just creates a stale-copy hazard on bumps.
+    // Description deliberately omits the version: PluginDescription takes a
+    // compile-time-constant string, and the assembly version (<Version> in
+    // src\Directory.Build.props, shared by Core, Engine and Plugin) is already
+    // surfaced at runtime by UpdateChecker. A copy here just goes stale on bumps.
     [PluginDescription("Everything your Logitech wheel can do, in games that never supported it. Trueforce, rev lights, the screen. For G PRO, RS50 and G923.")]
     [PluginAuthor("Mhytee")]
     [PluginName("Trueforce For All")]
@@ -54,17 +55,15 @@ namespace TrueforceForAll.Plugin
 
         private readonly Mixer _mixer = new Mixer();
 
-        // Extracted engine homes (phase 0c): the sidechain ducker and the
-        // render tick live in the Engine assembly so the replay harness runs
-        // the exact production code. The plugin wires effect refs at Init and
-        // forwards its per-tick loop into EngineLoop.RunOneTick.
+        // The ducker and render tick live in the Engine assembly so the replay
+        // harness runs the exact production code; the plugin wires effect refs
+        // at Init and forwards its per-tick loop into EngineLoop.RunOneTick.
         private readonly DuckingController _ducking = new DuckingController();
         private EngineLoop _engineLoop;
 
-        // Per-car preset files, one .tfcar.json per car, the canonical
-        // home for car-specific tuning post-Model G refactor. Game presets
-        // no longer carry CarOverrides; switching presets doesn't touch
-        // per-car values.
+        // Per-car preset files, one .tfcar.json per car: the canonical home for
+        // car-specific tuning. Game presets no longer carry CarOverrides, so
+        // switching presets doesn't touch per-car values.
         private CarPresetStore _carStore;
 
         // Sidecar registry of imported community packs (installed-packs.json at
@@ -80,9 +79,8 @@ namespace TrueforceForAll.Plugin
         // per-car facts to the community DB.
         private CommunityClient _community;
 
-        // Preset-sharing HTTP client (companion to _community). Distinct
-        // file + class so per-car fact ops and whole-preset upload/browse
-        // stay readable. Same gating contract via Settings.CommunityEnabled.
+        // Preset-sharing HTTP client (companion to _community): whole-preset
+        // upload/browse. Same gating via Settings.CommunityEnabled.
         private PresetSharingClient _presetSharing;
         // Offline-first cache of community BROWSE lists (per active local-user slot,
         // so cached MyVote/ownership never leaks across accounts). Constructed in Init.
@@ -95,11 +93,13 @@ namespace TrueforceForAll.Plugin
         private CommunityAuth _auth;
 
         // In-memory community-consensus injection for the active car. Set by
-        // NotifyCommunityConsensus when SettingsControl's per-car fetch
-        // returns, cleared when the active car changes. TryResolveActiveVariant
-        // synthesizes a CarFactSource.Community variant from this at the top
-        // of the resolver cascade so Auto-detect prefers community over
-        // Baked/Scanner/Telemetry. Not persisted - re-fetched each session.
+        // NotifyCommunityConsensus whenever a per-car fetch returns (the
+        // settings panel's, the headless refresh, or a ReplayCommunityCache of
+        // the persisted CommunityFactCache), cleared when the active car
+        // changes. TryResolveActiveVariant synthesizes a CarFactSource.Community
+        // variant from this at the top of the resolver cascade so Auto-detect
+        // prefers community over Baked/Scanner/Telemetry. The field itself is
+        // never persisted.
         private string _activeCarCommunityKey;
         private EngineLayoutConsensus _activeCarCommunityConsensus;
 
@@ -110,17 +110,16 @@ namespace TrueforceForAll.Plugin
         private bool _initWelcomePromptOffered;
 
         // Sibling community-name cache. Same shape + same lifecycle as the
-        // engine-layout cache: populated by SettingsControl after a per-car
-        // fetch, consumed by the resolver to seat the community CarName at
-        // the top of the display-name cascade. Cleared on car change.
+        // engine-layout cache: populated by NotifyCarNameConsensus (panel
+        // fetch, headless refresh, or cache replay), consumed by the resolver
+        // to seat the community CarName at the top of the display-name
+        // cascade. Cleared on car change.
         private string _activeCarCommunityNameKey;
         private CarNameConsensus _activeCarCommunityNameConsensus;
 
-        // Sibling community-redline cache. Variant-aware - the key includes
-        // the variant_signature so a Forza swap with a different rev
-        // ceiling doesn't read the stock variant's consensus row. The
-        // synthesized community variant in TrySynthesizeCommunityVariant
-        // picks RedlineRpm up from here.
+        // Sibling community-redline cache, variant-aware: the key includes the
+        // variant_signature so a Forza engine swap doesn't read the stock
+        // variant's row. TrySynthesizeCommunityVariant reads RedlineRpm here.
         private string _activeCarCommunityRedlineKey;
         private RedlineConsensus _activeCarCommunityRedlineConsensus;
 
@@ -136,28 +135,24 @@ namespace TrueforceForAll.Plugin
         // every time the user toggles back to the same car.
         private readonly HashSet<string> _gameNameBackfillDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Same dedup set, but for DisplayName backfill — renames legacy presets
-        // whose PresetName was just the carId (e.g. "Car_424") to the resolver's
-        // DisplayName ("1997 Mazda RX-7") so the UI shows real car names instead
-        // of opaque ordinals. Only rewrites presets where the user clearly never
-        // customized the name; user-renamed presets are left alone.
+        // Same dedup set, for DisplayName backfill: renames legacy presets whose
+        // PresetName was just the carId ("Car_424") to the resolver's DisplayName
+        // ("1997 Mazda RX-7"). Only where the user never customized the name;
+        // user-renamed presets are left alone.
         private readonly HashSet<string> _displayNameBackfillDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Serializes access to Settings.CarFacts / EngineVariants. Reinstated
-        // because the per-variant-redline UI (Save / Adopt / Decline / Delete /
-        // Rename) mutates CarFacts from the WPF UI thread while the SimHub data
-        // thread adds/upgrades variants and the off-thread flush serializes the
-        // same lists. Without it, a UI foreach throws "Collection was modified"
-        // mid-enumeration and a serialize can collide with an Add. Held only
-        // around list enumeration/mutation + the flush serialize (never across a
-        // re-resolve), and is re-entrant (Monitor) so nested calls are safe.
+        // Serializes access to Settings.CarFacts / EngineVariants: the WPF UI
+        // thread mutates them (Save / Adopt / Decline / Delete / Rename) while
+        // the SimHub data thread adds/upgrades variants and the off-thread flush
+        // serializes the same lists. Hold ONLY around list enumeration/mutation
+        // and the flush serialize, never across a re-resolve; re-entrant
+        // (Monitor), so nested calls are safe.
         private readonly object _carFactsLock = new object();
 
         // Last engine-variant Id resolved for a (game/carId) while a real
-        // telemetry discriminator was present. Used as the "last used variant"
-        // fallback when editing during the empty-signature window (engine off /
-        // pre-telemetry) so a save targets the variant the user was last on
-        // instead of an arbitrary first row.
+        // telemetry discriminator was present: the fallback during the
+        // empty-signature window (engine off, pre-telemetry) so a save targets
+        // the last variant used, not an arbitrary first row.
         private readonly Dictionary<string, string> _lastActiveVariantIdByCar =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -165,14 +160,12 @@ namespace TrueforceForAll.Plugin
         private AudioCaptureSource _audio;
         private HelperHost _helperHost;
         private UsbPcapFfbTap _ffbTap;
-        // Aligned telemetry + game-FFB capture log, the v2 golden-fixture
-        // format (full frame incl. per-tire quads), replayable by the engine
-        // harness AND usable for offline FFB remodeling. Null when capture is
-        // off; armed/disarmed by the CAPTURE access code via ToggleFfbCapture().
-        // Written from DispatchFrame (telemetry thread); toggled from the UI
-        // thread. GoldenCaptureLog is internally locked and a disposed instance
-        // no-ops, so DispatchFrame only needs a local snapshot of the field
-        // before calling it.
+        // Aligned telemetry + game-FFB capture log in the v2 golden-fixture
+        // format (full frame incl. per-tire quads): replayable by the engine
+        // harness, usable for offline FFB remodeling. Null when off; armed by
+        // the CAPTURE code via ToggleFfbCapture(). Written from DispatchFrame
+        // (telemetry thread), toggled from the UI thread; GoldenCaptureLog is
+        // internally locked and no-ops once disposed, so a local snapshot serves.
         private GoldenCaptureLog _captureLog;
 
         // High-rate FFB signal-chain trace (TRACE access code). Null when off.
@@ -192,16 +185,17 @@ namespace TrueforceForAll.Plugin
         // alive for the session, torn down on leaving FS.
         private FarmingSimulatorTelemetrySource _fsPipeSource;
 
-        // Snapshot of the HID-side wheel match (Vid/Pid/Model) we found in Init.
-        // Held so the manual USB-device picker can highlight the row that
-        // matches the wheel HID has already enumerated.
+        // Snapshot of the HID-side wheel match (Vid/Pid/Model) from DiscoverWheel
+        // (Init and the recovery watchdog, so it can fill in mid-session). Picks
+        // the LED family, seeds the FFB tap, and drives the manual USB picker row.
         private ushort _hidWheelVid;
         private ushort _hidWheelPid;
         // USB product string of the matched wheel (null if unreadable). Kept
         // alongside VID/PID because it can outrank the PID: an RS50 in G PRO
         // compatibility mode spoofs the G PRO PID but keeps its own product
-        // string (mescon, 2026-07). Feeds the tap's per-wheel index seed and
-        // RS50 report-0x12 gate in WireFfbTapCallbacks.
+        // string (mescon, 2026-07). Feeds the tap's per-wheel feature-index
+        // seed and its RS50 identity flag in WireFfbTapCallbacks (0x11-vs-0x12
+        // report arbitration lives in FfbReportArbiter, not in that flag).
         private string _hidWheelProductString;
         public ushort HidWheelVid => _hidWheelVid;
         public ushort HidWheelPid => _hidWheelPid;
@@ -239,15 +233,49 @@ namespace TrueforceForAll.Plugin
         public ImplementThudEffect ImplementThud { get; private set; }
         private TelemetryEffect[] _effects;
 
-        // Rim rev/shift LEDs over HID++ (iRacing-scoped, separate from the
-        // Trueforce stream). Lazily opens its own HID handle on first gated
-        // frame; never touches the ep3 audio-haptic device.
+        // Rim rev/shift LEDs over HID++, separate from the Trueforce stream.
+        // Driven in any game whose HID++ pipe is proven force-free (Mode B,
+        // iRacing, AC via the CSP bridge). Lazily opens its own HID handle on
+        // first gated frame; never touches the ep3 audio-haptic device.
         private RpmLedController _rpmLeds;
 
+        // The computer's audio output level, one of the two things the rim LEDs
+        // can show where there are no revs to draw (the other, a sweep, needs no
+        // hardware and so needs no object). Its thread only runs while some
+        // occasion has actually picked the audio level (SyncAudioOutputMeter),
+        // so the default costs a null check per frame.
+        private AudioOutputMeter _audioLeds;
+        /// <summary>When a telemetry session was last live, so "a game is being
+        /// played" survives a moment of stillness.
+        ///
+        /// IsSessionActive is instantaneous, and on the arcade routes it means
+        /// "the cabinet is submitting force right now", which drops the moment
+        /// the wheel is held still. Read raw it says a running game has stopped,
+        /// which flipped the rim lights under the driver's hands and opened the
+        /// write gate on a pipe a running cabinet may still own. Held for a few
+        /// seconds it answers what every caller actually wants.
+        ///
+        /// It still tells a running cabinet apart from TeknoParrot idling at its
+        /// menu, which is the case that has to keep reading as nothing-playing so
+        /// pattern previews work: an idle block never goes live, so it never
+        /// stamps this.</summary>
+        private int _sessionLiveMs;
+        private const int SessionLiveHoldMs = 20_000;
+
+        private bool SessionRecentlyLive => _sessionLiveMs != 0
+            && unchecked(Environment.TickCount - _sessionLiveMs) < SessionLiveHoldMs;
+
+        // Has THIS game run ever reported an engine at all? Latched rather than
+        // sampled: revs read zero with the engine off in any sim, and lights
+        // that took the bar every time the driver stalled would be a fault, not
+        // a feature. Reset on game change.
+        private bool _revDataSeen;
+
         // EXPERIMENTAL: the Dynamic OLED on the base of a G PRO / RS50. Shares
-        // the rev lights' HID++ pipe and therefore their Mode B + quiet-FFB
-        // gate exactly (see OledDashController). Lazily opens its own HID
-        // handle on the first gated frame; never touches the ep3 stream.
+        // the rev lights' HID++ pipe and their Mode B + quiet-FFB gate, plus a
+        // term of its own: the screen stands down whenever another writer owns
+        // the rev bar (hidppFreeForScreen vs hidppFreeForLeds). Lazily opens
+        // its own HID handle on the first gated frame; never touches ep3.
         private OledDashController _oledDash;
 
         // EXPERIMENTAL: kernel-driver IOCTL channel for the wheel-ownership
@@ -259,45 +287,42 @@ namespace TrueforceForAll.Plugin
         private long _ffbDiagTick;
         // Plugin-owned HID++ channel used (while we own the wheel via the
         // filter driver and are the only authorised writer) to drive LEDs
-        // without contending with game FFB writes. Kept separate from
-        // _rpmLeds because RpmLedController is iRacing-scoped.
+        // without contending with game FFB writes. Separate from _rpmLeds,
+        // which drives the same LEDs on the ordinary (no-driver) path.
         private WheelLedChannel _driverLedChannel;
 
-        // F8SWEEP test code: the experimental legacy "F8 12" rev-LED path on the
-        // wheel's gamepad collection (off the HID++ FFB pipe). Lazily created the
-        // first time the code is typed; off by default. See LegacyLedF8Channel.
+        // Legacy "F8 12" rev-LED path on the wheel's gamepad collection (off the
+        // HID++ FFB pipe): the production channel for the G923 PS (C266) via
+        // DriveG923Leds, shared with the F8SWEEP test code. Lazily created.
         private TrueforceForAll.Core.LegacyLedF8Channel _f8Leds;
 
-        // Active telemetry source. The plugin currently always uses
-        // SimHubTelemetrySource (universal, ~60 Hz from the SimHub data
-        // pipeline). Per-game enhanced sources (AC native MMF, etc.) will
-        // be hot-swapped here on game change. _simHubSource is held as a
-        // typed field because we feed it from DataUpdate; _telemetrySource
-        // is what the rest of the plugin treats as "the current source"
-        // for status / UI / future polymorphic dispatch.
+        // Active telemetry source. _simHubSource is the universal fallback
+        // (~60 Hz from the SimHub data pipeline), held as a typed field
+        // because we feed it from DataUpdate. _telemetrySource is what the
+        // rest of the plugin treats as "the current source" for status / UI /
+        // dispatch: SwapTelemetrySource points it at the per-game enhanced
+        // source (AC shared memory, Forza UDP, the FS mod pipe) on game
+        // change, or back at _simHubSource.
         private SimHubTelemetrySource _simHubSource;
         private ITelemetrySource      _telemetrySource;
         public  ITelemetrySource      TelemetrySource => _telemetrySource;
 
-        // The Forza UDP listener stays alive for the whole time a Forza title
-        // is the active game, even while we're temporarily reading from the
-        // SimHub fallback (see _forzaOnSimHubFallback). Keeping it bound lets
-        // us upgrade back to the enhanced source the instant Forza packets
-        // start arriving on our port. Null outside a Forza session. Owned by
-        // SwapTelemetrySource / ApplyForzaSettings; the active source feeding
-        // effects (_telemetrySource) points at this OR _simHubSource.
+        // The Forza UDP listener stays bound for the whole Forza session, even
+        // while we read the SimHub fallback (_forzaOnSimHubFallback), so we can
+        // upgrade back the instant packets arrive on our port. Null outside
+        // Forza; owned by SwapTelemetrySource / ApplyForzaSettings, with
+        // _telemetrySource pointing at this OR _simHubSource.
         private ForzaUdpTelemetrySource _forzaUdp;
         public  ForzaUdpTelemetrySource ForzaUdpSource => _forzaUdp;
 
         // Serializes every create/dispose of _forzaUdp (and source swaps in
-        // general). SwapTelemetrySource normally runs on the SimHub data
-        // thread, but ApplyForzaSettings is a UI hook that tears the listener
-        // down and rebuilds it; without this lock the data thread's 1/sec
-        // enhanced-source retry can race through the "_forzaUdp == null"
-        // create window and bind a SECOND listener to the same port. Both
-        // binds succeed (ReuseAddress), only one of them receives datagrams,
-        // and if the orphaned one wins, the active source starves forever
-        // (observed as sign-out killing car-change detection).
+        // general): SwapTelemetrySource usually runs on the SimHub data thread,
+        // but ApplyForzaSettings is a UI hook that tears the listener down and
+        // rebuilds it. Unlocked, the data thread's 1/sec retry races through that
+        // "_forzaUdp == null" window and binds a SECOND listener to the same
+        // port. Both binds succeed (ReuseAddress), only one receives, and if the
+        // orphan wins the active source starves forever (seen as sign-out
+        // killing car-change detection).
         private readonly object _sourceSwapLock = new object();
 
         // Config fingerprint of the live _forzaUdp (set at create time) so
@@ -305,28 +330,22 @@ namespace TrueforceForAll.Plugin
         // in place when the effective port/bind/forward config is identical.
         private string _forzaUdpConfigKey = "";
 
-        // True when a Forza title is active and our Forza UDP listener is bound
-        // but silent (Forza's Data Out is pointed at SimHub, not us), while
-        // SimHub IS receiving the telemetry, so we run on the SimHub fallback.
-        // Everything still works; the effects that lean on Forza's richer feed
-        // (road texture detail, airborne feel, per-tire / cylinder data) are
-        // just less precise than when Forza talks to the plugin directly.
-        // Drives the "config isn't optimal" UI badge. Cleared the moment Forza
-        // packets reach our port (we upgrade back to the enhanced source).
+        // True when a Forza title is active and our UDP listener is bound but
+        // silent (Data Out points at SimHub, not us) while SimHub IS receiving,
+        // so we run the SimHub fallback: everything works, but road texture,
+        // airborne and per-tire/cylinder detail are coarser. Drives the "config
+        // isn't optimal" badge; cleared the moment packets reach our port.
         private volatile bool _forzaOnSimHubFallback;
         public  bool ForzaOnSimHubFallback => _forzaOnSimHubFallback;
 
         // ---- Port discovery ----
-        // When a UDP source (Forza) has been running without
-        // receiving anything, kick off a scan across known alternate
-        // ports to find where the game is actually sending. UI subscribes
-        // to DiscoveredAlternatePort to surface a "switch to port X?"
-        // banner. The first scan fires DiscoveryNoPacketsTriggerMs after
-        // the source starts; if it doesn't find anything (or finds
-        // nothing the user adopts) we retry every DiscoveryRetryIntervalMs
-        // while the source keeps receiving zero packets, covers the case
-        // where the user enables UDP in the game minutes after Trueforce
-        // started.
+        // When a UDP source (Forza) runs without receiving anything, scan the
+        // known alternate ports for where the game is actually sending. The
+        // settings panel polls DiscoveredAlternatePort to surface a "switch to
+        // port X?" banner; AlternatePortDiscovered fires for anything that
+        // prefers an event. Timing rules live on MaybeStartPortDiscovery; the
+        // retry exists because a user can enable UDP in the game minutes after
+        // Trueforce started.
         private const int DiscoveryNoPacketsTriggerMs = 10_000;
         private const int DiscoveryScanTimeoutMs      = 8_000;
         private const int DiscoveryRetryIntervalMs    = 60_000;
@@ -341,13 +360,10 @@ namespace TrueforceForAll.Plugin
         /// Args: (gameKind "forza", discoveredPort).</summary>
         public event Action<string, int> AlternatePortDiscovered;
 
-        /// <summary>True when the active game is one SimHub has a telemetry
-        /// reader for, i.e. anything with a non-Custom GameName. SimHub's
-        /// "Custom_*" code is a definitive marker that the user added the
-        /// game manually and SimHub has no built-in way to source telemetry,
-        /// so engine/RPM/speed-driven effects can't fire. Built-in games
-        /// keep this true even at the main menu / paused, we don't grey
-        /// out the panel just because telemetry isn't flowing right now.</summary>
+        /// <summary>True when the active game has a non-Custom GameName.
+        /// SimHub's "Custom_*" prefix means a user-added game with no built-in
+        /// telemetry reader, so RPM/speed-driven effects can't fire. Stays true
+        /// at the menu / paused: we don't grey the panel on an idle feed.</summary>
         public bool HasUsefulTelemetry =>
             !string.IsNullOrEmpty(_activeGame)
             && !_activeGame.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase);
@@ -368,16 +384,16 @@ namespace TrueforceForAll.Plugin
         private int?   _lastSimHubPitLimiterActive;
         private int?   _lastSimHubDrsActive;
 
-        // Motion state latched for the stationary-spring FFB floor, written on
+        // Motion state latched for the stationary-spring FFB floor: written on
         // the telemetry thread (DispatchFrame), read on the Trueforce stream
-        // thread (the FfbTargetProvider lambda, 1 kHz). float fields: 32-bit
-        // access is atomic even on 32-bit SimHub, so the stream thread can
-        // never observe a torn value that would jolt the wheel. _lastSteerTicks
-        // is a freshness stamp (Stopwatch ticks); when steering goes stale
-        // (game closed, or a source that doesn't report steering took over)
-        // the spring self-disengages without needing an explicit reset hook.
+        // thread (FfbTargetProvider, 1 kHz). float because 32-bit access is
+        // atomic even on 32-bit SimHub, so no torn value can jolt the wheel.
+        // _lastSteerTicks is a freshness stamp (Stopwatch ticks): stale steering
+        // self-disengages the spring, no explicit reset hook needed.
         private volatile float _lastSteerNorm;
         private volatile float _lastSpeedKmh;
+        private volatile float _lastThrottle01;   // for the pause gate's "driver is active" test
+        private volatile float _lastRpms;         // same; the one channel every Forza format carries
         private long _lastSteerTicks;
         private static readonly long SteerMaxAgeTicks = Stopwatch.Frequency / 2; // 500 ms
         // Synthetic-spring telemetry gate (EvaluateClassicSpringForce): looser
@@ -385,13 +401,11 @@ namespace TrueforceForAll.Plugin
         // briefly, but tight enough to close the game-exit pull window.
         private static readonly long SpringTelemetryMaxAgeTicks = Stopwatch.Frequency * 3 / 2; // 1.5 s
 
-        // Telemetry-freshness stamp for the stall watchdog. Set (Stopwatch
-        // ticks) every time DispatchFrame receives a real frame; read from the
-        // continuous DataUpdate tick. When the active source stops emitting
-        // (game closed, crashed, paused with the physics page frozen, alt-tab),
-        // sustained effects keep playing their last amplitude because they only
-        // settle on a received frame. The watchdog notices the gap and tells
-        // those effects to fall silent. 0 = no frame seen yet (nothing to age).
+        // Telemetry-freshness stamp (Stopwatch ticks) for the stall watchdog:
+        // written by DispatchFrame on every real frame, read from the DataUpdate
+        // tick. Sustained effects only settle on a received frame, so a source
+        // that stops emitting (game closed, paused, alt-tab) leaves them ringing
+        // until the watchdog silences them. 0 = no frame seen yet.
         private long _lastFrameTicks;
         // Latch so we settle the effects once per stall episode instead of
         // every DataUpdate tick. Cleared the moment a real frame arrives again.
@@ -399,6 +413,11 @@ namespace TrueforceForAll.Plugin
         // read/written on the DataUpdate thread (matches its volatile neighbours).
         private volatile bool _telemetryStalled;
         private static readonly long FrameStallTicks = Stopwatch.Frequency / 2; // 500 ms
+        // The HID++ surfaces' own, longer stall window. Matched to
+        // HidppSessionHoldMs so the gate and the release cannot disagree about
+        // whether the session is still live.
+        private volatile bool _surfacesReleasedOnStall;
+        private static readonly long SurfaceStallTicks = Stopwatch.Frequency * 3 / 2; // 1.5 s
 
         // Wheel angular velocity for the FFB velocity damper. d(steer)/dt, in
         // steer-units (-1..1) per second, EMA-smoothed so the damper torque is
@@ -410,103 +429,85 @@ namespace TrueforceForAll.Plugin
         private long  _prevSteerVelTicks;
 
         // Physical-wheel velocity for the damper, derived on the FFB thread from
-        // the HID steering reader (SteerNorm / LastUpdateTicks). The let-go
-        // oscillation is a fast PHYSICAL wheel swing; Forza's 60 Hz EMA-smoothed
-        // telemetry _steerVel is too lagged (and 8-bit-quantized) to catch it,
-        // so the damper rode the wrong phase. The wheel's own position axis is
-        // higher-resolution and updates at the HID report rate, giving a fresher,
-        // cleaner velocity. Physical steer shares the game-steer sign (hot-lap
-        // trace corr 0.999), so the proven +Kd damper convention is unchanged.
-        // FFB-thread-only (read in MaybeReshapeFfb); no sync needed.
+        // the HID steering reader (SteerNorm / LastUpdateTicks): the let-go swing
+        // is too fast for Forza's _steerVel (60 Hz, EMA-smoothed, 8-bit-quantized)
+        // to catch, so the damper rode the wrong phase. The wheel's own axis is
+        // higher-resolution and updates at the HID report rate. Physical steer
+        // shares the game-steer sign (trace corr 0.999), so the +Kd damper
+        // convention is unchanged. FFB-thread-only (read in MaybeReshapeFfb);
+        // no sync needed.
         private float _physWheelVel;
         private float _physVelPrevSteer;
         private long  _physVelPrevTicks;
 
         // Smoothed steering used by the spring. Eased toward _lastSteerNorm on
-        // each provider call (~250 Hz) so a low-resolution source (Forza's
-        // 8-bit Steer, ~254 steps lock-to-lock) doesn't translate its quantized
-        // steps into perceptible force notches in the centering spring, and so
-        // the spring interpolates smoothly between a source's slower telemetry
-        // updates. Stream-thread-only (the provider lambda); no sync needed.
-        // High-resolution sources (AC's float) are already smooth; the tiny
-        // added lag is harmless for a parked-car comfort force.
+        // each provider call (1 kHz, the stream tick) so a low-resolution
+        // source (Forza's 8-bit Steer, ~254 steps lock-to-lock) doesn't turn
+        // its quantized steps into force notches in the centering spring, and
+        // so the spring interpolates between slower telemetry updates.
+        // Stream-thread-only (the provider lambda); no sync needed. High-
+        // resolution sources (AC's float) are already smooth; the tiny added
+        // lag is harmless for a parked-car comfort force.
         private float _springSteerEma;
-        // ~50 ms time constant at the 250 Hz provider rate. Fast enough to
+        // ~12 ms time constant at the 1 kHz provider rate. Fast enough to
         // track parking maneuvers, slow enough to dissolve 8-bit quantization.
         private const float SpringSteerEmaAlpha = 0.08f;
 
-        // Stationary-spring desk self-test (SPRING code). When the deadline is
-        // in the future, ApplyStationarySpring drives a synthetic centering
-        // force whose direction alternates every ~1.5 s at zero speed,
-        // bypassing the enabled / freshness / null-target gates, so the
-        // spring's strength and force direction can be felt on the desk with
-        // no game running. Stream-thread reads via Interlocked (long isn't
-        // atomic on 32-bit SimHub). NOTE: verifies the spring's own
-        // force-vs-steer-sign mapping, not whether a given game reports
-        // steering with the sign we expect.
+        // Stationary-spring desk self-test (SPRING code). While the deadline is
+        // in the future, ApplyStationarySpring drives a centering force that
+        // flips direction every ~1.5 s at zero speed, bypassing the enabled /
+        // freshness / null-target gates. Stream-thread reads via Interlocked
+        // (long isn't atomic on 32-bit SimHub). Verifies the spring's own
+        // force-vs-steer-sign mapping, not any game's steering sign.
         private long _springTestEndTicks;
         private const double SpringTestDurationSec = 6.0;
 
-        // Throttle for retrying enhanced-source acquisition. AC's shared memory
-        // page only appears once the game loads into a session, but SimHub
+        // Throttle for retrying enhanced-source acquisition: AC's shared-memory
+        // page appears only once the game loads into a session, but SimHub
         // reports GameName as soon as the AC process starts (often a minute
-        // before the MMF exists). Without a retry, that first-attempt failure
-        // would strand us on SimHub fallback for the whole session.
+        // earlier), so a one-shot attempt strands us on fallback.
         private long _lastEnhancedRetryTicks;
 
         // Logitech G HUB process detection. G HUB claims the wheel's HID
-        // interface and blocks our HidSharp open call, so when it's running
-        // the plugin can't talk to the wheel. We poll the process list once
-        // every ~5 s (cheap; one allocation) and surface the result both as
-        // a dedicated status banner in the settings UI and as the most-
-        // blocking item in WheelQuietDiagnostic so users land on the real
-        // root cause instead of "wheel not detected." _gHubLastLoggedState
-        // ensures we only log on transitions, not every poll.
+        // interface and blocks our HidSharp open, so the plugin can't reach the
+        // wheel while it runs. Polled every ~5 s; surfaced as a settings banner
+        // and as the top item in WheelQuietDiagnostic. _gHubLastLoggedState
+        // keeps the log to transitions, not every poll.
         private long _lastGHubCheckTicks;
         private volatile bool _isGHubRunning;
 
-        // Device recovery watchdog. The whole bring-up (discover -> open ->
-        // init -> FFB tap -> stream) used to run once in Init; if the wheel
-        // was absent, G HUB was holding the HID, or the stream later faulted
-        // (hot-unplug, USB stall), the plugin stayed dead until SimHub was
-        // restarted. The watchdog (MaybeRecoverDevice, polled from DataUpdate)
-        // re-attaches transparently: it fires when _device is null or the
-        // stream has faulted, is gated off while G HUB is running (can't open
-        // the HID then, so it self-heals the instant G HUB closes), throttled
-        // so a permanently-absent wheel doesn't churn, and runs the blocking
-        // bring-up on a thread-pool thread so it never stalls SimHub's tick.
-        // _recoveryInProgress is the single-flight guard and also drives the
-        // StreamStatus "Reconnecting..." text.
-        // 0 = idle, 1 = a recovery/bring-up is running. Int (not bool) so the
-        // two trigger paths (the data-tick watchdog MaybeRecoverDevice and the
-        // UI-thread RunActiveDeviceProbe) can claim it atomically with
+        // Device recovery watchdog: MaybeRecoverDevice, polled from DataUpdate,
+        // re-runs the full bring-up (discover -> open -> init -> FFB tap ->
+        // stream) when _device is null or the stream faulted (hot-unplug, USB
+        // stall, or a wheel absent at startup). The G HUB gate and its self-heal
+        // are documented at MaybeRecoverDevice; the retry throttle is
+        // RecoveryIntervalTicks below, so a permanently absent wheel does not
+        // churn. The bring-up blocks, so it runs on a thread-pool thread and
+        // never stalls SimHub's data tick.
+        // _recoveryInProgress: 0 = idle, 1 = a bring-up is running; also drives
+        // the StreamStatus "Reconnecting..." text. Int (not bool) so the
+        // data-tick watchdog and the settings self-test's RunActiveDeviceProbe
+        // (itself run off the UI thread) can claim it atomically via
         // Interlocked.CompareExchange and never both bring the device up at once.
         private int _recoveryInProgress;
         private long _lastRecoveryAttemptTicks;
         private static readonly long RecoveryIntervalTicks = Stopwatch.Frequency * 3; // 3 s
-        // Throttle for the verbose "wheel not found" discovery diagnostic: the
-        // recovery watchdog retries discovery every few seconds, so without this
-        // a persistent not-detected state would log the full HID landscape on
-        // every tick. Logs at most once per minute (and always on the first miss).
+        // Throttle for the verbose "wheel not found" discovery diagnostic; the
+        // once-a-minute rule and its reason live on LogDiscoveryDiagnostic.
         private long _lastDiscoveryDiagTicks;
         private bool _gHubLastLoggedState;
-        // Only the G HUB *UI* process (lghub.exe) gates wheel access. We
-        // intentionally do NOT gate on lghub_agent.exe (Logitech's always-on
-        // background agent): it keeps running after the user quits G HUB and
-        // does not hold the wheel's MI_02 Trueforce interface, so gating on it
-        // latched _isGHubRunning true for the whole session and permanently
-        // blocked the recovery watchdog. See the detection block below.
+        // Only the G HUB *UI* process (lghub.exe) gates wheel access. Do NOT
+        // gate on lghub_agent.exe: it is always-on and does not hold the wheel's
+        // MI_02 Trueforce interface, so gating on it latched _isGHubRunning true
+        // all session and blocked the recovery watchdog. See the G HUB poll in
+        // DataUpdate.
         private const string GHubProcessName = "lghub";
         private static readonly long GHubCheckIntervalTicks = Stopwatch.Frequency * 5;
 
-        // Snapshot every Logitech-related process running right now (G HUB,
-        // its agent + updater, older Gaming Software, etc.) as a single log
-        // line. Lets a support bundle answer "what was running when the user
-        // hit this state" without us guessing from a partial diag. Matches
-        // are case-insensitive substring on ProcessName (no .exe), so we
-        // catch lghub, lghub_agent, lghub_updater, lghub_system_tray, LCore,
-        // LGS, Logi*, etc. Cheap: one Process.GetProcesses() + a string
-        // contains per process. Returns "(none)" when nothing matches.
+        // One log line naming every Logitech-related process running now, for
+        // support bundles. Case-insensitive substring on ProcessName (no .exe),
+        // so it catches lghub, lghub_agent, lghub_updater, lghub_system_tray,
+        // LCore, LGS, Logi*. Returns "(none)" when nothing matches.
         private static string SnapshotLogitechProcesses()
         {
             try
@@ -541,82 +542,69 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>True when Logitech G HUB (or its agent) is detected
-        /// running. UI binds to this to show a warning banner. Updated on a
-        /// 5-second poll from DataUpdate; first-detection logs to SimHub log.</summary>
+        /// <summary>True when the Logitech G HUB UI (lghub.exe) is detected
+        /// running. The always-on lghub_agent deliberately does NOT count (see
+        /// GHubProcessName). UI binds to this to show a warning banner. Updated
+        /// on a 5-second poll from DataUpdate; transitions log to SimHub log.</summary>
         public bool IsLogitechGHubRunning => _isGHubRunning;
 
         // Auto-ratchet state. Snapshots the underrun/glitch counters once per
         // second; when delta crosses RatchetThreshold, the corresponding ring
-        // is bumped one notch (UP). The "survived" capacity is persisted to
-        // Settings so reinstalls don't re-glitch sessions; manual reset is
-        // available from the Performance tab.
+        // is bumped one notch (UP). The survived capacity is persisted to
+        // Settings so a proven size warm-starts the next session; manual reset
+        // is "Reset to lowest" in the Performance section.
         //
-        // Ratchet-DOWN is asymmetric (UP fast, DOWN gated) but tuned for FAST,
-        // self-healing recovery rather than the old multi-minute caution. The
-        // big oscillation worry that justified the old 5-minute cooldown was
-        // the audio ring swinging 8<->16: 8 is below the WASAPI engine-period
-        // burst floor, so descending to it re-glitched and bounced straight
-        // back. That is now removed structurally (AudioCaptureSource floors at
-        // 16), so the remaining DOWN risk is small and we can recover quickly.
-        // Sim users pause / alt-tab constantly (Forza especially), and each of
-        // those can bump a ring; locking them at elevated latency for minutes
-        // afterward is the failure we care about most. So: after an UP, a short
-        // ~20s cooldown, then ~12s of quiet steps one notch DOWN; subsequent
-        // steps every ~10s. A transient bump fully drains in ~20-35s instead of
-        // 5+ minutes. UP still requires 2 consecutive noisy windows (filters
-        // one-off blips), and Forza ratchet-UP is suppressed while !IsRaceOn
-        // (paused / menu / loading), so most pause/alt-tab spikes never bump at
-        // all. If noise returns mid-descent, UP re-arms the post-UP cooldown.
-        // We deliberately do NOT latch a high floor for the session: a wrong
-        // guess must always self-heal.
+        // UP is fast, DOWN is gated but still quick: after an UP a ~20s
+        // cooldown, then ~12s of quiet steps one notch DOWN, subsequent steps
+        // every ~10s, so a transient bump drains in ~20-35s. Sim users pause /
+        // alt-tab constantly (Forza especially) and each of those can bump a
+        // ring; leaving them at elevated latency for minutes is the failure we
+        // care about most. DOWN is safe to run this fast because
+        // AudioCaptureSource floors the audio ring at 16: 8 is below the WASAPI
+        // engine-period burst floor, so descending to it used to re-glitch and
+        // bounce straight back. UP still requires 2 consecutive noisy windows,
+        // and Forza ratchet-UP is suppressed while !IsRaceOn (paused / menu /
+        // loading), so most pause/alt-tab spikes never bump at all. If noise
+        // returns mid-descent, UP re-arms the post-UP cooldown. We deliberately
+        // do NOT latch a high floor for the session: a wrong guess must always
+        // self-heal.
         private const int  RatchetWindowMs           = 1000;
-        // UP trigger: a single noisy window isn't enough. One-off CPU
-        // stalls, USB hiccups, and brief game stutters don't reflect
-        // sustained pressure on the ring, so we require BOTH the current
-        // and previous 1-second windows to cross the threshold before UP
-        // fires.
-        //
-        // Units note: underrun/glitch counters are duration-quantized at
-        // ~20 ms per count (see UnderrunQuantumTicks in TrueforceDevice
-        // and GlitchQuantumTicks in AudioCaptureSource). Sub-quantum
-        // scheduling blips contribute 0, so a threshold of 5/s means
-        // ~100 ms of cumulative real dropout per second. Combined with
-        // the 2-window gate, UP fires only after ~200 ms of cumulative
-        // dropout sustained across 2 consecutive seconds, which is a
-        // genuine "ring is undersized" signal rather than tick noise.
-        private const long RatchetThreshold          = 5;     // quantized events/s, REQUIRED IN 2 CONSECUTIVE WINDOWS
+        // UP trigger: BOTH the current and previous 1-second windows must cross
+        // the threshold, so one-off CPU stalls and USB hiccups don't bump the
+        // ring. Units: the counters are duration-quantized at ~20 ms per count
+        // (UnderrunQuantumTicks in TrueforceDevice, GlitchQuantumTicks in
+        // AudioCaptureSource), so 5/s is ~100 ms of real dropout per second and
+        // the 2-window gate means ~200 ms sustained across 2 consecutive
+        // seconds.
+        private const long RatchetThreshold          = 5;     // quantized events/s (2-window gate)
         private const int  RatchetDownQuietMs        = 12_000;   // 12 s of zero deltas → eligible for a DOWN step
         private const int  RatchetDownCooldownMs     = 20_000;   // 20 s after an UP before the FIRST DOWN allowed
         private const int  RatchetDownFastCooldownMs = 10_000;   // 10 s between subsequent DOWN steps once descent has started
         private long _autoRatchetLastCheckTicks;
         private long _autoRatchetLastTfCount;
         private long _autoRatchetLastAudioCount;
-        // Previous window's deltas, for the "2 consecutive windows" UP gate.
-        // Both _prevTfOverThreshold and the current tfDelta must cross
-        // RatchetThreshold before UP fires.
+        // Previous window's over-threshold flags, for the 2-window UP gate.
         private bool _prevTfOverThreshold;
         private bool _prevAudioOverThreshold;
         // Stopwatch ticks of the most recent non-zero delta. Reset to "now"
-        // any time we see ANY underrun/glitch in the 1s window. The 60s
-        // quiet test compares (now - lastSeen) against RatchetDownQuietMs.
+        // any time we see ANY underrun/glitch in the 1s window. The DOWN gate
+        // compares (now - lastSeen) against RatchetDownQuietMs.
         private long _tfLastUnderrunSeenTicks;
         private long _audioLastUnderrunSeenTicks;
         // Stopwatch ticks of the most recent ratchet action (up OR down).
         // The post-UP DOWN cooldown (RatchetDownCooldownMs) gates against this.
         private long _tfLastRatchetActionTicks;
         private long _audioLastRatchetActionTicks;
-        // True iff the last action on this ring was a DOWN step. Lets the
-        // DOWN cooldown switch to the faster RatchetDownFastCooldownMs value
-        // once descent has begun; UP re-arms the post-UP cooldown by clearing
-        // this.
+        // True iff the last action was a DOWN step: switches the cooldown to
+        // RatchetDownFastCooldownMs. UP clears it, re-arming the slow cooldown.
         private bool _tfLastActionWasDown;
         private bool _audioLastActionWasDown;
 
-        // Fired on the producer thread when auto-ratchet bumps a ring size.
-        // Args: isTfRing (true = Trueforce stream ring, false = audio ring),
-        // oldCapacity, newCapacity. SettingsControl subscribes to show the
-        // dismissable Revert/OK modal, must marshal to the UI thread.
+        // Fired on the producer thread when auto-ratchet resizes a ring (UP or
+        // DOWN). Args: isTfRing (true = Trueforce stream ring, false = audio
+        // ring), oldCapacity, newCapacity. SettingsControl subscribes only to
+        // refresh the Performance readout; there is no per-bump banner. Must
+        // marshal to the UI thread.
         public event Action<bool, int, int> AutoRatchetBumped;
 
         // Per-car override tracking. Updated on each DataUpdate; if the CarId
@@ -624,28 +612,25 @@ namespace TrueforceForAll.Plugin
         private string _activeCarId;
         public string ActiveCarId => _activeCarId;
 
-        /// <summary>True when a car is actually being driven right now (live
-        /// telemetry / on track), as opposed to merely having a game profile
-        /// selected at a menu or while paused. Backed by the telemetry source's
-        /// IsSessionActive, which Forza reports authoritatively. Lets the car
-        /// picker distinguish a real in-car pin (keep it) from a parked manual
-        /// pin (releasable when the user picks "None").</summary>
+        /// <summary>True when a car is being driven right now, not merely
+        /// selected at a menu or paused; backed by the source's IsSessionActive
+        /// (authoritative on Forza). Lets the car picker keep a real in-car pin
+        /// and release a parked manual one when the user picks "None".</summary>
         public bool IsLiveCarPresent => _telemetrySource?.IsSessionActive ?? false;
 
-        // Human-readable name of the active car (e.g. "2017 Acura NSX"), set
-        // by the car-change handler from CarCylinderResolver.Result.DisplayName
-        // when a catalog hit provides one. Cleared on car change. Used to
-        // auto-name per-car presets so the user sees the actual car name
-        // instead of an opaque ordinal ("3445"). Null when no catalog hit.
+        // Human-readable name of the active car (e.g. "2017 Acura NSX"), set by
+        // the car-change handler from the CarName cascade: local rename, then
+        // telemetry's official name, then community consensus, then a catalog
+        // name last. Cleared on car change. Used to auto-name per-car presets so
+        // the user sees the actual car name instead of an opaque ordinal
+        // ("3445"). Null when nothing in the cascade names the car.
         private string _activeCarDisplayName;
         public string ActiveCarDisplayName => _activeCarDisplayName;
 
-        // Alternate name to surface alongside ActiveCarDisplayName when the
-        // community consensus has a name that differs from the user's
-        // local rename. Null when there's no divergence (community matches
-        // local, or the user hasn't renamed and is already seeing the
-        // community name as ActiveCarDisplayName). Drives the
-        // disambiguation suffix in the header + preset manager.
+        // Community-consensus name, surfaced alongside ActiveCarDisplayName
+        // only when the user renamed locally and the two differ; null
+        // otherwise (no local rename, or the names match). Drives the
+        // disambiguation suffix in the header and the preset manager.
         private string _activeCarCommunityDisplayName;
         public string ActiveCarCommunityDisplayName => _activeCarCommunityDisplayName;
 
@@ -659,27 +644,34 @@ namespace TrueforceForAll.Plugin
         public string ActiveGame        => _activeGame;
         public string ActivePresetName  => _activePresetName;
 
-        // Cached variant signature from the last CarFacts apply. Compared
-        // against the live signature inside DispatchFrame so a mid-session
-        // change (Forza in-game engine swap; telemetry warming up enough
-        // to add the maxrpm component) triggers a re-resolve + silent
-        // auto-create on the very next telemetry frame, not just on
-        // car-change. Null = no apply has happened yet for the active car;
-        // reset to null in the car-change handler.
+        // The game SimHub already had running when Init ran. _activeGame is
+        // filled by DataUpdate, so between Init and the first tick it is empty
+        // and the mode resolves to the global default, ignoring the game on
+        // screen. That window is where a SimHub start (or a plugin reload)
+        // inside a native-Trueforce title opened our ep3 stream, init burst and
+        // all, straight into the game's own: the endpoint takes one writer, and
+        // the two alternate until the first tick stands us down. Read from
+        // SimHub at Init, consulted by ResolveChosenMode only while _activeGame
+        // is empty, and dropped on the first DataUpdate, whose data is
+        // authoritative from then on.
+        private string _startupGameName;
+
+        // Cached variant signature from the last CarFacts apply, compared
+        // against the live one in DispatchFrame so a mid-session change (Forza
+        // engine swap; maxrpm arriving as telemetry warms) re-resolves and
+        // auto-creates on the next frame, not just on car change. Null = no
+        // apply yet for this car; reset to null in the car-change handler.
         private string _lastAppliedVariantSignature;
 
         public IEnumerable<string> PresetNames =>
             Settings?.Presets != null ? (IEnumerable<string>)Settings.Presets.Keys : Array.Empty<string>();
 
         // ---- Offline preset editing ----
-        //
-        // When the user picks Edit on a preset row in the Manage dialog, the
-        // SettingsControl flips the live state to that preset and shows a
-        // banner so users can author/edit without the matching game running.
-        // While the flag is set, the DataUpdate-driven "auto-apply this
-        // game's default" path is suppressed so a backgrounded game change
-        // doesn't quietly clobber the user's in-progress edits. Exit happens
-        // via Save / Save as new / Discard on the banner.
+        // Edit on a preset row flips the live state to that preset and shows a
+        // banner, so a preset can be authored without its game running. While
+        // the flag is set, DataUpdate's "auto-apply this game's default" path
+        // is suppressed so a background game change can't clobber the edits.
+        // Exit via Save / Save as new / Discard on the banner.
         private string _offlineEditPresetName;
         private GameSettingsSnapshot _preEditSnapshot;
         private string _preEditActivePresetName;
@@ -687,12 +679,10 @@ namespace TrueforceForAll.Plugin
         public string OfflineEditingPresetName => _offlineEditPresetName;
         public bool   IsOfflineEditing         => !string.IsNullOrEmpty(_offlineEditPresetName);
 
-        // Car-preset offline edit. Mirrors the game-preset flow above but for a
-        // single car's override: loads the matching game default as the baseline
-        // (so the override doesn't read as spuriously dirty against the wrong
-        // game preset), pins the car, freezes it against live telemetry (see
-        // DataUpdate), and restores the pre-edit state on exit. Save / Save as
-        // new / Discard via the same banner.
+        // Car-preset offline edit. Mirrors the flow above for one car's
+        // override: loads the matching game default as baseline (else the
+        // override reads dirty against the wrong preset), pins the car, freezes
+        // it against live telemetry (see DataUpdate), restores state on exit.
         private string _offlineEditCarId;
         private string _offlineEditCarPresetName;
         private GameSettingsSnapshot _preEditCarSnapshot;
@@ -716,14 +706,12 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>True when the active game has been observed to report a
-        /// usable redline (learned + persisted in Settings.GamesWithRedline).
-        /// The rev limiter fires AT the redline for these, so the engage-%
-        /// control is irrelevant and the UI hides it. Reading the learned flag
-        /// (not live telemetry) keeps the UI stable: it's correct immediately on
-        /// settings open, before any data flows, for games seen before. Forza
-        /// never qualifies (its redline reads out of range), so it keeps the
-        /// engage-% control.</summary>
+        /// <summary>True when the active game was observed to report a usable
+        /// redline (learned + persisted in Settings.GamesWithRedline). The rev
+        /// limiter fires AT the redline for these, so the UI hides engage-%.
+        /// Reads the learned flag, not live telemetry, so it is already right
+        /// for a previously seen game before any data flows. Forza never
+        /// qualifies: its redline reads out of range.</summary>
         public bool ActiveSourceUsesRedline =>
             !string.IsNullOrEmpty(_activeGame)
             && !IsForzaGameName(_activeGame)
@@ -735,10 +723,9 @@ namespace TrueforceForAll.Plugin
         private volatile string _currentGameName;
 
         // Last non-empty GameName SimHub reported this session. Latched across
-        // the telemetry-quiet gaps (pause / menu) that null out _activeGame and
-        // _currentGameName, so the process-table rescue still knows which game
-        // to look for. Never cleared: once a game has been seen it's the anchor
-        // for "is that title still up while SimHub thinks it quit?".
+        // the telemetry-quiet gaps (pause / menu) that null _activeGame and
+        // _currentGameName, so the process-table rescue still knows what to
+        // look for. NEVER cleared: it anchors "is that title still up?".
         private volatile string _lastNamedGame;
         private Thread _capturePollThread;
         private string _captureStatus = "Idle (no game running)";
@@ -772,11 +759,10 @@ namespace TrueforceForAll.Plugin
             + (_noFfbCaptureNotice != null ? "  -  " + _noFfbCaptureNotice : "");
         public int    ActiveVoiceCount => _mixer.SourceCount;
 
-        // The wire shape that produced the first captured FFB sample this
-        // session (transport / report ID / feature index / encoding, and which
-        // HID++ report the arbiter settled on). Null until capture is
-        // confirmed. Surfaced in the Export-logs manifest and the
-        // compatibility report.
+        // Wire shape that produced the first captured FFB sample this session
+        // (transport / report ID / feature index / encoding, and which HID++
+        // report the arbiter settled on). Null until capture is confirmed.
+        // Documented at UsbPcapFfbTap.CaptureFingerprint.
         public string CaptureFingerprint => _ffbTap?.CaptureFingerprint;
 
         // True when a manual override pins a device whose identity we know and
@@ -802,25 +788,58 @@ namespace TrueforceForAll.Plugin
         // Surfaced through FfbTapStatus. Cleared when FFB is captured again.
         private volatile string _noFfbCaptureNotice;
 
-        // Non-null when the detected wheel is a supported-by-inference PID
-        // (Xbox G923) we haven't hardware-verified. Surfaced as an info
-        // banner so the user knows to report the one divergence we can't
-        // rule out. Null for hardware-confirmed wheels.
+        // Non-null when the detected wheel is a supported-by-inference PID we
+        // haven't hardware-verified. WheelDiscovery.UnverifiedPids is EMPTY
+        // today (every supported PID is owner-confirmed), so this is dormant
+        // until a wheel is added on inference alone. Surfaced as an info banner
+        // so the user knows to report the one divergence we can't rule out.
         private string _unverifiedWheelNotice;
         public string UnverifiedWheelNotice => _unverifiedWheelNotice;
 
         // True when USBPcapCMD.exe is locatable right now (override path, env
         // var, or default Program Files paths). Cheap probe; the settings UI
-        // polls this on its tick to show/hide the Browse + Reinstall buttons.
+        // polls this on its tick to show/hide the Browse button. This is a
+        // question about the FILE, which is all Browse can repair; for "can we
+        // capture at all", ask IsUsbPcapDriverReady.
         public bool IsUsbPcapAvailable =>
             UsbPcapFfbTap.LocateUsbPcapCmd(Settings?.UsbPcapCmdPathOverride) != null;
 
-        // Whether the SimHub process is running elevated (administrator).
-        // Cached: elevation can't change without a process restart. USBPcap's
-        // FFB capture is far more reliable elevated, and some games/setups
-        // only pass force feedback through when SimHub is admin (e.g. a user's
-        // RaceRoom FFB worked only as admin), so the UI prompts for it when
-        // false. Treated as effectively required.
+        // True when the CLI is on disk AND USBPcap's capture driver is attached
+        // to the USB stack. Both halves are needed before pass-through can work
+        // at all, and they fail independently: the driver can be blocked
+        // (Windows 11 Memory integrity, Smart App Control) or its USB-class
+        // filter registration lost while the exe sits there untouched.
+        //
+        // Issue #44: the self-test asked only IsUsbPcapAvailable, so a user
+        // whose driver had never attached was told "[OK] USBPcap installed"
+        // and shown no Reinstall button, because the file half was fine.
+        //
+        // Cached briefly: the settings UI polls this on its tick, and a driver
+        // does not come and go within a second.
+        private const int UsbPcapDriverProbeTtlMs = 1000;
+        private bool _usbPcapDriverReady;
+        private int  _usbPcapDriverProbedMs;
+        private bool _usbPcapDriverProbed;
+        public bool IsUsbPcapDriverReady
+        {
+            get
+            {
+                int now = Environment.TickCount;
+                if (_usbPcapDriverProbed
+                    && unchecked(now - _usbPcapDriverProbedMs) < UsbPcapDriverProbeTtlMs)
+                    return _usbPcapDriverReady;
+                _usbPcapDriverReady  = IsUsbPcapAvailable
+                                    && WheelUsbDiscovery.AnyUsbPcapInterfacePresent();
+                _usbPcapDriverProbedMs = now;
+                _usbPcapDriverProbed   = true;
+                return _usbPcapDriverReady;
+            }
+        }
+
+        // Whether SimHub is running elevated. Cached: elevation can't change
+        // without a process restart. USBPcap FFB capture is far more reliable
+        // elevated and some setups pass no FFB at all without it (RaceRoom),
+        // so the UI prompts when false. Treated as effectively required.
         private bool? _isElevatedCache;
         public bool IsRunningElevated
         {
@@ -841,17 +860,11 @@ namespace TrueforceForAll.Plugin
         }
 
         // True when HID enumeration found a supported wheel (so Trueforce
-        // effects play) but USBPcap discovery couldn't find it on the bus
-        // (so FFB pass-through is broken, the game's own force feedback
-        // gets clobbered). This is the smoking-gun divergence pattern that
-        // motivates surfacing the manual-picker call to action prominently
-        // rather than burying it in Diagnostics.
-        //
-        // Suppressed when:
-        //   - HID hasn't found a wheel yet (nothing to diverge from)
-        //   - User already has a manual override set (they've fixed it)
-        //   - FFB tap is actually tapping (status starts with "Tapping")
-        //   - USBPcap isn't installed (separate Browse/Reinstall UX handles it)
+        // effects play) but USBPcap discovery couldn't find it on the bus (so
+        // FFB pass-through is broken and the game's own force feedback gets
+        // clobbered). Drives the prominent manual-picker call to action.
+        // Suppressed when USBPcap isn't installed: the Browse / Reinstall UX
+        // covers that case.
         public bool ShouldShowFfbTapPickerBanner
         {
             get
@@ -859,57 +872,48 @@ namespace TrueforceForAll.Plugin
                 if (Settings == null) return false;
                 if (_hidWheelVid == 0 && _hidWheelPid == 0) return false;
                 if (HasManualUsbPcapDevice) return false;
-                if (!IsUsbPcapAvailable) return false;
+                // Driver, not just the file: with no capture interfaces the
+                // picker can only offer an empty list, and a dead driver is
+                // exactly the "other failure" the comment below sends to
+                // Diagnostics, where the Reinstall button lives.
+                if (!IsUsbPcapDriverReady) return false;
                 string status = _ffbTap?.Status ?? "";
                 if (status.StartsWith("Tapping", StringComparison.OrdinalIgnoreCase)) return false;
-                // Only the "no supported wheel found" outcome warrants the
-                // picker prompt. Other failure modes (USBPcap missing,
-                // permission denied with explicit text, etc.) are surfaced
-                // through Diagnostics; the picker won't help.
+                // Only "no supported wheel found" warrants the picker; other
+                // failures (USBPcap missing, permission denied) go to Diagnostics.
                 return status.IndexOf("No supported wheel found", StringComparison.OrdinalIgnoreCase) >= 0;
             }
         }
 
         /// <summary>The wheel-quiet diagnostic line for "G HUB is running".
-        /// Shared so the settings card can recognize when its quiet diagnostic
-        /// is merely restating the dedicated G HUB banner (in the same coalesced
-        /// group) and drop the duplicate, instead of surfacing G HUB as two
-        /// separate warnings.</summary>
+        /// Shared so the settings card can spot when its quiet diagnostic just
+        /// restates the dedicated G HUB banner and drop the duplicate.</summary>
         public const string GHubQuietDiagnosticMessage =
             "Logitech G HUB is running. It claims the wheel and blocks force feedback. Close G HUB, then restart SimHub.";
 
-        /// <summary>Why-is-my-wheel-quiet diagnostic. Walks a decision tree
-        /// of plausible "no haptic output" causes and returns the most-
-        /// blocking one as a single actionable line, or null when the
-        /// plugin looks healthy. Surfaced in the settings UI as a warning
-        /// hint below the status pill so users see the actual root cause
-        /// instead of mentally combining five separate status fields.</summary>
+        /// <summary>Why-is-my-wheel-quiet diagnostic. Walks the "no haptic
+        /// output" causes in blocking order and returns the first as one
+        /// actionable line, or null when healthy. Rendered as a warning hint
+        /// below the status pill.</summary>
         public string WheelQuietDiagnostic
         {
             get
             {
                 if (Settings == null) return "Settings not loaded yet.";
 
-                // 0. Lights only. A quiet wheel is the whole point of this mode, so
-                //    there is no fault to report. Returning null rather than an
-                //    explanation on purpose: the caller renders any non-empty string
-                //    in a solid amber panel with a warning triangle, so describing
-                //    the mode here would show a permanent fault for behaviour the
-                //    user chose. The status pill and the line under the mode
-                //    selector already say what is happening.
+                // 0. Lights only. Must return null, not an explanation: the caller
+                //    renders any non-empty string as an amber warning panel, which
+                //    would show a permanent fault for behaviour the user chose.
                 if (MasterMode == TrueforceMasterMode.LightsyncOnly)
                 {
-                    // Unless we put ourselves here. That one the user did not
-                    // choose, so it gets the line: what happened, and the one
-                    // thing that changes it.
+                    // Unless we demoted ourselves: that one the user did not
+                    // choose, so it gets a line.
                     if (_nativeStreamDemoted) return NativeStreamStandDownText(0);
                     return null;
                 }
 
-                // A chosen GLOBAL off is the same case: the user set the switch and
-                // the wheel being quiet is the result they asked for, so it must not
-                // render as a fault either. Only the per-game demotion below is
-                // worth surfacing, because that one they may not remember choosing.
+                // A chosen GLOBAL off is the same case: not a fault. Only the
+                // per-game off below is surfaced, since users forget setting it.
                 if (StoredMasterMode == TrueforceMasterMode.Off) return null;
 
                 // 1. Hard master switch
@@ -921,15 +925,12 @@ namespace TrueforceForAll.Plugin
                         && gm == TrueforceMasterMode.Off)
                     {
                         // Only reachable when the USER chose off for this game:
-                        // nothing else writes that map any more.
-                        // No game id in the text: ActiveGame is SimHub's raw name and
-                        // the header card names the game right above this.
-                        // The Lightsync only suggestion is dropped on a wheel whose
-                        // strip is one fixed look: the selector does not offer that
-                        // row there (it does nothing on that wheel), so naming it
-                        // would send the reader looking for a choice they do not
-                        // have. Fails OPEN on an undetected wheel, matching the
-                        // selector's own rule.
+                        // nothing else writes that map any more. No game id in the
+                        // text: ActiveGame is SimHub's raw name and the header card
+                        // names the game right above. The Lightsync only suggestion
+                        // is dropped on fixed-strip wheels, where the selector does
+                        // not offer that row; fails OPEN on an undetected wheel, as
+                        // the selector does.
                         bool canLightsync = !WheelDetected || WheelHasSelectableLightPattern;
                         return IsNativeTrueforceGame(_activeGame) && canLightsync
                             ? "You switched the plugin off for this game. Set the mode back to Normal at the top, "
@@ -944,9 +945,8 @@ namespace TrueforceForAll.Plugin
                 if (Settings.MasterGain <= 0.005f)
                     return "Master gain is at 0. Slide it up in the Master section.";
 
-                // 3. G HUB blocking wheel access. Ranks higher than "wheel not
-                //    detected" because G HUB is the actual cause; surfacing the
-                //    real fix saves the user a debugging detour.
+                // 3. G HUB blocking wheel access. Ranks above "wheel not
+                //    detected" because G HUB is the actual cause.
                 if (_isGHubRunning)
                     return GHubQuietDiagnosticMessage;
 
@@ -965,19 +965,16 @@ namespace TrueforceForAll.Plugin
                     return $"Wheel stream is '{stream}'. The plugin is opened but not actively driving the wheel. Check the Diagnostics panel.";
 
                 // 6. No game actually running. _activeGame can be a selected-
-                //    but-closed profile, so gate on _currentGameName, which is
-                //    only set while the process is up (data.GameRunning). Avoids
-                //    falsely reporting a closed game as "detected but no telemetry".
+                //    but-closed profile, so gate on _currentGameName, only set
+                //    while the process is up (data.GameRunning). Otherwise a
+                //    closed game reads as "detected but no telemetry".
                 if (string.IsNullOrEmpty(_currentGameName))
                 {
-                    // SimHub follows the telemetry stream, and Forza Horizon
-                    // cuts its Data Out the instant the pause menu opens, so a
-                    // live pause is indistinguishable from a quit here. Check
-                    // the real process table before claiming the game is gone:
-                    // if a known racing game is still up, the user is just
-                    // paused / in a menu, the quiet wheel is expected, and
-                    // there's nothing to warn about (the status pill shows
-                    // "In menu / paused" for this state).
+                    // SimHub's game-running flag follows the telemetry stream, and
+                    // Forza Horizon cuts its Data Out the instant the pause menu
+                    // opens, so a live pause is indistinguishable from a quit. A
+                    // known game still in the process table means paused / in a
+                    // menu: no fault, and the status pill says "In menu / paused".
                     if (IsKnownGameProcessRunning(out _))
                         return null;
                     return "No game running. Start a supported game and load into a session.";
@@ -993,10 +990,8 @@ namespace TrueforceForAll.Plugin
                     // line (which would just duplicate the UDP setup banner).
                     long udpPackets = -1;
                     if (src is TrueforceForAll.Core.ForzaUdpTelemetrySource fz) udpPackets = fz.PacketsReceived;
-                    // Nothing has ever arrived: this is a UDP-setup case, owned
-                    // by the dedicated setup banner (with its "Set up..." button).
-                    // Stay silent here so we don't duplicate that with a text
-                    // instruction; the button is the action.
+                    // Owned by the setup banner and its "Set up..." button, so
+                    // stay silent rather than duplicate it in text.
                     if (udpPackets == 0)
                         return null;
                     return $"'{_currentGameName}' is detected but no telemetry is arriving. You may be in a menu or paused.";
@@ -1005,13 +1000,11 @@ namespace TrueforceForAll.Plugin
                 // 7. All telemetry-driven effects disabled: nothing can produce
                 //    output, so say so.
                 //
-                //    EVERY voice belongs in this list. It used to name seven of
-                //    them and claimed "every effect channel is disabled" while
-                //    axle slip, kerb thump, lockup judder, collision, rev limiter
-                //    and the implement thud were happily running (owner, Wreckfest
-                //    2026-08-16). Airborne is deliberately absent: it ducks the
-                //    others and is not a voice of its own, so a config with only
-                //    Airborne on really does produce nothing.
+                //    EVERY voice belongs in this list, or the wheel is reported
+                //    silent while one of them is playing. Airborne is
+                //    deliberately absent: it ducks the others and is not a voice
+                //    of its own, so a config with only Airborne on really does
+                //    produce nothing.
                 bool anyEffectOn =
                        (EnginePulse   != null && EnginePulse.Enabled)
                     || (RoadBumps     != null && RoadBumps.Enabled)
@@ -1030,9 +1023,8 @@ namespace TrueforceForAll.Plugin
                 if (!anyEffectOn)
                     return "Every effect channel is disabled. Enable at least one effect or turn on audio capture.";
 
-                // 8. Audio capture configured-on but not actually attached
-                //    to a game process. Common when the user enabled audio
-                //    capture but didn't pick the game's process.
+                // 8. Audio capture enabled but not attached to a game process,
+                //    usually because no process was picked.
                 if (_audio != null && _audio.Enabled && _audio.IsActive == false
                     && _audio.CapturedProcessId == 0
                     && !string.IsNullOrEmpty(_activeGame))
@@ -1040,19 +1032,17 @@ namespace TrueforceForAll.Plugin
                     return $"Audio capture is enabled but not attached to '{_activeGame}'. Pick the game process in the Audio section.";
                 }
 
-                // 9. Sidechain ducker over-aggressive (engine pulse muted
-                //    near to silence). Detects misconfigured ducker depth
-                //    that swallows everything.
+                // 9. Sidechain ducker so deep it mutes nearly everything
+                //    (engine pulse ducked to near silence).
                 if (EnginePulse != null && EnginePulse.DuckMultiplier < 0.05f
                     && Settings.DuckingEnabled && Settings.DuckDepth > 0.95f)
                 {
                     return "Sidechain ducker is muting nearly all output. Try lowering Depth in the Sidechain ducking section.";
                 }
 
-                // 10. Working, but degraded: MAIRA's force on the capture path
-                //     keeps the rev lights and the screen locked. Last, because
-                //     everything above is a wheel that does nothing, and this
-                //     one drives fine.
+                // 10. Working but degraded: MAIRA's force on the capture path
+                //     keeps the rev lights and screen locked. Last because
+                //     everything above is a wheel that does nothing.
                 if (_mairaTapDegraded) return MairaTapDegradedText();
 
                 return null;   // healthy
@@ -1061,8 +1051,8 @@ namespace TrueforceForAll.Plugin
 
         public AudioCaptureSource AudioCapture => _audio;
 
-        // Live counters surfaced to the Performance tab for the underrun
-        // readout. Pull these on the UI's polling timer.
+        // Live counters surfaced in the Settings tab's Performance section for
+        // the underrun readout. Pull these on the UI's polling timer.
         public long TfRingUnderruns      => _device?.UnderrunCount ?? 0;
         public long AudioRingGlitches    => _audio?.GlitchCount ?? 0;
         public int  CurrentTfRingSize    => _device?.RingCapacity ?? 0;
@@ -1098,13 +1088,6 @@ namespace TrueforceForAll.Plugin
             set { if (Settings != null) Settings.MasterGainStep = value; }
         }
 
-        /// <summary>Nudge master gain by <paramref name="delta"/>, clamped to the
-        /// slider's [0, 2] range. Applies live (mixer + Settings), persists, and
-        /// raises MasterGainChangedExternally. Backs the bindable Controls-tab
-        /// "master gain +/-" actions.</summary>
-        /// <summary>Step the Telemetry Based FFB strength from a bound control.
-        /// Same slider the Mode B tab shows, same range, and it applies live so
-        /// it can be trimmed a corner at a time without leaving the car.</summary>
         /// <summary>The bound "auto force" action: it runs the active game's own
         /// auto-calibration, not an on/off. In iRacing it SETS the max force from
         /// the learned peak (the settings Auto button's job); in Forza / Mode B
@@ -1112,19 +1095,36 @@ namespace TrueforceForAll.Plugin
         /// re-levels. A no-op-with-message in games that have neither.</summary>
         public void TriggerAutoForce()
         {
-            if (IsIRacingReshapeGame(_activeGame))
+            if (IRacingStyleAutoHere)
             {
                 double nm = ApplyIRacingAutoMaxForce();
                 if (nm > 0.5) DashReadoutGain("AUTO FORCE", (float)nm);
+                string nmGame = GameNames.Display(_activeGame);
                 SimHub.Logging.Current.Info(nm > 0.5
-                    ? $"[TF4ALL] Auto force (bound): iRacing max force set to {nm:F1} Nm."
-                    : "[TF4ALL] Auto force (bound): iRacing has not learned a peak yet; drive a lap first.");
+                    ? $"[TF4ALL] Auto force (bound): {nmGame} max force set to {nm:F1} Nm."
+                    : $"[TF4ALL] Auto force (bound): {nmGame} has not learned a peak yet; drive a lap first.");
+                return;
+            }
+            // RaceRoom's press-to-apply is the same gesture as iRacing's Auto
+            // button, so it belongs on this binding rather than one of its own.
+            // Without this branch RaceRoom fell through to the grip-cal reset
+            // below, which has nothing to do with the R3E strength learner.
+            if (IsR3EGame(_activeGame) && (Settings?.R3ESharedMemoryFfb ?? false))
+            {
+                float peak = ApplyR3EAutoStrength();
+                if (peak > 0f) DashReadoutGain("AUTO FORCE", peak);
+                SimHub.Logging.Current.Info(peak > 0f
+                    ? $"[TF4ALL] Auto force (bound): RaceRoom max set to {peak:0.000} for this car."
+                    : "[TF4ALL] Auto force (bound): RaceRoom has not observed a peak yet; drive a lap first.");
                 return;
             }
             string status = RequestGripCalReset();
             SimHub.Logging.Current.Info("[TF4ALL] Auto force (bound): " + status);
         }
 
+        /// <summary>Step the Telemetry Based FFB strength from a bound control.
+        /// Same slider the Mode B tab shows, same range, and it applies live so
+        /// it can be trimmed a corner at a time without leaving the car.</summary>
         public void NudgeModeBStrength(float delta)
         {
             if (Settings == null) return;
@@ -1132,9 +1132,8 @@ namespace TrueforceForAll.Plugin
             // slider, the one that actually shapes force there; nudging the
             // hidden Forza strength would be a silent no-op on the wheel.
             if (_forceMode == ForceModeSpring) { NudgeSpringStrength(delta); return; }
-            // iRacing reshape: same reasoning as spring mode. IRacingForceGain
-            // is the knob that shapes force there, so nudging the synthesis
-            // strength would be a silent no-op on the wheel.
+            // iRacing reshape: same reasoning as spring mode; IRacingForceGain is
+            // the knob that shapes force there.
             if (_forceMode == ForceModeIRacing)
             {
                 const float irLo = 0.05f, irHi = 3.0f;
@@ -1187,17 +1186,11 @@ namespace TrueforceForAll.Plugin
             RaiseDashRemoteChanged();
         }
 
-        /// <summary>Step the wheel screen through the ready-made arrangements
-        /// and the custom one, wrapping at the end. Bound to a button this is
-        /// the only way to change screens without leaving the car.</summary>
-        // Readout names for effects 1-9, indexed by effect number. The 1-4
-        // direction names mirror the settings picker's labels; the strip
-        // itself is the primary feedback, this is for the dash bar and the
-        // wheel screen.
-        //
-        // 5-9 are the wheel's five slots, and these are only the FACTORY labels
-        // for them. Anything that shows one to the user goes through
-        // RevPatternLabel, which names the pattern actually in the slot.
+        // Readout names for effects 1-9 (dash bar and wheel screen; the strip
+        // itself is the primary feedback), indexed by effect number. 1-4 mirror
+        // the settings picker's direction labels; 5-9 are the wheel's five slots
+        // and only the FACTORY labels for them. Anything shown to the user goes
+        // through RevPatternLabel, which names the pattern actually in the slot.
         private static readonly string[] RevPatternNames =
         {
             "", "INSIDE-OUT", "OUTSIDE-IN", "LEFT TO RIGHT", "RIGHT TO LEFT",
@@ -1217,12 +1210,10 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>What to CALL effect 1-9 when showing it to the user.
         ///
-        /// For the four built-in sweeps that is the fixed direction name. For the
-        /// five slots it is the name of the pattern in the slot, because "CUSTOM
-        /// 3" says nothing: the user named these, and cycling past them on the
-        /// rim read as five anonymous stops even though the plugin knew exactly
-        /// what each one was. The factory label is the fallback for a slot we
-        /// hold no pattern for.</summary>
+        /// The four built-in sweeps get their fixed direction name. The five
+        /// slots get the name of the pattern in the slot, because "CUSTOM 3"
+        /// says nothing to the user who named it. The factory label is the
+        /// fallback for a slot we hold no pattern for.</summary>
         private string RevPatternLabel(int effect)
         {
             if (effect >= 5 && effect <= 9)
@@ -1233,24 +1224,14 @@ namespace TrueforceForAll.Plugin
             return effect >= 0 && effect < RevPatternNames.Length ? RevPatternNames[effect] : "";
         }
 
-        /// <summary>Step the wheel's rev-light pattern from a bound control,
-        /// so a rim button switches patterns without leaving the wheel. Same
-        /// semantics as the dropdown pick: sets the wheelbase's selection,
-        /// exactly like the base's own menu. Mirrors CycleOledScreen.</summary>
-        /// <summary>One stop on the unified cycle: either one of the wheel's own
-        /// effects, or one pattern from the library showing through the lent
-        /// slot.</summary>
         /// <summary>Where the cycle last landed, so it can find itself again
         /// when the wheel cannot be read. Not persisted: a session that starts
         /// cold asks the wheel, which is the right answer when it works.</summary>
         private string _lastCycleKey;
 
-        /// <summary>What is physically lit on the wheel, as ONE answer.
-        ///
-        /// Three flags used to answer this between them and nothing owned the
-        /// result, which is how a car with no published data came to keep the
-        /// previous car's colors. Derived in one place now so every reader
-        /// agrees.</summary>
+        /// <summary>What is physically lit on the wheel, as ONE answer, derived
+        /// in one place so every reader agrees. Why three flags could not:
+        /// see LightShowing in LightCycle.cs.</summary>
         private LightShowing WhatIsShowing
             => LightCycle.Showing(AutoColorsShowing, HasExplicitCarLightChoice(),
                                   LibraryPatternShowing);
@@ -1259,13 +1240,22 @@ namespace TrueforceForAll.Plugin
         /// built by LightCycle, which is pure and tested; this only gathers what
         /// the wheel currently looks like.</summary>
         private System.Collections.Generic.List<LightCycleStop> BuildLightCycle()
-            => LightCycle.Build(AutoCarColorsAvailable(), StageSlot(), SlotProgrammedMap(),
-                                LightPatterns.Patterns, WheelLedChannel.CustomSlotCount,
-                                RevPatternLabel);
+        {
+            // No stage means the slots would not read, so there is nowhere to
+            // put a library pattern and no way to know what the wheel holds.
+            // An empty running order is what makes the caller fall back to the
+            // plain effect cycle, which is exactly the right answer here.
+            int stage = StageSlot();
+            if (stage == NoStageSlot)
+                return new System.Collections.Generic.List<LightCycleStop>();
+            return LightCycle.Build(AutoCarColorsAvailable(), stage, SlotProgrammedMap(),
+                                    LightPatterns.Patterns, WheelLedChannel.CustomSlotCount,
+                                    RevPatternLabel);
+        }
 
-        /// <summary>Step one place along the unified cycle. Returns false if it
-        /// could not work out where we are, so the caller falls back to the plain
-        /// effect cycle rather than jumping somewhere arbitrary.</summary>
+        /// <summary>Step one place along the unified cycle. Returns false whenever
+        /// it cannot step (no stops, position unknown, apply failed), so the caller
+        /// falls back to the plain effect cycle rather than jumping arbitrarily.</summary>
         private bool CycleThroughEverything(int direction)
         {
             // Reading the slots and writing one both need the channel, and parked
@@ -1306,11 +1296,9 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                // Leaving the library section for something that genuinely lives
-                // on the wheel, so the stage has done its job and goes back
-                // before we switch away from it. Conditional: a backup also
-                // exists while the user edits one of their OWN slots, and
-                // releasing that would undo the edit they just made.
+                // Leaving the library for something that lives on the wheel, so
+                // the lent slot goes back. Conditional: a backup also exists
+                // while the user edits their OWN slot, and releasing undoes it.
                 if (LibraryPatternShowing) ReleaseBorrowedSlot();
                 // idle: show the pick, same as the dropdown
                 PickRevLightPattern(next.Effect, previewAfter: true);
@@ -1323,6 +1311,10 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        /// <summary>Step the wheel's rev-light pattern from a bound control,
+        /// so a rim button switches patterns without leaving the wheel. Same
+        /// semantics as the dropdown pick: sets the wheelbase's selection,
+        /// exactly like the base's own menu. Mirrors CycleOledScreen.</summary>
         public void CycleRevLightPattern(int direction)
         {
             if (_rpmLeds == null) return;
@@ -1333,13 +1325,11 @@ namespace TrueforceForAll.Plugin
             if (MasterMode == TrueforceMasterMode.Off) return;
 
             // One continuous walk through everything the wheel can show, in the
-            // order the wheel itself lists them: the four built-in sweeps, then
-            // the five custom slots. The difference is that the LENT slot expands
-            // into the whole library instead of being one stop, so cycling runs
-            // built-ins, CUSTOM 1, CUSTOM 2, then every pattern in the folder,
-            // then CUSTOM 4, CUSTOM 5, and round again. The wheel's five slots
-            // stop being a limit without the user having to think about where
-            // one list ends and another begins.
+            // order LightCycle.Build lays out: the car's own colors when it has
+            // them, the four built-in sweeps, the custom slots that actually
+            // hold something, then the whole library through the lent slot
+            // (whichever StageSlot picked). The wheel's five slots stop being a
+            // limit without the user having to think about it.
             // The unlock check MUST come first, and not only for the obvious
             // reason. Reading LightPatterns builds the library on first touch and
             // writes light-patterns.json, so even asking whether it has any
@@ -1377,6 +1367,9 @@ namespace TrueforceForAll.Plugin
                 $"[TF4ALL] rev-light pattern -> {next} ({label})");
         }
 
+        /// <summary>Step the wheel screen through the ready-made arrangements
+        /// and the custom one, wrapping at the end. Bound to a button this is
+        /// the only way to change screens without leaving the car.</summary>
         public void CycleOledScreen(int direction)
         {
             if (Settings == null) return;
@@ -1396,16 +1389,18 @@ namespace TrueforceForAll.Plugin
             SimHub.Logging.Current.Info($"[TF4ALL] OLED screen -> {next}");
         }
 
+        /// <summary>Nudge master gain by <paramref name="delta"/>, clamped to the
+        /// slider's [0, 2] range. Applies live (mixer + Settings), persists, and
+        /// raises MasterGainChangedExternally. Backs the bindable Controls-tab
+        /// "master gain +/-" actions.</summary>
         public void NudgeMasterGain(float delta)
         {
             float cur = MasterGain;
             float next = cur + delta;
             if (next < MasterGainMin) next = MasterGainMin;
             if (next > MasterGainMax) next = MasterGainMax;
-            // Log even when the value is already at the rail so the
-            // user can confirm the bound action actually fired - the
-            // silent no-op when next==cur was indistinguishable from
-            // "the binding never reached us."
+            // Log even at the rail: a silent no-op is indistinguishable from a
+            // binding that never reached us.
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] NudgeMasterGain delta={delta:+0.00;-0.00;0.00} "
                 + $"cur={cur:F2} -> next={next:F2}"
@@ -1416,14 +1411,12 @@ namespace TrueforceForAll.Plugin
             try { MasterGainChangedExternally?.Invoke(); } catch { }
         }
 
-        // Current effective audio-capture gain (active car override if any, else
-        // the global setting). Read by the home Feedback tile to mirror the
-        // settings panel's Audio "Gain" slider.
+        // Current effective audio-capture gain: active car override if any, else
+        // the global setting. Mirrors the settings panel's Audio "Gain" slider.
         public float ActiveAudioGain => ActiveAudio?.Gain ?? 0f;
 
-        // Apply an audio-capture gain live (settings object + running _audio
-        // source) without persisting; the caller debounces the disk write. Mirrors
-        // the settings panel's AudioGainSlider path (ActiveAudio + apply).
+        // Apply an audio-capture gain live without persisting; the caller
+        // debounces the disk write. Mirrors the panel's AudioGainSlider path.
         public void SetActiveAudioGainLive(float v)
         {
             var a = ActiveAudio;
@@ -1433,7 +1426,7 @@ namespace TrueforceForAll.Plugin
         }
 
         // Whether audio haptics (the loopback-capture layer) are enabled for the
-        // active settings. Read + toggled by the home Feedback tile's audio button.
+        // active settings. Read + toggled by the Feedback tile and the dash remote.
         public bool ActiveAudioEnabled => ActiveAudio?.Enabled ?? false;
 
         public void SetActiveAudioEnabledLive(bool on)
@@ -1444,9 +1437,9 @@ namespace TrueforceForAll.Plugin
             ApplyAudioCaptureSettings(a);
         }
 
-        // Persisted opt-in for the home-screen Feedback gain tile. Applies live
-        // to the injector so the tile appears / disappears without a SimHub
-        // restart.
+        // Persisted show/hide for the home-screen Feedback gain tile: ON by
+        // default, so opt-out. Applies live to the injector so the tile appears
+        // / disappears without a SimHub restart.
         public void SetShowFeedbackBox(bool on)
         {
             if (Settings != null) Settings.ShowFeedbackBox = on;
@@ -1456,47 +1449,45 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>The master switch as the USER set it. This never moves on a
         /// game change: the per-game memory demotes what we do, not what they
-        /// chose. Defaults to Full before settings load, which is what the bool
+        /// chose. Defaults to Normal before settings load, which is what the bool
         /// this replaced defaulted to.</summary>
         public TrueforceMasterMode StoredMasterMode
             => Settings?.MasterMode ?? TrueforceMasterMode.Normal;
 
         /// <summary>What we may actually do right now: the stored choice, demoted
-        /// to Off when the user has switched us off for the game that is running.
-        /// Latched in a volatile rather than computed on demand, because the 1 kHz
-        /// producer reads it every pass and walking the per-game dictionary there
-        /// would both cost and race a settings write.</summary>
+        /// by the per-game memory (to Off) and by this session's native-stream watch
+        /// (to Lightsync only). Latched in a volatile rather than computed on demand,
+        /// because the 1 kHz producer reads it every pass and walking the per-game
+        /// dictionary there would both cost and race a settings write.</summary>
         public TrueforceMasterMode MasterMode => (TrueforceMasterMode)_effectiveMode;
         private volatile int _effectiveMode = (int)TrueforceMasterMode.Normal;
 
-        /// <summary>True only in the mode that runs the force layer. Kept under the
-        /// name every existing consumer already reads, and kept meaning exactly what
-        /// it meant before a third state existed: Lightsync-only and Off both read
-        /// as "not running", which is the safe answer for all of them.</summary>
+        /// <summary>True only in the mode that runs the force layer, and it still
+        /// means what it meant before a third state existed: Lightsync only and Off
+        /// both read as "not running", the safe answer for every consumer.</summary>
         public bool PluginEnabled => MasterMode == TrueforceMasterMode.Normal;
 
-        /// <summary>Resolve the stored mode against the per-game memory.
+        /// <summary>Resolve the stored mode against the per-game memory, then
+        /// against this session's native-stream demotion.
         ///
-        /// The per-game switch can only DEMOTE. It has only ever answered one
-        /// question, whether the force layer runs in this game, so it can turn Full
-        /// into Off for a game and nothing else. Off and lights-only are global
-        /// stances the user typed in, and letting a stored map promote either of
-        /// them back to Full would mean the master switch moved on its own: pick
-        /// Off at the desk, start a game you had once enabled, and the whole force
-        /// path comes back up with no action from you.
+        /// A global Off is a hard stop no per-game entry may lift: pick Off at
+        /// the desk, start a game you had once enabled, and the force path must
+        /// stay down. A global Lightsync only is a stance rather than a stop, so
+        /// a per-game entry IS allowed to name Normal for that one game
+        /// (ResolveChosenMode owns that resolution).
         ///
-        /// The old bool could not express a global Off (it WAS the per-game state,
-        /// pushed from this map on every game change), which is why the migration
-        /// starts everyone on Full and lets the map keep doing the demoting.</summary>
+        /// The old bool could not express a global Off (it WAS the per-game
+        /// state, pushed from this map on every game change), which is why the
+        /// migration starts everyone on Normal and lets the map keep
+        /// demoting.</summary>
         private TrueforceMasterMode ResolveEffectiveMode()
         {
             var chosen = ResolveChosenMode();
-            // A game found streaming its own Trueforce beside ours demotes Normal
-            // to Lightsync only for the rest of that game session (see
+            // A game streaming its own Trueforce beside ours demotes Normal to
+            // Lightsync only for the rest of that game session (see
             // UpdateNativeTrueforceStreamWatch). Applied here, over the choice, so
-            // every path that lands on the effective mode (the combo, the pill,
-            // the pipeline reconcile) agrees; never written into the per-game
-            // map, which records the user's choices only.
+            // every reader of the effective mode agrees; never written into the
+            // per-game map, which records the user's choices only.
             if (chosen == TrueforceMasterMode.Normal && _nativeStreamDemoted)
                 return TrueforceMasterMode.LightsyncOnly;
             return chosen;
@@ -1511,26 +1502,30 @@ namespace TrueforceForAll.Plugin
             // choice that means "not anywhere", and a per-game entry left over
             // from before must not quietly bring the plugin back up.
             if (stored == TrueforceMasterMode.Off) return TrueforceMasterMode.Off;
-            // A global LIGHTSYNC ONLY is a stance, not a stop, so a per-game
-            // choice is allowed to be more specific than it. Returning it here
-            // unconditionally is what made the two impossible to hold at once:
-            // any in-game choice had to promote the global to Normal first, which
+            // A global LIGHTSYNC ONLY is a stance, not a stop, so a per-game choice
+            // is allowed to be more specific than it: it is honoured below, after
+            // the per-game map has had its say, never here. Returning it here
+            // unconditionally is what made the two impossible to hold at once: any
+            // in-game choice had to promote the global to Normal first, which
             // silently switched the force layer on in every other title.
 
-            // Offline CAR editing pins _activeGame to the car being edited, which is
-            // not a game that is running. Without this, opening an ACC or iRacing car
-            // in the editor at the desk makes the next resolve (a wheel re-attach, a
-            // sync pull) read that game's stored "off" and tear the whole force
-            // pipeline down while nobody is driving.
-            //
-            // Deliberately NOT IsOfflineEditing, which is preset editing: that one
-            // does not pin _activeGame and does not stop the game-change block, so
-            // exempting it would let a real game change resolve to Full and stream
-            // into a native-Trueforce title that had just auto-disabled itself.
+            // Offline CAR editing pins _activeGame to the car being edited, which
+            // is not a running game: without this, the next resolve (a wheel
+            // re-attach, a sync pull) reads that game's stored "off" and tears the
+            // force pipeline down while nobody is driving. NOT IsOfflineEditing
+            // (preset editing): that one does not pin _activeGame or stop the
+            // game-change block, so exempting it would let a real game change
+            // resolve to Normal and stream into a native-Trueforce title that had
+            // just auto-disabled itself.
             if (IsOfflineEditingCar)
                 return stored == TrueforceMasterMode.LightsyncOnly ? stored : TrueforceMasterMode.Normal;
 
             string g = _activeGame;
+            // Init to the first tick: _activeGame is empty but a game can
+            // already be on screen, and resolving to the global default there
+            // is what let a native-Trueforce title get our stream on top of
+            // its own. See _startupGameName.
+            if (string.IsNullOrEmpty(g)) g = _startupGameName;
             if (string.IsNullOrEmpty(g)) return stored;
             // The mode map is authoritative. The bool map is still read behind it
             // for a settings file that reached this build without the migration
@@ -1545,18 +1540,34 @@ namespace TrueforceForAll.Plugin
             // There we land on LIGHTSYNC ONLY rather than off: our ep3 stream would
             // fight the game's Trueforce, but the wheel's patterns are ours to set
             // either way, so standing all the way back gave up the one thing that
-            // costs the game nothing. An explicit choice still wins, because it
-            // writes the per-game map and the branch above reads that first.
+            // costs the game nothing.
             return IsNativeTrueforceGame(g)
                 ? TrueforceMasterMode.LightsyncOnly
                 : TrueforceMasterMode.Normal;
+        }
+
+        /// <summary>The game SimHub has running right now, or null. Asked at
+        /// Init, where no GameData has arrived yet: GameProcessDetected is the
+        /// process-level fact, and GameName without it is the last profile the
+        /// user selected, which can name a game that closed days ago.</summary>
+        private string ReadRunningGameFromSimHub()
+        {
+            try
+            {
+                var pm = PluginManager;
+                if (pm == null || pm.GameManager == null) return null;
+                if (!pm.GameManager.GameProcessDetected) return null;
+                return string.IsNullOrEmpty(pm.GameName) ? null : pm.GameName;
+            }
+            catch { return null; }   // never let a host-API shape change block Init
         }
 
         /// <summary>Land on whatever mode the stored choice plus the active game now
         /// resolve to: latch it, mirror it into the retired bool, put the ep3 device
         /// where the new mode says it belongs, and hand the wheel's lights back if we
         /// are leaving. Every path that changes the stored mode, the per-game memory
-        /// or the active game ends here, so one place decides what the wheel does.</summary>
+        /// or the active game ends here, except the ones that replace Settings
+        /// wholesale, which reconcile through SyncDeviceToPluginEnabled.</summary>
         private void ApplyEffectiveMode(string context)
         {
             if (Settings == null) return;
@@ -1573,12 +1584,12 @@ namespace TrueforceForAll.Plugin
             bool effective;
             lock (_enableDeviceLock)
             {
-                // Act on the CURRENT flag, not the captured argument: two
-                // opposite toggles racing (UI click vs the per-game auto
-                // toggle on the data thread) both reach here, and acting on
-                // the re-read value makes them converge on whichever settings
-                // write landed last instead of leaving the device matching
-                // the loser.
+                // Re-read the flag inside the lock rather than trusting the
+                // value resolved above: two opposite toggles racing (UI click
+                // vs the per-game auto toggle on the data thread) both reach
+                // here, and acting on the re-read value makes them converge on
+                // whichever settings write landed last instead of leaving the
+                // device matching the loser.
                 effective = Settings.PluginEnabled;
                 if (!effective)
                 {
@@ -1598,14 +1609,13 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            // Bring the rest of the force pipeline (capture, telemetry, the helper
-            // child, the device itself) up or down to match, so a mode switch takes
-            // effect now rather than at the next SimHub restart.
+            // Capture, telemetry, the helper child and the device follow the mode,
+            // live, so a switch takes effect now and not at the next restart.
             ReconcileFullPipeline(mode);
 
             // Lights are a separate pipe on a separate endpoint, so they need their
-            // own reconcile: leaving Off has to give borrowed slots back, and the
-            // device transition above says nothing about them.
+            // own reconcile: arriving at Off is what gives borrowed slots back, and
+            // the device transition above says nothing about them.
             ReconcileLightSubsystems(was, mode, context);
 
             SimHub.Logging.Current.Info(
@@ -1615,17 +1625,13 @@ namespace TrueforceForAll.Plugin
         }
 
         // ---- iRacing setup notice -------------------------------------------
-        // Lives on the PLUGIN, not the settings panel, because it has to fire the
-        // moment iRacing is seen. Owned by the panel it would only appear once
-        // someone opened the panel, which is exactly the wrong order: the point is
-        // to tell them how to get the full experience before they conclude the
-        // wheel is dead. Shows again on each iRacing session until dismissed.
-        /// <summary>The iRacing first-launch notice.
-        ///
-        /// A property rather than a const because one clause depends on the wheel:
-        /// "sets the wheel's pattern to match the car you are in" is true of a wheel
-        /// with selectable patterns and false of one whose strip is a fixed look,
-        /// and this notice is shown to both. Fails OPEN on an undetected wheel.</summary>
+        // Lives on the PLUGIN, not the settings panel: it has to fire the moment
+        // iRacing is seen, not the next time someone opens the panel. Shows again
+        // on each iRacing session until dismissed.
+        /// <summary>The iRacing first-launch notice. A property, not a const,
+        /// because the "sets the wheel's pattern to match the car you are in"
+        /// clause is true only of a wheel with selectable patterns, and the notice
+        /// is shown to both kinds. Fails OPEN on an undetected wheel.</summary>
         private string IracingNoticeBody =>
             "Set up once, this turns on the plugin's effects, rev lights and wheel screen in iRacing. The force stays iRacing's own: the sim keeps computing it, and the plugin delivers it to the wheel.\n\n" +
             (!WheelDetected || WheelHasSelectableLightPattern
@@ -1650,6 +1656,13 @@ namespace TrueforceForAll.Plugin
             _lastGameSeenForNotice = game;
             if (IsIRacingReshapeGame(game)) ShowIracingNotice(null);
             else _iracingNoticeShownThisSession = false;
+            // RaceRoom's own, on the same edge and with the same reset on the way
+            // out, so a later RaceRoom session shows it again until it is dismissed.
+            if (IsR3EGame(game)) ShowR3ENotice(null);
+            else _r3eNoticeShownThisSession = false;
+            // Le Mans Ultimate's, the same way.
+            if (IsLmuGame(game)) ShowLmuNotice(null);
+            else _lmuNoticeShownThisSession = false;
         }
 
         /// <summary>Show it. Safe from any thread; a null owner centres on screen,
@@ -1692,8 +1705,162 @@ namespace TrueforceForAll.Plugin
                     }
                 }
                 catch (Exception ex)
-                { SimHub.Logging.Current.Info("[TF4ALL] iRacing notice failed: " + ex.Message); }
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] iRacing notice failed: " + ex.Message);
+                    _iracingNoticeShownThisSession = false;
+                }
                 finally { _iracingNoticeShowing = false; }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        /// <summary>The RaceRoom equivalent of the iRacing notice. Two steps rather
+        /// than four: RaceRoom needs no config-file edit and no second switch, so
+        /// the whole of it is "turn the game's force feedback intensity down, tick
+        /// ours". Deliberately does NOT teach the strength learner or the invert;
+        /// those are in the guide, and a first-launch box that lists everything is
+        /// a box nobody reads.</summary>
+        private string R3ENoticeBody =>
+            "To let the plugin carry RaceRoom's force feedback, and free your rev lights and the wheel's screen, two steps, once:\n\n" +
+            "1. In RaceRoom, disable force feedback. The intensity slider does not matter.\n" +
+            "2. On the FFB tab, tick \"Take over force feedback for RaceRoom\".\n\n" +
+            "Start SimHub before RaceRoom, or the lights and screen may not come on.\n\n" +
+            "Until then, RaceRoom works as it did before, through the USB capture.";
+
+        private volatile bool _r3eNoticeShowing;
+        private volatile bool _r3eNoticeShownThisSession;
+
+        /// <summary>Show the RaceRoom setup notice. Same contract as the iRacing
+        /// one: once per RaceRoom session until dismissed for good, safe from any
+        /// thread, and <paramref name="force"/> for someone who asked for it.
+        ///
+        /// Skipped once the takeover is already on: they have done the setup, and
+        /// a first-launch box that keeps appearing after you have followed it is
+        /// just noise.</summary>
+        public void ShowR3ENotice(System.Windows.Window owner, bool force = false)
+        {
+            if (Settings == null) return;
+            if (!force && Settings.R3ETrueforceNoticeDismissed) return;
+            if (!force && Settings.R3ESharedMemoryFfb) return;
+            if (_r3eNoticeShowing) return;
+            if (!force && _r3eNoticeShownThisSession) return;
+
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            _r3eNoticeShownThisSession = true;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_r3eNoticeShowing) return;
+                if (Settings == null) return;
+                if (!force && Settings.R3ETrueforceNoticeDismissed) return;
+                _r3eNoticeShowing = true;
+                try
+                {
+                    // A text link to the RaceRoom guide, the same shape as the
+                    // bridge-install dialog's link, in place of a sentence
+                    // saying where the guide lives.
+                    var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
+                    var link = new System.Windows.Documents.Hyperlink(
+                        new System.Windows.Documents.Run("Open the RaceRoom guide"))
+                    {
+                        Foreground = new System.Windows.Media.SolidColorBrush(
+                            System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                    };
+                    link.Click += (s2, e2) => OpenGuideFromAnywhere("raceroom-setup");
+                    guideLink.Inlines.Add(link);
+                    bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
+                        "Using Trueforce For All in RaceRoom",
+                        R3ENoticeBody,
+                        DialogKind.Info,
+                        okLabel: "Got it, don't show again",
+                        cancelLabel: "Remind me later",
+                        goldOk: true,
+                        extraContent: guideLink);
+                    if (r == true)
+                    {
+                        Settings.R3ETrueforceNoticeDismissed = true;
+                        try { PersistSettings(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] RaceRoom notice failed: " + ex.Message);
+                    _r3eNoticeShownThisSession = false;   // it was not shown; the next edge may try again
+                }
+                finally { _r3eNoticeShowing = false; }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        /// <summary>The Le Mans Ultimate setup notice: the RaceRoom one's shape
+        /// with the sim's own Trueforce as the first step, since the game
+        /// streams it itself and the plugin stands aside entirely until that is
+        /// off. The game calls it "Vendor Specific Force Feedback". Its force
+        /// feedback strength can stay: the takeover assigns over the captured
+        /// force and the wheel drops the game's slots while our stream runs
+        /// (owner's rig, 2026-09-20). "Use LEDs" is the game driving the
+        /// wheel's lights itself; off, ours and the screen can.</summary>
+        private string LmuNoticeBody =>
+            "To let the plugin carry Le Mans Ultimate's force feedback, and free your rev lights and the wheel's screen, three steps, once:\n\n" +
+            "1. In the game, Settings > Controls > Force Feedback: set Vendor Specific Force Feedback to Off. That is the game's own Trueforce, and the plugin steps aside while it is on. The force feedback strength and effects can stay as they are.\n" +
+            "2. Settings > Wheel and Pedals > Calibration: switch Use LEDs off, so the game stops driving the wheel's lights.\n" +
+            "3. On the FFB tab, tick \"Take over force feedback for Le Mans Ultimate\".\n\n" +
+            "Start SimHub before the game, or the lights and screen may not come on.\n\n" +
+            "Until then, with Vendor Specific Force Feedback off, Le Mans Ultimate works through the USB capture.";
+
+        private volatile bool _lmuNoticeShowing;
+        private volatile bool _lmuNoticeShownThisSession;
+
+        /// <summary>Show the Le Mans Ultimate setup notice. Same contract as the
+        /// RaceRoom one: once per session until dismissed for good, safe from
+        /// any thread, skipped once the handover is on, and
+        /// <paramref name="force"/> for someone who asked for it.</summary>
+        public void ShowLmuNotice(System.Windows.Window owner, bool force = false)
+        {
+            if (Settings == null) return;
+            if (!force && Settings.LmuTrueforceNoticeDismissed) return;
+            if (!force && Settings.LmuSharedMemoryFfb) return;
+            if (_lmuNoticeShowing) return;
+            if (!force && _lmuNoticeShownThisSession) return;
+
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            _lmuNoticeShownThisSession = true;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_lmuNoticeShowing) return;
+                if (Settings == null) return;
+                if (!force && Settings.LmuTrueforceNoticeDismissed) return;
+                _lmuNoticeShowing = true;
+                try
+                {
+                    var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
+                    var link = new System.Windows.Documents.Hyperlink(
+                        new System.Windows.Documents.Run("Open the Le Mans Ultimate guide"))
+                    {
+                        Foreground = new System.Windows.Media.SolidColorBrush(
+                            System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
+                    };
+                    link.Click += (s2, e2) => OpenGuideFromAnywhere("lmu-setup");
+                    guideLink.Inlines.Add(link);
+                    bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
+                        "Using Trueforce For All in Le Mans Ultimate",
+                        LmuNoticeBody,
+                        DialogKind.Info,
+                        okLabel: "Got it, don't show again",
+                        cancelLabel: "Remind me later",
+                        goldOk: true,
+                        extraContent: guideLink);
+                    if (r == true)
+                    {
+                        Settings.LmuTrueforceNoticeDismissed = true;
+                        try { PersistSettings(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] Le Mans Ultimate notice failed: " + ex.Message);
+                    _lmuNoticeShownThisSession = false;   // it was not shown; the next edge may try again
+                }
+                finally { _lmuNoticeShowing = false; }
             }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
@@ -1713,20 +1880,16 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Rebuild the per-game MODE map from the per-game BOOL map,
-        /// for an envelope or profile written before GameModes existed.
+        /// for an envelope or profile written before GameModes existed (every
+        /// backup that exists today, and every auto-sync pull from an old build).
         ///
-        /// Every backup that exists today is such an envelope, and so is every
-        /// auto-sync pull from a PC still on the old build. ApplySettings only
-        /// writes the keys the envelope carries, so without this the restored
-        /// per-game choices land in GameEnabled while THIS PC's GameModes stays
-        /// untouched and keeps governing, because the resolver reads it first. The
-        /// restore reports success and changes nothing the user asked it to change,
-        /// and the two maps disagree from then on.
-        ///
-        /// Replaces the map wholesale rather than merging: a restore means "make
-        /// this PC look like that backup", so a per-game choice that is not in the
-        /// backup is not a choice this PC should keep. Uses the same reading as the
-        /// upgrade migration, so a stored false becomes Lightsync only.</summary>
+        /// ApplySettings writes only the keys the envelope carries, so without
+        /// this the restored choices land in GameEnabled while THIS PC's
+        /// GameModes stays untouched and keeps governing, because the resolver
+        /// reads it first: the restore reports success and changes nothing.
+        /// Replaces the map wholesale rather than merging (a restore means "make
+        /// this PC look like that backup"), reading a stored false as Lightsync
+        /// only, the same as the upgrade migration.</summary>
         private void RebuildGameModesFromEnabled(string context)
         {
             if (Settings == null) return;
@@ -1749,16 +1912,13 @@ namespace TrueforceForAll.Plugin
         public void SetMasterMode(TrueforceMasterMode mode, bool persistForActiveGame = true)
         {
             if (Settings == null) return;
-            // Remember what they were on before going full, so a two-state control
-            // (the home Feedback tile, a wheel button) can put them back where they
-            // were instead of dropping them to Off.
-            //
-            // The EFFECTIVE mode, not the stored one. Since the per-game map holds
-            // the real answer while the stored choice sits on Normal, reading the
-            // stored value left this latch unarmed for exactly the users it exists
-            // for: someone on lights-only in THIS game, and anyone in a native
-            // Trueforce title that resolves to lights-only by default. Both were
-            // then dropped to Off by a tile that offers no way back.
+            // Remember what they were on before going full, so a two-state
+            // control (the home Feedback tile, a wheel button) can put them back
+            // instead of dropping them to Off. The EFFECTIVE mode, not the stored
+            // one: while the per-game map holds the real answer the stored choice
+            // sits on Normal, which left this latch unarmed for exactly the users
+            // it exists for (lights-only in this game, or a native Trueforce title
+            // that defaults there).
             var effectiveBefore = ResolveEffectiveMode();
             if (mode == TrueforceMasterMode.Normal && effectiveBefore != TrueforceMasterMode.Normal)
                 _preFullMode = effectiveBefore;
@@ -1767,51 +1927,41 @@ namespace TrueforceForAll.Plugin
             // Trueforce stream: Normal means "try again" (the watch re-runs and
             // demotes again if the game still streams), and either other mode is
             // now the user's own. A fresh try is a fresh episode for the notice
-            // too: picking Normal and being dropped again deserves the popup
-            // again (owner, 2026-08-30; it stayed silent because the latch only
-            // reset on game change). The per-game "don't show" still wins.
+            // too: picking Normal and being dropped again deserves the popup again
+            // (owner, 2026-08-30). The per-game "don't show" still wins.
             _nativeStreamDemoted = false;
             _standDownNoticeShownThisDemotion = false;
+            // "Try again" includes the probe that runs ahead of the watch: the
+            // user picking Normal here has usually just switched the game's own
+            // Trueforce off, which is exactly the question the hold answers.
+            _nativeProbeSettled = false;
 
             bool inGame = persistForActiveGame && !string.IsNullOrEmpty(_activeGame);
 
-            // Choosing OFF while a game is running means "not in this game", which is
-            // what the old on/off switch meant and what people expect: they are
-            // sitting in a title, they switch us off, they do not intend to lose the
-            // plugin in every other title too. So it stamps the per-game memory and
-            // leaves the stored choice on Full, which the resolver then demotes for
-            // this game alone. A global off is still available, by choosing Off with
-            // no game running, and is rarely what anyone wants.
+            // A mode chosen while a game is running is about THAT game only: it
+            // stamps the per-game memory below and leaves the stored global
+            // stance exactly as it was. That is what the old on/off switch meant
+            // (switch us off in this title, keep us in every other), and it now
+            // holds for Lightsync only too: wanting the lights without the force
+            // in one title should not cost the force everywhere else. A GLOBAL
+            // stance is set by choosing it with no game running.
             //
-            // Only from Full, though. Coming from Lightsync-only there is no force
-            // layer for the per-game switch to talk about, so Off has to mean off.
-            // In a game, a mode choice is about THAT game, and the global stance is
-            // left exactly as it was. It was already true of Off ("not in this
-            // title"), and now that the per-game memory can hold a mode it is true
-            // of Lightsync only as well: wanting the lights without the force in one
-            // title should not cost the force everywhere else.
-            //
-            // Crucially the global is NOT promoted to Normal on the way. Doing that
-            // turned "lights only everywhere" into "normal everywhere, except this
-            // one game" the first time somebody tapped a two-state control inside a
-            // title, and nothing ever put it back. A global stance is still set the
-            // way it always was: choose it with no game running.
+            // Crucially the global is NOT promoted to Normal on the way. Doing
+            // that turned "lights only everywhere" into "normal everywhere,
+            // except this one game" the first time somebody tapped a two-state
+            // control inside a title, and nothing ever put it back.
             if (!inGame) Settings.MasterMode = mode;
 
-            // The per-game memory answers one question only: does the force layer
-            // run in THIS game. Lightsync-only is not an answer to it, so choosing
-            // it leaves the map alone. Stamping every game the user visited with
-            // "false" would silently switch the force layer off everywhere the
-            // moment they went back to full.
+            // The per-game map takes the choice exactly as made, Lightsync only
+            // included: in a game, the answer is about THIS game.
             if (inGame)
             {
                 if (Settings.GameModes == null)
                     Settings.GameModes = new Dictionary<string, TrueforceMasterMode>();
                 Settings.GameModes[_activeGame] = mode;
-                // Kept in step so the bool map stays a truthful answer to the only
-                // question it can answer, and so an older build reads something
-                // sane. Lightsync only lands as false there, which is what that
-                // build would have done with it anyway.
+                // Kept in step so an older build reads something sane: Lightsync
+                // only lands as false there, which is what that build would have
+                // done with it anyway.
                 Settings.GameEnabled[_activeGame] = mode == TrueforceMasterMode.Normal;
             }
 
@@ -1826,13 +1976,12 @@ namespace TrueforceForAll.Plugin
             PersistSettingsCore();
         }
 
-        /// <summary>Toggle the master enable. When disabled, sends the protocol
-        /// Stop command so the wheel returns to its native FFB / Trueforce
-        /// path (e.g. iRacing's own Trueforce takes over) and the producer
-        /// loop skips rendering. When re-enabled, sends Start and resumes.
-        /// Kept for the callers that predate the third state; on means Full and
-        /// off means Off, so neither can land a user in Lightsync-only by
-        /// accident.</summary>
+        /// <summary>Toggle the master enable. Kept for the callers that predate
+        /// the third state; on means Normal and off means Off, so neither can land
+        /// a user in Lightsync-only by accident. The device work happens in
+        /// ApplyEffectiveMode: Stop/Pause hands the wheel back to its native FFB
+        /// path (except while demoted for the game's own stream), Start/Resume
+        /// brings it back.</summary>
         public void SetPluginEnabled(bool enabled, bool persistForActiveGame = true)
             => SetMasterMode(enabled ? TrueforceMasterMode.Normal : TrueforceMasterMode.Off,
                              persistForActiveGame);
@@ -1843,27 +1992,21 @@ namespace TrueforceForAll.Plugin
         private TrueforceMasterMode _preFullMode = TrueforceMasterMode.Off;
 
         /// <summary>The on/off answer for a two-state control (SimHub's home
-        /// Feedback tile, a bound wheel button). Off returns the user to whatever
-        /// they were on BEFORE they switched to full, so a lights-only user who
-        /// flicks this tile twice ends up back on lights only rather than being
-        /// quietly dropped to off with no way back from that tile.</summary>
+        /// Feedback tile, a bound wheel button). Off goes to ToggleOffMode, which
+        /// puts a lights-only user back on lights only rather than quietly
+        /// dropping them to off with no way back from that tile.</summary>
         public void SetMasterEnabledFromToggle(bool on)
             => SetMasterMode(on ? TrueforceMasterMode.Normal : ToggleOffMode());
 
         /// <summary>Where a two-state control lands when it is switched off.
         ///
-        /// _preFullMode alone was not enough, and failed in exactly the case it
-        /// was written for. It arms only on a transition TO Normal within this
-        /// session, so someone sitting in a native Trueforce title that resolved
-        /// to Lightsync only ON ITS OWN never armed it: the latch still held its
-        /// compile-time default of Off, and one tap of the tile wrote Off into
-        /// that game's entry, permanently, from a tile with no way back.
-        ///
-        /// The rule now is that this control never puts a game BELOW where it was
-        /// already sitting. Already non-Normal means the switch is a no-op. In a
+        /// The rule is that this control never puts a game BELOW where it was
+        /// already sitting: already non-Normal leaves the mode where it is. In a
         /// native Trueforce title, off means Lightsync only, which is that
         /// title's own resting mode and what the user had. Everywhere else off
-        /// still means Off.</summary>
+        /// still means Off. _preFullMode alone cannot carry this: it arms only on
+        /// a transition TO Normal in this session, so a title that resolved to
+        /// Lightsync only on its own leaves it at its compile-time Off.</summary>
         private TrueforceMasterMode ToggleOffMode()
         {
             var now = ResolveEffectiveMode();
@@ -1876,19 +2019,20 @@ namespace TrueforceForAll.Plugin
         }
 
 
-        // Serializes the device Stop/Pause vs Resume/Start decision between the
-        // live toggle (SetPluginEnabled) and the transitionless reconciler
-        // below, so an enable racing a bring-up/restore reconcile can't be
-        // swallowed by a stale read of the flag (both sides re-read or act on
-        // the latest Settings.PluginEnabled inside the lock, and the loser of
-        // the race runs second and wins). Only ever wraps non-blocking flag
-        // flips; never taken with another lock held.
+        // Serializes the device Stop/Pause vs Resume/Start decision across every
+        // holder (ApplyEffectiveMode, the transitionless reconciler below, the
+        // StopStreamOnPause gate, the native-test suspend/resume and the
+        // stand-down), so an enable racing a bring-up/restore reconcile can't be
+        // swallowed by a stale read of the flag (both sides re-read or act on the
+        // latest Settings.PluginEnabled inside the lock, and the loser of the race
+        // runs second and wins). Only ever wraps non-blocking flag flips; never
+        // taken with another lock held.
         private readonly object _enableDeviceLock = new object();
 
-        /// <summary>Push Settings.PluginEnabled to the device without
-        /// requiring a transition. SetPluginEnabled covers live toggles but
-        /// early-returns when the value did not change, so every path that
-        /// lands PluginEnabled without going through it must call this:
+        /// <summary>Push the resolved mode to the device without requiring a
+        /// transition. ApplyEffectiveMode covers live changes but early-returns
+        /// when the mode did not change, so every path that lands a new mode or
+        /// replaces Settings wholesale must call this:
         /// device bring-up with the toggle already off (issue #37), backup
         /// restore / auto-sync pull, settings import, and account switch.
         /// Otherwise the device keeps its previous pause state: streaming
@@ -1925,7 +2069,8 @@ namespace TrueforceForAll.Plugin
                     dev.Pause();
                     outcome = "plugin is disabled; left Trueforce mode so the wheel stays on native FFB";
                 }
-                else if (dev.IsPaused && !_stopStreamPauseActive)
+                else if (dev.IsPaused && !_stopStreamPauseActive && !_nativeTestStreamSuspended
+                         && !_nativeProbeHold)
                 {
                     // Enabled but the device sits paused (e.g. cold start with
                     // the toggle off, then a restore/import lands "enabled").
@@ -1941,10 +2086,8 @@ namespace TrueforceForAll.Plugin
             if (outcome != null)
                 SimHub.Logging.Current.Info($"[TF4ALL] {context}: {outcome}.");
 
-            // The rest of the mode, for the same reason the device half exists: an
-            // imported or restored file can move the master switch without anyone
-            // calling SetMasterMode, and the pipeline and the lights have to follow
-            // it. Deliberately outside the dev != null guard above, because a null
+            // The mode's other half: the pipeline and the lights follow it too.
+            // Deliberately outside the dev != null guard above, because a null
             // device is the STEADY STATE of both non-full modes.
             ReconcileFullPipeline(mode);
             if (was != mode) ReconcileLightSubsystems(was, mode, context);
@@ -1964,9 +2107,37 @@ namespace TrueforceForAll.Plugin
 
         public void SetFfbSmoothMs(float v)
         {
+            // The FFB tab's Smoothing slider is game-aware: in RaceRoom it edits the
+            // per-game R3E smoothing, elsewhere the global one. Either way v is the
+            // value that applies for the active game right now, so the device takes
+            // it directly.
+            if (Settings != null)
+            {
+                if (IsR3EGame(_activeGame)) Settings.R3ESmoothingMs = v;
+                else Settings.FfbSmoothTimeConstantMs = v;
+            }
             if (_device != null) _device.FfbSmoothTimeConstantMs = v;
-            if (Settings != null) Settings.FfbSmoothTimeConstantMs = v;
         }
+
+        /// <summary>The FFB output smoothing the device should use for the active
+        /// game: RaceRoom carries its own (R3ESmoothingMs, default ~3 ms because
+        /// this wheel reads grainy there), every other game the global value.</summary>
+        private float EffectiveSmoothingMs()
+            => IsR3EGame(_activeGame)
+                ? (Settings?.R3ESmoothingMs ?? 3.0f)
+                : (Settings?.FfbSmoothTimeConstantMs ?? 0.0f);
+
+        private void ApplyEffectiveSmoothing()
+        {
+            if (_device != null) _device.FfbSmoothTimeConstantMs = EffectiveSmoothingMs();
+        }
+
+        /// <summary>The smoothing the FFB tab's slider should display: the RaceRoom
+        /// per-game value while RaceRoom is active, else the global one.</summary>
+        public float DisplayedSmoothingMs()
+            => IsR3EGame(_activeGame)
+                ? (Settings?.R3ESmoothingMs ?? 3.0f)
+                : (Settings?.FfbSmoothTimeConstantMs ?? 0.0f);
 
         public void SetFfbSpikeMaxLsbPerMs(float v)
         {
@@ -1978,6 +2149,12 @@ namespace TrueforceForAll.Plugin
         {
             if (_device != null) _device.FfbPeakSoftLimitLsb = v;
             if (Settings != null) Settings.FfbPeakSoftLimitLsb = v;
+        }
+
+        public void SetFfbSpikeTransientThresholdLsb(float v)
+        {
+            if (_device != null) _device.FfbSpikeTransientThresholdLsb = v;
+            if (Settings != null) Settings.FfbSpikeTransientThresholdLsb = v;
         }
 
         public void SetFfbSpikeTamingEnabled(bool v)
@@ -2009,13 +2186,30 @@ namespace TrueforceForAll.Plugin
         // free: rev-light/OLED gating, GameFfbExpected suppression, and the
         // StopStreamOnPause exemption.
         //
-        // Armed DYNAMICALLY, not per game: toggle on + the tap shows a
-        // playing spring + no scalar game force for a sustained window. A
-        // scalar force appearing disarms instantly (that game streams real
-        // values; pass-through must own the wheel again), which also keeps
-        // the Mode B contention warning unreachable in spring mode. Real
-        // Mode B (value 1) always wins; spring mode only arms from 0.
+        // Armed from bus dynamics: toggle on + the tap shows a playing
+        // spring + no scalar game force for a sustained window. Farming
+        // Simulator instead arms by GAME name and never disarms on a
+        // scalar (see UpdateSpringModeArming). Elsewhere a scalar disarms
+        // instantly (that game streams real values; pass-through must own
+        // the wheel again), which also keeps the Mode B contention warning
+        // unreachable. Real Mode B (value 1) wins; spring only arms from 0.
         private long _springArmCandidateSinceTicks;   // 0 = no candidate window open
+
+        // The engine's additive copy of the game's classic spring (type 0x0b
+        // under CLASSICCOND) renders zero while our own spring model owns the
+        // force. Called wherever _forceMode changes rather than only once per
+        // DataUpdate pass: a disarm that landed a pass late left the copy
+        // silent for that window with nothing replacing it, and an arm that
+        // landed a pass late left it summing beside ComputeSpringModeForce.
+        // Same reasoning as the FfbBypassTapCorrections assertion in
+        // ApplyModeBFromSettings, and the per-pass call in
+        // UpdateSpringModeArming stays as the re-attach backstop.
+        private void AssertSpringModeStandDown()
+        {
+            var tapStandDown = _ffbTap;
+            if (tapStandDown != null)
+                tapStandDown.ClassicSpringModeActive = _forceMode == ForceModeSpring;
+        }
 
         private void UpdateSpringModeArming()
         {
@@ -2030,12 +2224,25 @@ namespace TrueforceForAll.Plugin
             // minutes into a session (2026-08-08 log). Asserted every pass
             // so a recreated tap (self-heal restart) re-learns it.
             if (tap != null) tap.SyntheticFfbActive = _forceMode == ForceModeSpring;
+            // Same assertion, one layer down: while spring mode renders the
+            // game's captured spring itself, the engine's additive copy of
+            // that same spring (classic type 0x0b, CLASSICCOND) must stand
+            // down, or the wheel gets the spring twice. This pass-level call
+            // is the re-attach backstop; the arm and the disarm below assert
+            // it again on the spot, so neither edge lags by a DataUpdate.
+            AssertSpringModeStandDown();
             // The iRacing reshape authors its own sign and takes its strength
             // from its own control, so the tapped-path corrections are switched
             // off under it. Asserted every pass rather than on mode change, so a
             // device re-attach cannot leave the flag behind.
             var devTf = _device;
             if (devTf != null) devTf.FfbBypassTapCorrections = _forceMode == ForceModeIRacing;
+            // An arcade cabinet's force is authored from a decoded command, not
+            // read off the wire, so the tap's sign reconciliation does not apply
+            // to it. Asserted every pass for the same reason as the line above: a
+            // device re-attach must not leave the flag behind. The scale still
+            // applies, which is why this is not FfbBypassTapCorrections.
+            if (devTf != null) devTf.FfbBypassInvert = _telemetrySource is IArcadeForceSource;
             // Farming Simulator arms by GAME, not by bus dynamics: on every
             // wheel we have traced, FS streams no force values at all (G923:
             // parametric springs; G PRO: a constant heartbeat that only
@@ -2059,6 +2266,7 @@ namespace TrueforceForAll.Plugin
                 if (!toggleOn || tapGone || scalar)
                 {
                     _forceMode = ForceModeOff;
+                    AssertSpringModeStandDown();
                     _springArmCandidateSinceTicks = 0;
                     // Anything the tap captured while armed was IGNORED (the
                     // spring path replaces the target), so it must not be
@@ -2066,7 +2274,17 @@ namespace TrueforceForAll.Plugin
                     // was a wheel-slam: the misdecoded heartbeat scalar
                     // stayed "fresh" for up to 10 s after the game closed
                     // and pass-through drove the wheel to full lock with it.
-                    tap?.ClearLastFfbTarget();
+                    //
+                    // The SCALAR half only, not the full ClearLastFfbTarget
+                    // this used to call. The game is mid-session here, not
+                    // paused, and the full reset also wiped the decoded
+                    // effect table: the engine's additive copy of the very
+                    // spring this mode was rendering went with it, and Forza
+                    // sends its menu spring once and leaves it playing, so
+                    // the autocenter stayed silent for the rest of the
+                    // session. The pause and game-change callers keep the
+                    // full reset, where a wipe is what is wanted.
+                    tap?.ClearCapturedForceKeepingEffects();
                     SimHub.Logging.Current.Info("[TF4ALL] Spring mode disarmed"
                         + (scalar ? " (the game is streaming force values; pass-through resumes)." : "."));
                 }
@@ -2092,6 +2310,7 @@ namespace TrueforceForAll.Plugin
             _springRamp = 0f;
             _springRampPrevTicks = 0;
             _forceMode = ForceModeSpring;
+            AssertSpringModeStandDown();
             SimHub.Logging.Current.Info(fsGame
                 ? "[TF4ALL] Spring mode armed for Farming Simulator: the plugin's steering model "
                   + "replaces the game's force feedback on every wheel, rendered at the wheel's "
@@ -2116,11 +2335,11 @@ namespace TrueforceForAll.Plugin
         // per-generation zips travel EMBEDDED in this assembly so a plain
         // DLL deploy carries them. Offer model (owner spec 2026-08-07): a
         // one-time dialog on the first FS session; declining only silences
-        // the DIALOG, the offer itself never goes away, it lives on as the
-        // Telemetry FFB tab banner with an Install button for as long as a
-        // spring game is active without the mod. After one accepted install,
-        // newer plugin versions refresh the file silently (the consent was
-        // to the file, not to one version of it).
+        // the DIALOG. The offer never goes away: the Telemetry FFB tab
+        // banner carries it while a spring game runs without the mod, and
+        // the Settings tab's Game Mods card carries it always. After one
+        // accepted install, newer plugin versions refresh the file silently
+        // (the consent was to the file, not to one version of it).
         private const string FsModVersion = "0.2.24";
         private bool _fsModPromptShown;   // once per SimHub session
 
@@ -2191,13 +2410,11 @@ namespace TrueforceForAll.Plugin
             var fs = _fsPipeSource;
             if (fs != null && fs.MsSinceLastFrame < 3000)
             {
-                // 4 = feeding, but from an OLDER mod than the plugin has
-                // refreshed onto disk. The refresh runs on game detection,
-                // which is always after the game already scanned its mods
-                // folder, so an update trails by one game restart, and a
-                // user who skips it silently misses new mod features (cost
-                // a slip-test cycle, 2026-08-08). Pre-0.2.11 mods don't
-                // report a version; they read as current (undetectable).
+                // The refresh runs on game detection, always after the game
+                // scanned its mods folder, so an update trails by one game
+                // restart, and a user who skips it silently misses new mod
+                // features. Pre-0.2.11 mods don't report a version; they read
+                // as current.
                 string rep = fs.ReportedModVersion;
                 if (!string.IsNullOrEmpty(rep)
                     && !string.Equals(rep, FsModVersion, StringComparison.Ordinal))
@@ -2212,20 +2429,17 @@ namespace TrueforceForAll.Plugin
         /// <summary>Take the mod back out for a NAMED game. Returns null on
         /// success, else a short human-readable reason.
         ///
-        /// The counterpart to InstallFsMod, and the reason it exists: we write a
-        /// file into somebody else's game folder, so we should be able to remove
-        /// it without asking them to go find it. Leaving that as the only route
-        /// out is what makes people wary of letting a tool touch a game directory
-        /// at all.
+        /// The counterpart to InstallFsMod: we write a file into somebody else's
+        /// game folder, so we should be able to take it back out without asking
+        /// them to go find it.
         ///
-        /// Two pieces of bookkeeping travel with the delete, and without them the
-        /// mod comes back by itself. The version stamp has to go, because a
-        /// stamp that disagrees with the shipped version is what triggers the
-        /// silent refresh in MaybeOfferFsModInstall. And the install offer is
-        /// marked declined, because the dialog fires whenever the file is absent:
-        /// re-offering on the next session would be arguing with someone who has
-        /// just told us what they want. The tab banner still carries the offer,
-        /// so nothing is lost, it just stops interrupting.</summary>
+        /// Two pieces of bookkeeping travel with the delete. The install offer is
+        /// marked declined, because MaybeOfferFsModInstall fires the dialog
+        /// whenever the file is absent: re-offering next session would be arguing
+        /// with someone who has just told us what they want. The version stamp
+        /// goes with the file it describes, so no later install is read against
+        /// a stamp for a mod that is not there. The tab banner still carries the
+        /// offer, so nothing is lost, it just stops interrupting.</summary>
         public string UninstallFsMod(string game)
         {
             if (!TryGetFsModInfo(game, out string modsDir, out _))
@@ -2261,6 +2475,623 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>One Farming Simulator title we ship a mod for, as the standing
         /// install control on the Settings tab needs it.</summary>
+        // ---- Arcade cabinets (TeknoParrot): the publishing FFB plugin ----
+        //
+        // This installs a forked build of FFBArcadePlugin into an arcade game's own
+        // folder and switches it to publish-only, so the cabinet's force feedback
+        // comes to us instead of being driven straight at the wheel. That is what
+        // frees the wheel's lights and screen, which cannot be written while
+        // something else is pushing force down the same endpoint.
+        //
+        // It differs from the Farming Simulator mod in one way that matters: we are
+        // REPLACING a file the user may already have put there themselves, rather
+        // than adding one of ours. So this keeps a backup of whatever was there and
+        // restores it on removal, which the FS installer has no need to do.
+
+        private const string ArcadeModVersion = "1.0.0";
+        public string ArcadeModVersionString => ArcadeModVersion;
+
+        // FFBArcadePlugin is ONE binary that gets renamed per game, because a
+        // wrapper DLL is only loaded if the game actually imports that name. Their
+        // own setup script renames it to whichever of these the title uses:
+        // opengl32 for the Lindbergh games (Initial D 4 and 5), d3d9 or d3d11 for
+        // the Direct3D ones, winmm for Cruis'n Blast, dinput8 for the rest.
+        //
+        // So we do not choose the name, we DISCOVER it: whichever of these is
+        // already sitting in the game's folder is the one that game loads, and it
+        // is the file we replace.
+        private static readonly string[] ArcadeWrapperNames =
+        {
+            "dinput8.dll", "opengl32.dll", "d3d9.dll", "d3d11.dll", "winmm.dll",
+        };
+
+        /// <summary>Which file in this game's folder is FFBArcadePlugin, or null.
+        ///
+        /// Verified by content, not just by name: a game can legitimately ship its
+        /// own opengl32 or d3d9, and overwriting one of those would break the game
+        /// rather than redirect its force feedback. Every build of that plugin
+        /// reads FFBPlugin.ini, so the name appears inside the binary, and no real
+        /// graphics runtime carries it.</summary>
+        private static string FindArcadeWrapper(string dir)
+        {
+            foreach (var name in ArcadeWrapperNames)
+            {
+                try
+                {
+                    string p = Path.Combine(dir, name);
+                    if (!File.Exists(p)) continue;
+                    var fi = new FileInfo(p);
+                    if (fi.Length > 32 * 1024 * 1024) continue;   // not a wrapper
+                    byte[] bytes = File.ReadAllBytes(p);
+                    if (IndexOfAscii(bytes, "FFBPlugin.ini") >= 0) return name;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static int IndexOfAscii(byte[] haystack, string needle)
+        {
+            if (haystack == null || string.IsNullOrEmpty(needle)) return -1;
+            int n = needle.Length;
+            for (int i = 0; i + n <= haystack.Length; i++)
+            {
+                int j = 0;
+                while (j < n && haystack[i + j] == (byte)needle[j]) j++;
+                if (j == n) return i;
+            }
+            return -1;
+        }
+        private const string ArcadeBackupSuffix = ".tf4all-backup";
+        private const string ArcadeIniName = "FFBPlugin.ini";
+
+        public sealed class ArcadeModTarget
+        {
+            public string ProfileName;   // TeknoParrot's own profile id, e.g. ID8
+            public string FullName;      // TeknoParrot's GameNameInternal, e.g. Initial D: Arcade Stage 8 Infinity
+            public string DisplayName;   // as a person would say it
+            public string GameDir;       // where the game exe lives, and where the DLL goes
+            public bool Is64Bit;
+            public string WrapperName;   // which DLL name this cabinet loads us as, e.g. opengl32.dll
+            public string ExeName;       // the game executable, without extension, for spotting it running
+            public bool PublishModeOn;   // the game is actually configured to publish to us
+            public bool HasStamp;        // we recorded installing into this game
+            public bool GameFound;       // that folder is on this PC
+            public bool IniFound;        // FFBPlugin.ini is beside the game
+            public bool Installed;       // our build is the one sitting there
+        }
+
+        /// <summary>Where TeknoParrot lives, or null. Prefers a remembered path,
+        /// then a running TeknoParrot, then the handful of places people put it.
+        /// Whatever it finds is written back to settings so the search happens
+        /// once rather than on every refresh.</summary>
+        private string FindTeknoParrotRoot()
+        {
+            var s = Settings?.Arcade;
+            try
+            {
+                string saved = s?.TeknoParrotPath;
+                if (!string.IsNullOrEmpty(saved) && Directory.Exists(Path.Combine(saved, "UserProfiles")))
+                    return saved;
+            }
+            catch { }
+
+            var candidates = new List<string>();
+            try
+            {
+                // A running TeknoParrot is the most reliable answer there is.
+                foreach (var p in Process.GetProcessesByName("TeknoParrotUi"))
+                {
+                    try { candidates.Add(Path.GetDirectoryName(p.MainModule.FileName)); }
+                    catch { }
+                    finally { try { p.Dispose(); } catch { } }
+                }
+            }
+            catch { }
+
+            try
+            {
+                foreach (var d in DriveInfo.GetDrives())
+                {
+                    if (!d.IsReady) continue;
+                    candidates.Add(Path.Combine(d.RootDirectory.FullName, "TeknoParrot"));
+                }
+                candidates.Add(Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TeknoParrot"));
+            }
+            catch { }
+
+            foreach (var c in candidates)
+            {
+                try
+                {
+                    if (string.IsNullOrEmpty(c)) continue;
+                    if (!Directory.Exists(Path.Combine(c, "UserProfiles"))) continue;
+                    if (s != null && !string.Equals(s.TeknoParrotPath, c, StringComparison.OrdinalIgnoreCase))
+                    {
+                        s.TeknoParrotPath = c;
+                        try { PersistSettingsCore(); } catch { }
+                    }
+                    return c;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        /// <summary>Every cabinet TeknoParrot has a profile for, whether its files
+        /// are on this PC and whether our publishing plugin is already in place.
+        /// Reads the same folder the install writes to, so what the card says is
+        /// what the game will find.</summary>
+        public List<ArcadeModTarget> ArcadeModTargets()
+        {
+            var list = new List<ArcadeModTarget>();
+            // Shelved with the rest of the arcade path, and this is the choke point for it: every
+            // other caller reaches TeknoParrot through here, so one empty list closes the Game
+            // mods cards, the custom-game profile lookup, the cabinet title and ActiveArcadeTarget
+            // at once. It also stops the WORK, which is the part worth stopping: the root finder
+            // enumerates processes and probes paths, and this then parses every profile XML on
+            // disk. None of that should happen on a build that will not read a cabinet.
+            if (!ArcadeUnlocked) return list;
+
+            string root = FindTeknoParrotRoot();
+            if (root == null) return list;
+
+            string profiles = Path.Combine(root, "UserProfiles");
+            string[] files;
+            try { files = Directory.GetFiles(profiles, "*.xml"); }
+            catch { return list; }
+
+            foreach (var f in files)
+            {
+                try
+                {
+                    var doc = System.Xml.Linq.XDocument.Load(f);
+                    var r = doc.Root;
+                    if (r == null) continue;
+                    string profileName = (string)r.Element("ProfileName");
+                    string fullName = (string)r.Element("GameNameInternal");
+                    string gamePath = (string)r.Element("GamePath");
+                    if (string.IsNullOrEmpty(gamePath)) continue;
+
+                    string dir = null;
+                    try { dir = Path.GetDirectoryName(gamePath); } catch { }
+                    if (string.IsNullOrEmpty(dir)) continue;
+
+                    bool is64 = string.Equals((string)r.Element("Is64Bit"), "true",
+                                              StringComparison.OrdinalIgnoreCase);
+
+                    var t = new ArcadeModTarget
+                    {
+                        ProfileName = string.IsNullOrEmpty(profileName)
+                            ? Path.GetFileNameWithoutExtension(f) : profileName,
+                        FullName = fullName,
+                        GameDir = dir,
+                        Is64Bit = is64,
+                        ExeName = Path.GetFileNameWithoutExtension(gamePath),
+                    };
+                    t.DisplayName = "TeknoParrot: " + t.ProfileName;
+                    // An unreadable folder reads as not found, which is honest.
+                    try { t.GameFound = Directory.Exists(dir); } catch { }
+                    try { t.IniFound = t.GameFound && File.Exists(Path.Combine(dir, ArcadeIniName)); } catch { }
+                    if (t.GameFound) t.WrapperName = FindArcadeWrapper(dir);
+                    // Read the setting rather than assume it. Anything that
+                    // rewrites the ini (a fresh FFBArcadePlugin setup over the
+                    // top, a restored config, a hand edit) turns publishing off
+                    // while our file and our stamp both stay put, and the card
+                    // would otherwise keep saying Installed at a silent wheel.
+                    if (t.IniFound)
+                    {
+                        try
+                        {
+                            string v = IniKeyWriter.GetKey(
+                                File.ReadAllText(Path.Combine(dir, ArcadeIniName)), "Settings", "SharedMemoryOutput");
+                            t.PublishModeOn = v == "2";
+                        }
+                        catch { }
+                    }
+
+                    string stamped = null;
+                    var vers = Settings?.Arcade?.ModInstalledVersions;
+                    if (vers != null) vers.TryGetValue(t.ProfileName, out stamped);
+                    t.HasStamp = !string.IsNullOrEmpty(stamped);
+                    try
+                    {
+                        t.Installed = t.GameFound
+                            && !string.IsNullOrEmpty(stamped)
+                            && !string.IsNullOrEmpty(t.WrapperName)
+                            && File.Exists(Path.Combine(dir, t.WrapperName))
+                            && t.PublishModeOn;
+                    }
+                    catch { }
+
+                    list.Add(t);
+                }
+                catch { }
+            }
+            list.Sort((a, b) => string.Compare(a.ProfileName, b.ProfileName, StringComparison.OrdinalIgnoreCase));
+            return list;
+        }
+
+        /// <summary>Puts our publishing build beside the game and switches it to
+        /// publish-only. Returns null on success, else a short human reason.</summary>
+        public string InstallArcadeMod(ArcadeModTarget t)
+        {
+            if (t == null || string.IsNullOrEmpty(t.GameDir)) return "that game is not set up in TeknoParrot";
+            if (!Directory.Exists(t.GameDir)) return "the game's folder was not found";
+
+            if (string.IsNullOrEmpty(t.WrapperName))
+                return "FFBArcadePlugin was not found in this game's folder, so set that up there first";
+            string dll = Path.Combine(t.GameDir, t.WrapperName);
+            string ini = Path.Combine(t.GameDir, ArcadeIniName);
+            if (!File.Exists(ini))
+                return "FFBPlugin.ini was not found beside the game, so run it once in TeknoParrot first";
+
+            string resource = t.Is64Bit
+                ? "TrueforceForAll.Plugin.FfbArcade.dinput8_x64.dll"
+                : "TrueforceForAll.Plugin.FfbArcade.dinput8_x86.dll";
+
+            try
+            {
+                // Keep whatever was already there. Only ever taken ONCE, so a
+                // second install cannot overwrite the user's original with our own
+                // previous build.
+                string backup = dll + ArcadeBackupSuffix;
+                if (File.Exists(dll) && !File.Exists(backup))
+                    File.Copy(dll, backup, false);
+
+                WriteEmbeddedResource(resource, dll);
+                string err = SetArcadeIniValue(ini, "SharedMemoryOutput", "2");
+                if (err != null) return err;
+                SetArcadeWheelSelection(t, ini);
+
+                var vers = Settings?.Arcade?.ModInstalledVersions;
+                if (vers != null) vers[t.ProfileName] = ArcadeModVersion;
+                try { PersistSettingsCore(); } catch { }
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Arcade publishing plugin installed for '{t.ProfileName}' in {t.GameDir}.");
+                return null;
+            }
+            catch (IOException)
+            {
+                return "the file is in use, so close the game and try again";
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return "no permission to write to the game's folder";
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[TF4ALL] Arcade plugin install failed: {ex}");
+                return ex.Message;
+            }
+        }
+
+        /// <summary>Puts the game back as it was: restores whatever DLL we replaced,
+        /// or removes ours when there was nothing to restore, and turns publishing
+        /// off again. Returns null on success, else a short human reason.</summary>
+        public string UninstallArcadeMod(ArcadeModTarget t)
+        {
+            if (t == null || string.IsNullOrEmpty(t.GameDir)) return "that game is not set up in TeknoParrot";
+
+            if (string.IsNullOrEmpty(t.WrapperName)) return "nothing of ours is installed there";
+            string dll = Path.Combine(t.GameDir, t.WrapperName);
+            string backup = dll + ArcadeBackupSuffix;
+            string ini = Path.Combine(t.GameDir, ArcadeIniName);
+
+            try
+            {
+                if (File.Exists(backup))
+                {
+                    File.Copy(backup, dll, true);
+                    File.Delete(backup);
+                }
+                else if (File.Exists(dll))
+                {
+                    File.Delete(dll);
+                }
+
+                // Only touch the key we set. Their own tuning stays theirs.
+                if (File.Exists(ini)) SetArcadeIniValue(ini, "SharedMemoryOutput", "0");
+
+                var vers = Settings?.Arcade?.ModInstalledVersions;
+                if (vers != null) vers.Remove(t.ProfileName);
+                try { PersistSettingsCore(); } catch { }
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Arcade publishing plugin removed for '{t.ProfileName}'.");
+                return null;
+            }
+            catch (IOException)
+            {
+                return "the file is in use, so close the game and try again";
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn($"[TF4ALL] Arcade plugin removal failed: {ex}");
+                return ex.Message;
+            }
+        }
+
+        // Sets one key in the [Settings] section of an ini, in place, leaving every
+        // other line exactly as it was. Written by hand rather than with a parser
+        // because this is someone else's configuration file: their comments,
+        // ordering and spacing are theirs to keep, and a round-tripped rewrite would
+        // quietly reformat all of it.
+        // ---- The active cabinet's own settings file ----
+        //
+        // The panel edits FFBPlugin.ini directly rather than keeping a copy of
+        // these values. They belong to the plugin that applies them: it reads that
+        // file, our build re-reads it when it changes, and its own GUI edits the
+        // same keys the same way. One file, one truth, and nothing to drift.
+
+        /// <summary>Is the arcade path available at all on this install?
+        ///
+        /// Off unless the ARCADE access code has been typed; see ArcadeSettings.Enabled for why
+        /// the whole path is shelved. Every arcade entry point asks this, so there is exactly one
+        /// thing to turn back on: cabinet identity, both force sources, the memory map, the
+        /// leaderboards and the SimHub bridge.</summary>
+        public bool ArcadeUnlocked => Settings?.Arcade?.Enabled == true;
+
+        /// <summary>True while an emulated arcade cabinet is the active game.
+        /// Drives the FFB tab's arcade panel.
+        ///
+        /// Reads false while the path is locked, which is what keeps the arcade panel, the
+        /// ID8 memory telemetry, the cabinet car id and the arcade invert behaviour off a
+        /// shipping build without each of them needing its own check.</summary>
+        public bool ActiveGameIsArcade => ArcadeUnlocked && IsArcadeGameName(_activeGame);
+
+        /// <summary>The arcade cabinet matching the active game, or null.</summary>
+        public ArcadeModTarget ActiveArcadeTarget()
+        {
+            string game = _activeGame;
+            if (!IsArcadeGameName(game)) return null;
+            try
+            {
+                foreach (var t in ArcadeModTargets())
+                    if (string.Equals(ArcadeGameName(t.ProfileName), game, StringComparison.Ordinal))
+                        return t;
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>Read one [Settings] value from the active cabinet's ini, or the
+        /// fallback when the file, the key or the cabinet is missing.</summary>
+        public int ArcadeIniGetInt(string key, int fallback)
+        {
+            string raw = ArcadeIniGetRaw(key);
+            int v;
+            return int.TryParse(raw, out v) ? v : fallback;
+        }
+
+        /// <summary>The raw string for a key, or null when it is absent. Null and
+        /// "0" are different answers: a control for a key this game never declares
+        /// should be hidden, not shown reading zero.</summary>
+        public string ArcadeIniGetRaw(string key)
+        {
+            var t = ActiveArcadeTarget();
+            if (t == null || !t.IniFound) return null;
+            try
+            {
+                return IniKeyWriter.GetKey(
+                    File.ReadAllText(Path.Combine(t.GameDir, ArcadeIniName)), "Settings", key);
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Write one [Settings] value into the active cabinet's ini,
+        /// leaving every other byte alone. Returns null on success, else a short
+        /// human reason.</summary>
+        public string ArcadeIniSet(string key, string value)
+        {
+            var t = ActiveArcadeTarget();
+            if (t == null) return "no arcade game is active";
+            if (!t.IniFound) return "that game has no FFBPlugin.ini";
+            return SetArcadeIniValue(Path.Combine(t.GameDir, ArcadeIniName), key, value);
+        }
+
+        /// <summary>True when an arcade cabinet has handed the wheel over to us,
+        /// so its HID++ pipe is free for the lights and the screen.
+        ///
+        /// The base rule for freeing those surfaces needs an armed force mode, and
+        /// the arcade path is pass-through like Assetto Corsa's, so it fails that
+        /// rule for the same reason AC did and needs the same kind of exception.
+        /// This one rests on firmer ground than AC's: there the game might still
+        /// write and we watch the wire to see whether it does, while here its
+        /// output is suppressed inside its own process and the publisher tells us
+        /// so directly.</summary>
+        public bool ArcadePipeFree()
+        {
+            var pub = _teknoSource as FfbArcadePluginSource;
+            return pub != null && pub.HandedOver && MasterMode == TrueforceMasterMode.Normal;
+        }
+
+        /// <summary>Which route the force is arriving by, for the panel to say so
+        /// plainly. The two behave differently enough that a user debugging a quiet
+        /// wheel needs to know which one they are on.</summary>
+        /// <summary>Turn the arcade effect trace on or off (the ARCADEFX access
+        /// code). Returns what to tell the user.</summary>
+        public string SetArcadeEffectTrace(bool on)
+        {
+            var pub = _teknoSource as FfbArcadePluginSource;
+            var jvs = _teknoSource as TeknoParrotJvsTelemetrySource;
+            if (pub == null && jvs == null)
+                return "no arcade cabinet is running, so there is nothing to trace yet. "
+                     + "Start the game and enter the code again.";
+            if (pub != null) pub.TraceEffects = on;
+            if (jvs != null) jvs.TraceCommands = on;
+            string route = pub != null ? "the arcade plugin's output" : "the cabinet IO block";
+            return on
+                ? "ARCADEFX on, tracing " + route + ". Drive a corner, then turn the wheel through a "
+                  + "menu, then send the log. Each line names the effects that are live and which way "
+                  + "the signed ones push."
+                : "ARCADEFX off.";
+        }
+
+        public string ArcadeRouteLabel()
+        {
+            if (_teknoSource is FfbArcadePluginSource) return "the arcade plugin's own output";
+            if (_teknoSource is TeknoParrotJvsTelemetrySource) return "the cabinet's IO block, decoded here";
+            return null;
+        }
+
+        /// <summary>Re-points every cabinet we installed into at the wheel that is
+        /// connected now.
+        ///
+        /// Install is not the only moment this matters. Someone can install with
+        /// the wheel unplugged, or swap one wheel for another later, and in both
+        /// cases the games would keep naming a device that is not there. The
+        /// symptom is the worst kind: the game runs, the plugin loads, and the
+        /// wheel is simply silent.
+        ///
+        /// Only cabinets carrying our stamp are touched, so a game the user set up
+        /// themselves is never edited, and only when the value actually differs, so
+        /// this rewrites nothing on a normal start. Device selection is read once
+        /// when a game loads, so a change reaches a game already running at its
+        /// next launch, not immediately.</summary>
+        public void RefreshArcadeWheelSelection()
+        {
+            if (_hidWheelVid == 0 || _hidWheelPid == 0) return;
+            var s = Settings?.Arcade;
+            if (s == null || !s.Enabled) return;
+
+            string vidpid = $"{_hidWheelVid:X4}:{_hidWheelPid:X4}";
+            int changed = 0;
+
+            foreach (var t in ArcadeModTargets())
+            {
+                if (t == null || !t.HasStamp || !t.IniFound) continue;
+                string ini = Path.Combine(t.GameDir, ArcadeIniName);
+                try
+                {
+                    string have = IniKeyWriter.GetKey(File.ReadAllText(ini), "Settings", "DeviceVidPid");
+                    if (string.Equals(have, vidpid, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (SetArcadeIniValue(ini, "DeviceVidPid", vidpid) == null) changed++;
+                }
+                catch { }
+            }
+
+            if (changed > 0)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Pointed {changed} arcade game(s) at your wheel ({vidpid}). "
+                    + "Any of them already running will pick it up next launch.");
+            }
+        }
+
+        /// <summary>Tells the arcade plugin which wheel to use, by writing the one
+        /// we are already connected to.
+        ///
+        /// This is the whole reason a first install used to end with a silent
+        /// wheel. That plugin selects its device by SDL joystick GUID, which is not
+        /// printed on the hardware, is not in Device Manager, and cannot be
+        /// computed from what anyone knows about the device: it embeds a checksum
+        /// of the device NAME. The usual way to obtain one is to run the game once
+        /// and read it out of a log.
+        ///
+        /// But we do not need it. We are talking to this wheel over USB right now,
+        /// so we know its vendor and product id for certain, and a GUID already
+        /// CONTAINS both. Our build of that plugin accepts them directly, so we
+        /// write what we know and nothing has to be guessed or discovered.</summary>
+        private void SetArcadeWheelSelection(ArcadeModTarget t, string iniPath)
+        {
+            try
+            {
+                if (_hidWheelVid != 0 && _hidWheelPid != 0)
+                {
+                    string vidpid = $"{_hidWheelVid:X4}:{_hidWheelPid:X4}";
+                    string err = SetArcadeIniValue(iniPath, "DeviceVidPid", vidpid);
+                    if (err == null)
+                    {
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] '{t.ProfileName}' pointed at your wheel ({vidpid}).");
+                        return;
+                    }
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Could not point '{t.ProfileName}' at your wheel: {err}.");
+                }
+
+                // No wheel connected right now, so fall back to copying a GUID from
+                // a cabinet that already has one.
+                BorrowArcadeDeviceGuid(t, iniPath);
+            }
+            catch { }
+        }
+
+        /// <summary>Fills in this game's DeviceGUID from another cabinet that
+        /// already has one, when it is blank.
+        ///
+        /// A blank one is not a harmless default: it produces a zero GUID that
+        /// matches no device, and that plugin does not stop when nothing matches.
+        /// It opens no wheel, every effect id comes back invalid, and the game then
+        /// runs perfectly while the wheel sits silent with nothing anywhere saying
+        /// why. It is the single most confusing way this can fail.
+        ///
+        /// Copied from a sibling rather than computed, because an SDL joystick GUID
+        /// embeds a checksum of the device name and we would be guessing. If any of
+        /// this user's other cabinets has a working one, it is the same wheel, so it
+        /// is the right answer and it is already sitting on disk.</summary>
+        private void BorrowArcadeDeviceGuid(ArcadeModTarget t, string iniPath)
+        {
+            try
+            {
+                string mine = IniKeyWriter.GetKey(File.ReadAllText(iniPath), "Settings", "DeviceGUID");
+                if (!string.IsNullOrEmpty(mine)) return;
+
+                foreach (var other in ArcadeModTargets())
+                {
+                    if (other == null || !other.IniFound) continue;
+                    if (string.Equals(other.ProfileName, t.ProfileName, StringComparison.OrdinalIgnoreCase)) continue;
+                    string otherIni = Path.Combine(other.GameDir, ArcadeIniName);
+                    string guid = null;
+                    try { guid = IniKeyWriter.GetKey(File.ReadAllText(otherIni), "Settings", "DeviceGUID"); }
+                    catch { }
+                    if (string.IsNullOrEmpty(guid)) continue;
+
+                    string err = SetArcadeIniValue(iniPath, "DeviceGUID", guid);
+                    SimHub.Logging.Current.Info(err == null
+                        ? $"[TF4ALL] '{t.ProfileName}' had no wheel selected, so it was given the one "
+                          + $"'{other.ProfileName}' already uses."
+                        : $"[TF4ALL] '{t.ProfileName}' has no wheel selected and it could not be filled in: {err}.");
+                    return;
+                }
+
+                // Nobody has one to lend. Say what to do rather than leave a wheel
+                // that will be silent for a reason nothing reports.
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] '{t.ProfileName}' has no wheel selected (DeviceGUID is blank) and no other "
+                    + "cabinet has one to copy. That game will run with a silent wheel until one is set: "
+                    + "run FFBPluginGUI.exe in its folder once and pick your wheel.");
+            }
+            catch { }
+        }
+
+        // Sets one key in the [Settings] section of FFBPlugin.ini, leaving every
+        // other byte alone. The editing itself lives in Core (IniKeyWriter) so it
+        // can be tested: this is someone else's tuning file, and "nothing else
+        // moved" is a claim that needs proving rather than asserting.
+        private static string SetArcadeIniValue(string iniPath, string key, string value)
+        {
+            try
+            {
+                string text = File.ReadAllText(iniPath);
+                string error;
+                string updated = IniKeyWriter.SetKey(text, "Settings", key, value, out error);
+                if (updated == null) return "FFBPlugin.ini could not be updated: " + error;
+                if (!string.Equals(updated, text, StringComparison.Ordinal))
+                    File.WriteAllText(iniPath, updated);
+                return null;
+            }
+            catch (IOException)
+            {
+                return "FFBPlugin.ini is in use, so close the game and try again";
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
+            }
+        }
+
         public sealed class FsModTarget
         {
             public string Game;          // SimHub game name
@@ -2312,15 +3143,13 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Install (or refresh) the mod for the active game. Returns
-        /// null on success, else a short human-readable reason. Called from
-        /// the tab banner's Install button and the first-session dialog.</summary>
+        /// null on success, else a short human-readable reason. Called from the
+        /// banner's Install button, the first-session dialog and the silent refresh.</summary>
         public string InstallFsModForActiveGame() => InstallFsMod(_activeGame);
 
         /// <summary>Install (or refresh) the mod for a NAMED game, so the settings
-        /// UI can offer it for a title that is not running. The mods folder is a
-        /// folder on disk whether or not the game is open, and every route we had
-        /// to this needed Farming Simulator running WITHOUT the mod: the one state
-        /// a user preparing, reinstalling, or checking is never in.</summary>
+        /// UI can offer it for a title that is not running (the mods folder is on
+        /// disk whether or not the game is open).</summary>
         public string InstallFsMod(string game)
         {
             if (!TryGetFsModInfo(game, out string modsDir, out string resource))
@@ -2403,13 +3232,10 @@ namespace TrueforceForAll.Plugin
                         if (st == null) return;
                         if (ok == true)
                         {
-                            // A failed install must not end in a closed dialog
-                            // and silence: say why, and point at the standing
-                            // retry (the Telemetry FFB tab banner). Success
-                            // needs a word too: the game only reads its mods
-                            // folder at startup, and this prompt only appears
-                            // while the game is running, so a restart is
-                            // always the missing step.
+                            // Both outcomes need a word: a failure must say
+                            // why and point at the standing retry (the
+                            // Telemetry FFB tab banner), and a success must
+                            // say the game reads its mods only at startup.
                             string err = InstallFsModForActiveGame();
                             if (err != null)
                                 TrueforceDialog.Show(null, "Install failed",
@@ -2442,17 +3268,16 @@ namespace TrueforceForAll.Plugin
 
         // Our own centering for FS wheels the game gives no spring commands
         // to (the G PRO gets a constant heartbeat, trace-proven 2026-08-07).
-        // Quadratic: light at center, firmer with lock, matching the feel the
-        // game's own static spring produces natively. Full lock = this
-        // fraction of full scale; the shared Damping slider provides the
-        // stability half.
+        // Curve shape is the Center firmness slider's job (soft quadratic to
+        // near-linear); this constant only sets full lock = this fraction of
+        // full scale. The shared Damping slider provides the stability half.
         private const float SyntheticFsSpringStrength = 0.6f;
 
-        // Evaluate the steering spring at the wheel's physical position:
-        // the game's own captured spring when one is playing, else (in FS)
-        // the synthetic fallback. Null when the position is stale or the tap
-        // is gone: rendering a spring against a frozen position would hold a
-        // constant torque.
+        // Evaluate the steering spring at the wheel's physical position: in
+        // Farming Simulator always the plugin's own model, everywhere else
+        // the game's own captured spring. Null when the position is stale
+        // (or, outside FS, the tap is gone): rendering a spring against a
+        // frozen position would hold a constant torque.
         private short? EvaluateClassicSpringForce()
         {
             var s = Settings;
@@ -2474,14 +3299,12 @@ namespace TrueforceForAll.Plugin
             if (_activeGame != null
                 && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
             {
-                // Telemetry-freshness gate. Both close-the-game pulls
-                // (2026-08-08) developed in the window AFTER frames stopped
-                // but BEFORE the game-changed disarm: a spring rendered
-                // through that window pushes the wheel around with no game
-                // attached. No frames for 1.5 s = no synthetic spring; menus
-                // keep it alive (the SimHub fallback still emits frames
-                // there), and the 100 ms spring ramp turns the cut into a
-                // fade.
+                // Telemetry-freshness gate: between frames stopping and the
+                // game-changed disarm a rendered spring pushes the wheel with
+                // no game attached (both close-the-game pulls). No frames for
+                // 1.5 s = no synthetic spring; menus keep it alive (the SimHub
+                // fallback still emits frames there), and the 100 ms spring
+                // ramp turns the cut into a fade.
                 long lastFrame = System.Threading.Interlocked.Read(ref _lastFrameTicks);
                 if (lastFrame == 0
                     || Stopwatch.GetTimestamp() - lastFrame > SpringTelemetryMaxAgeTicks)
@@ -2517,16 +3340,16 @@ namespace TrueforceForAll.Plugin
                 if (spd < 0f) spd = 0f;
                 float ramp01 = Math.Min(spd / 30f, 1f);
                 // Speed effect slider: 0 = constant centering at all speeds,
-                // 1 = fully speed-scaled (limp standstill). Default 0.65
-                // reproduces the shipped 0.35 floor.
+                // 1 = fully speed-scaled (limp standstill). The standstill
+                // floor is (1 - this), so the 0.70 default holds 30%.
                 float speedFx = (float)s.SpringModeSpeedEffect;
                 if (speedFx < 0f) speedFx = 0f; else if (speedFx > 1f) speedFx = 1f;
                 float speedScale = (1f - speedFx) + speedFx * ramp01;
                 // Center firmness slider: the curve's linear fraction near
-                // straight-ahead (0 = soft quadratic, 1 = crisp). Default
-                // 0.5 reproduces the shipped 35%-at-rest / 80%-at-speed
-                // morph. Separate from strength: this shapes WHERE the
-                // force lives, not how much of it there is.
+                // straight-ahead (0 = soft quadratic, 1 = crisp). At rest
+                // that fraction is 0.7 x this (59.5% on the 0.85 default),
+                // morphing to 80% at speed. Separate from strength: this
+                // shapes WHERE the force lives, not how much there is.
                 float firm = (float)s.SpringModeCenterFirmness;
                 if (firm < 0f) firm = 0f; else if (firm > 1f) firm = 1f;
                 float mag = Math.Abs(steer);
@@ -2539,14 +3362,12 @@ namespace TrueforceForAll.Plugin
                 float f01 = steer * shape * SyntheticFsSpringStrength * centerGain * speedScale;
 
                 // Min force on the spring, deflection- and speed-gated (owner
-                // ask 2026-08-09): beyond slight deflection, light centering
-                // forces lift above a belt wheel's internal friction so the
-                // center region doesn't read dead on a G923. The gates keep
-                // the chatter case out: straight-ahead (|steer| <= 0.03) the
-                // force dwells near zero and stays unremapped, and the floor
-                // scales with the speed ramp so a parked wheel stays limp
-                // (the Speed effect contract). Drag and cornering weight
-                // multiply AFTER this, inheriting the floored value.
+                // ask): light centering lifts above a belt wheel's internal
+                // friction so the center doesn't read dead on a G923.
+                // Straight-ahead (|steer| <= 0.03) stays unremapped (chatter),
+                // and the floor scales with the speed ramp so a parked wheel
+                // stays limp (the Speed effect contract). Drag and cornering
+                // weight multiply AFTER this, inheriting the floored value.
                 float minSpring = s != null ? (float)s.SpringModeMinForce : 0f;
                 if (minSpring > 0f && mag > 0.03f && f01 != 0f)
                 {
@@ -2557,32 +3378,26 @@ namespace TrueforceForAll.Plugin
                 }
 
                 // Feedback-sanity guard (the game-close pull, 2026-08-08,
-                // trace-proven). A centering spring is negative feedback:
-                // push toward center, position responds, force shrinks. When
-                // the game tears down, the wheel's state changes under us and
-                // the loop can turn positive: our own force drives the wheel
-                // INTO lock and holds it at full push for seconds. Detect the
-                // physically impossible state instead of guessing at causes:
-                // a large sustained push with the wheel parked at full lock
-                // means we are fighting something, so let go until the wheel
-                // comes off the lock.
+                // trace-proven). A centering spring is negative feedback; at
+                // teardown the loop can turn positive and drive the wheel INTO
+                // lock at full push for seconds. Detect the impossible state
+                // (large sustained push with the wheel parked at full lock)
+                // and let go until it comes off the lock.
                 //
                 // Gated on mod-pipe liveness (stuck-at-lock report,
-                // 2026-08-09): by force and position alone a hand holding
-                // full lock through a slow turn is identical to the teardown
-                // pull, and with default sliders the force threshold is
-                // crossed from ~12 km/h, so the latch fired mid-drive and
-                // the wheel stayed parked at the stop, no centering, until
-                // pulled off by hand. A pipe frame within the last 500 ms
-                // proves the game is running (the mod goes silent within a
-                // frame of process death), so the external force is the
-                // driver's hand: never latch, and release any latch already
-                // held (a pipe hiccup can latch legitimately; recovery must
-                // not wait for the hand). Fallback sessions keep the ungated
-                // guard: SimHub re-emits the dead game's frozen frames for
-                // seconds after a close, so frame freshness proves nothing
-                // there and this guard is that population's only defense
-                // against the pull.
+                // 2026-08-09): force and position alone cannot tell that pull
+                // from a hand holding full lock, and with default sliders the
+                // force threshold is crossed from ~12 km/h, so the ungated
+                // latch fired mid-drive and parked the wheel at the stop. A
+                // pipe frame within the last 500 ms proves the game is running
+                // (the mod goes silent within a frame of process death), so
+                // the force is the driver's hand: never latch, and release any
+                // latch already held (a pipe hiccup can latch legitimately;
+                // recovery must not wait for the hand). Fallback sessions keep
+                // the ungated guard: SimHub re-emits the dead game's frozen
+                // frames for seconds after a close, so freshness proves
+                // nothing there and this guard is that population's only
+                // defense against the pull.
                 bool pipeLive = fsPipe != null && _fsPipeFedThisGame
                     && fsPipe.MsSinceLastFrame < 500;
                 long nowLs = Stopwatch.GetTimestamp();
@@ -2636,14 +3451,13 @@ namespace TrueforceForAll.Plugin
         private long  _springLockStallStartTicks;
         private bool  _springLockStallLatched;
 
-        // Hybrid drag weighting (owner call 2026-08-08): full engine-load
-        // weight while something is actually WORKING (implement lowered or
-        // powered on, per the mod's impl flag), a user-tunable fraction
-        // (Engine strain slider) under plain strain so acceleration still
-        // adds a touch of weight without impersonating a plow.
-        // Pre-0.2.6 mods don't report the flag (ImplementActive == null);
-        // they keep the ungated full weight. Both drag consumers (spring
-        // scale + damper thickening) read through this.
+        // Hybrid drag weighting (owner call): full engine-load weight while
+        // something is actually WORKING (implement lowered or powered on, per
+        // the mod's impl flag), a user-tunable fraction (Engine strain slider)
+        // under plain strain so acceleration still adds a touch of weight.
+        // Pre-0.2.6 mods don't report the flag (ImplementActive == null) and
+        // keep the ungated full weight. Both drag consumers (spring scale +
+        // damper thickening) read through this.
         private float EffectiveDragLoad01()
         {
             var fs = _fsPipeSource;
@@ -2651,14 +3465,12 @@ namespace TrueforceForAll.Plugin
             if (load <= 0f) return -1f;
             if (fs.ImplementActive.HasValue)
             {
-                // Loadedness blend (owner design 2026-08-08): working
-                // implements count in full, otherwise the best attached
-                // fill fraction raises the strain floor continuously, so a
-                // filling grain trailer grows into full drag weight with no
-                // threshold cliff. The Engine strain slider is the floor.
-                // Magnitude stays engine load's job: a full-but-light load
-                // opens the gate yet barely strains the engine, so it
-                // stays light, which is the accurate outcome.
+                // Loadedness blend (owner design): a working implement counts
+                // in full, otherwise the best attached fill fraction raises
+                // the strain floor continuously, so a filling grain trailer
+                // grows into full drag weight with no threshold cliff. The
+                // Engine strain slider is the floor; magnitude stays engine
+                // load's job (a full-but-light load stays light).
                 float loadedness = fs.ImplementActive == true ? 1f : fs.AttachedFill01;
                 if (loadedness < 0f) loadedness = 0f; else if (loadedness > 1f) loadedness = 1f;
                 float frac = (float)(Settings?.SpringModeDragStrainFraction ?? 0.35);
@@ -2691,12 +3503,10 @@ namespace TrueforceForAll.Plugin
             var s = Settings;
             float spring = f.Value;
 
-            // Enhancement scaling on the SPRING component (terrain and the
-            // ramp stay unscaled). Implement drag: engine load weights the
-            // wheel, so working soil steers heavier than an empty run.
-            // Cornering weight: yaw-derived lateral G loads the wheel through
-            // turns (v * yawRate via the mod's chassis rates). Both are
-            // multiplicative and additive-safe: no data means scale 1.0.
+            // Enhancement scaling on the SPRING component only (terrain and
+            // the ramp stay unscaled). Implement drag rides engine load;
+            // cornering weight rides yaw-derived lateral G (v * yawRate via
+            // the mod's chassis rates). No data means scale 1.0.
             if (s != null)
             {
                 float scale = 1f;
@@ -2723,8 +3533,7 @@ namespace TrueforceForAll.Plugin
             float terrainLsb = 0f;
             if (s != null && s.SpringModeTerrainEnabled)
             {
-                // Stale cache (frames stopped: pause, game closing) decays to
-                // zero instead of holding its last value against the wheel.
+                // Stale cache (pause, game closing) decays to zero.
                 long kStamp = System.Threading.Interlocked.Read(ref _fsKickStampTicks);
                 float kickTarget = (kStamp != 0 && now - kStamp < Stopwatch.Frequency / 4)
                     ? _mbKickCached : 0f;
@@ -2732,12 +3541,11 @@ namespace TrueforceForAll.Plugin
                 _springKickEma += (kickTarget - _springKickEma) * kickAlpha;
                 terrainLsb = _springKickEma * (float)s.SpringModeTerrainGain * 0.5f * 32767f;
 
-                // Min force on the kick channel: faint terrain transients
-                // lift above a belt wheel's internal friction. FS's OWN
-                // floor (SpringModeMinForce), per-game by owner call: the
-                // games' force characters differ. The spring gets its own
-                // deflection/speed-gated floor in EvaluateClassicSpring-
-                // Force; damping stays unremapped (chatter).
+                // Min force on the kick channel: faint terrain transients lift
+                // above a belt wheel's internal friction. FS's own floor
+                // (SpringModeMinForce, per-game by owner call); the spring's
+                // gated floor is in EvaluateClassicSpringForce, damping stays
+                // unremapped (chatter).
                 float minF = (float)s.SpringModeMinForce;
                 if (minF > 0f && terrainLsb != 0f)
                 {
@@ -2761,19 +3569,121 @@ namespace TrueforceForAll.Plugin
         }
 
         // Stationary-spring setters. Settings-only: the FfbTargetProvider
-        // lambda reads them every tick so changes apply live. The UI persists
-        // via PersistSettings() after calling these.
+        // lambda reads them every tick so changes apply live. Persistence is
+        // the caller's: the UI marks the section dirty, Save commits it.
+        // The stationary spring is per game: the checkbox and sliders edit the
+        // active game's entry. The checkbox persists immediately (one event); the
+        // sliders let the UI debounce the disk write.
         public void SetStationarySpringEnabled(bool v)
-        { if (Settings != null) Settings.StationarySpringEnabled = v; }
+        {
+            var e = SpringEntryForActive(create: true);
+            if (e == null) return;
+            e.Enabled = v;
+            if (Settings != null) Settings.StationarySpringEnabled = v;   // snapshot field
+            try { PersistSettings(); } catch { }
+        }
         public void SetStationarySpringStrength(double v)
-        { if (Settings != null) Settings.StationarySpringStrength = v; }
+        { var e = SpringEntryForActive(create: true); if (e != null) e.Strength = v; }
         public void SetStationarySpringCutoffKmh(double v)
-        { if (Settings != null) Settings.StationarySpringCutoffKmh = v; }
+        { var e = SpringEntryForActive(create: true); if (e != null) e.CutoffKmh = v; }
+
+        // The active game's spring entry, optionally creating it seeded from the
+        // current effective values so a fresh entry is self-contained.
+        private StationarySpringGameConfig SpringEntryForActive(bool create)
+        {
+            var s = Settings;
+            if (s == null || string.IsNullOrEmpty(_activeGame)) return null;
+            if (s.StationarySpringByGame == null)
+                s.StationarySpringByGame = new Dictionary<string, StationarySpringGameConfig>();
+            if (!s.StationarySpringByGame.TryGetValue(_activeGame, out var e))
+            {
+                if (!create) return null;
+                e = new StationarySpringGameConfig
+                {
+                    Enabled   = EffectiveStationarySpringEnabled(_activeGame),
+                    Strength  = EffectiveStationarySpringStrength(_activeGame),
+                    CutoffKmh = EffectiveStationarySpringCutoff(_activeGame),
+                };
+                s.StationarySpringByGame[_activeGame] = e;
+            }
+            return e;
+        }
+
+        /// <summary>The spring's on/off for a game: its entry if one exists, else
+        /// OFF. It is an option, not a default (owner, 2026-09-13): offered in
+        /// Assetto Corsa and RaceRoom, both rig-validated on every route, and
+        /// the user ticks it where they want it.
+        ///
+        /// Elsewhere the whole thing is behind the SPRING access code while it is
+        /// tested game by game. Locked, a saved per-game entry is IGNORED rather
+        /// than honoured: a tester who unlocks, tunes a game, then locks again
+        /// must get the shipped behaviour back, or the gate proves nothing. The
+        /// entry survives, so unlocking returns their tuning.</summary>
+        public bool EffectiveStationarySpringEnabled(string game)
+        {
+            var s = Settings;
+            if (!StationarySpringShipsIn(game) && !(s?.StationarySpringUnlocked ?? false)) return false;
+            if (s?.StationarySpringByGame != null && !string.IsNullOrEmpty(game)
+                && s.StationarySpringByGame.TryGetValue(game, out var e) && e != null)
+                return e.Enabled;
+            return false;
+        }
+
+        /// <summary>The games the spring is offered in (off until ticked), and
+        /// where the SPRING lock does not apply. One list, read by the force
+        /// path, the checkbox gate and the badge.</summary>
+        private static bool StationarySpringShipsIn(string game)
+            => string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
+               || IsR3EGame(game)
+               || IsLmuGame(game)
+               || IsForzaGameName(game);   // Telemetry Based FFB only; the capture route excludes it
+
+        /// <summary>The spring's strength for a game: its entry, else that game's
+        /// default, else the shared default (the top-level StationarySpringStrength).</summary>
+        public double EffectiveStationarySpringStrength(string game)
+        {
+            var s = Settings;
+            if (s == null) return 0.5;
+            if (s.StationarySpringByGame != null && !string.IsNullOrEmpty(game)
+                && s.StationarySpringByGame.TryGetValue(game, out var e) && e != null)
+                return e.Strength;
+            return DefaultStationarySpringStrength(game, s.StationarySpringStrength);
+        }
+
+        /// <summary>Per-game starting strength for a game with no saved entry.
+        /// RaceRoom needs about three times the shared default: on the USB tap
+        /// route the game's own parked-wheel damping comes through with its
+        /// force, and the spring has to move the wheel against that damping to
+        /// be felt at all. 0.5 was barely there; 1.5 felt right (owner, on the
+        /// rig, 2026-09-12). Only fresh entries see this; a game the user has
+        /// tuned keeps its entry.</summary>
+        private static double DefaultStationarySpringStrength(string game, double shared)
+        {
+            if (IsR3EGame(game)) return 1.5;
+            return shared;
+        }
+
+        /// <summary>The spring's fade-out speed for a game: its entry, else the
+        /// shared default (the top-level StationarySpringCutoffKmh).</summary>
+        public double EffectiveStationarySpringCutoff(string game)
+        {
+            var s = Settings;
+            if (s == null) return 12.0;
+            if (s.StationarySpringByGame != null && !string.IsNullOrEmpty(game)
+                && s.StationarySpringByGame.TryGetValue(game, out var e) && e != null)
+                return e.CutoffKmh;
+            return s.StationarySpringCutoffKmh;
+        }
+
+        // What the FFB tab's spring controls read for the active game.
+        public bool   StationarySpringEnabledForActiveGame  => EffectiveStationarySpringEnabled(_activeGame);
+        public double StationarySpringStrengthForActiveGame => EffectiveStationarySpringStrength(_activeGame);
+        public double StationarySpringCutoffForActiveGame   => EffectiveStationarySpringCutoff(_activeGame);
 
         /// <summary>Clear the "shown once / dismissed forever" latches so the
         /// one-time notices can appear again (networked welcome, what's new,
-        /// iRacing Trueforce, Telemetry Based FFB intro, share CTA,
-        /// experimental-success report). Persists.</summary>
+        /// iRacing Trueforce, stepped-aside, MAIRA tap, AC CSP setup offer,
+        /// Telemetry Based FFB intro, share CTA). Persists.</summary>
         public void ResetOneTimeNotices()
         {
             if (Settings == null) return;
@@ -2781,6 +3691,12 @@ namespace TrueforceForAll.Plugin
             Settings.WelcomeDeclineCount = 0;
             Settings.WelcomeNextShowAt = null;
             Settings.IRacingTrueforceNoticeDismissed = false;
+            // RaceRoom's handover notice and its once-a-session guard, which the
+            // button had missed since the notice was added.
+            Settings.R3ETrueforceNoticeDismissed = false;
+            _r3eNoticeShownThisSession = false;
+            Settings.LmuTrueforceNoticeDismissed = false;
+            _lmuNoticeShownThisSession = false;
             // The stepped-aside notice, for every game it was dismissed in, and
             // its once-per-demotion guard.
             Settings.StandDownNoticeDismissedGames?.Clear();
@@ -2802,19 +3718,29 @@ namespace TrueforceForAll.Plugin
 
         // Fast gate on the baseline FFB path: when the spring is off AND no
         // desk self-test is armed, return the game's FFB target untouched
-        // WITHOUT entering the spring logic at all. Keeps the stationary
-        // spring entirely out of the FFB regression surface for the common
-        // (feature-off) case. One atomic read + a bool when off. ApplyStationary
-        // Spring keeps its own equivalent guards too, so it's still correct if
-        // called directly.
+        // WITHOUT entering the spring logic at all (one atomic read + a bool),
+        // keeping the stationary spring out of the FFB regression surface for
+        // the common feature-off case. ApplyStationarySpring keeps its own
+        // equivalent guards too, so it's still correct if called directly.
         private short? ApplyStationarySpringIfActive(short? gameTarget)
         {
+            // FXTEST owns the wheel while it runs: the parked-car spring
+            // would contaminate the very feel being compared.
+            if (_fxTestMode != 0) return gameTarget;
             bool testArmed = System.Threading.Interlocked.Read(ref _springTestEndTicks) != 0;
             var s = Settings;
-            if (!testArmed && (s == null || !s.StationarySpringEnabled))
+            if (!testArmed && (s == null || !EffectiveStationarySpringEnabled(_activeGame)))
                 return gameTarget;
-            return ApplyStationarySpring(gameTarget);
+            short? sprungOut = ApplyStationarySpring(gameTarget);
+            _lastSpringAddLsb = sprungOut.HasValue ? sprungOut.Value - (gameTarget ?? 0) : 0;
+            return sprungOut;
         }
+
+        /// <summary>What the stationary spring added to the last frame's force, in
+        /// LSB. Diagnostic only: the spring and the soft lock are deliberately
+        /// independent now, and three attempts at coupling them all failed.</summary>
+        private int _lastSpringAddLsb;
+
 
         // Stationary-spring FFB floor. The plugin streams the game's own FFB
         // to the motor; a parked car produces ~0 self-aligning torque, so the
@@ -2827,18 +3753,18 @@ namespace TrueforceForAll.Plugin
         // Returns the (possibly augmented) target in the GAME's FFB sign space
         // (FfbInvertSign / FfbScale / spike taming are applied downstream in
         // TrueforceDevice, so the spring rides through the same chain).
-        // No-ops, returning the input unchanged, when: disabled; iRacing
-        // (the sim already produces real standstill weight); the tap is
-        // stale (null, keepalive,
-        // stay out of native FFB's way); steering is stale or unavailable
-        // (any non-AC source); or already above the cutoff speed.
-        private short? ApplyStationarySpring(short? gameTarget)
+        // No-ops, returning the input unchanged, when: disabled; the game
+        // sends no target; iRacing (the sim already produces real standstill
+        // weight); any Forza session (see the exclusion below); steering is
+        // stale from both the game and the physical reader; or already at or
+        // above the cutoff speed.
+        private short? ApplyStationarySpring(short? gameTarget, bool inSynthesis = false)
         {
             // SPRING desk self-test: while the deadline is in the future,
             // synthesize a centering force with a simulated wheel position
             // that flips direction every ~1.5 s, so the user feels the spring
             // push one way then the other without a game. Bypasses every
-            // normal gate (enabled / speed / steering freshness / null tap).
+            // normal gate (enabled / game / speed / steering freshness).
             long springTestEnd = System.Threading.Interlocked.Read(ref _springTestEndTicks);
             if (springTestEnd != 0)
             {
@@ -2853,7 +3779,7 @@ namespace TrueforceForAll.Plugin
                     double remainSec  = (springTestEnd - nowSt) / (double)Stopwatch.Frequency;
                     double elapsedSec = SpringTestDurationSec - remainSec;
                     float steerT = ((int)(elapsedSec / 1.5) % 2 == 0) ? 0.8f : -0.8f;
-                    float strengthT = Math.Max(0.4f, (float)(ts?.StationarySpringStrength ?? 1.0));
+                    float strengthT = Math.Max(0.4f, (float)EffectiveStationarySpringStrength(_activeGame));
                     const float MaxLsbT = 32767f;
                     float ffbScaleT = _device != null ? _device.FfbScale : 1f;
                     if (ffbScaleT < 0.05f) ffbScaleT = 0.05f;
@@ -2868,37 +3794,46 @@ namespace TrueforceForAll.Plugin
             }
 
             var s = Settings;
-            if (s == null || !s.StationarySpringEnabled) return gameTarget;
+            if (s == null || !EffectiveStationarySpringEnabled(_activeGame)) return gameTarget;
             if (!gameTarget.HasValue) return gameTarget;
-            if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal))
-                return gameTarget;
-            // Forza exclusion. The spring conflicted with Forza's force
-            // feedback during the matchmaking-found transition and could
-            // pull the wheel to the rotational stop, sometimes with violent
-            // back-and-forth FFB against the stop. The precise interaction
-            // wasn't isolated (direction is correct in normal use, and
-            // several narrower gates were tried without reliably catching
-            // the case), so the spring is bypassed for the whole Forza
-            // session (user's call, 2026-05-28). Gate on the SESSION, not the
-            // active source: when a Forza session is running on the SimHub
-            // fallback (Data Out pointed at SimHub, not us) the active source
-            // is SimHub, yet the spring must still stay excluded.
-            if (InForzaSession)
+            // iRacing and arcade cabinets, both stated once in
+            // ActiveGameAllowsStationarySpring so the FFB tab hides the control
+            // on exactly the same rule that skips it here.
+            if (!ActiveGameAllowsStationarySpring) return gameTarget;
+            // Armed takeover or Telemetry Based FFB: MaybeReshapeFfb assigns
+            // over whatever this returns, so the spring is rendered THERE (the
+            // wantReshapeSpring block in the takeover's own sign and scale; a
+            // call back into this method with inSynthesis for the synthesis,
+            // whose sign space is the same as the tap's). Anything added here
+            // would be computed and thrown away.
+            if (!inSynthesis && (_forceMode == ForceModeIRacing || _forceMode == ForceModeModeB
+                                 || _forceMode == ForceModeSpring))
+                return gameTarget;   // spring mode assigns over the chain too, and renders no spring of ours
+            // Forza exclusion (user's call, 2026-05-28). The spring conflicted
+            // with Forza's FFB during the matchmaking-found transition and
+            // could pull the wheel to the rotational stop, sometimes with
+            // violent back-and-forth against it. The interaction was never
+            // isolated (direction is correct in normal use, and several
+            // narrower gates failed to catch the case), so the whole Forza
+            // session is bypassed. Gate on the SESSION, not the active source:
+            // a Forza session running on the SimHub fallback (Data Out pointed
+            // at SimHub) reports source SimHub, yet must still stay excluded.
+            // The conflict was with the game's own force on the CAPTURE route.
+            // Under Telemetry Based FFB that force is not on the wire, so the
+            // spring is offered there (owner, 2026-09-13).
+            if (InForzaSession && !inSynthesis)
                 return gameTarget;
 
-            // Steering source. While the game is reporting steering, use ITS
-            // value: it shares the game's own FFB reference frame, so the spring
-            // and the game's forces agree and the feel stays smooth (AC reports
-            // a high-rate steering angle whenever the sim is running, stationary
-            // or moving, engine on or off). Switch to the wheel's PHYSICAL
-            // position ONLY when the game has genuinely stopped reporting it:
-            //   - game steering stale (sim paused / telemetry stopped), or
-            //   - an authoritative-session source says we're paused even though
-            //     frames keep coming (Forza zeros steering through the pre-race
-            //     countdown / pause).
-            // In those states there's no live game FFB to fight, so the physical
-            // wheel position is safe. Using physical WHILE driving made it fight
-            // the game's own FFB near center (different reference frames) -> jerky.
+            // Steering source. Prefer the GAME's value: it shares the game's
+            // own FFB reference frame, so the spring and the game's forces
+            // agree (AC reports a high-rate angle whenever the sim runs,
+            // stationary or moving, engine on or off). Switch to the wheel's
+            // PHYSICAL position only when game steering is stale (sim paused
+            // / telemetry stopped) or an authoritative-session source reports
+            // paused while frames keep coming (Forza zeros steering through
+            // the pre-race countdown / pause): no live game FFB to fight
+            // there. Physical WHILE driving fought the game's own FFB near
+            // center (different reference frames) -> jerky.
             long now = Stopwatch.GetTimestamp();
             long gameAge = now - System.Threading.Interlocked.Read(ref _lastSteerTicks);
             var src2 = _telemetrySource;
@@ -2918,7 +3853,7 @@ namespace TrueforceForAll.Plugin
             else
                 return gameTarget;                  // no steering at all
 
-            float cutoff = (float)s.StationarySpringCutoffKmh;
+            float cutoff = (float)EffectiveStationarySpringCutoff(_activeGame);
             float speed  = _lastSpeedKmh;
             if (cutoff <= 0f || speed >= cutoff) return gameTarget;
 
@@ -2944,18 +3879,16 @@ namespace TrueforceForAll.Plugin
             // full *felt* scale at full lock while parked; scales with |steer|
             // so there's no notch at center and it grows as you wind lock on.
             const float MaxLsb = 32767f;
-            float desiredMag = (float)s.StationarySpringStrength
+            float desiredMag = (float)EffectiveStationarySpringStrength(_activeGame)
                              * Math.Abs(steer) * fade * MaxLsb;
             if (desiredMag < 1f) return gameTarget;
 
-            // Pre-compensate the downstream FfbScale. Everything we return is
-            // multiplied by FfbScale in TrueforceDevice, so without this the
-            // user's FFB-strength trim (default 0.80) silently caps the spring
-            // well below "full scale" and the strength slider can't reach a
-            // meaningful ceiling. Dividing here makes strength=1.0 land at
-            // true full motor torque regardless of FfbScale. Floor the divisor
-            // so a tiny FfbScale can't explode the value (the ±32767 clamp
-            // below is the real safety net either way).
+            // Pre-compensate the downstream FfbScale: TrueforceDevice
+            // multiplies everything we return by it, so without this the
+            // user's FFB-strength trim (default 0.80) silently caps the
+            // spring below full scale. Dividing makes strength=1.0 land at
+            // true full motor torque. Floor the divisor so a tiny FfbScale
+            // can't explode it (the ±32767 clamp below is the real net).
             float ffbScale = _device != null ? _device.FfbScale : 1f;
             if (ffbScale < 0.05f) ffbScale = 0.05f;
             desiredMag /= ffbScale;
@@ -2963,10 +3896,8 @@ namespace TrueforceForAll.Plugin
             // Re-centering direction in the game's FFB sign space. The
             // steer->FFB sign relationship is wheel/protocol AND source
             // dependent: confirmed correct on AC + G PRO (the un-inverted form
-            // pushed away from center). Forza's Steer sign convention is
-            // assumed to match AC's here but is a hardware-verify item; if it
-            // re-centers the wrong way in Forza, the source should flip its
-            // SteeringAngle sign rather than special-casing here.
+            // pushed away from center). A source that re-centers the wrong way
+            // should flip its own SteeringAngle sign, not special-case here.
             float dir = (steer > 0f) ? 1f : -1f;
 
             int g = gameTarget.Value;
@@ -3028,8 +3959,8 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Trigger an effect's test playback. Forces the device into
-        /// active ep3 mode for the duration so the test is audible even when
-        /// AC isn't running (no FFB tap data → would otherwise be keepalive).
+        /// active ep3 mode for the duration so the test is audible with no game
+        /// running (no FFB tap data, so the stream would otherwise be keepalive).
         /// Drives effect.TestUpdate(phase) at ~60 Hz over the test window so
         /// effects can simulate dynamic behavior (RPM ramps, slip pulses, etc).</summary>
         public void TestEffect(TelemetryEffect effect)
@@ -3070,12 +4001,9 @@ namespace TrueforceForAll.Plugin
                 finally
                 {
                     // Clear any state TestPlay/TestUpdate latched (amplitudes,
-                    // envelopes, hold timers) so it doesn't bleed into other
-                    // effects on subsequent renders. Without this, e.g. ABS
-                    // Pulse mode leaves _amp = ActiveAmp*Gain set after the
-                    // test ends; with no telemetry to zero it back out (user
-                    // is in the settings panel, no game running), the pulse
-                    // keeps rendering and contaminates every later test.
+                    // envelopes, hold timers). Without this, ABS Pulse leaves
+                    // _amp = ActiveAmp*Gain set and, with no telemetry to zero
+                    // it (no game running), it keeps rendering into later tests.
                     try { effect.Reset(); } catch { }
                     System.Threading.Interlocked.Decrement(ref _activeTestTasks);
                 }
@@ -3100,14 +4028,13 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>FAULT access-code test: force the live device into the
         /// stream-fault state so the recovery watchdog (MaybeRecoverDevice)
-        /// re-attaches it, exercising the "Stream lost - auto-reconnecting"
+        /// re-attaches it, exercising the "Stream lost, auto-reconnecting"
         /// status + transparent recovery without physically unplugging.</summary>
         public void DebugForceStreamFault() => _device?.DebugForceStreamFault();
 
         /// <summary>WHATSNEW access-code test: clear the changelog/seen state
-        /// so the "What's new" banner and every per-effect NEW badge reappear.
-        /// Resets to "0.0.0" so the banner shows the full history (enough to
-        /// confirm the banner + the newest entry/badge render). The UI layer
+        /// so the "What's new" banner and every per-effect NEW badge reappear
+        /// (LastSeenVersion "0.0.0" shows the full history). The UI layer
         /// refreshes the banner + badges after calling this.</summary>
         public void DebugResetChangelogSeen()
         {
@@ -3119,13 +4046,11 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>"Plugin X, Core Y, Engine Z" with a mismatch flag. The three
         /// assemblies must be deployed as a matched set; a stale Core or Engine
-        /// DLL copied alongside a newer Plugin fails silently (dead wheel /
-        /// missing effects) with no obvious cause. Directory.Build.props stamps
-        /// all three from one version. EngineLoop lives in the Engine assembly,
-        /// TrueforceDevice in Core, so typeof(...).Assembly resolves each despite
-        /// the shared namespace. Shared by the startup log cross-check, the
-        /// Export-logs manifest, and the pre-filled issue body so the top known
-        /// dead-wheel cause is visible in all three.</summary>
+        /// DLL beside a newer Plugin fails silently (dead wheel / missing
+        /// effects). Directory.Build.props stamps all three from one version.
+        /// EngineLoop lives in Engine, TrueforceDevice in Core, so
+        /// typeof(...).Assembly resolves each despite the shared namespace. Used
+        /// by the startup cross-check, Export-logs manifest and issue body.</summary>
         internal static string GetAssemblyVersionLine(out bool mismatch)
         {
             mismatch = false;
@@ -3137,10 +4062,8 @@ namespace TrueforceForAll.Plugin
                 mismatch = !(plugin == core && core == engine);
                 // The build stamp: every dev build of a version shares the
                 // same number, so a log alone could not say WHICH build a
-                // tester ran (2026-08-29: three 0.2.7 builds in one night,
-                // and a report that turned out to be against the previous
-                // one). The DLL's own write time is set by the build and
-                // survives the installer, so it names the build exactly.
+                // tester ran. The DLL's own write time is set by the build
+                // and survives the installer, so it names the build exactly.
                 string stamp = "";
                 try
                 {
@@ -3157,11 +4080,10 @@ namespace TrueforceForAll.Plugin
         /// <summary>SimHub's own version ("9.11.22"), or null when it can't be
         /// read. Not from the host exe: SimHubWPF.exe ships no version resource
         /// (FileVersion and ProductVersion read 1.0.0.0 on every build, as do
-        /// SimHub.Plugins.dll and GameReaderCommon.dll), so the real number
-        /// lives only in SimHub's own parsed version, the one its startup log
-        /// banner prints. Null rather than a placeholder string: a wrong-looking
-        /// version in a bug report is worse than none, because it stops anyone
-        /// asking, so callers fall back to prompting the reporter.</summary>
+        /// SimHub.Plugins.dll and GameReaderCommon.dll), so the real number lives
+        /// only in SimHub's own parsed version, the one its startup log banner
+        /// prints. Null rather than a placeholder so callers fall back to
+        /// prompting the reporter.</summary>
         internal static string GetSimHubVersion()
         {
             // The property access sits in its own non-inlined method so that on
@@ -3223,79 +4145,105 @@ namespace TrueforceForAll.Plugin
         public void Init(PluginManager pluginManager)
         {
             // SimHub injects this property too, but assign it explicitly so it's
-            // guaranteed set for code that reads it (e.g. SettingsControl's
-            // licence check for the nag-strip clearance).
+            // guaranteed set for code that reads the property rather than the
+            // parameter (e.g. TryGetLiveLapDelta, called from DispatchFrame).
             PluginManager = pluginManager;
-            // Ensure TLS 1.2 is enabled process-wide before any network client
-            // (auth / community / backup) is used. net48 on older Windows can
-            // default to a protocol Supabase rejects, and otherwise this only
-            // gets set as a side effect of the update check running first.
-            // No-op if already enabled.
+            // TLS 1.2 process-wide before any network client (auth / community /
+            // backup): net48 on older Windows can default to a protocol Supabase
+            // rejects. Otherwise it is only set as a side effect of the update check.
             try { System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12; } catch { }
             SimHub.Logging.Current.Info("[TF4ALL] Init: loading settings...");
             LogAssemblyVersionCrossCheck();
             SimHub.Logging.Current.Info(
                 "[TF4ALL] Logitech processes at startup: " + SnapshotLogitechProcesses());
-            // If the installer just opened SimHub visibly after an install/update,
-            // it flipped SimHub's "Start minimized" off for that one launch. Put
-            // the user's real preference back in SimHub's in-memory model so it
-            // isn't silently persisted off on exit. One-shot, gated by a marker
-            // file; a no-op on every normal launch. See StartMinimizedRestore.
+            // The installer flips SimHub's "Start minimized" off to open it visibly
+            // after an install/update, so put the user's real preference back in
+            // SimHub's in-memory model before exit persists the off. One-shot,
+            // marker-file gated. See StartMinimizedRestore.
             StartMinimizedRestore.ConsumeMarkerAndRestore();
-            // wasFreshInstall flips iff the factory ran, which only happens
-            // when SimHub had no prior settings file for us, the cleanest
-            // signal for "this is a first-run install" that the SimHub
-            // ReadCommonSettings API gives us.
+            // wasFreshInstall flips iff the factory ran (no prior settings file
+            // for us), the cleanest first-run signal ReadCommonSettings gives.
             bool wasFreshInstall = false;
             Settings = this.ReadCommonSettings("GeneralSettings", () => { wasFreshInstall = true; return new TrueforceSettings(); });
-            // Defensive nulls in case a pre-2.x settings file was deserialized
-            // without the new dictionaries.
+            // Kept for the whole session: wheel detection runs later (and again
+            // on a replug) and needs to know this PC had no settings file, so
+            // first-run-only defaults can never reach an existing setup.
+            _wasFreshInstall = wasFreshInstall;
+            // Defensive nulls in case an older settings file was deserialized
+            // without one of these dictionaries.
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
             if (Settings.GameDefaults == null) Settings.GameDefaults = new Dictionary<string, string>();
             if (Settings.GameEnabled  == null) Settings.GameEnabled  = new Dictionary<string, bool>();
             if (Settings.GameModes    == null) Settings.GameModes    = new Dictionary<string, TrueforceMasterMode>();
-            // The spring/FFB-recreation toggle left the UI (owner call
-            // 2026-08-08: it is HOW Farming Simulator works, not an option;
-            // FS is one of the games that require telemetry-based FFB). A
-            // false persisted by an older build would leave FS silently dead
-            // with nothing visible to re-enable, so normalize to on at load.
+            // The spring/FFB-recreation toggle left the UI (owner call: it is HOW
+            // Farming Simulator works, not an option; FS requires telemetry-based
+            // FFB). A false from an older build would leave FS silently dead.
             Settings.ClassicSpringEmulationEnabled = true;
             // Max force is per car, always (see the setting's own note). The
             // choice is retired rather than removed so the resolution order
             // keeps honouring a shared number set before this release.
             Settings.IRacingMaxForcePerCar = true;
-            // Hand-the-wheel-back-on-pause default repair (owner call
-            // 2026-08-15). Stable shipped StopStreamOnPause DEFAULT-ON in
-            // v0.1.24; the 0.2.x line left it opt-in by oversight, so
-            // beta-era settings files carry a stored false nobody chose.
-            // One-time flip so every install matches the shipped default;
-            // the user's checkbox choice sticks from then on.
-            if (!Settings.StopStreamOnPauseMigrated)
+            // StopStreamOnPause: 0.3.0 flipped beta-era files to ON once (the
+            // shipped default then). 0.4.0 ships it OFF (see the setting), and
+            // nearly every stored ON came from that flip rather than a choice,
+            // so flip once more; the checkbox choice then sticks.
+            if (!Settings.StopStreamOnPauseMigrated) Settings.StopStreamOnPauseMigrated = true;
+            if (!Settings.StopStreamOnPauseDefaultOffMigrated)
             {
-                Settings.StopStreamOnPauseMigrated = true;
-                Settings.StopStreamOnPause = true;
+                Settings.StopStreamOnPauseDefaultOffMigrated = true;
+                Settings.StopStreamOnPause = false;
             }
-            // Provision the official community backend. The plugin ships no backend baked into its
-            // code, so without this a fresh install has empty settings and can't reach sign-in /
-            // community / backup ("could not reach the sign-in server"). Seed the public URL +
-            // publishable key every launch (authoritative, so a key rotation propagates on the next
-            // release). Safe to ship: the publishable key only grants what RLS allows the
-            // anon/authenticated roles; data is protected by row-level security, never by hiding
-            // this key. See CommunityBackend (NOT the service_role key / any Edge Function secret).
+            // The condition engine's own data migrations (the inertia-spec repair and the
+            // generation reset). They live in a method rather than here because a restore or
+            // an import can land values that predate them, and the fix then has to run again
+            // outside startup. Same call, same order, same behavior as when it was inline.
+            ApplyConditionMigrations();
+            // The Le Mans Ultimate full scale's first, provisional default (15
+            // Nm, before the rig had measured what the cars push) was persisted
+            // by the one settings file that ran that build. Move it to the
+            // measured number; a value anyone set by hand is left alone.
+            if (Math.Abs(Settings.LmuFullScaleNm - 15f) < 0.01f)
+                Settings.LmuFullScaleNm = 50f;
+            // The two spike-reduction methods used to share one number, read as
+            // a rate under the rate limiter and as a magnitude threshold under
+            // the peak limiter. Give the peak limiter its own: someone already
+            // using it keeps the value they tuned, everyone else gets the
+            // shipped default instead of whatever their rate happened to be.
+            Settings.SeedSpikeTransientThreshold();
+            // Bring an installed TF4ALL CSP Bridge up to date NOW, while Assetto
+            // Corsa is almost certainly closed, rather than waiting for the
+            // game-change edge. CSP reads its scripts once at startup, so an
+            // update applied on entering AC cannot take effect until the launch
+            // AFTER that one: the user plays a whole session on the old script,
+            // and a fix they were told shipped appears not to work. Updating at
+            // plugin start means their next launch already has it (owner,
+            // 2026-09-09). The game-change call stays as the backstop for a
+            // bridge installed later in the session.
+            MaybeUpdateAcCspBridge();
+            // Provision the official community backend: nothing is baked into the code, so a
+            // fresh install can't reach sign-in / community / backup ("could not reach the
+            // sign-in server"). Seeded every launch and authoritative, so a key rotation
+            // propagates on the next release. Safe to ship: the publishable key only grants what
+            // RLS allows anon/authenticated (NOT the service_role key or an Edge Function secret).
             Settings.CommunityBackendUrl     = CommunityBackend.Url;
             Settings.CommunityBackendAnonKey = CommunityBackend.AnonKey;
-            // Dev-only backup-classification safety net. A new TOP-LEVEL TrueforceSettings
-            // property that nobody classified in BackupProjection would silently miss cloud
-            // backups. Warn loudly (dev mode only, so normal users never see it) so it gets
-            // its one-line classification. New fields INSIDE an existing effect object are
-            // auto-covered and never trip this. See the "classify new settings for backup"
-            // process note + BackupProjection.cs.
+            // Dev-only safety net: a new TOP-LEVEL TrueforceSettings property nobody
+            // classified in BackupProjection.cs would silently miss cloud backups, so warn
+            // until it gets its one-line classification. New fields INSIDE an existing
+            // effect object are auto-covered and never trip this.
             if (Settings.DevModeUnlocked)
             {
                 try
                 {
                     var backupUnclassified = BackupProjection.FindUnclassifiedFields();
                     var backupDoubled      = BackupProjection.FindDoubleClassifiedFields();
+                    // The two guards below face the other way: not "is every field classified"
+                    // but "does every classification still name a real field", and the same
+                    // question for the Forza/Arcade splits. That direction had no check at all,
+                    // which is how two Portable entries came to match no property for a month
+                    // while the list implied the settings were being backed up.
+                    var backupStale        = BackupProjection.FindStaleClassifications();
+                    var partialUnclassified = BackupProjection.FindUnclassifiedPartialFields();
                     if (backupUnclassified.Count > 0)
                         SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: " + backupUnclassified.Count
                             + " unclassified TrueforceSettings field(s); add each to a BackupProjection bucket "
@@ -3303,7 +4251,14 @@ namespace TrueforceForAll.Plugin
                     if (backupDoubled.Count > 0)
                         SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: field(s) classified in more than "
                             + "one BackupProjection bucket: " + string.Join(", ", backupDoubled));
-                    if (backupUnclassified.Count == 0 && backupDoubled.Count == 0)
+                    if (backupStale.Count > 0)
+                        SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: classified name(s) that match no "
+                            + "property, so they back up nothing: " + string.Join(", ", backupStale));
+                    if (partialUnclassified.Count > 0)
+                        SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: Forza/Arcade field(s) in neither the "
+                            + "portable nor the machine-local half of their split: " + string.Join(", ", partialUnclassified));
+                    if (backupUnclassified.Count == 0 && backupDoubled.Count == 0
+                        && backupStale.Count == 0 && partialUnclassified.Count == 0)
                         SimHub.Logging.Current.Info("[TF4ALL][DEV] Backup classification OK: all "
                             + "TrueforceSettings fields are classified for backup/sync.");
                 }
@@ -3312,15 +4267,8 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup classification audit failed: " + ex.Message);
                 }
             }
-            // One-time folder restructure: move the three legacy sibling
-            // folders (TrueforceForAll-Presets / -Library / -Imports) into the
-            // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\import}
-            // layout. Idempotent; skipped once stamped. Runs BEFORE the stores
-            // load so they read from the new location on the first new launch.
-            // The lighting tab shipped. An install from before that has
-            // LightsyncTabUnlocked stored false, and a new default cannot reach
-            // a value already written, so flip it once and stamp it. Latched, so
-            // a user who then turns it off again is left alone.
+            // The lighting tab shipped, but a new default cannot reach a stored
+            // LightsyncTabUnlocked=false. Flip once, latched (opt-out sticks).
             if (!Settings.LightsyncReleasedMigrated)
             {
                 Settings.LightsyncTabUnlocked = true;
@@ -3328,28 +4276,22 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
-            // The master switch became three-state. Everyone lands on Full, and that
-            // is the honest translation rather than a shortcut: the old bool was
-            // never a global choice, it was the LIVE state pushed from the per-game
-            // map on every game change, and that map travels forward untouched and
-            // keeps demoting exactly the games it always did. Reading a stored
-            // "false" as a global Off would take whichever game happened to be
-            // selected when the file was last written and switch the plugin off
-            // everywhere, which nobody asked for. Latched, so a user who then picks
-            // lights-only or off is left alone on the next launch.
+            // The master switch became three-state. Everyone lands on Normal: the old
+            // bool was never a global choice, it was the LIVE state pushed from the
+            // per-game map on every game change, so a stored "false" is just the
+            // last game selected and reading it as a global Off would switch the
+            // plugin off everywhere. The map still demotes the games it always did.
+            // Latched, so a user who then picks lights-only or off is left alone.
             if (!Settings.MasterModeMigratedV1)
             {
                 Settings.MasterMode = TrueforceMasterMode.Normal;
 
                 // Drop the per-game "off" entries WE wrote for native-Trueforce
-                // games. Older builds stamped one on first sight of each of them, so
-                // an existing install carries a map that pins iRacing, ACC and the
-                // rest to off, and the new default (Lightsync only) could never
-                // apply because the map is read first. A deliberate off for one of
-                // those games is indistinguishable from our own stamp, so this does
-                // reset that choice, to a mode that is strictly less intrusive: the
-                // game keeps its force feedback either way and the only difference
-                // is whether we set the car's pattern.
+                // games. Older builds stamped one on first sight of each, so an
+                // existing install pins iRacing, ACC and the rest to off and the new
+                // default (Lightsync only) can never apply (the map is read first).
+                // A deliberate off is indistinguishable from ours, so this resets it
+                // too, to a less intrusive mode (the game keeps its FFB either way).
                 if (Settings.GameEnabled != null)
                 {
                     var ours = new List<string>();
@@ -3363,14 +4305,9 @@ namespace TrueforceForAll.Plugin
             }
 
             // The per-game choice became a MODE. Every stored "off" becomes Lightsync
-            // only, not Off.
-            //
-            // Off is close to unnecessary now: it was the only way to say "not the
-            // force layer here" back when the alternative was everything, and
-            // Lightsync only says the same thing while still lighting the wheel for
-            // the car you are in. Someone who genuinely wants a title silent can set
-            // Off again in one click, and that choice then sticks, whereas nobody
-            // can choose a mode that was never offered to them.
+            // only, not Off: it says the same "not the force layer here" while still
+            // lighting the wheel for the car you are in, and anyone who wants a title
+            // silent can pick Off again in one click, which then sticks.
             if (!Settings.GameModeMapMigratedV1)
             {
                 if (Settings.GameEnabled != null && Settings.GameModes != null)
@@ -3386,18 +4323,31 @@ namespace TrueforceForAll.Plugin
                 Settings.GameModeMapMigratedV1 = true;
                 try { PersistSettingsCore(); } catch { }
             }
+            // Ask SimHub what is already running before the mode is latched: a
+            // game on screen at Init decides the mode as surely as one that
+            // starts later, and the force path is opened further down this
+            // method, long before the first DataUpdate could say so.
+            _startupGameName = ReadRunningGameFromSimHub();
+            if (!string.IsNullOrEmpty(_startupGameName))
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] '{_startupGameName}' is already running: resolving its master mode now, "
+                    + "before the wheel's force path is opened.");
+
             // Latch the effective mode from what we just loaded, so nothing reads
             // the field's compile-time default before the first game arrives.
             ApplyEffectiveMode("settings loaded");
 
+            // One-time folder restructure: move the three legacy sibling
+            // folders (TrueforceForAll-Presets / -Library / -Imports) into the
+            // collapsed PluginsData\Common\TrueforceForAll\{factory,user,user\import}
+            // layout. Idempotent; skipped once stamped. Runs BEFORE the stores
+            // load so they read from the new location on the first new launch.
             if (!Settings.FoldersRestructuredV3)
             {
                 RestructureFoldersIfNeeded();
                 Settings.FoldersRestructuredV3 = true;
-                // Persist the latch immediately. The later conditional
-                // SaveCommonSettings at the "fresh install" gate doesn't
-                // fire on routine upgrades, so without this the
-                // restructure would re-run every startup.
+                // Persist now: the later SaveCommonSettings only fires on a fresh
+                // install, so otherwise the restructure re-runs every startup.
                 try { PersistSettingsCore(); } catch { }
             }
             // Load the file-based built-in presets (folder override -> shipped
@@ -3408,22 +4358,16 @@ namespace TrueforceForAll.Plugin
             // PluginsData/Common, user-writable.
             UserPresets.Initialize(Settings.UserLibraryFolder);
             // Fold the OLDEST-format Settings.GamePresets dict into
-            // Settings.Presets/GameDefaults BEFORE the file migration below.
-            // Ordering matters: MigrateLegacyUserPresetsToFolder reads only
-            // Settings.Presets and early-returns (no backup, no files) when it
-            // is empty, then latches PresetsMigratedV2. If GamePresets were
-            // folded in afterwards (as it historically was), those presets
-            // would land only in the in-memory cache and be wiped by the
-            // folder rebuild, with no backup. Running it first means real
-            // GamePresets content is migrated to files and backed up. No-op on
-            // every v0.1.0+ install (GamePresets is already empty there).
+            // Settings.Presets/GameDefaults BEFORE the file migration below:
+            // MigrateLegacyUserPresetsToFolder reads only those two dicts,
+            // early-returns (no backup, no files) when both are empty, then
+            // latches PresetsMigratedV2, so folding in later loses those presets
+            // to the folder rebuild, unbacked. No-op on v0.1.0+ (GamePresets empty).
             MigrateLegacyGamePresets();
-            // One-time migration: legacy in-dict user presets -> user-library
-            // files. Backs the settings file up first. The migration's
-            // skip-factory-name rule (IsFactoryBuiltinName, currently-shipped
-            // OR RetiredBuiltinNames) drops factory entries on the floor so
-            // they never land in the library; the user library carries only
-            // genuinely-user content from here on. Skipped once stamped.
+            // One-time migration: legacy in-dict user presets -> user-library files,
+            // settings file backed up first. IsFactoryBuiltinName (currently-shipped
+            // OR RetiredBuiltinNames) drops factory entries so the library carries
+            // only user content. Skipped once stamped.
             if (!Settings.PresetsMigratedV2)
             {
                 // Latch only when the migration completed with a downgrade
@@ -3446,10 +4390,8 @@ namespace TrueforceForAll.Plugin
                 Settings.CarsMigratedV2 = true;
                 try { PersistSettingsCore(); } catch { }
             }
-            // Housekeeping: an earlier build of the car migration named its
-            // backup folder "TrueforceCars.bak-...". Rename any leftover to the
-            // on-brand name so users don't see a bare "Trueforce" folder. Idem-
-            // potent; runs every Init and no-ops once everything's renamed.
+            // Housekeeping: rename leftover "TrueforceCars.bak-..." backup
+            // folders to the on-brand name. Idempotent; runs every Init.
             RebrandLegacyCarsBackup();
             if (Settings.Performance  == null) Settings.Performance  = new PerformanceSettings();
             if (Settings.Forza        == null) Settings.Forza        = new ForzaSettings();
@@ -3460,16 +4402,13 @@ namespace TrueforceForAll.Plugin
                 Settings.GamesWithRedline = new HashSet<string>();
             // Scrub any Forza title an earlier build wrongly learned as a
             // redline game (its per-car redline can pass the sanity gate, but
-            // Forza has no precise rev limit). Self-heals affected settings so
-            // the engage-% control comes back without the user resetting.
+            // Forza has no precise rev limit), so the engage-% control comes back.
             Settings.GamesWithRedline.RemoveWhere(IsForzaGameName);
 
-            // One-time re-validation: builds before the realRedline split faked
-            // a redline from MaxRpm, so the learning gate accepted EVERY
-            // non-Forza game the user drove (MaxRpm always passes the
-            // 0.5..1.02x gate against itself). Those stale entries would now
-            // hide the engage-% control for games that actually take the
-            // percentage path. Clear the set once so it re-learns under the new
+            // One-time re-validation: builds before the realRedline split faked a
+            // redline from MaxRpm, so the gate accepted EVERY non-Forza game
+            // (MaxRpm always passes the 0.5..1.02x gate against itself), which
+            // hides the engage-% control. Clear once so it re-learns under the new
             // rule (only games reporting a real CarSettings_RedLineRPM qualify).
             if (!Settings.GamesWithRedlineRevalidated)
             {
@@ -3490,15 +4429,12 @@ namespace TrueforceForAll.Plugin
             }
 
             // One-shot v0.1.21 -> v0.1.22 migration: clear any saved manual
-            // USBPcap override. Stale pins (the wheel later moved to a
-            // different address / USBPcap interface) caused users to report
-            // FFB stopped working after an update when in fact the override
-            // was pointing at thin air (issue #17). Auto-discovery +
-            // identity-based self-heal handle the realistic failure modes
-            // for almost every user, so we lean on those by default. A user
-            // who genuinely needs to pin can flip the UI back with the
-            // MANUALPIN access code and re-pick. The latch prevents this
-            // from re-clearing a deliberate post-migration pin.
+            // USBPcap override. A stale pin (wheel moved to a different address
+            // / USBPcap interface) reads as "FFB stopped working after an
+            // update" (issue #17); auto-discovery + identity-based self-heal
+            // cover the realistic cases; the MANUALPIN access code re-reveals
+            // the picker so a user who needs one can pin again. The latch
+            // stops this re-clearing a deliberate post-migration pin.
             if (!Settings.ManualOverrideClearedV0_1_22)
             {
                 bool hadOverride = !string.IsNullOrEmpty(Settings.ManualUsbPcapInterface)
@@ -3518,14 +4454,11 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
-            // Fresh install (factory ran) or first run on a settings file
-            // written before the badge feature existed (LastSeenVersion never
-            // stamped): pre-seed every known effect as already-seen and
-            // stamp LastSeenVersion to the running build. Without this, an
-            // existing user upgrading from a pre-feature version would get
-            // badges on every effect they've already been using, useless
-            // noise. After this seed, badges only ever fire for effects
-            // introduced in versions strictly newer than this one.
+            // Fresh install (factory ran) or a settings file predating the badge
+            // feature (LastSeenVersion never stamped): seed every known effect as
+            // already-seen and stamp LastSeenVersion to the running build, so an
+            // upgrader isn't badged on effects they already use. After the seed,
+            // badges fire only for effects introduced in strictly newer versions.
             if (wasFreshInstall || string.IsNullOrEmpty(Settings.LastSeenVersion))
             {
                 foreach (var id in EffectChangelog.KnownEffectIds)
@@ -3536,9 +4469,8 @@ namespace TrueforceForAll.Plugin
                 PersistSettingsCore();
             }
 
-            // Hand the resolver a reference to the persisted cache. New heuristic
-            // hits get written through and flushed to disk on the next settings
-            // save. Version mismatch (heuristic improvement) clears the cache.
+            // Hand the resolver the persisted cache (write-through; a version
+            // bump clears it). See AttachPersistentCache.
             int cacheVer = Settings.CarCylinderCacheVersion;
             CarCylinderResolver.AttachPersistentCache(Settings.CarCylinderCache, ref cacheVer);
             Settings.CarCylinderCacheVersion = cacheVer;
@@ -3552,23 +4484,16 @@ namespace TrueforceForAll.Plugin
                 Settings.CarFactsMigratedV1 = true;
                 try { PersistSettingsCore(); } catch { }
             }
-            // Note: the ordinal-name rename migration used to run here but
-            // tripped its `_carStore == null` guard because _carStore is
-            // only constructed below. Moved to after LoadAndMigrateCarPresets
-            // (V2 flag re-runs it for users whose V1 latch flipped on the
-            // no-op pass). MigrateLegacyGamePresets also used to run here; it
-            // now runs before the PresetsMigratedV2 file migration above so
-            // its content is written to files and backed up, not wiped.
+            // (MigrateCarPresetOrdinalNames and MigrateLegacyGamePresets both
+            // moved out of here; the ordering reasons live at their call sites.)
             InstallBuiltinPresetsIfMissing();
 
-            // Per-car file store: load files into Settings.CarOverrides
-            // (file wins on conflict), then migrate any existing
-            // Settings.CarOverrides / preset.CarOverrides into files for
-            // cars that don't already have one. Files become the canonical
-            // store; Settings.CarOverrides is now an in-memory cache only.
-            // Car preset store points at the user library folder (the cars/
-            // subfolder under TrueforceForAll-Library). Built-in cars live in
-            // BuiltinPresets and merge in via LoadAndMigrateCarPresets.
+            // Per-car file store, rooted at the cars/ subfolder of the user
+            // library (TrueforceForAll-Library). LoadAndMigrateCarPresets loads
+            // files into Settings.CarOverrides (file wins on conflict) then
+            // writes any Settings.CarOverrides / preset.CarOverrides lacking a
+            // file. Files are canonical; Settings.CarOverrides is an in-memory
+            // cache only. Built-in cars live in BuiltinPresets and merge in there.
             _carStore = new CarPresetStore(
                 () => UserPresets.CurrentFolder,
                 msg => SimHub.Logging.Current.Info(msg));
@@ -3580,7 +4505,7 @@ namespace TrueforceForAll.Plugin
             // Normalize legacy "Forza_<n>" car ids to "Car_<n>" exactly once.
             // Released builds stored Forza car tunings under "Forza_<ordinal>";
             // this branch looks them up as "Car_<ordinal>" (see the runtime
-            // alias in CurrentCarId), so without this an upgrading user's
+            // alias in DataUpdate), so without this an upgrading user's
             // per-car Forza Horizon tuning silently stops applying. Runs after
             // the car files are in the new layout and BEFORE the ordinal-name
             // pass below, so a normalized "Car_<n>" still gets its human name.
@@ -3597,14 +4522,12 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
-            // One-time engine-choice relocation (2026-07 centralization): the
-            // per-car engine picks that used to live on CarOverride.EnginePulse
-            // (Layout / CustomEngineId) move into the matching CarFacts
-            // variants' UserEngineLayout pin. Runs after the car files are
-            // loaded into Settings.CarOverrides and after id normalization so
-            // carIds line up with CarFacts keys. Global/game-preset picks are
-            // dropped deliberately (they aren't car-bound). Idempotent;
-            // flag-gated.
+            // One-time engine-choice relocation: per-car picks on
+            // CarOverride.EnginePulse (Layout / CustomEngineId) move into the
+            // matching CarFacts variants' UserEngineLayout pin. Runs after the
+            // car files load into Settings.CarOverrides and after id
+            // normalization so carIds line up with CarFacts keys. Global and
+            // game-preset picks are dropped deliberately (they aren't car-bound).
             if (!Settings.EngineChoiceMovedToCarFactsV1)
             {
                 try
@@ -3657,15 +4580,12 @@ namespace TrueforceForAll.Plugin
                 EnsureCarFactsAnonId();
             }
 
-            // Default-on re-pitch: CommunityEnabled's default flipped to ON,
-            // but existing settings files carry an explicit false from the
-            // old opt-in default. Re-show the networked welcome once for
-            // those installs; any dismissal of it enables community +
-            // sharing (the old pitch required an account, the new one
-            // doesn't, so one more look is fair). Community-on users are NOT
-            // re-pitched: they accepted a stricter pitch already, and if
-            // their stored AutoSubmitCarFacts is false the consent gate asks
-            // once at their next fact-worthy save instead.
+            // Default-on re-pitch: CommunityEnabled's default flipped to ON, but
+            // existing settings files carry an explicit false from the old opt-in
+            // default, so re-show the networked welcome once for those installs
+            // (any dismissal enables community + sharing). Community-on users are
+            // NOT re-pitched; if their stored AutoSubmitCarFacts is false the
+            // consent gate asks once at their next fact-worthy save instead.
             if (!Settings.CommunityDefaultOnRepitchedV1)
             {
                 if (!Settings.CommunityEnabled)
@@ -3678,12 +4598,10 @@ namespace TrueforceForAll.Plugin
                 try { PersistSettingsCore(); } catch { }
             }
 
-            // Rename Car_NNN-style car-preset names to their human-readable
-            // car names (per game). Runs here, not earlier, because _carStore
-            // must be initialised + LoadAndMigrateCarPresets must have moved
-            // the files into the new folder layout first. V2 flag re-runs
-            // the pass for users whose V1 ran in the wrong order and was a
-            // silent no-op.
+            // Rename Car_NNN-style car-preset names to human car names (per
+            // game). Must run after _carStore is initialised and after
+            // LoadAndMigrateCarPresets moved the files into the new layout; the
+            // V2 flag re-runs the pass for users whose V1 ran early and no-opped.
             if (!Settings.CarPresetOrdinalNamesMigratedV2)
             {
                 MigrateCarPresetOrdinalNames();
@@ -3694,9 +4612,9 @@ namespace TrueforceForAll.Plugin
 
             // Community backend HTTP client. Inert until
             // Settings.CommunityEnabled is true and a URL + anon key are
-            // configured (see supabase/README.md). Identity (submitter_id)
-            // is derived server-side from the client IP + a rotating salt,
-            // so the plugin holds no persistent submitter id.
+            // configured (see supabase/README.md). Identity (submitter_id) is
+            // the signed-in auth.uid(), else 'anon:' + Settings.CarFactsAnonId
+            // (0100); the hashed client IP is only a rate-limit / ban key.
             _auth = new CommunityAuth(
                 () => Settings,
                 () => PersistSettingsCore(),
@@ -3733,7 +4651,7 @@ namespace TrueforceForAll.Plugin
                 msg => SimHub.Logging.Current.Info(msg));
 
             // Cloud backup/sync transport (Phase 2). Same auth wiring as the other
-            // clients; gated by a signed-in session (and later supporter status).
+            // clients; a signed-in session, plus supporter status for uploads (0034).
             _backupClient = new BackupClient(
                 () => Settings,
                 msg => SimHub.Logging.Current.Info(msg),
@@ -3785,6 +4703,29 @@ namespace TrueforceForAll.Plugin
                 msg => SimHub.Logging.Current.Info(msg),
                 async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
 
+            // Anonymous usage statistics (opt-out; migration 0127). No auth wiring:
+            // the ping is deliberately never tied to an account. Fire once shortly
+            // after start, then on a slow timer so a long-running session still
+            // counts each day; MaybeSendUsagePing self-gates on the toggle and the
+            // once-a-day stamp, so the extra ticks are cheap no-ops.
+            _telemetryClient = new TelemetryClient(
+                () => Settings,
+                msg => SimHub.Logging.Current.Info(msg));
+            try
+            {
+                _usagePingTimer = new System.Threading.Timer(
+                    _ => MaybeSendUsagePing(), null,
+                    TimeSpan.FromMinutes(2), TimeSpan.FromHours(6));
+            }
+            catch { /* timer construction never fatal to boot */ }
+            // Prune the queued game-days on every start, whatever the toggle says. This
+            // is the one pruner an opted-out install ever reaches: everything else in
+            // this feature sits behind ShareUsageStats, so without it a user who turned
+            // the switch off would carry the days queued at that moment forever. Only
+            // writes when something actually went.
+            try { if (PruneUsageGameDays()) PersistSettingsCore(); }
+            catch { /* prune is housekeeping; never fatal to boot */ }
+
             // Fire-and-forget plugin-load account sync. If a session was
             // restored from Settings.AuthSession, refresh the profile so
             // SharingAuthor matches whatever the server says
@@ -3815,15 +4756,10 @@ namespace TrueforceForAll.Plugin
                 });
             }
 
-            // One-time cleanup: walk user/games + user/cars looking for
-            // files that are leftovers from before the file-based factory
-            // (commit c89c3f7 era). Game match = IsFactoryBuiltinName
-            // (current built-in OR retired-name list); car match =
-            // (carId, presetName) tuple exists in factory's CarPresetJsons,
-            // OR the file's own IsBuiltin tag is true, OR presetName
-            // matches IsFactoryBuiltinName. Archives matches to a backup
-            // folder + drops the matching entries from user/game-defaults
-            // and user/car-defaults so the factory seed takes over.
+            // One-time cleanup: archives user/games + user/cars files that are
+            // leftovers from before the file-based factory (commit c89c3f7 era),
+            // and drops their user/game-defaults + user/car-defaults entries so
+            // the factory seed takes over. The match rules live on the method.
             //
             // Runs AFTER LoadAndMigrateCarPresets so user/cars reflects
             // the full set of user-tier car files (step 1 of that method
@@ -3840,14 +4776,9 @@ namespace TrueforceForAll.Plugin
                 LoadAndMigrateCarPresets();
             }
             MigrateEngineHighRpmHelpersDefaults();
-            // (The 0.97 -> 0.85 rev-limiter Threshold migration was removed
-            // along with the Threshold field itself, 2026-07-17: the redline
-            // comes from the Car facts cascade now. Its latch field
-            // RevLimiterThresholdDefaultMigrated was retired with it.)
+            // (No rev-limiter Threshold migration: the field is gone and the
+            // redline comes from the Car facts cascade. See RevLimiterSettings.)
 
-            // Make sure all three folders exist with their READMEs, then auto-
-            // import anything the user dropped into the imports folder. All
-            // best-effort: folder access errors degrade gracefully.
             // One-time: the imports inbox was renamed from "drop" to "import";
             // move a leftover default "drop" folder to the new name.
             try
@@ -3858,6 +4789,10 @@ namespace TrueforceForAll.Plugin
                     Directory.Move(legacyDropFolder, newImportFolder);
             }
             catch { /* best-effort rename */ }
+
+            // Make sure all three folders exist with their READMEs, then auto-
+            // import anything the user dropped into the imports folder. All
+            // best-effort: folder access errors degrade gracefully.
             WriteReadmeIfMissing(BuiltinPresets.CurrentFolder, BuiltinReadmeText);
             WriteReadmeIfMissing(UserPresets.CurrentFolder, UserLibraryReadmeText);
             WriteReadmeIfMissing(UserImportsFolderPath, ImportsReadmeText);
@@ -3865,12 +4800,12 @@ namespace TrueforceForAll.Plugin
 
             _mixer.MasterGain = Settings.MasterGain;
 
-            // Start the GitHub update poller BEFORE the wheel-discovery early
-            // exit so a user whose wheel is unplugged (or whose G HUB is
-            // holding the HID) can still discover that a fix shipped. Without
-            // this, the plugin returns out of Init below and _updateChecker
-            // stays null, so the in-panel banner + Check-for-updates button
-            // are dead. The check itself doesn't touch wheel state.
+            // Start the GitHub update poller BEFORE the wheel bring-up below,
+            // so a user whose wheel is unplugged (or whose G HUB is holding
+            // the HID) still learns that a fix shipped without waiting on
+            // discovery. A null _updateChecker would leave the in-panel banner
+            // and the Check-for-updates button dead. The check itself doesn't
+            // touch wheel state.
             _updateCheckerCts = new System.Threading.CancellationTokenSource();
             _updateChecker = new UpdateChecker
             {
@@ -3886,9 +4821,8 @@ namespace TrueforceForAll.Plugin
                     // on the very first check. No-op for Stable on stable.
                     RefreshUpdateChannel();
                     // Downloaded-preset auto-update rides the same startup
-                    // check. Short delay: the community/preset-sharing
-                    // clients finish constructing later in Init, and startup
-                    // has better things to do first.
+                    // check. Short delay so the sweep doesn't compete with
+                    // the rest of startup.
                     await System.Threading.Tasks.Task.Delay(15000);
                     await MaybeAutoUpdateCommunityPresetsHeadless();
                 }
@@ -3897,14 +4831,12 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info($"[TF4ALL] Update check task crashed: {ex.Message}");
                 }
             });
-            // Arm the background re-check. The startup poll above is one-shot;
-            // this re-runs CheckAsync on the user-configured cadence
-            // (Settings.UpdateCheckIntervalHours) so a session left running for
-            // hours still discovers a release that shipped after launch. Lives
-            // on the plugin (always running) rather than the settings panel
-            // timer (which only ticks while the panel is open). The wakeup is a
-            // fixed cheap cadence; the tick itself decides whether enough time
-            // has elapsed, so a runtime cadence change needs no re-arm.
+            // Arm the background re-check: the startup poll above is one-shot.
+            // Re-runs CheckAsync on the user-configured cadence
+            // (Settings.UpdateCheckIntervalHours). Lives on the plugin, not the
+            // settings-panel timer, which only ticks while the panel is open.
+            // The wakeup is a fixed cheap cadence and the tick decides whether
+            // enough time has elapsed, so a runtime cadence change needs no re-arm.
             MarkUpdateChecked();
             _updateCheckTimer = new System.Threading.Timer(
                 UpdateCheckTimerTick, null, UpdateCheckPollMs, UpdateCheckPollMs);
@@ -3918,12 +4850,10 @@ namespace TrueforceForAll.Plugin
             // the device, not reconstruct the whole pipeline.
             if (MasterMode != TrueforceMasterMode.Normal)
             {
-                // Off and lights-only never open the Trueforce endpoint, so there
-                // is nothing to bring up: no HID handle, no init sequence, no
-                // USBPcap capture, no 1 kHz stream. Discovery still runs, because
-                // the wheel's identity is what the LED path and every lighting
-                // control read. This is also what makes lights-only true to its
-                // name rather than a paused version of the full plugin.
+                // Off and lights-only never open the Trueforce endpoint: no HID
+                // handle, no init sequence, no USBPcap capture, no 1 kHz stream.
+                // Discovery still runs because the wheel's identity is what the
+                // LED path and every lighting control read.
                 WheelMatch found;
                 if (!DiscoverWheel(out found))
                 {
@@ -3942,17 +4872,15 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                // G923 audio-path wedge workaround (2026-07-06). A cold
-                // bring-up on a wheel left in a stale streaming state (any
-                // SimHub restart while a game holds the wheel) makes the
-                // wheel honor cur but silently DISCARD the audio window —
-                // force feels fine, every audio effect is dead, and nothing
-                // in software can tell. Empirically one close→reopen→re-init
-                // cycle heals it (the FAULT access code proved it on
-                // hardware; G HUB is NOT needed). So after a successful cold
-                // bring-up, force one fault so the recovery watchdog runs
-                // that exact proven cycle ~3 s in. Costs one reconnect blip
-                // at startup, before anyone is driving.
+                // G923 audio-path wedge (2026-07-06): a cold bring-up on a
+                // wheel left in a stale streaming state (any SimHub restart
+                // while a game holds the wheel) makes the wheel honor cur but
+                // silently DISCARD the audio window. Force feels fine, every
+                // audio effect is dead, and nothing in software can tell. One
+                // close/reopen/re-init cycle heals it (proved on hardware with
+                // the FAULT access code; G HUB is NOT needed), so force one
+                // fault and let the recovery watchdog run that cycle ~3 s in.
+                // Costs one reconnect blip at startup, before anyone is driving.
                 var d = _device;
                 System.Threading.Tasks.Task.Run(async () =>
                 {
@@ -3984,12 +4912,12 @@ namespace TrueforceForAll.Plugin
 
             // Bindable input mappings for SimHub's Controls system.
             // IMPORTANT: AddInputMapping (NOT AddAction). AddAction
-            // AddAction registers a macro/event-callable entry that shows
-            // up in the Actions list but is NOT bindable - it sets
-            // IsInput=false, so the Controls binder skips it and pressing
-            // a bound button produces nothing. AddInputMapping flips
-            // IsInput=true so the entry surfaces in the Controls binder
-            // and fires on hardware input.
+            // registers a macro/event-callable entry that shows up in the
+            // Actions list but is NOT bindable - it sets IsInput=false, so
+            // the Controls binder skips it and pressing a bound button
+            // produces nothing. AddInputMapping flips IsInput=true so the
+            // entry surfaces in the Controls binder and fires on hardware
+            // input.
             //
             // Name MUST be just the bare action name (no plugin prefix):
             // PluginManager.GetName prepends "TrueforcePlugin." itself,
@@ -3997,16 +4925,15 @@ namespace TrueforceForAll.Plugin
             // The ControlsEditor in XAML must bind to that exact string
             // or the dispatch lookup misses and the action never fires.
             //
-            // Each press nudges master gain by the slider's small-step
-            // (0.05), clamped to [0, 2]. Wrapped so a SimHub API hiccup
-            // can't abort Init.
+            // Each press nudges master gain by MasterGainStep (persisted,
+            // default 0.05, clamped to [0.01, 0.5]), and the result is
+            // clamped to [0, 2]. Wrapped so a SimHub API hiccup can't
+            // abort Init.
             try
             {
-                // The readout goes on BOTH paths. A wheel button bound here
-                // and the dash's own stepper are different entry points to
-                // the same setting, and the button is the one you press
-                // without looking at a screen, so it is the one that most
-                // needs to say where it got to.
+                // The readout rides the bound button: you press it without
+                // looking at a screen, so it is the entry point that has to
+                // say where the gain got to.
                 pluginManager.AddInputMapping("MasterGainUp", GetType(),
                     (pm, a) => { NudgeMasterGain(+MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); },
                     (pm, a) => { });
@@ -4014,30 +4941,23 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => { NudgeMasterGain(-MasterGainStep); DashReadoutGain("TRUEFORCE GAIN", MasterGain); },
                     (pm, a) => { });
 
-                // Telemetry Based FFB strength, and the wheel screen, from the
-                // rim. These are the two things worth changing mid-stint: one
-                // is how hard the wheel pushes, the other is what you can see
-                // while it does. Each reports through the same readout channel
-                // as the gain controls, so the dash bar and the wheel's screen
-                // both answer without either needing to know about these.
+                // Telemetry Based FFB strength and the wheel screen, from the
+                // rim. Both report through the same readout channel as the gain
+                // controls, so the dash bar and the wheel screen both answer.
                 pluginManager.AddInputMapping("ModeBStrengthUp", GetType(),
                     (pm, a) => NudgeModeBStrength(+0.05f), (pm, a) => { });
                 pluginManager.AddInputMapping("ModeBStrengthDown", GetType(),
                     (pm, a) => NudgeModeBStrength(-0.05f), (pm, a) => { });
-                // Auto force from the rim: runs the active game's auto-calibrate,
-                // so a car that comes up weak or heavy can be levelled without
-                // opening the UI. iRacing sets the max force; Forza resets the
-                // auto-strength learner.
+                // Auto force from the rim: runs the active game's own
+                // auto-calibration (per-game behaviour on TriggerAutoForce).
                 pluginManager.AddInputMapping("AutoForce", GetType(),
                     (pm, a) => TriggerAutoForce(), (pm, a) => { });
                 pluginManager.AddInputMapping("OledScreenNext", GetType(),
                     (pm, a) => CycleOledScreen(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("OledScreenPrev", GetType(),
                     (pm, a) => CycleOledScreen(-1), (pm, a) => { });
-                // Rev-light pattern from the rim, so switching does not mean
-                // reaching for a screen mid-drive. Same pick semantics as the
-                // settings dropdown: the wheelbase's selection changes and
-                // stays, exactly like using the base's own menu.
+                // Rev-light pattern from the rim. Same pick semantics as the
+                // settings dropdown: the wheelbase's selection changes and stays.
                 pluginManager.AddInputMapping("RevLightPatternNext", GetType(),
                     (pm, a) => CycleRevLightPattern(+1), (pm, a) => { });
                 pluginManager.AddInputMapping("RevLightPatternPrev", GetType(),
@@ -4054,6 +4974,14 @@ namespace TrueforceForAll.Plugin
                     (pm, a) => NudgeIRacingMaxForce(+0.5), (pm, a) => { });
                 pluginManager.AddInputMapping("IRacingMaxForceDown", GetType(),
                     (pm, a) => NudgeIRacingMaxForce(-0.5), (pm, a) => { });
+                // RaceRoom deliberately has NO bindings of its own. Its
+                // press-to-apply is the same gesture as iRacing's Auto button and
+                // rides AutoForce; its per-car max is the same concept as
+                // iRacing's and rides the pair above. Three R3E-specific mappings
+                // lived here briefly and were the wrong shape: a fourth binding
+                // for a fourth game does not scale, and it left AutoForce still
+                // running the grip-cal reset in RaceRoom.
+
                 // The dash's -/+ pair fires ACTIONS (ButtonItem.TriggerAction),
                 // which AddInputMapping does not register: the mappings above
                 // serve the bindings rows, these serve the dash buttons
@@ -4080,20 +5008,65 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        // Discover the wheel, open it, run the init sequence, start the FFB
-        // tap and the 1 kHz stream. Returns true on success. Safe to call
-        // repeatedly: the recovery watchdog calls this after CleanupDevice()
-        // when the stream has faulted or no wheel was present yet. The
-        // producer thread is plugin-lifetime and reused across re-attaches,
-        // it's only created on the first successful bring-up.
+        // Rate limit for the G923 PlayStation-mode switch, deliberately not a
+        // one-shot: that wheel forgets PC mode whenever it loses power, which is
+        // why the G HUB workaround it replaces had to be repeated at every boot.
+        // A wheel arriving in PlayStation mode mid-session is therefore normal
+        // and must be switched again. A latch would have to catch the gap
+        // between the old device leaving and the new one arriving, and
+        // rediscovery ticks are far enough apart to miss it, leaving us latched
+        // against a wheel we could have fixed. One attempt a minute instead, the
+        // same rhythm LogDiscoveryDiagnostic uses: it costs a log line and
+        // cannot get stuck.
+        private long _lastPcModeSwitchTicks;
+
+        /// <summary>Offer a PlayStation-mode G923 the PC-mode switch, so the user
+        /// does not have to run G HUB after every computer start to get the wheel
+        /// out of a mode where it exposes no Trueforce interface. Only ever reached from the
+        /// no-wheel-found path, and only ever aimed at product id 0xC267: a
+        /// working setup is never touched, and no other wheel sees the command.
+        /// See WheelPcModeSwitch for why this is a refusal rather than a risk if
+        /// Windows will not carry the report.</summary>
+        private void MaybeSwitchG923PsToPcMode()
+        {
+            try
+            {
+                // Cheap check first, so the cooldown only ever governs real
+                // attempts: a wheel that arrives seconds after a failed one still
+                // gets switched on the next discovery pass rather than waiting out
+                // a minute it had nothing to do with.
+                if (!WheelPcModeSwitch.AnyPresent()) return;
+
+                long now = Stopwatch.GetTimestamp();
+                if (_lastPcModeSwitchTicks != 0
+                    && now - _lastPcModeSwitchTicks < Stopwatch.Frequency * 60)
+                    return;
+                _lastPcModeSwitchTicks = now;
+
+                var result = WheelPcModeSwitch.TrySwitch(
+                    m => SimHub.Logging.Current.Info("[TF4ALL] " + m));
+
+                // On success the wheel USB-resets and comes back as 0xC266, which
+                // the recovery watchdog picks up on its next pass; nothing here
+                // waits for it.
+                if (result == WheelPcModeSwitch.Result.Sent)
+                    WheelStatus = "Switching the wheel to PC mode...";
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] PC-mode switch failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         /// <summary>Find the wheel and take its identity WITHOUT opening it.
         ///
         /// Split out of bring-up because lights-only mode never opens the Trueforce
         /// endpoint but still has to know which wheel is attached: _hidWheelPid is
         /// what tells the LED path a strip exists, and it is what the pattern
-        /// pickers and the wheel diagnostics read. Left inside bring-up, both of
-        /// the non-Full modes would report "no wheel" and every lighting control
-        /// would quietly empty out.</summary>
+        /// pickers and the wheel diagnostics read. Left inside bring-up, the Off
+        /// and Lightsync-only modes would report "no wheel" and every lighting
+        /// control would quietly empty out.</summary>
         private bool DiscoverWheel(out WheelMatch match)
         {
             match = null;
@@ -4110,6 +5083,7 @@ namespace TrueforceForAll.Plugin
                     "finish detecting the wheel, then close G HUB (it must stay closed while this " +
                     "plugin runs) and restart SimHub.");
                 LogDiscoveryDiagnostic();
+                MaybeSwitchG923PsToPcMode();
                 return false;
             }
 
@@ -4118,9 +5092,20 @@ namespace TrueforceForAll.Plugin
             _hidWheelPid = match.Pid;
             _hidWheelProductString = match.ProductString;
 
-            // Programmable-light wheels (G PRO, RS50, and a G PRO wearing a G923
-            // PID) get the LIGHTSYNC tab as a standing feature, no access code
-            // needed: it is verified working on them. Auto-unlock once on first
+            // Now that we know which wheel this is, make sure every arcade cabinet
+            // we installed into is pointing at it. Installing with the wheel
+            // unplugged, or swapping wheels afterwards, would otherwise leave those
+            // games aimed at a device that is not there, which shows up as a game
+            // that runs perfectly with a silent wheel.
+            try { RefreshArcadeWheelSelection(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info($"[TF4ALL] Arcade wheel re-point failed: {ex.Message}");
+            }
+
+            // Wheels with a selectable rev-light pattern (G PRO and RS50) get
+            // the LIGHTSYNC tab as a standing feature, no access code needed:
+            // it is verified working on them. Auto-unlock once on first
             // sight; the LIGHTSYNC code still reveals the tab on other wheels.
             if (WheelHasSelectableLightPattern && Settings != null && !Settings.LightsyncTabUnlocked)
             {
@@ -4176,6 +5161,25 @@ namespace TrueforceForAll.Plugin
                     var target = new TrueforceSettings();
                     ApplyWheelDefaults(target, shortModel);
 
+                    // Trueforce master gain, FRESH INSTALLS ONLY: the wheel's
+                    // own starting level (the G923's belt renders the haptic
+                    // stream fainter than the direct drives, so it starts at
+                    // 1.5). Gated on the first-run signal AND on the gain still
+                    // sitting exactly on the factory value, and it runs before
+                    // the latch is stamped, so it happens at most once on a PC
+                    // and an update never moves a level someone chose.
+                    if (_wasFreshInstall && string.IsNullOrEmpty(Settings.WheelDefaultsApplied)
+                        && Settings.MasterGain == new TrueforceSettings().MasterGain
+                        && target.MasterGain != Settings.MasterGain)
+                    {
+                        float gainBefore = Settings.MasterGain;
+                        Settings.MasterGain = target.MasterGain;
+                        if (_mixer != null) _mixer.MasterGain = Settings.MasterGain;
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] New install: master gain {gainBefore:0.00} to {Settings.MasterGain:0.00} (the {shortModel} starting level).");
+                        try { MasterGainChangedExternally?.Invoke(); } catch { }
+                    }
+
                     var oldRecipes = new System.Collections.Generic.List<TrueforceSettings>
                     {
                         new TrueforceSettings(),   // current factory (per-wheel fields differ from target)
@@ -4221,10 +5225,10 @@ namespace TrueforceForAll.Plugin
             // Unverified PIDs: resolve + stream by inference from the shared
             // HID++ family, but not hardware-tested. None today (every supported
             // PID is owner-confirmed), so this is dormant until a new wheel is
-            // added on inference alone. Surface a
-            // notice asking the user to report the one failure mode we can't
-            // rule out (init/handshake divergence: Trueforce effects play but
-            // game FFB pass-through stays silent).
+            // added on inference alone. Surface a notice asking the user to
+            // report the one failure mode we can't rule out (init/handshake
+            // divergence: Trueforce effects play but game FFB pass-through
+            // stays silent).
             if (match.Unverified)
             {
                 _unverifiedWheelNotice =
@@ -4241,8 +5245,115 @@ namespace TrueforceForAll.Plugin
             return true;
         }
 
+        // Blind-capture self-heal state. A "blind" USBPcap tap delivers the
+        // wheel's ep0 control chatter but none of its interrupt traffic, so our
+        // own ep3 stream is invisible to the capture and the game's FFB is
+        // mirrored as nothing (limp wheel in Trueforce mode). The only fix is a
+        // real re-enumeration (hub port cycle); a PnP restart is refused while
+        // we hold the wheel. Capped so a wheel that stays blind after cycling
+        // can't loop forever.
+        private const int BlindCaptureMaxCycles = 2;
+        private const int BlindProbeInitialDelayMs = 4000; // let the G923 re-attach settle first
+        private const int BlindProbeStreamMs = 2000;       // force ep3 active across the measurement
+        private const int BlindProbeWindowMs = 1500;       // measure interrupt-out over this window
+        private int _blindCycleAttempts;
+        private int _blindProbeInFlight;   // 0/1 guard, Interlocked
+
+        // Measure whether the freshly started tap can see our ep3 stream, and
+        // if not, re-enumerate the wheel once by cycling its hub port. Runs off
+        // the bring-up thread. Self-guards: honors the setting, requires
+        // elevation and a real Logitech identity, never fires while a game is
+        // driving (a port cycle drops the wheel), and caps attempts per session.
+        private void ScheduleBlindCaptureProbe(ushort vid, ushort pid)
+        {
+            if (!(Settings?.AutoReEnumerateOnBlindCapture ?? true)) return;
+            if (!IsRunningElevated) return;
+            if (vid == 0) return;                              // manual/unknown identity: no safe VID/PID to cycle
+            if (_blindCycleAttempts >= BlindCaptureMaxCycles) return;
+            if (System.Threading.Interlocked.CompareExchange(ref _blindProbeInFlight, 1, 0) != 0) return;
+
+            var device = _device;
+            var tap = _ffbTap;
+            if (device == null || tap == null) { _blindProbeInFlight = 0; return; }
+
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(BlindProbeInitialDelayMs);
+                    if (_shuttingDown || !ReferenceEquals(_device, device) || !ReferenceEquals(_ffbTap, tap)) return;
+
+                    // Never cycle the wheel out from under an active drive.
+                    if (tap.GameFfbExpected) return;
+
+                    // Force the ep3 stream active for the measurement even with
+                    // no game running, then compare our successful writes to
+                    // what the capture actually saw on the wheel's interrupt
+                    // endpoint.
+                    long sentBefore = device.PacketsSent;
+                    long seenBefore = tap.InterruptOutSeen;
+                    device.ForceActiveFor(BlindProbeStreamMs);
+                    await System.Threading.Tasks.Task.Delay(BlindProbeWindowMs);
+                    if (_shuttingDown || !ReferenceEquals(_device, device) || !ReferenceEquals(_ffbTap, tap)) return;
+
+                    long sentDelta = device.PacketsSent - sentBefore;
+                    long seenDelta = tap.InterruptOutSeen - seenBefore;
+
+                    if (!TrueforceForAll.Core.BlindCaptureClassifier.IsInterruptBlind(sentDelta, seenDelta))
+                    {
+                        // Healthy (or we couldn't stream enough to judge). A
+                        // capture that recovered resets the attempt budget.
+                        if (seenDelta > 0) _blindCycleAttempts = 0;
+                        return;
+                    }
+
+                    _blindCycleAttempts++;
+                    SimHub.Logging.Current.Warn(
+                        $"[TF4ALL] FFB capture is blind: streamed {sentDelta} packets to the wheel but the capture " +
+                        $"saw none of them (USBPcap has no filter on this device). Re-enumerating the wheel by " +
+                        $"cycling its USB port (attempt {_blindCycleAttempts}/{BlindCaptureMaxCycles}).");
+
+                    bool ok = TrueforceForAll.Core.UsbHubPortCycler.TryCycleDevicePort(
+                        vid, pid, msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"), out string detail);
+
+                    if (ok)
+                    {
+                        // The wheel disconnects and comes back on a fresh PDO;
+                        // the reader thread's re-attach + the device-loss
+                        // recovery re-run bring-up, which schedules another
+                        // probe to confirm capture is now healthy.
+                        SimHub.Logging.Current.Info($"[TF4ALL] Wheel re-enumeration requested ({detail}); reconnecting.");
+                    }
+                    else if (_blindCycleAttempts >= BlindCaptureMaxCycles)
+                    {
+                        SimHub.Logging.Current.Warn(
+                            "[TF4ALL] Could not re-enumerate the wheel automatically (" + detail + "). "
+                            + "Please unplug the wheel's USB cable and plug it back in, then it will work for this session.");
+                    }
+                    else
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Wheel re-enumeration attempt failed ({detail}); will retry on the next bring-up.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info($"[TF4ALL] Blind-capture probe error: {ex.Message}");
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Exchange(ref _blindProbeInFlight, 0);
+                }
+            });
+        }
+
+        // Discover the wheel, open it, run the init sequence, start the FFB
+        // tap and the 1 kHz stream. Returns true on success. Safe to call
+        // repeatedly: the recovery watchdog calls this after CleanupDevice()
+        // when the stream has faulted or no wheel was present yet. The
+        // producer thread is plugin-lifetime and reused across re-attaches,
+        // it's only created on the first successful bring-up.
         /// <summary>Discover the wheel and OPEN it: the HID handle, the init
-        /// sequence, the FFB tap and the 1 kHz stream. Full mode only. The two
+        /// sequence, the FFB tap and the 1 kHz stream. Normal mode only. The two
         /// other modes call DiscoverWheel and stop there.</summary>
         private bool TryBringUpDevice()
         {
@@ -4261,11 +5372,12 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info("[TF4ALL] Sending init sequence (68 packets x 2)...");
                 _device.RunInitSequence();
 
-                // Spawn the USBPcap FFB tap. Reads AC's outgoing HID++ FFB target
-                // off the bus and feeds it to TrueforceDevice so we can mirror it
-                // into ep3 bytes 6-9, without this, our ep3 stream overrides AC's
-                // FFB with zero motor torque whenever Trueforce content plays
-                // (cur-as-torque-target confirmed by mescon on RS50, 2026-07).
+                // Spawn the USBPcap FFB tap. Reads the game's outgoing HID++
+                // FFB target off the bus and feeds it to TrueforceDevice so we
+                // can mirror it into ep3 bytes 6-9. Without this, our ep3
+                // stream overrides the game's FFB with zero motor torque when
+                // Trueforce content plays (cur-as-torque-target confirmed by
+                // mescon on RS50, 2026-07).
                 // Override precedence: env var > persisted manual picker > auto.
                 // The persisted picker exists because USBPcap's descriptor-cache
                 // can go stale for hot-plugged wheels, leaving auto-discovery
@@ -4305,6 +5417,34 @@ namespace TrueforceForAll.Plugin
                     // teardown is always a released wheel (the close-SimHub
                     // pull, 2026-08-08).
                     if (_shuttingDown) return null;
+                    // DIDAMP spike / DAMPCAL native phase / FXTEST NATIVE:
+                    // the stream is stopped outright for these, so a
+                    // DirectInput effect we create is the only thing the
+                    // firmware renders; null here covers the transition.
+                    if (_diSpikeHold || _dampCalHold || _fxTestNativeHold) return null;
+
+                    // Focus release. Same outcome as the pause release below
+                    // and for the same physical reason, but the pause release
+                    // needs an authoritative session flag or telemetry to
+                    // stop, and a title still idling its car in the background
+                    // offers neither, so the tap's last force streamed for its
+                    // full hold and the wheel walked to lock.
+                    if (_gameFocusLost && _autoTuner == null && _fxTestMode == 0
+                        && _dampCal == null && !_diSpikeHold)
+                    {
+                        // Bench tools own the stream; a latched focus-loss
+                        // from an idle background game must not silence them
+                        // (audit stale-focus-latch / AT2-03).
+                        NoteFfbSource("focus-release");
+                        // Zero the game's CONSTANT force (the frozen value that
+                        // walked the wheel to lock), but still render the
+                        // game's decoded conditions: a title's menu centring
+                        // is a DirectInput spring, and the wheel firmware does
+                        // not render it while we stream. Without this the menu
+                        // wheel went limp unless "hand the wheel back while
+                        // paused" was on (owner, Forza, 2026-09-13).
+                        return ReleasedWheelForce();
+                    }
 
                     // Pause release (issue #13). When the game is paused / in a
                     // menu, replaying the last captured force is wrong: the FFB
@@ -4321,14 +5461,6 @@ namespace TrueforceForAll.Plugin
                     // We do NOT release on the physics proxy alone, since it
                     // also reads inactive at a legitimate standstill (grid,
                     // stall), which would drop FFB mid-session.
-                    // Focus release. Same outcome as the pause release below and
-                    // for the same physical reason, but it catches the games that
-                    // test cannot: it needs an authoritative session flag or
-                    // telemetry to stop, and a title still idling its car in the
-                    // background offers neither, so the tap's last force streamed
-                    // for its full hold and the wheel walked to lock.
-                    if (_gameFocusLost) { NoteFfbSource("focus-release"); return (short?)0; }
-
                     var src = _telemetrySource;
                     // This zero-return applies to Mode B as well, on every
                     // Forza title: IsRaceOn is "is the player driving" (1 in
@@ -4337,7 +5469,16 @@ namespace TrueforceForAll.Plugin
                     // should be quiet. Keepalive packets no longer flap the
                     // flag mid-race (see ForzaUdpTelemetrySource.ShouldEmit),
                     // so this reads stable while driving.
-                    if (src != null && !src.IsSessionActive
+                    // DAMPCAL / AUTO-TUNE own the stream while they run (no
+                    // game, so IsSessionActive is false and this release
+                    // branch would short-circuit their scripted output before
+                    // it ever reached the wheel; verify workflow 2026-09-01).
+                    if (src != null && !src.IsSessionActive && _dampCal == null && _autoTuner == null
+                        // FXTEST ENGINE with no game: the always-attached
+                        // SimHub fallback source reads "paused" here and this
+                        // early return silenced every bench engine effect
+                        // (rig, 2026-09-01). The bench owns the stream too.
+                        && _fxTestMode == 0
                         && (src.HasAuthoritativeSessionState || src.MeasuredHz <= 0))
                     {
                         // Paused / menu / pre-race countdown / race-end results.
@@ -4355,16 +5496,19 @@ namespace TrueforceForAll.Plugin
                         // streamed that force as cur on ep3, and the wheel
                         // snapped to or sat on full lock until the user resumed.
                         //
-                        // We also intentionally SKIP the stationary-spring
-                        // layer here. The spring is designed for a STATIONARY
-                        // car during an ACTIVE driving session (e.g. AC's
-                        // pre-race grid). It conflicts with Forza's FFB across
-                        // pause-state transitions; we addressed that with a
-                        // source-type exclusion in ApplyStationarySpring, and
-                        // bypassing it here keeps the wheel truly free during
-                        // pause-release for every other source as well.
+                        // The stationary-spring layer is skipped here on the
+                        // capture route: the spring is designed for a
+                        // STATIONARY car during an ACTIVE driving session (e.g.
+                        // AC's pre-race grid) and it conflicted with Forza's own
+                        // FFB across pause-state transitions. Under Telemetry
+                        // Based FFB the game's force is not on the wire, so
+                        // ReleasedWheelForce renders our spring there.
                         NoteFfbSource("pause-release");
-                        return (short?)0;
+                        // As on the focus release above: the constant force is
+                        // silenced, the game's spring and damper shapes still
+                        // play through the DirectInput engine, so a pause menu
+                        // centres the wheel the way the game intends.
+                        return ReleasedWheelForce();
                     }
 
                     // EXPERIMENTAL driver-intercept path takes precedence ONLY
@@ -4383,34 +5527,29 @@ namespace TrueforceForAll.Plugin
                         chosen = _driverChannel.TryGetFreshFfbTarget(_device.FfbTargetMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "driver";
                     }
-                    // Force from Assetto Corsa itself (opt-in checkbox under
-                    // Force feedback (advanced)): the game's own finalFF read
-                    // from its shared memory IS the force the wheel driver was
-                    // about to receive (post every in-game gain), so it
-                    // substitutes for the wire capture with no USBPcap
-                    // involved. In-game FFB must stay ON: gain 0 zeroes
-                    // finalFF, and the source hands back to the tap when it
-                    // sees that. Consulted before the pcap tap so a machine
-                    // that also has USBPcap running doesn't deliver the same
-                    // signal twice. SHORT freshness
-                    // window on purpose: the latch only re-timestamps on new
-                    // physics packets, so a paused AC (frozen page) ages out
-                    // here within a quarter second instead of replaying a
-                    // held force for FfbTargetMaxAgeMs (the issue #13 class);
-                    // a ~333 Hz source that missed ~80 ticks is not driving.
-                    // CSP bridge: AC's PRE-gain force from the TF4ALL CSP
-                    // script (gamemods/AssettoCorsaCsp). The in-game gain can
-                    // then sit at 0, so the game writes nothing to the wheel
-                    // and LED or screen writes have nothing to collide with,
-                    // and the wheel still gets the sim's force from here.
-                    // Behind the CSPFFB access code while it is being proven.
-                    // Consulted first because it is the only source that
-                    // survives gain 0; same short window as finalFF.
-                    // Assetto Corsa force is automatic: when the TF4ALL CSP
-                    // Bridge script is installed it is running and supplying, so
-                    // we use it; when it is not, the bridge is never fresh and we
-                    // fall through to the USB tap below. CspBridgeFfbEnabled
-                    // defaults on and exists only as a dev force-off (CSPFFB).
+                    // Force from Assetto Corsa itself, no USBPcap involved.
+                    // Automatic: CspBridgeFfbEnabled defaults on and exists
+                    // only as a dev force-off (the CSPFFB access code); there
+                    // is no user checkbox. When the TF4ALL CSP Bridge script
+                    // (gamemods/AssettoCorsaCsp) is installed it supplies;
+                    // when it is not, the bridge is never fresh and we fall
+                    // through to the USB tap below (the "finalff" field reads
+                    // AC's own page and needs no script). The bridge's "pure"
+                    // and "torque" fields are PRE-gain, the only ones that
+                    // still carry force with the in-game gain at 0, so the
+                    // game writes nothing to the wheel and LED or screen
+                    // writes have nothing to collide with. The default
+                    // "value" and finalFF are post-gain, so in-game FFB must
+                    // stay ON for them: gain 0 zeroes finalFF and the source
+                    // hands back to the tap when it sees that. Consulted
+                    // after the driver intercept and before the pcap tap, so
+                    // a machine that also has USBPcap running doesn't deliver
+                    // the same signal twice. SHORT freshness window on
+                    // purpose: the latch only re-timestamps on new physics
+                    // packets, so a paused AC (frozen page) ages out here
+                    // within a quarter second instead of replaying a held
+                    // force for FfbTargetMaxAgeMs (the issue #13 class); a
+                    // ~333 Hz source that missed ~80 ticks is not driving.
                     if (!chosen.HasValue && (Settings?.CspBridgeFfbEnabled ?? true))
                     {
                         const int cspMaxAgeMs = 250;
@@ -4432,6 +5571,28 @@ namespace TrueforceForAll.Plugin
                             }
                         }
                     }
+                    // Arcade cabinets under TeknoParrot. The game writes its force
+                    // to the emulated IO board, so this is the game's own force,
+                    // read from a published block rather than sniffed off the wire.
+                    // Consulted before the tap so a machine also running USBPcap
+                    // does not deliver the same signal twice. Only the constant
+                    // command lands here; springs and rumble are effect shapes and
+                    // go to the DI engine instead, which is why this can be null
+                    // while the cabinet is still commanding something.
+                    if (!chosen.HasValue)
+                    {
+                        var arcSrc = _telemetrySource as IArcadeForceSource;
+                        if (arcSrc != null)
+                        {
+                            // Short window for the same reason as AC's: the reader
+                            // stops latching the moment the IO block freezes, and
+                            // anything older than this is a pause we should not be
+                            // replaying into the wheel.
+                            chosen = arcSrc.TryGetFreshFfbTarget(250);
+                            if (chosen.HasValue) ffbSrc = "arcade";
+                        }
+                    }
+
                     // True when the value below is a quiet-spell substitute, not
                     // a captured force. The trace must record the tap as stale
                     // then, or a TRACE CSV could no longer tell a stale edge
@@ -4495,7 +5656,13 @@ namespace TrueforceForAll.Plugin
                                  // is live by telemetry, or the last force is
                                  // simply recent.
                                  && (_ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000).HasValue
-                                     || (_ffbTap.LiveForceReport != 0 && (src?.IsSessionActive ?? false)))
+                                     || (_ffbTap.LiveForceReport != 0 && (src?.IsSessionActive ?? false))
+                                     // A live decoded condition/periodic is
+                                     // game FFB too: without this, a game that
+                                     // sends only parametric effects never
+                                     // enters the active shape and the engine
+                                     // renders to nobody (audit 2026-09-01).
+                                     || _ffbTap.AnyHidppParametricPlaying)
                                  // The capture itself is alive: packets for the
                                  // wheel within the last two seconds.
                                  && _ffbTap.MsSinceDevicePacket < 2000
@@ -4539,8 +5706,54 @@ namespace TrueforceForAll.Plugin
                     // Mode B is armed (everything the spring added is
                     // discarded with it; the spring is also excluded for the
                     // whole Forza session, and all Mode B games are Forza).
+                    // DAMPCAL friction/synth conditions: the stream in raw
+                    // torque mode at zero, so only friction (and the
+                    // synthesized damper below) act on the wheel.
+                    // AUTO-TUNE owns the stream through its engine phases:
+                    // the scripted probe pulse plus the effect under test,
+                    // nothing else may shape the wheel.
+                    var autoTuner = _autoTuner;
+                    if (autoTuner != null)
+                    {
+                        NoteFfbSource("autotune");
+                        return AutoTuneTick(autoTuner);
+                    }
+                    if (_dampCalActiveZero)
+                    {
+                        // Calibration is authoritative: raw zero plus ONLY
+                        // the synthesized damper under test. The reshape /
+                        // stationary-spring tail must not repaint the
+                        // calibration zero (verify workflow 2026-09-01).
+                        NoteFfbSource("dampcal");
+                        return AddSynthesizedDamper((short)0);
+                    }
+                    // The game's DirectInput conditions (damper, spring,
+                    // friction, inertia), periodics and ramps, decoded off the
+                    // wire by the tap, ride the game force here. Only in the
+                    // ACTIVE shape: a null (keepalive) hands the wheel back
+                    // to the firmware, which then renders them itself.
+                    chosen = AddHidppDiEffects(chosen);
+                    // FXTEST ENGINE: a hand-triggered synthetic effect through
+                    // the same renderer, streamed even with no game (base 0).
+                    chosen = ApplyFxTestEngine(chosen);
+                    // Arcade cabinets command springs and rumble as DirectInput
+                    // effect shapes, not as a torque. Rendered here, after the
+                    // scalar constant the source publishes, for the same reason
+                    // FXTEST is here: `(force ?? 0) + t` streams with no game
+                    // force at all, which AddHidppDiEffects cannot do.
+                    chosen = ApplyArcadeEffects(chosen);
                     var afterSpring = ApplyStationarySpringIfActive(chosen);
                     var finalOut    = MaybeReshapeFfb(afterSpring);
+                    finalOut = AddSynthesizedDamper(finalOut);
+                    // LAST, deliberately. A soft lock is a wall, and its whole
+                    // value is the sharpness of its onset: run it through spike
+                    // reduction or the smoothing above and it arrives as a
+                    // suggestion. Owner's call (2026-09-09) that it applies at
+                    // the very end of our chain rather than riding ffbValue.
+                    // All three locks land here: the AC bridge's, and the ones
+                    // built for iRacing and RaceRoom from each sim's own
+                    // steering position and lock.
+                    finalOut = ApplySoftLock(finalOut);
                     TraceFfb(tapQuiet ? (short?)null : chosen, afterSpring, finalOut);
                     NoteFfbSource(finalOut.HasValue
                         ? (chosen.HasValue ? ffbSrc : "authored")
@@ -4549,16 +5762,37 @@ namespace TrueforceForAll.Plugin
                 };
                 _device.FfbScale                 = Settings.FfbScale;
                 _device.FfbInvertSign            = Settings.FfbInvertSign;
-                _device.FfbSmoothTimeConstantMs  = Settings.FfbSmoothTimeConstantMs;
+                _device.FfbSmoothTimeConstantMs  = EffectiveSmoothingMs();
                 _device.FfbSpikeTamingEnabled    = Settings.FfbSpikeTamingEnabled;
                 _device.FfbSpikeUseSlewLimiter   = Settings.FfbSpikeUseSlewLimiter;
                 _device.FfbSpikeMaxLsbPerMs      = Settings.FfbSpikeMaxLsbPerMs;
                 _device.FfbPeakSoftLimitLsb      = Settings.FfbPeakSoftLimitLsb;
+                _device.FfbSpikeTransientThresholdLsb = Settings.EffectiveSpikeTransientThresholdLsb;
 
-                // Apply persisted ring capacity. Sanitize: clamp to allowed
-                // range and force pow2 so a hand-edited settings file can't
-                // crash the plugin. Settings is updated back so the UI sees
-                // the same value the device runs on.
+                // Persisted condition-render tuning (FXTEST / DAMPCAL): the
+                // gains, damper direction, inertia mode and output filter below
+                // are every-session defaults, not session-only knobs.
+                _damperGain      = (float)Settings.FfbConditionDamperGain;
+                _damperSign      = Settings.FfbConditionSignInverted ? -1 : 1;
+                _conditionLpfHz  = Settings.FfbConditionLpfHz;
+                _damperLpfHz     = Settings.FfbConditionDamperLpfHz;
+                _springLpfHz     = Settings.FfbConditionSpringLpfHz;
+                _frictionLpfHz   = Settings.FfbConditionFrictionLpfHz;
+                _inertiaLpfHz    = Settings.FfbConditionInertiaLpfHz;
+                _springGain      = (float)Settings.FfbConditionSpringGain;
+                _frictionGain    = (float)Settings.FfbConditionFrictionGain;
+                _inertiaGain     = (float)Settings.FfbConditionInertiaGain;
+                _periodicGain    = (float)Settings.FfbConditionPeriodicGain;
+                _rampGain        = (float)Settings.FfbConditionRampGain;
+                _inertiaCoasts   = Settings.FfbConditionInertiaCoasts;
+                _inertiaAsDamping = Settings.FfbConditionInertiaAsDamping;
+                ApplyConditionLpf();
+
+                // Apply persisted ring capacity. Sanitize: a value outside the
+                // allowed range falls back to the default, an in-range one
+                // rounds down to a power of two, so a hand-edited settings file
+                // can't crash the plugin. Settings is updated back so the UI
+                // sees the same value the device runs on.
                 Settings.Performance.TfRingSize = SanitizePow2(
                     Settings.Performance.TfRingSize,
                     TrueforceDevice.MinRingSize, TrueforceDevice.MaxRingSize, TrueforceDevice.DefaultRingSize);
@@ -4567,6 +5801,14 @@ namespace TrueforceForAll.Plugin
                 _ffbTap?.Start();
 
                 _device.StartStream();
+
+                // If USBPcap came up blind (no capture filter on the wheel,
+                // typically because the wheel's device stack was built before
+                // USBPcap's hub filter at boot), re-enumerate the wheel by
+                // cycling its hub port so the tap can actually see the game's
+                // FFB. Fire-and-forget; self-guards on setting/elevation/driving
+                // and caps its own attempts. See ScheduleBlindCaptureProbe.
+                ScheduleBlindCaptureProbe(match.Vid, match.Pid);
 
                 // The producer is plugin-lifetime and reads the _device field
                 // each iteration, so a re-attach reuses the existing thread
@@ -4739,9 +5981,11 @@ namespace TrueforceForAll.Plugin
                 _audioInMixer = true;
             }
 
-            // Telemetry effects: instantiate from settings, register in the
-            // mixer in display order. Each effect is fed via the active
-            // ITelemetrySource's OnFrame callback (see DispatchFrame below).
+            // Telemetry effects: construct them, register in the mixer in
+            // display order. Frames reach them from the engine loop's 500 Hz
+            // resampled tick on the producer thread, not the telemetry thread
+            // (the active ITelemetrySource's OnFrame lands in DispatchFrame
+            // below, which ingests into the loop).
             EnginePulse  = new EnginePulseEffect();
             RoadBumps    = new RoadBumpsEffect();
             TractionLoss = new TractionLossEffect
@@ -4766,13 +6010,15 @@ namespace TrueforceForAll.Plugin
             Airborne     = new AirborneEffect();
             // Airborne is last: it's a coordinator, not a voice, but it still
             // needs OnTelemetry (to read frame.Airborne) and Reset, both of
-            // which the plugin fans out over _effects. Its no-op RenderAdd in
-            // the mixer costs nothing.
+            // which are fanned out over _effects (OnTelemetry by the engine
+            // loop, Reset by the plugin). Its no-op RenderAdd in the mixer
+            // costs nothing.
             _effects = new TelemetryEffect[] { EnginePulse, RoadBumps, TractionLoss, AxleSlip, KerbThump, LockupJudder, GearShift, AbsClick, PitLimiter, Drs, Collision, RevLimiter, MotorSweep, ImplementThud, Airborne };
             foreach (var fx in _effects) _mixer.Add(fx);
 
-            // Sidechain ducker (Engine assembly): one field per effect, all
-            // null-checked inside. Audio is re-assigned every producer tick
+            // Sidechain ducker (Engine assembly): a field per ducked effect,
+            // all null-checked inside (MotorSweep has none: ActivityLevel 0,
+            // it never ducks). Audio is re-assigned every producer tick
             // because the capture source is created after Init and can be
             // retargeted live.
             _ducking.EnginePulse  = EnginePulse;
@@ -4790,10 +6036,11 @@ namespace TrueforceForAll.Plugin
             _ducking.ImplementThud = ImplementThud;
             _ducking.Airborne     = Airborne;
 
-            // The engine tick: ducking, effect OnTelemetry at a fixed 500 Hz
-            // on resampled frames, mixer render, silence floor, device push.
-            // The resampler runs on Stopwatch time in production; the replay
-            // harness constructs its own EngineLoop on a virtual clock.
+            // The engine tick: effect OnTelemetry at a fixed 500 Hz on
+            // resampled frames, then ducking, mixer render, silence floor,
+            // device push. The resampler runs on Stopwatch time in
+            // production; the replay harness constructs its own EngineLoop
+            // on a virtual clock.
             _engineLoop = new EngineLoop(_mixer, _ducking, new DeviceSink(this),
                 new FrameResampler(Stopwatch.Frequency))
             {
@@ -4808,6 +6055,9 @@ namespace TrueforceForAll.Plugin
 
             _rpmLeds = new RpmLedController(msg => SimHub.Logging.Current.Info(msg));
             _oledDash = new OledDashController(msg => SimHub.Logging.Current.Info(msg));
+            _audioLeds = new AudioOutputMeter(msg => SimHub.Logging.Current.Info(msg));
+            // Constructed always, started only if the user has asked for it.
+            SyncAudioOutputMeter();
 
             // Repay a light slot a CRASHED session left borrowed. Backgrounded
             // because it may have to open the HID++ channel, and plugin init must
@@ -4845,7 +6095,7 @@ namespace TrueforceForAll.Plugin
             // fault-tolerant: if the driver isn't installed, construction
             // succeeds but IsOpen = false. When the setting is off, none of
             // this runs and _driverChannel / _driverLedChannel stay null.
-            // Full only: it opens its own HID++ channel to the wheel and puts the
+            // Normal only: it opens its own HID++ channel to the wheel and puts the
             // kernel filter driver into the write path between the game and the
             // wheel, which is the largest possible violation of "touch nothing".
             if (fullPipeline && Settings != null && Settings.ExperimentalDriverIntercept)
@@ -4878,8 +6128,9 @@ namespace TrueforceForAll.Plugin
                         {
                             long n = System.Threading.Interlocked.Increment(ref _driverChannelIntercepts);
                             // The driver intercepts the game's FFB (feat 0x0E)
-                            // and LED (feat 0x09) writes. FFB writes have bytes
-                            // 10-11 (int16 target) decoded by RecvLoop into the
+                            // and LED (feat 0x09) writes. RecvLoop decodes the
+                            // int16 target at bytes 10-11 of CONSTANT FFB
+                            // writes (condition downloads are dropped) into the
                             // channel's _packed for the TF stream packer to use
                             // as ep3 cur; that already happened before this
                             // callback. Here we only classify for logging - we
@@ -4939,7 +6190,7 @@ namespace TrueforceForAll.Plugin
             // null) and SwapTelemetrySource picks an enhanced source if the
             // running game has one.
             //
-            // Full only. Lights-only needs no telemetry at all: the car's colors
+            // Normal only. Lights-only needs no telemetry at all: the car's colors
             // come from its published ramp, not from a frame, and the car's identity
             // arrives in DataUpdate, which SimHub calls whether or not we run a
             // source. Skipping it here is also what keeps the promise about the UDP
@@ -5095,8 +6346,8 @@ namespace TrueforceForAll.Plugin
         // ---- "NEW" badges + changelog banner ----
 
         /// <summary>Plugin assembly version in ToString(3) form ("X.Y.Z").
-        /// Used as the stamp on Settings.LastSeenVersion + as the upper
-        /// bound of the pending-changelog comparison.</summary>
+        /// Used as the stamp on Settings.LastSeenVersion, and as the version
+        /// this install reports (auth User-Agent, session heartbeat).</summary>
         public static string CurrentVersionString()
         {
             var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
@@ -5105,8 +6356,8 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>True iff <paramref name="effectId"/> hasn't been seen by
         /// the user yet. Drives the per-section "NEW" badge in the settings
-        /// UI. Defensive: returns false for null/unknown IDs so the UI can
-        /// query freely without guarding.</summary>
+        /// UI. Defensive: returns false for a null/empty ID and before
+        /// settings load, so the UI can query freely without guarding.</summary>
         public bool IsEffectUnseen(string effectId)
         {
             if (Settings?.SeenEffects == null || string.IsNullOrEmpty(effectId)) return false;
@@ -5186,8 +6437,9 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Returns every changelog version strictly newer than the
-        /// user's stamped LastSeenVersion. Empty = nothing to surface; the
-        /// banner stays hidden.</summary>
+        /// user's stamped LastSeenVersion (all of them when it is unset or
+        /// unparseable). Empty = no bundled notes for the modal; the banner's
+        /// own visibility comes from HasUnseenChangelog.</summary>
         public IReadOnlyList<ChangelogVersion> GetPendingChangelog()
         {
             if (Settings == null) return Array.Empty<ChangelogVersion>();
@@ -5249,9 +6501,10 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Filter the fetched GitHub release list to the releases
         /// the post-upgrade What's new modal should display: strictly newer
-        /// than LastSeenVersion, no newer than the running build, and not
-        /// prereleases. Returns empty when the fetch hasn't completed or
-        /// failed (caller falls back to EffectChangelog).</summary>
+        /// than LastSeenVersion and no newer than the running build, with
+        /// prereleases included only on the Beta channel or when the release
+        /// IS the running build. Returns empty when the fetch hasn't
+        /// completed or failed (caller falls back to EffectChangelog).</summary>
         public IReadOnlyList<ReleaseInfo> GetGitHubReleasesForBanner()
         {
             if (Settings == null || UpdateChecker?.AllReleases == null
@@ -5334,11 +6587,11 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>Auto-enroll a beta build, then push the resulting channel
-        /// into the poller. Called after each release fetch and whenever the
-        /// beta toggle changes, so a prerelease can surface in the banner
-        /// without a restart. Purely local: the channel depends only on the
-        /// stored toggle (the beta channel is open to everyone), so there is
-        /// no entitlement round-trip.</summary>
+        /// into the poller. Called after each release fetch (startup, the
+        /// periodic re-poll, the manual check link), so a prerelease can
+        /// surface in the banner without a restart. Purely local: the channel
+        /// depends only on the stored toggle (the beta channel is open to
+        /// everyone), so there is no entitlement round-trip.</summary>
         internal void RefreshUpdateChannel()
         {
             MaybeAutoEnrollBetaChannel();
@@ -5435,7 +6688,7 @@ namespace TrueforceForAll.Plugin
             PersistSettingsCore();
         }
 
-        /// <summary>A game is currently being captured, i.e. the user is mid-session.
+        /// <summary>SimHub reports a game running, i.e. the user is mid-session.
         /// The support prompt waits for idle rather than interrupting that.</summary>
         internal bool GameIsRunning => !string.IsNullOrEmpty(_currentGameName);
 
@@ -5514,18 +6767,17 @@ namespace TrueforceForAll.Plugin
             if (_streamSecondsSinceFlush < StreamFlushIntervalSeconds) return;
             Settings.ActiveStreamingSeconds += _streamSecondsSinceFlush;
             _streamSecondsSinceFlush = 0.0;
-            // Persist OFF the producer/audio thread. SaveCommonSettings does a
-            // full settings serialize + backup-file rotation + synchronous disk
-            // write; on a slow/contended disk that can stall the producer long
-            // enough to underrun the device ring (audible glitch + ratchet UP).
-            // The odometer is already updated in memory above, so the disk flush
-            // is not time-sensitive and can run on the thread pool.
+            // Persist OFF the producer thread (this runs only in ProducerLoopCore).
+            // SaveCommonSettings does a full serialize + backup rotation +
+            // synchronous disk write; on a slow/contended disk that stalls the
+            // producer long enough to underrun the device ring (audible glitch +
+            // ratchet UP). The odometer is already updated in memory above.
             ScheduleSettingsFlush();
         }
 
         // Single-flight background flush of Settings. Used by callers on
-        // latency-sensitive threads (streaming odometer on the producer thread,
-        // ring-size auto-ratchet on the audio thread) where the in-memory state
+        // latency-sensitive threads (the streaming odometer and the ring-size
+        // auto-ratchet, both on the producer thread) where the in-memory state
         // is already updated and the disk write is not time-sensitive. Skips if
         // a flush is already queued/running; the next flush persists the latest
         // in-memory state anyway.
@@ -5623,6 +6875,19 @@ namespace TrueforceForAll.Plugin
             for (int i = 0; i < 100 && System.Threading.Volatile.Read(ref _pipelineReconciling) != 0; i++)
                 System.Threading.Thread.Sleep(50);
 
+            // Bench tools own real hardware: a run left alive would keep the
+            // wheel exclusively acquired and PULSING after "Plugin stopped"
+            // (audit AT-05). Tear them down before anything else goes away.
+            try
+            {
+                CancelAutoTune(silent: true);
+                StopFxTest(silent: true);
+                CancelDamperCalibration();
+                StopDiDamperSpike();
+                StopWheelMotion();
+            }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] bench teardown on exit: " + ex.Message); }
+
             // Give back any borrowed light slot FIRST, while the HID++ channel is
             // still up. A slot write persists on the wheel, so leaving one held
             // means the user's own colors stay overwritten after we exit. Runs
@@ -5648,6 +6913,12 @@ namespace TrueforceForAll.Plugin
             try { StopIRacingDirect(); } catch { }
             try { _irSdk?.Dispose(); } catch { }
             _irSdk = null;
+            try { StopR3EDirect(); } catch { }
+            try { _r3e?.Dispose(); } catch { }
+            _r3e = null;
+            try { StopLmuDirect(); } catch { }
+            try { _lmu?.Dispose(); } catch { }
+            _lmu = null;
 
             // Restore the process GC latency mode if a game was still streaming.
             ExitStreamingGcMode();
@@ -5658,6 +6929,7 @@ namespace TrueforceForAll.Plugin
             try { _autoPullTimer?.Dispose(); } catch { }
             _autoPullTimer = null;
             try { _sessionHeartbeatTimer?.Dispose(); } catch { }
+            try { _usagePingTimer?.Dispose(); } catch { }
             _sessionHeartbeatTimer = null;
 
             // Flush a pending dash redline share (see DashScheduleRedlineShare)
@@ -5717,6 +6989,13 @@ namespace TrueforceForAll.Plugin
                 try { _fsPipeSource.Dispose(); } catch { }
             }
             _fsPipeSource    = null;
+            // And the arcade reader: a named shared-memory handle left open would
+            // outlive the plugin unload.
+            if (_teknoSource != null && _teknoSource != _telemetrySource)
+            {
+                try { _teknoSource.Dispose(); } catch { }
+            }
+            _teknoSource     = null;
             _telemetrySource = null;
             _simHubSource    = null;
 
@@ -5733,7 +7012,7 @@ namespace TrueforceForAll.Plugin
             try { FlushGripCal(); } catch { }
 
             // UI changes are written through to Settings on the fly, so just save.
-            // Guarded like the ~60 other SaveCommonSettings call sites: a throw here
+            // Guarded like the other PersistSettingsCore call sites: a throw here
             // (disk full / settings file locked) must not skip the remaining disposes
             // below (helper-process kill, device cleanup), which on a plugin-disable
             // (no host exit) would orphan the LoopbackHelper child process.
@@ -5741,6 +7020,11 @@ namespace TrueforceForAll.Plugin
 
             try { _rpmLeds?.Dispose(); } catch { }
             _rpmLeds = null;
+
+            try { _arcadeMemory?.Dispose(); } catch { }
+            _arcadeMemory = null;
+            try { _audioLeds?.Dispose(); } catch { }
+            _audioLeds = null;
 
             try { _oledDash?.Dispose(); } catch { }
             _oledDash = null;
@@ -5788,7 +7072,29 @@ namespace TrueforceForAll.Plugin
 
         public void DataUpdate(PluginManager pluginManager, ref GameData data)
         {
+            // SPIKE (2026-09-06): read back and unwind last tick's write into
+            // SimHub's own fields. First, so nothing below sees a spoof.
+            ArcadeBridgeSpikeRestore(pluginManager, data);
+
             _currentGameName = data?.GameRunning == true ? data.GameName : null;
+            // Analytics asks a DIFFERENT question from the force path, so it gets a
+            // different signal. GameRunning means the reader is delivering telemetry:
+            // it is false in menus, on loading screens, while paused, and for the whole
+            // life of a title whose data never reaches SimHub at all. _currentGameName
+            // is therefore the right input for the force path (no data, no effects) and
+            // the wrong one for "what did they play": a measured FH6 session sat open
+            // for 96 seconds with Data Out off, emitted nothing, and was recorded as no
+            // game, while the plugin had already adopted it and loaded its preset.
+            //
+            // RunningGameProcessDetected is SimHub's separate "this title's process is
+            // up" flag, which is exactly the question. Taken as a UNION with the old
+            // gate so this can only ever record more than before, never less, and so a
+            // title that is live but somehow not process-detected still counts.
+            _usageGameName = (data?.GameRunning == true || data?.RunningGameProcessDetected == true)
+                ? data.GameName : null;
+            // Usage stats: note game-day activity on a transition into a game
+            // (one ordinal compare per frame; the record runs only on change).
+            try { NoteTelemetryGameActivity(_usageGameName); } catch { /* never disturb DataUpdate */ }
             // Radar dots and proximity, from this frame's opponents.
             try { DashUpdateRadar(data); } catch { /* display only, never fatal */ }
 
@@ -5801,8 +7107,22 @@ namespace TrueforceForAll.Plugin
             IrRawProbeTick(data);
 
             // iRacing reshape: latch the sim's own steering torque for the
-            // 1 kHz FFB thread. Returns immediately unless that mode is armed.
+            // 1 kHz FFB thread. Gated on the GAME, not the force mode: returns
+            // immediately unless iRacing is the live game.
             IRacingTelemetryTick(data);
+
+            // RaceRoom shared-memory route (dev): run or stop the "$R3E"
+            // reader. Normal mode only; returns immediately unless RaceRoom is the
+            // live game with the route or its probe switched on.
+            R3ETelemetryTick();
+
+            // Le Mans Ultimate handover: run or stop the "LMU_Data" reader.
+            // Same contract.
+            LmuTelemetryTick();
+
+            // Re-read the wheel's light slots when a sync could not. Silent
+            // unless one is owed; see NoteSlotSyncOutcome for why this exists.
+            RetrySlotSyncIfUnread();
 
             // Continuous (telemetry-independent) tick: tell the FFB tap whether
             // force feedback should be flowing right now, from the active
@@ -5832,19 +7152,6 @@ namespace TrueforceForAll.Plugin
                     _noFfbCaptureNotice = null;
             }
 
-            // EXPERIMENTAL: when the kernel-driver intercept is active it drops
-            // the GAME's HID++ FFB writes before they reach the wheel, so no
-            // force traffic is left on that endpoint for LED writes to contend
-            // with (our own force goes out on ep3). That is what makes driving
-            // rev LEDs from the game's RPM safe here. NB the enabling condition
-            // is ZERO FFB on the HID++ endpoint, not "we are the sole writer on
-            // it": sole-writer was tested and still dropped out (2026-07-29),
-            // and being ignored is not the same as being absent, the game's
-            // writes contend even while the wheel ignores them. Gated to
-            // non-iRacing because
-            // RpmLedController already owns the iRacing LED path. _driverLedChannel
-            // is null unless ExperimentalDriverIntercept is on, so this is a
-            // no-op in the default case.
             // Race context for the wheel's OLED. Read here because this is the
             // only place SimHub's own status object is in scope; DispatchFrame,
             // which draws the panel, sees a TelemetryFrame and nothing else.
@@ -5878,7 +7185,7 @@ namespace TrueforceForAll.Plugin
             // DispatchFrame only runs on telemetry frames and there are none
             // without a game. With nothing to report this hands the screen back,
             // so the wheel's own menu is what you see at rest.
-            // Full only, and that gate is not cosmetic: ModeBOledEnabled defaults
+            // Normal only, and that gate is not cosmetic: ModeBOledEnabled defaults
             // ON, so before this the plugin wrote the wheel's screen with the
             // master switch off and no game running. Lights-only leaves the screen
             // alone too: it promises the lights and nothing else.
@@ -5893,10 +7200,23 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] OLED idle error", ex); }
             }
 
-            // Full only. This is a SECOND continuous 0x807A level writer, behind the
+            // Normal only. This is a SECOND continuous 0x807A level writer, behind the
             // experimental driver intercept, and it reads none of the gates the
             // main rev-light path does. Armed in either new mode it would write
             // levels the mode promises not to.
+            // EXPERIMENTAL: when the kernel-driver intercept is active it drops
+            // the GAME's HID++ FFB writes before they reach the wheel, so no
+            // force traffic is left on that endpoint for LED writes to contend
+            // with (our own force goes out on ep3). That is what makes driving
+            // rev LEDs from the game's RPM safe here. NB the enabling condition
+            // is ZERO FFB on the HID++ endpoint, not "we are the sole writer on
+            // it": sole-writer was tested and still dropped out (2026-07-29),
+            // and being ignored is not the same as being absent, the game's
+            // writes contend even while the wheel ignores them. Gated to
+            // non-iRacing because
+            // RpmLedController already owns the iRacing LED path. _driverLedChannel
+            // is null unless ExperimentalDriverIntercept is on, so this is a
+            // no-op in the default case.
             var ledCh = _driverLedChannel;
             if (ledCh != null && ledCh.IsReady && data?.NewData != null
                 && MasterMode == TrueforceMasterMode.Normal
@@ -5945,6 +7265,25 @@ namespace TrueforceForAll.Plugin
                 SettleEffectsOnStall();
             }
 
+            // The HID++ surfaces get a longer rope than the effects; see
+            // ReleaseHidppSurfacesOnStall for why they are no longer on the same
+            // window. Separate latch, because this one fires later and clears on
+            // the same resumed frame.
+            if (stamp != 0 && !_surfacesReleasedOnStall
+                && Stopwatch.GetTimestamp() - stamp > SurfaceStallTicks)
+            {
+                _surfacesReleasedOnStall = true;
+                ReleaseHidppSurfacesOnStall();
+            }
+
+            // The rim LEDs with no game feeding us: SimHub open with nothing
+            // playing, or a game that has stopped. Same
+            // reasoning as the OLED idle readout further up, and placed AFTER
+            // the settle above rather than beside it: the settle hands the
+            // strip back on the stall edge, so driving first would light the
+            // bar and have it cleared again in the same tick.
+            DriveAmbientLedsIdle();
+
             // Steering-reader self-heal: the HID stream dies silently when
             // something grabs the device (G HUB, USB hiccup), and both the
             // damper and Direct centering then fall back to lagged telemetry
@@ -5952,6 +7291,12 @@ namespace TrueforceForAll.Plugin
             // that keeps running regardless of game state; the healthy path
             // is a few field reads, and any reopen runs off-thread inside.
             _steeringReader?.EnsureAlive();
+
+            // A native-Trueforce title we are set to Normal in: hold our stream
+            // off the wheel until the endpoint proves quiet (see
+            // UpdateNativeTrueforceProbe). Runs first: while it holds, there is
+            // no stream of ours for the watch below to compare against.
+            UpdateNativeTrueforceProbe();
 
             // A game streaming its own Trueforce beside ours: drop to Lightsync
             // only (see UpdateNativeTrueforceStreamWatch). Runs before the pause
@@ -6106,10 +7451,105 @@ namespace TrueforceForAll.Plugin
             // so the loaded preset's CarOverrides dict is in place by the
             // time ApplyActiveCarOverride runs below.
             string gameName = data?.GameName;
+
+            // SimHub does not know every game. An emulated arcade title has no
+            // SimHub profile at all: no game name, no GameRunning, no telemetry,
+            // so without this it never reaches any of the machinery below and
+            // gets no preset, no source and no arming. Supplying a synthetic
+            // identity here is the whole of process-detected mode: everything
+            // downstream (the source swap, the preset auto-apply, the per-game
+            // mode resolve, the teardown when it exits) then runs unchanged.
+            //
+            // The test is whether SimHub's game is RUNNING, not whether it named
+            // one. GameName is deliberately not gated on GameRunning a few lines
+            // above, so it keeps reporting the last profile the user selected long
+            // after that game closed. Checking it for emptiness therefore never
+            // fires: someone who played Assetto Corsa yesterday still has
+            // "AssettoCorsa" sitting in that field today, and an arcade cabinet
+            // starting up would be ignored in favour of a game that is not on.
+            //
+            // A running SimHub game still wins outright. We only speak when
+            // nothing of SimHub's is actually playing.
+            // A SimHub CUSTOM GAME for an arcade cabinet is the second case, and it
+            // arrives by the opposite door. Once such a profile exists SimHub DOES
+            // report a running game, so the test above stops firing and the identity
+            // becomes SimHub's "Custom_<guid>" code. That is the wrong name for us in
+            // three separate ways: it is the preset key, it is the car-folder name,
+            // and HasUsefulTelemetry reads false for anything carrying that prefix,
+            // so the panel would call a fully mapped cabinet telemetry-less.
+            //
+            // ArcadeGameName was built without the prefix for exactly these reasons.
+            // A user creating a game profile in SimHub must not silently re-file
+            // their tuning, so the cabinet identity wins over the code whenever the
+            // profile is describing the cabinet we are already reading.
+            bool simHubHasGame = data?.GameRunning == true;
+            bool customCode = simHubHasGame && gameName != null
+                && gameName.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase);
+            // ArcadeUnlocked first, and it gates the NAMING rather than only the consumers:
+            // renaming the active game to a cabinet re-keys presets, car folders and car facts,
+            // so a locked build must never do it. With this off, _activeGame never becomes an
+            // arcade name and IsArcadeGameName is false everywhere downstream by construction.
+            if (ArcadeUnlocked && (!simHubHasGame || customCode))
+            {
+                string arcadeGame = DetectArcadeGameName();
+
+                // "TeknoParrotArcade" is the FALLBACK identity, returned whenever a
+                // cabinet is present but no profile matched the running process. It
+                // is an answer of last resort rather than an answer, so it must not
+                // outrank one we can work out for ourselves.
+                bool fallbackOnly = string.Equals(arcadeGame, GenericArcadeGameName,
+                                                  StringComparison.Ordinal);
+                bool resolved = !string.IsNullOrEmpty(arcadeGame) && !fallbackOnly;
+
+                if (resolved && (!customCode || CustomGameIsThisArcadeCabinet(gameName)))
+                {
+                    // Detection identified the running process, which beats anything
+                    // inferred from a profile's configured name.
+                    gameName = arcadeGame;
+                }
+                else if (customCode)
+                {
+                    // Detection cannot answer, but a SimHub custom game whose process
+                    // belongs to a TeknoParrot profile IS that cabinet, and we can say
+                    // so now. Naming it here rather than waiting is what keeps the
+                    // arcade path engaged: held at its guid, ActiveGameIsArcade reads
+                    // false and no arcade telemetry source is ever built.
+                    string profile = ProfileForCustomGame(gameName);
+                    if (!string.IsNullOrEmpty(profile))
+                    {
+                        string named = ArcadeGameName(profile);
+                        if (!string.Equals(named, _customGameNamedAs, StringComparison.Ordinal))
+                        {
+                            _customGameNamedAs = named;
+                            SimHub.Logging.Current.Info(
+                                $"[TF4ALL] This custom game runs the same program as TeknoParrot's "
+                                + $"'{profile}' cabinet, so its settings are saved under '{named}' rather "
+                                + "than the placeholder name SimHub uses for a game it does not know.");
+                        }
+                        gameName = named;
+                    }
+                    else if (fallbackOnly)
+                    {
+                        // Something arcade-shaped is running that no profile claims.
+                        // The fallback is a poor name but it is an arcade one, so the
+                        // arcade path still engages.
+                        gameName = arcadeGame;
+                    }
+                }
+                else if (fallbackOnly)
+                {
+                    gameName = arcadeGame;
+                }
+            }
+
             // Remember the last game SimHub named so the process-table rescue
             // (IsKnownGameProcessRunning) has a target to fuzzy-match against
             // after a pause nulls _activeGame.
             if (!string.IsNullOrEmpty(gameName)) _lastNamedGame = gameName;
+            // The startup seed bridges Init to this first tick and no further:
+            // from here SimHub's own data says what is running, including that
+            // nothing is.
+            _startupGameName = null;
             // While offline-editing a CAR, _activeGame is pinned to that car's game
             // (EnterOfflineEditCar) so the Car-facts panel keys against the right
             // (game, carId). IsOfflineEditing is keyed on the PRESET-edit flag, so it
@@ -6122,6 +7562,14 @@ namespace TrueforceForAll.Plugin
                 // game session that earned it. The resolve below lands the new
                 // game on its own default.
                 _nativeStreamDemoted = false;
+                // Same for the probe that precedes it: whether the LAST game
+                // streamed says nothing about this one, so the new title earns
+                // its own verdict.
+                _nativeProbeSettled = false;
+                // "Does this game report an engine" is a fact about one game,
+                // so the next one gets to answer it for itself. Until it does,
+                // the audio meter may take the rev bar.
+                _revDataSeen = false;
                 _standDownNoticeShownThisDemotion = false;
                 _mairaTapDegraded = false;
                 _mairaTapWarned = false;
@@ -6131,7 +7579,7 @@ namespace TrueforceForAll.Plugin
                 // belongs to the session that set it (it lengthens the
                 // SimHub-fallback dwell in EvaluateFsTelemetryFallback).
                 _fsPipeFedThisGame = false;
-                // Full only. The enhanced sources bind sockets and open shared
+                // Normal only. The enhanced sources bind sockets and open shared
                 // memory, and the Forza one takes UDP 5300, which is the game's own
                 // Data Out port. A mode that promises to touch nothing but the
                 // wheel's lights must not be holding it.
@@ -6168,6 +7616,9 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info("[TF4ALL] Spring mode disarmed (game changed).");
                 }
                 ApplyModeBFromSettings();
+                // Smoothing is game-aware (RaceRoom carries its own ~3 ms), so
+                // push the value for the new game to the device now.
+                ApplyEffectiveSmoothing();
                 // Traction loss is per-game gated (FS: Axle slip owns slip);
                 // re-apply on every game change so the gate flips even when
                 // the new game has no bound preset to trigger the apply-all.
@@ -6237,9 +7688,9 @@ namespace TrueforceForAll.Plugin
 
                     // RESOLVE rather than push. This used to write the master switch
                     // itself from the per-game map, which under a third state would
-                    // drag a lights-only user into full the moment they started a
+                    // drag a lights-only user into Normal the moment they started a
                     // game they had once enabled. ResolveEffectiveMode keeps the
-                    // old Full/Off behaviour bit for bit and leaves the stored
+                    // old Normal/Off behaviour bit for bit and leaves the stored
                     // choice where the user put it.
                     ApplyEffectiveMode("game change");
                 }
@@ -6276,6 +7727,11 @@ namespace TrueforceForAll.Plugin
                 IRacingIncidentsReset();
             }
 
+            // The condition renderer's damper is a feedback loop, so it wants
+            // the freshest velocity available for as long as it is rendering.
+            try { MaintainRendererMotionSource(); } catch { }
+            try { MaintainStreamNotStuckSuspended(); } catch { }
+
             // Watch what this game reports, so the picker learns which boxes
             // it can never fill. After the block above, so a frame of the new
             // game's data is never credited to the old one.
@@ -6283,6 +7739,35 @@ namespace TrueforceForAll.Plugin
 
             // Track car changes and apply per-car override (or revert).
             string carId = data?.NewData?.CarId ?? data?.NewData?.CarModel;
+            // RaceRoom (R3E) exposes a friendly car name in telemetry; capture
+            // it so CarFacts (header, Rename prefill) shows e.g. "Honda Accord
+            // Super Touring" instead of a blank or a numeric id. Some RaceRoom
+            // builds prefix a numeric model id ("8645,Honda ..."); drop it.
+            if (IsR3EGame(_activeGame))
+            {
+                string r3eName = data?.NewData?.CarModel;
+                if (!string.IsNullOrEmpty(r3eName))
+                {
+                    int comma = r3eName.IndexOf(',');
+                    if (comma > 0)
+                    {
+                        bool allDigits = true;
+                        for (int i = 0; i < comma; i++)
+                            if (!char.IsDigit(r3eName[i])) { allDigits = false; break; }
+                        if (allDigits) r3eName = r3eName.Substring(comma + 1).Trim();
+                    }
+                    if (!string.IsNullOrEmpty(r3eName)) _r3eCarDisplayName = r3eName;
+                }
+                // The one engine fact RaceRoom publishes: combustion, electric
+                // or hybrid. Read once per car (it cannot change without a car
+                // change) so the cost is a reflection walk per switch, not one
+                // per frame.
+                if (!string.Equals(_r3eEngineTypeCarId, carId, StringComparison.Ordinal))
+                {
+                    _r3eEngineTypeCarId = carId;
+                    _r3eEngineType = ReadR3EEngineType(data);
+                }
+            }
             // Forza fallback when SimHub's data feed has no CarId: a user with
             // UDP forwarding misconfigured, or who hasn't selected a Forza
             // profile in SimHub, gives us null here even while the Forza game
@@ -6315,6 +7800,26 @@ namespace TrueforceForAll.Plugin
                 string fsCarId = _fsPipeSource?.StableCarId;
                 if (!string.IsNullOrEmpty(fsCarId)) carId = fsCarId;
             }
+            // Arcade cabinets: SimHub knows nothing about them at all, so without this every car
+            // is "no car selected" and the whole per-car layer stays empty. Car facts, presets, the
+            // engine pin and the community lookups are all keyed on this one string. The code from
+            // the game's own car table is the right key: it is stable across launches, unique per
+            // car, and legible in the UI, which a raw ordinal would not be.
+            //
+            // NOT gated on carId being empty. Once a SimHub custom game profile exists for a
+            // cabinet, SimHub reports a running game and fabricates the same per-session
+            // "DC__<startup timestamp>" placeholder it invents for Farming Simulator. That is not
+            // a car, it is a different string every session, and while it sat here the cabinet's
+            // real car could never take the slot: the panel offered to auto-detect an engine for
+            // 'DC__260906032116' before a car had even been chosen, and every preset, car fact and
+            // community lookup would have keyed on a value that changes on every launch.
+            if (ActiveGameIsArcade)
+            {
+                var arcadeCar = ArcadeCarNow();
+                if (arcadeCar != null) carId = "ID8_" + arcadeCar.Code;
+                else if (IsSimHubPlaceholderCarId(carId)) carId = null;   // no car chosen yet
+            }
+
             // Runtime alias: a legacy Forza_<n> id arriving from any source
             // (older SimHub build, third-party plugin, an older Trueforce
             // install that wasn't normalized yet) gets rewritten to Car_<n>
@@ -6383,6 +7888,7 @@ namespace TrueforceForAll.Plugin
                 if (EnginePulse != null)
                 {
                     EnginePulse.ObservedCyl = null;
+                    EnginePulse.ObservedIsElectric = false;
                     EnginePulse.ObservedMaxRpm = 0.0;
                     EnginePulse.ObservedRedlineRpm = 0.0;
                 }
@@ -6467,7 +7973,7 @@ namespace TrueforceForAll.Plugin
                     OnLovelyCarChanged(_activeGame, _activeCarId);
 
                 // Lights-only runs no telemetry source, so the car-load edge that
-                // normally arrives on a frame has to be driven from here. Full mode
+                // normally arrives on a frame has to be driven from here. Normal mode
                 // deliberately keeps using the frame path: it can prove the HID++
                 // pipe is free of the game's force and this cannot, and the latch
                 // inside means only the first caller acts either way.
@@ -6626,6 +8132,10 @@ namespace TrueforceForAll.Plugin
                     ScheduleSettingsFlush();
                 }
             }
+
+            // SPIKE (2026-09-06): publish arcade telemetry into SimHub's own
+            // standard fields. Last, so every consumer above ran unspoofed.
+            ArcadeBridgeSpikeWrite(pluginManager, data);
         }
 
         /// <summary>OnFrame handler bound to whichever ITelemetrySource is
@@ -6640,10 +8150,18 @@ namespace TrueforceForAll.Plugin
             // just arrived, so clear the stall latch and re-arm the timer.
             System.Threading.Interlocked.Exchange(ref _lastFrameTicks, Stopwatch.GetTimestamp());
             _telemetryStalled = false;
+            _surfacesReleasedOnStall = false;
 
             // Fill the fields SimHub's generic reader leaves null for iRacing,
             // before Caps is computed and before any effect sees the frame.
             ApplyIRacingOverlay(ref frame);
+
+            // Engine data read out of an arcade game's own memory, stamped HERE rather than inside
+            // a force source. Those two things are unrelated, and binding them cost a session: an
+            // unrelated bug in arcade source selection meant the force source never started, which
+            // silently took the telemetry with it. Owned by the plugin, it survives source swaps
+            // and works whichever arcade route is live.
+            ApplyArcadeMemoryTelemetry(ref frame);
 
             // Frame enrichment (SimHub-cache overlay for enhanced sources +
             // universal collision derivation) moved to the Engine's
@@ -6666,11 +8184,28 @@ namespace TrueforceForAll.Plugin
                     DrsActive        = _lastSimHubDrsActive,
                 },
                 suppressRedlineOverlay: IsForzaGameName(_activeGame),
-                collisionThresholdMps2: fsFrames ? 20.0 : 49.0);
+                collisionThresholdMps2: fsFrames ? 20.0 : 49.0,
+                sourcePublishesPhysics: src == null || src.PublishesPhysics);
 
             // Live RPM for the remote dash's rev strip (Dash.Rpm / Dash.RpmPct
             // in TrueforcePlugin.DashRemote.cs). Stashed post-enrichment so the
             // strip sees the same RPM the effects do.
+            // Menu knocks. Here rather than anywhere race-scoped, because the whole point is the
+            // moments when no race is running: an arcade source keeps emitting frames in its menus,
+            // which is what makes this reachable at all.
+            TickArcadeMenuHaptics();
+
+            // A cabinet meters its audio between races without being asked to, so the meter has to
+            // start when one appears. The mode-change path that normally syncs it does not run for
+            // a game arriving, so the moment the map proves out is the moment to ask again.
+            var arcadeForMeter = _arcadeMemory;
+            bool arcadeMapped = arcadeForMeter != null && arcadeForMeter.Verified;
+            if (arcadeMapped != _arcadeMeterSynced)
+            {
+                _arcadeMeterSynced = arcadeMapped;
+                try { SyncAudioOutputMeter(); } catch { }
+            }
+
             _dashLiveRpm = (float)frame.Rpms;
             // Gear and speed for the Drive tab's center readout, from the same
             // enriched frame. These come from whichever source is live, so a
@@ -6698,6 +8233,8 @@ namespace TrueforceForAll.Plugin
             // actually reports it (AC), so the spring stays disengaged on
             // sources that don't (the freshness check in the provider).
             _lastSpeedKmh = (float)frame.SpeedKmh;
+            _lastThrottle01 = (float)frame.Throttle01;
+            _lastRpms = (float)frame.Rpms;
             // The grip re-learn request is consumed here rather than inside the learning block:
             // it must land in EVERY mode and on every source. The learning block
             // needs tire quads and Mode B, so leaving the consumption in there
@@ -6988,6 +8525,17 @@ namespace TrueforceForAll.Plugin
             {
                 if (frame.NumCylinders is int liveCyl && liveCyl >= 1 && liveCyl <= 16)
                     EnginePulse.ObservedCyl = liveCyl;
+                // A game can also say a car has NO cylinders, which is an
+                // answer ("electric"), not a missing one. Re-resolve on the
+                // spot: this moves no part of the variant signature, so the
+                // mid-session detector below would never notice it, and the
+                // rev limiter reads the electric state off that resolve.
+                if (frame.EngineIsElectric == true && !EnginePulse.ObservedIsElectric)
+                {
+                    EnginePulse.ObservedIsElectric = true;
+                    if (!string.IsNullOrEmpty(_activeCarId))
+                        ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: true);
+                }
                 if (frame.MaxRpm > 100)     EnginePulse.ObservedMaxRpm     = frame.MaxRpm;
                 // Per-gear redline is excluded from the variant signature (it
                 // changes every shift; including it spawns a junk variant per
@@ -7062,11 +8610,8 @@ namespace TrueforceForAll.Plugin
                 // G PRO compat mode spoofs the G PRO PID (C272); its native PID
                 // (C276) is handled too. Only the G923 PS (C266) uses the legacy
                 // F8-12 report (5-LED strip, the F8 path via DriveG923Leds).
-                bool levelWheel = _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268   // G PRO (+ RS50 compat)
-                            || _hidWheelPid == 0xC276                                 // RS50 native
-                            || _hidWheelPid == 0xC26D || _hidWheelPid == 0xC26E       // G923 Xbox (HID++ 0x807A)
-                            || GProInG923Mode;                                        // G PRO wearing any G923 PID
-                bool g923Wheel  = _hidWheelPid == 0xC266 && !GProInG923Mode;         // G923 PS/PC (legacy F8-12)
+                bool levelWheel = WheelIsHidppLevelBar;
+                bool g923Wheel  = WheelIsLegacyF8;                                    // G923 PS/PC (legacy F8-12)
 
                 // Fail CLOSED: quiet must be PROVEN by a live capture, never
                 // assumed. A null tap, a tap whose USBPcap child never
@@ -7099,7 +8644,17 @@ namespace TrueforceForAll.Plugin
                 // there, and without this the rev bar would freeze on the
                 // paused RPM (flashing if you paused near the redline, since
                 // the latch stays set). Mirrors the force pause-release.
-                bool sessionActive = _telemetrySource?.IsSessionActive ?? false;
+                //
+                // Not the source's raw answer: see HidppSessionActive, which
+                // prefers a game's own session state where we have it and
+                // otherwise stops a momentary telemetry hiccup from handing the
+                // rev bar back to the game mid-corner.
+                bool sessionActive = HidppSessionActive();
+                if (sessionActive)
+                {
+                    int nowTick = Environment.TickCount;
+                    _sessionLiveMs = nowTick == 0 ? 1 : nowTick;
+                }
                 // iRacing states it outright, so there is nothing to infer. That
                 // matters twice. With the sim's own force feedback off there is
                 // no ep0 traffic left to capture, so the tap probe would fail
@@ -7143,29 +8698,69 @@ namespace TrueforceForAll.Plugin
                 // own rev lights, and we leave them to it.
                 bool hidppFree = MasterMode == TrueforceMasterMode.Normal
                               && _forceMode != ForceModeOff && ffbQuietProven && sessionActive;
-                bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFree;
+                // Is somebody else driving the rev bar right now? Measured off
+                // the wire (see ForeignRevBarWriterActive), not assumed from a
+                // list of games. Both HID++ surfaces below defer to it: one
+                // writer at a time on this pipe, and the game's rev lights
+                // outrank our screen, because the bar is a stock wheel feature
+                // the game owns and the screen is an opt-in extra of ours.
+                bool foreignBar = ForeignRevBarWriterActive();
                 // The CSP bridge frees the wheel's HID++ pipe (the game writes
-                // nothing to it), so the SCREEN and one-shot pattern changes
-                // become safe even in AC's pass-through mode, where the base
-                // rule above is false. We do NOT extend this to the rev lights:
-                // AC owns those, and two writers on the bar would fight. So the
-                // CSP win in AC is exactly the screen plus drop-free pattern
-                // cycling, nothing more.
+                // nothing to it), so the SCREEN, the rev lights and one-shot
+                // pattern changes all become reachable even in AC's
+                // pass-through mode, where the base rule above is false.
+                //
+                // This used to stop at the screen, on the reasoning that AC
+                // owns the bar and two writers would fight. That reasoning was
+                // right; it just did not need to be a permanent assumption now
+                // that the wire can answer it. Where AC still drives the bar
+                // foreignBar is true and nothing changes. Where the user has
+                // told AC to stop (CSP's g27_lights MODE=DISABLED, which that
+                // module documents as the way to hand the lights to an external
+                // tool) the bar is genuinely free and we may take it.
                 bool cspSupplying = CspBridgeSupplying();
-                bool hidppFreeForScreen = hidppFree || (MasterMode == TrueforceMasterMode.Normal
-                              && cspSupplying && ffbQuietProven && sessionActive);
+                bool cspPipeFree = MasterMode == TrueforceMasterMode.Normal
+                              && cspSupplying && ffbQuietProven && sessionActive;
+                // An arcade cabinet running through our publishing build has given
+                // the wheel up entirely, which is the whole point of that route: it
+                // is what lets the lights and the screen work in games that would
+                // otherwise hold the pipe for their force.
+                //
+                // NOT also gated on sessionActive. On this route that flag is the
+                // publisher's frame counter advancing, which tracks whether the
+                // game is submitting force right now rather than whether it owns
+                // the wheel, so holding the wheel still made the term drop and the
+                // lights change behaviour under the driver's hands.
+                //
+                // And NOT deferring to foreignBar, which it used to. The cabinet's
+                // force is intercepted inside the game's own process and reaches
+                // us instead of the wheel, so on this route the lights and the
+                // screen are ours to write (owner, 2026-09-05). foreignBar is a
+                // wire measurement that cannot tell a cabinet's own rev-bar writes
+                // from anything else at that feature index, and on the publishing
+                // route there is no game writer left for it to be seeing.
+                bool arcadePipeFree = ArcadePipeFree();
+                bool hidppFreeForLeds   = hidppFree || arcadePipeFree || (cspPipeFree && !foreignBar);
+                bool hidppFreeForScreen = arcadePipeFree
+                                       || ((hidppFree || cspPipeFree) && !foreignBar);
+                bool modeBLeds = (Settings?.ModeBRevLightsEnabled ?? true) && hidppFreeForLeds;
                 // EXPERIMENTAL wheel-base OLED, its own opt-in (default off).
-                // The 2026-08-29 finalFF revert (screen stalled the game's own
-                // rev-light writes) was with the game still driving the wheel;
-                // under the CSP bridge the game writes nothing, so the pipe is
-                // genuinely ours for the screen.
+                // The 2026-08-28 finding (the screen stalls the game's own
+                // rev-light writes) is why hidppFreeForScreen carries the
+                // foreignBar term: the CSP bridge frees the pipe of the game's
+                // FORCE, which is what the 2026-08-29 re-enable measured, but
+                // its LIGHTS are a separate writer and the screen starves them.
                 bool modeBOled = MasterMode == TrueforceMasterMode.Normal
                             && (Settings?.ModeBOledEnabled ?? false)
                             && hidppFreeForScreen;
-                // Latched for the settings panel, which needs to know whether a
-                // preview is safe to draw and runs on another thread. Uses the
-                // screen rule so pattern previews are allowed under CSP too.
+                // Latched for the settings panel, which runs on another
+                // thread. TWO gates, because they answer different questions.
+                // A preview sweep writes rev-light LEVELS, so it rides the
+                // lights rule: where a game still owns the bar and re-zeroes it
+                // constantly, a preview flickers against that writer (tester,
+                // 2026-08-31), and foreignBar is exactly that condition.
                 _oledHidppFree = hidppFreeForScreen;
+                _ledsHidppFree = hidppFreeForLeds;
                 // The quiet term alone, for one-shot user actions (the rev
                 // pattern picker). hidppFree bundles "force mode armed" and
                 // "session live", which gate CONTINUOUS driving of the
@@ -7173,10 +8768,81 @@ namespace TrueforceForAll.Plugin
                 // itself force-free, and demanding the rest made picks look
                 // dead from the garage and the menus.
                 _ffbQuietNow = ffbQuietProven;
+                // Ownership is logged on change whatever the diagnostic is
+                // doing: it is one line per config edit, and it answers "who
+                // is driving my lights" without asking for a code first.
+                NoteAcLedOwnershipChanges();
+                NoteAcCarShiftLights();
+                MaintainAcRevLightModule();
+                MaybeLogRevLightContention(modeBLeds, modeBOled);
 
                 double pct     = frame.RpmPercent;
                 bool   redline = frame.RedlineReached;
-                if (modeBLeds && (levelWheel || g923Wheel))
+                // One-way latch: has this game ever mentioned an engine? A
+                // ceiling is enough on its own, since every sim publishes one
+                // whether or not the engine is currently turning, and it is the
+                // absence of BOTH that says "this title has no revs to draw"
+                // (an emulated arcade cabinet sends force feedback and nothing
+                // else). 100 rather than 0 so a source that pads the field with
+                // a rounding-error zero does not count as an engine.
+                if (!_revDataSeen && (frame.MaxRpm > 100 || frame.Rpms > 100))
+                {
+                    _revDataSeen = true;
+                    // Said once per game, because "why are my lights on the audio meter" is
+                    // otherwise unanswerable from outside: the rim strip falls back to the no-revs
+                    // choice for exactly as long as this is false, and nothing else reports it.
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Rev data seen for '{_activeGame}' (rpm {frame.Rpms:0}, ceiling {frame.MaxRpm:0}), "
+                        + "so the rev lights take the rim strip back from the no-revs ambient mode.");
+                }
+                // Does the audio meter get the bar this frame? Decided once
+                // here so both wheel families below answer it the same way.
+                // Is anything actually being PLAYED? Frames arriving is not the
+                // same question, and conflating the two cost a whole evening's
+                // testing. The arcade source publishes frames for as long as the
+                // cabinet IO block EXISTS, so leaving TeknoParrot open with no
+                // game running had the plugin naming a game, running its
+                // telemetry source, and answering "a game is feeding us" with a
+                // straight face. The no-revs occasion then owned the strip
+                // permanently, the idle occasion could never be reached, and the
+                // safety gate below was shut because no session was live: dark
+                // lights, no game, nothing in the log to say which of the two
+                // was to blame.
+                //
+                // SimHub naming no game AND no source claiming a live session is
+                // as close to "nothing is happening" as the plugin can get. The
+                // arcade source's own liveness is whether its block is CHANGING,
+                // which is a statement about force being submitted right now and
+                // not about whether a cabinet is running. A detected arcade game
+                // therefore counts as playing on its own (owner, 2026-09-05):
+                // holding the wheel still is not leaving the game, and letting it
+                // read as "nothing is playing" both flipped the lights under the
+                // driver's hands and opened the write gate on a pipe that a
+                // running cabinet may still own.
+                bool gamePlaying = !string.IsNullOrEmpty(_currentGameName)
+                                || SessionRecentlyLive;
+                // What takes the strip when the revs cannot: a sweep, the
+                // audio meter, or nothing. Decided once here so both wheel
+                // families below answer it the same way.
+                var ambientMode = ResolveAmbientMode(gamePlaying: gamePlaying);
+                bool ambientBar = ambientMode != AmbientLedMode.Off;
+                // The ambient gate is the SAFETY half of modeBLeds and not its
+                // feature half. Both surfaces need the pipe proven force-free,
+                // and neither may write without it. But "Add rev light support
+                // to games when possible" is the rev lights' own switch, and
+                // bundling it in meant a user who had turned the rev lights off
+                // (their game drives them natively) could choose an ambient
+                // mode, watch its preview bar move in the panel, and never get
+                // a lit LED, with nothing on screen saying which control was in
+                // the way. Each feature answers for itself.
+                // With nothing being played there is no force anywhere, so the
+                // wheel's HID++ pipe is nobody's to cut. That is the same claim
+                // DriveAmbientLedsIdle makes from the other side of the fence
+                // (it tests for no frames at all rather than for no game), and
+                // it has to be made here too: a source that keeps feeding us
+                // after its game has gone means the idle driver never runs.
+                bool ambientLedGate = hidppFreeForLeds || !gamePlaying;
+                if (modeBLeds && !ambientBar && (levelWheel || g923Wheel))
                 {
                     // Forza UDP has no RpmPercent or redline flag, so derive
                     // both from raw revs. Fill and flash share ONE reference:
@@ -7241,11 +8907,11 @@ namespace TrueforceForAll.Plugin
 
                         // Per-car published data, when the user has turned it on
                         // and we hold some for this car. Null curve = today's
-                        // behaviour, unchanged.
-                        string gearNow = frame.Gear;
-                        _rpmLeds.LevelCurve = _lovelyCar != null && LovelyLightingEnabled
-                            ? (Func<double, int, int?>)((r, steps) => LovelyLevel(gearNow, r, steps))
-                            : null;
+                        // behaviour, unchanged. The cascade itself lives in
+                        // CarFillCurve: the F8 path below has to reach the same
+                        // verdict, and a second copy of it would be a second
+                        // opinion about which source wins.
+                        _rpmLeds.LevelCurve = CarFillCurve(frame.Gear);
 
                         // The FLASH deliberately does NOT resolve its own
                         // redline here. It rides `redline`, which upstream takes
@@ -7262,8 +8928,16 @@ namespace TrueforceForAll.Plugin
                         // something else on the base itself.
                         ReleaseBorrowIfWheelMovedAway();
 
-                        _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
-                                         redline, modeBLeds);
+                        // The audio meter, where this game gives us no revs to
+                        // draw or the car is parked and the user asked for it.
+                        // Same gate as the rev lights: metering is still a
+                        // level write on the pipe the game's force shares, so
+                        // it waits on the same tap-proven quiet.
+                        if (ambientBar)
+                            _rpmLeds.OnAmbientLevel(
+                                AmbientLevelFor(ambientMode, _rpmLeds.MirrorSteps), ambientLedGate);
+                        else _rpmLeds.OnFrame(pct, frame.Rpms, frame.MaxRpm,
+                                              redline, modeBLeds);
 
                         // Mirror to the dash. Deliberately outside the gate above:
                         // drawing on screen sends nothing to the wheel, so it works
@@ -7272,7 +8946,7 @@ namespace TrueforceForAll.Plugin
                         // decides LastLevel before it consults any of those gates,
                         // so this is the live bar even while the wheel is somebody
                         // else's to write.
-                        PublishDashLights(_rpmLeds.LastLevel, redline, _rpmLeds.MirrorSteps);
+                        PublishDashLights(_rpmLeds.LastLevel, redline && !ambientBar, _rpmLeds.MirrorSteps);
 
                         // Whenever the selection moves, and only while the pipe
                         // is force-free: what is the wheel actually showing? Until
@@ -7310,7 +8984,26 @@ namespace TrueforceForAll.Plugin
                                && MasterMode == TrueforceMasterMode.Normal
                                && sessionActive
                                && (modeBLeds || (Settings?.F8IgnoreQuietGate ?? false));
-                    DriveG923Leds(pct, redline, f8Gate);
+                    // The ambient modes feed the same five-step bar, just from
+                    // a different number and with no shift flash. Same gate
+                    // minus the rev lights' own switch (see ambientLedGate
+                    // above); the F8ANY escape hatch still applies, since it is
+                    // about this path's quiet term rather than about which
+                    // signal is driving it.
+                    bool f8AmbientGate = MasterMode == TrueforceMasterMode.Normal
+                                      && sessionActive
+                                      && (ambientLedGate || (Settings?.F8IgnoreQuietGate ?? false));
+                    if (ambientBar)
+                        DriveG923Leds(AmbientLevelFor(ambientMode, G923LedCount) / (double)G923LedCount,
+                                      false, f8AmbientGate);
+                    // The same per-car cascade the level channel installs as its
+                    // LevelCurve, asked directly because this path has no
+                    // controller to hang one on. Without it a G923 PS owner drove
+                    // the plain linear ramp while every other wheel lit at the
+                    // car's own switch-on points, which is the whole reason the
+                    // dataset is worth fetching.
+                    else DriveG923Leds(pct, redline, f8Gate,
+                                       CarFillCurve(frame.Gear)?.Invoke(frame.Rpms, G923LedCount));
                     // Not mirrored: this path never builds a level or a color
                     // profile, so there is nothing for the dash to follow and it
                     // should draw its own strip instead of a frozen one.
@@ -7352,10 +9045,23 @@ namespace TrueforceForAll.Plugin
                             IncidentFlash = Settings?.DashIncidentsEnabled == false
                                 ? "" : IRacingIncidentFlashShort,
                             Position   = _shPosition,
-                            CurrentLap = _shCurrentLap,
-                            TotalLaps  = _shTotalLaps,
-                            LastLapMs  = _shLastLapMs,
-                            BestLapMs  = _shBestLapMs,
+                            // An emulated cabinet tells SimHub nothing, so these read zero there
+                            // and the lap line goes blank mid-race. The memory map has both, so
+                            // prefer it when it is live and fall back to SimHub everywhere else.
+                            CurrentLap = ArcadeLapOrDefault(_shCurrentLap),
+                            TotalLaps  = ArcadeTotalLapsOrDefault(_shTotalLaps),
+                            LastLapMs  = ArcadeLastLapOrDefault(_shLastLapMs),
+                            BestLapMs  = ArcadeBestLapOrDefault(_shBestLapMs),
+                            TechniqueText = ArcadeTechniqueText(),
+                            TechniqueIsImpact = _arcadeTechniqueIsImpact,
+                            CountdownText      = ArcadeCountdownText(),
+                            ResultText         = ArcadeResultText(),
+                            BetweenRacesTop    = ArcadeBetweenRacesTop(),
+                            BetweenRacesBottom = ArcadeBetweenRacesBottom(),
+                            // No captions before a card is swiped: DRIVER over a blank row asserts
+                            // something we do not know.
+                            BetweenRacesTopLabel    = ArcadeHasCard() ? "DRIVER" : "",
+                            BetweenRacesBottomLabel = ArcadeHasCard() ? "CAR" : "",
                             GreetingEnabled = Settings?.OledGreetingEnabled != false,
                             GreetingText    = Settings?.OledGreetingText,
                             WriteIntervalMs = Settings?.OledWriteIntervalMs ?? 100,
@@ -7382,11 +9088,11 @@ namespace TrueforceForAll.Plugin
                         // moment the counter ticks: the counter moves at the
                         // line and the time can arrive a frame later, and it is
                         // the time we are about to show.
-                        if (_shLastLapMs != _oledPrevLastLapMs)
+                        if (ctx.LastLapMs != _oledPrevLastLapMs)
                         {
-                            _oledPrevLastLapMs = _shLastLapMs;
+                            _oledPrevLastLapMs = ctx.LastLapMs;
                             // Back to zero is a session reset, not a lap.
-                            ctx.LapJustCompleted = _shLastLapMs > 0;
+                            ctx.LapJustCompleted = ctx.LastLapMs > 0;
                         }
                         // Only pay for the delta lookup when the panel is live
                         // and the game actually has one to give. Also needed on
@@ -7421,7 +9127,12 @@ namespace TrueforceForAll.Plugin
         private const int G923LedCount = 5;
         private int _g923OpenState;   // 0 idle, 1 opening, 2 open, 3 failed
 
-        private void DriveG923Leds(double pct, bool redline, bool gateOpen)
+        /// <param name="carLevel">Whole steps the active car's own data asks
+        /// for, or null to fill from <paramref name="pct"/> on the plain ramp.
+        /// Takes precedence exactly as RpmLedController's LevelCurve does, and
+        /// for the same reason: a switch-on threshold is a hard edge, so there is
+        /// nothing here to interpolate.</param>
+        private void DriveG923Leds(double pct, bool redline, bool gateOpen, int? carLevel = null)
         {
             var f8 = _f8Leds;
             if (!gateOpen)
@@ -7456,6 +9167,9 @@ namespace TrueforceForAll.Plugin
             int level = redline
                 ? ((((DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond) / 185L) & 1L) == 0L
                        ? G923LedCount : 0)                              // ~2.7 Hz shift flash
+                : carLevel.HasValue
+                ? (carLevel.Value < 0 ? 0
+                   : carLevel.Value > G923LedCount ? G923LedCount : carLevel.Value)
                 : (int)Math.Floor(pct * G923LedCount + 0.5);
             try { f8.SetLevel(level, G923LedCount); } catch { }
         }
@@ -7475,16 +9189,32 @@ namespace TrueforceForAll.Plugin
         private void SettleEffectsOnStall()
         {
             _engineLoop?.RequestStallSettle();
-            // Rev LEDs are driven from DispatchFrame, not the engine tick, so
-            // when frames stop entirely (game exit/crash/frozen page) OnFrame
-            // never runs again and the bar freezes on its last bucket. Release
-            // it here on the same fire-once stall path. Idempotent: ForceOff
-            // no-ops once cleared and yields to an active test sweep.
-            _rpmLeds?.ForceOff();
-            // Same reasoning for the OLED: with frames stopped the gate-off
-            // path never runs and the panel would hold a stale speed forever.
-            _oledDash?.ForceOff();
             SimHub.Logging.Current.Info("[TF4ALL] Telemetry stalled; settling sustained effects on the engine tick.");
+        }
+
+        /// <summary>Hand the rev bar and the base screen back after the feed has
+        /// stopped for good, not merely hiccuped.
+        ///
+        /// Both are driven from DispatchFrame, not the engine tick, so when
+        /// frames stop entirely (game exit/crash/frozen page) OnFrame never runs
+        /// again and the bar would freeze on its last bucket while the panel held
+        /// a stale speed. That is what this releases. Idempotent: ForceOff no-ops
+        /// once cleared and yields to an active test sweep.
+        ///
+        /// This used to ride the 500 ms effect-settle window, which was too eager
+        /// by far. A sustained effect must fall silent quickly because it is
+        /// audible, but a display is not improved by being right 500 ms sooner,
+        /// and the game keeps writing the rev bar throughout: every hiccup handed
+        /// it back and the strip visibly flicked between our pattern and the
+        /// game's. The owner's RaceRoom log has eleven of those in sixteen
+        /// minutes. So the surfaces get their own, longer window, matched to the
+        /// hold in HidppSessionActive so the two cannot disagree.</summary>
+        private void ReleaseHidppSurfacesOnStall()
+        {
+            _rpmLeds?.ForceOff();
+            _oledDash?.ForceOff();
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Telemetry stopped; handing the rev lights and the base screen back.");
         }
 
         /// <summary>Toggle the aligned telemetry+FFB capture log (dev CAPTURE
@@ -7535,12 +9265,27 @@ namespace TrueforceForAll.Plugin
             if (trace == null) return;
             var sr = _steeringReader;
             float phys = (sr != null && sr.LastUpdateTicks != 0) ? sr.SteerNorm : float.NaN;
+            // The condition renderer's inputs, so a ringing damper can be read
+            // back to its cause: the reader's own velocity, the estimator's
+            // filtered velocity that the damper actually multiplies, and the
+            // force the renderer added. NaN where a source is not live, which
+            // the CSV writes as a blank cell.
+            var wheel = _wheelMotion;
+            float diVel = wheel != null && wheel.IsRunning
+                ? (float)wheel.Velocity : float.NaN;
+            float estVel = _hidppMotion.HasState
+                ? (float)_hidppMotion.Velocity : float.NaN;
             trace.Record(
                 rawTap.HasValue ? (int?)rawTap.Value : null,
                 afterSpring.HasValue ? (int?)afterSpring.Value : null,
                 finalOut.HasValue ? (int?)finalOut.Value : null,
-                _lastSteerNorm, phys, _steerVel, _lastSpeedKmh);
+                _lastSteerNorm, phys, _steerVel, _lastSpeedKmh,
+                diVel, estVel, _lastConditionTerm);
         }
+
+        /// <summary>Whether the FFB trace is recording. Drives the bench
+        /// button's label, which is the only way to tell from the UI.</summary>
+        public bool FfbTraceRunning => _ffbTrace != null;
 
         /// <summary>Toggle the high-rate FFB signal-chain trace (TRACE access
         /// code). On: starts recording every provider tick into a ring buffer
@@ -7769,11 +9514,124 @@ namespace TrueforceForAll.Plugin
         /// Covers both pipelines: Forza synthesis and iRacing reshape.</summary>
         public bool ActiveGameSupportsModeB => IsTelemetryFfbCapableGame(_activeGame);
 
-        /// <summary>True while the active game's Telemetry Based FFB is the
-        /// iRacing reshape rather than Forza synthesis. Surfaces that show
-        /// tuning controls use this to hide the slip-model sliders, which do
-        /// nothing on the reshape path.</summary>
-        public bool ActiveGameIsReshapeGame => IsIRacingReshapeGame(_activeGame);
+        /// <summary>True while the active game's Telemetry Based FFB is a
+        /// reshape (iRacing, or RaceRoom on the R3EFFB route) rather than Forza
+        /// synthesis. Surfaces that show tuning controls use this to hide the
+        /// slip-model sliders, which do nothing on the reshape path.</summary>
+        public bool ActiveGameIsReshapeGame => IsReshapeGame(_activeGame);
+
+        /// <summary>True while RaceRoom is the active game, whatever the route.
+        /// The FFB tab uses this to keep the take-over checkbox present for
+        /// RaceRoom even on the tap route, so it is the one A/B switch for the
+        /// R3EFFB shared-memory route.</summary>
+        public bool ActiveGameIsR3E => IsR3EGame(_activeGame);
+
+        /// <summary>True while Le Mans Ultimate is the active game, whatever
+        /// the route, for the same reason as ActiveGameIsR3E.</summary>
+        public bool ActiveGameIsLmu => IsLmuGame(_activeGame);
+
+        /// <summary>False in the games where the parked-car spring is skipped
+        /// outright, so a surface can hide the control rather than offer
+        /// something that will do nothing. ApplyStationarySpring reads this, and
+        /// so does the FFB tab, which is the point: the two used to state the
+        /// rule separately and had already drifted.
+        ///
+        /// iRacing solves its own self-aligning torque and already weights a
+        /// parked car, which is the whole job the spring does elsewhere. Arcade
+        /// cabinets publish force and no physics at all, so speed reads zero
+        /// forever: the spring would believe the car is permanently parked and
+        /// centre against the cabinet for the entire session.
+        ///
+        /// RaceRoom is not hidden, although it shares iRacing's reshape route:
+        /// on the USB tap route ApplyStationarySpring renders the spring, and
+        /// with the takeover armed MaybeReshapeFfb renders its own term in the
+        /// reshape's frame. An earlier note here claimed the upstream spring
+        /// was "reshaped along with the game's own force". It was not:
+        /// MaybeReshapeFfb assigns ComputeIRacingForce() over the incoming
+        /// target and never reads it, so anything added upstream was dropped
+        /// (verified 2026-09-12), which is why the reshape now has its own.
+        ///
+        /// The Forza exclusion is not here either. That one is a session state
+        /// rather than a property of the game, and it already says so through
+        /// the unsupported badge instead of vanishing.</summary>
+        /// <summary>The section is not shown where the spring can do nothing:
+        /// iRacing and the arcade cabinets (ruled out by the game), a game it is
+        /// not offered in (no SPRING unlock), and Forza on the capture route.
+        /// It stays, with a badge, only where a setting the user can flip would
+        /// bring it to life: RaceRoom's handover with the friction off (owner,
+        /// 2026-09-19: "if it is inert it should not be showing").</summary>
+        public bool ActiveGameHidesStationarySpring
+            => string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
+               || ActiveGameIsArcade
+               || IsSpringModeGame(_activeGame)          // spring mode assigns over the chain; ours never reaches the wheel
+               || StationarySpringLockedHere
+               || !ActiveSourceSupportsStationarySpring;
+
+        /// <summary>True while the device is actually bypassing FfbScale and
+        /// FfbInvertSign, which it does under the armed reshape and nowhere
+        /// else. The FFB tab hides those two controls on this rather than on
+        /// "the active game is a reshape game": the reshape can be SUPPORTED
+        /// and switched off, and with takeover off the tapped force runs
+        /// through both corrections as usual. Hiding on the game took them away
+        /// from a driver who still needed them.</summary>
+        public bool TapCorrectionsBypassed => _forceMode == ForceModeIRacing;
+
+        /// <summary>True where the Invert control cannot do anything, so a
+        /// surface can hide it. On an arcade cabinet the force is authored rather
+        /// than tapped and the device skips the inversion, which leaves the
+        /// checkbox showing a state it no longer has any effect on.</summary>
+        public bool InvertIsDead => TapCorrectionsBypassed || ActiveGameIsArcade;
+
+        // ONE answer for the force path and the FFB tab. They used to ask two
+        // different questions (this one, and ActiveSourceSupportsStationarySpring
+        // for the badge), so iRacing had its spring skipped with no badge.
+        //
+        // A property of the GAME only. The route decides which stage renders
+        // the spring, not whether it exists: ApplyStationarySpring on the tap
+        // route, and the reshape's own term in MaybeReshapeFfb while the
+        // takeover is armed (the reshape assigns over its input, so a spring
+        // added upstream never reached the wheel; 2026-09-12).
+        public bool ActiveGameAllowsStationarySpring
+            => !string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
+               && !ActiveGameIsArcade;
+
+        /// <summary>True where the spring is switched off for this version:
+        /// outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza with the SPRING code not entered. Kept apart
+        /// from "allows" because the tab must DISABLE the checkbox here rather
+        /// than dim it. A tick wrote the game's entry and then read back the
+        /// gated value, so the box unticked itself and the sliders vanished: a
+        /// control that silently refuses (rig, 2026-09-12).</summary>
+        public bool StationarySpringLockedHere
+            => !StationarySpringShipsIn(_activeGame)
+               && !(Settings?.StationarySpringUnlocked ?? false);
+
+        /// <summary>Why the spring section is inert for the active game, in the
+        /// words the badge shows, or null when it is live. Ordered so the reason
+        /// the user can act on comes last: unlocking does nothing if the route
+        /// would discard the spring anyway.</summary>
+        public string StationarySpringInertReason
+        {
+            get
+            {
+                if (!ActiveSourceSupportsStationarySpring) return "not used in Forza on the capture route";
+                if (ActiveGameIsArcade) return "not used on an arcade cabinet";
+                if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return "not used in iRacing";
+                if (StationarySpringLockedHere) return "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version";
+                if (_forceMode == ForceModeIRacing && IsSharedMemoryTakeoverGame(_activeGame)
+                    && !((Settings?.R3EStationaryDamper ?? false) && (Settings?.R3EStationaryDamperStrength ?? 0.0) > 0.0001))
+                    return "needs the stationary friction on";
+                return null;
+            }
+        }
+
+        /// <summary>True when the RaceRoom shared-memory reshape (R3EFFB) is the
+        /// active route, so its stationary-friction tuning applies. Drives the
+        /// FFB tab's stationary-friction controls (shown only for RaceRoom on the
+        /// R3EFFB route, since that path replaces the game force that carried it).</summary>
+        public bool R3EStationaryDamperApplies
+            => SharedMemoryTakeoverOn(_activeGame)   // RaceRoom or Le Mans Ultimate handed over
+               || (IsForzaGameName(_activeGame) && ModeBEnabledForActiveGame)
+               || IsSpringModeGame(_activeGame);   // spring mode is how Farming Simulator works
 
         /// <summary>True while a spring-mode game (Farming Simulator) is the
         /// active game. Deliberately not folded into ActiveGameSupportsModeB:
@@ -7826,9 +9684,10 @@ namespace TrueforceForAll.Plugin
                             : s.ModeBMinForce > 0.5f ? 0.5f : s.ModeBMinForce;
 
             bool want = ModeBEnabledForActiveGame;
-            // Which pipeline the opt-in arms. iRacing reshapes the sim's own
-            // torque; every other capable game synthesizes from slip.
-            int wantMode = IsIRacingReshapeGame(_activeGame)
+            // Which pipeline the opt-in arms. Reshape games (iRacing, RaceRoom
+            // on the R3EFFB route) render the sim's own torque; every other
+            // capable game synthesizes from slip.
+            int wantMode = IsReshapeGame(_activeGame)
                          ? ForceModeIRacing : ForceModeModeB;
             if (want && _forceMode != wantMode)
             {
@@ -7857,6 +9716,18 @@ namespace TrueforceForAll.Plugin
             // later. Game switches disarm explicitly instead.
             _forceMode = want ? wantMode
                        : (_forceMode == ForceModeSpring ? ForceModeSpring : ForceModeOff);
+            // Assert the device's authored-sign bypass at the mode change as
+            // well, not only on the next DataUpdate pass (UpdateSpringModeArming):
+            // a takeover packet, the soft lock included, can leave on the FFB
+            // thread before that pass, and until then the device would still
+            // run it through FfbInvertSign and send it out flipped (review,
+            // 2026-09-13). The per-pass assertion stays as the re-attach backstop.
+            var devMode = _device;
+            if (devMode != null) devMode.FfbBypassTapCorrections = _forceMode == ForceModeIRacing;
+            // Same window, same fix: leaving spring mode here would otherwise
+            // keep the engine's copy of the game's classic spring stood down
+            // until the next DataUpdate pass.
+            AssertSpringModeStandDown();
 
             if (save) PersistSettings();
         }
@@ -7884,6 +9755,14 @@ namespace TrueforceForAll.Plugin
         // oscillated at ~70 Hz through the wheel's physical motion.
         private float _mbDamperVelLp;
         private long  _mbDampPrevTicks;
+        // Low-pass state for the R3E stationary friction FORCE. Smooths the
+        // staircase the quantized wheel velocity leaves at this friction's higher
+        // gain, which read as graininess (owner, 2026-09-05).
+        private float _r3eFrictionLp;
+        // Position EMA for the reshape's own stationary spring. Separate from
+        // _springSteerEma so a route switch never resumes from the other
+        // stage's stale value.
+        private float _rsSpringSteerEma;
 
         // Crash duck: impact protection for the synthesized force (Mode B
         // core behavior, not a feel toggle — a crash buzz can physically
@@ -7927,6 +9806,29 @@ namespace TrueforceForAll.Plugin
         };
         private volatile float _mbAutoStrengthScale = 1f;  // telemetry writes, FFB reads
         private volatile float _mbForceRawPeak;            // FFB writes (decaying max), telemetry reads
+
+        // R3E auto-strength, iRacing press-to-apply style. RaceRoom's
+        // SteeringForcePercentage tops out well below 1 (rig 2026-09-05: ~0.18
+        // in normal driving), and on the reshape path FfbScale and the iRacing
+        // max-force are both bypassed, so the wheel is left weak with no working
+        // strength knob. So: a PEAK-HOLD observer (no decay) accumulates the
+        // hardest this car pushed since the last apply; when it has settled
+        // (R3EPeakSettled) the driver presses Apply, which commits it as the
+        // car's max and resets the observer. NOT continuous, exactly like
+        // iRacing's Auto button, so the strength never drifts under you.
+        // _r3eAppliedPeak (the committed/nudged max) drives _r3eFullScaleFrac;
+        // ComputeIRacingForce multiplies the R3E full scale by it.
+        private volatile float _r3eFullScaleFrac = 1f;     // reader writes, FFB reads (MaxNm multiplier)
+        private volatile float _r3eAppliedPeak;            // committed/nudged max (0 = none -> no boost yet)
+        private float  _r3ePeakObs;                        // reader thread: peak-hold since last apply
+        private string _r3ePeakCarId;                      // reader thread: car the observed peak is for
+        private long   _r3ePeakGrowthTicks;                // when the peak last grew (settle detection)
+        private double _r3ePeakRacingMs;                   // driving time accumulated for this car
+        private long   _r3ePrevStrengthTicks;              // reader-thread dt for the racing-time clock
+        private string _r3eLastLoadedCar;                  // reader thread: car the applied max is loaded for
+        private readonly object _r3eStrengthLock = new object();
+        private const double R3EPeakSettleMs   = 12000.0;  // no growth for this long
+        private const double R3EPeakMinDriveMs = 20000.0;  // and at least this much driving
 
         /// <summary>The scale auto strength is currently applying (1.0 = none).
         /// Read-only view for the panel: this feature decided a number for the
@@ -7984,18 +9886,38 @@ namespace TrueforceForAll.Plugin
         private volatile int _shPosition, _shCurrentLap, _shTotalLaps;
         private volatile int _shLastLapMs, _shBestLapMs;
         private int _oledPrevLastLapMs;           // lap-completion edge detector
-        private volatile bool _oledHidppFree;     // last computed gate, for the settings panel
+        private volatile bool _oledHidppFree;     // last computed SCREEN gate, for the settings panel
+        private volatile bool _ledsHidppFree;     // last computed rev-LIGHTS gate (never opens under the CSP bridge)
         private volatile bool _ffbQuietNow;       // just the FFB-quiet term, for one-shot writes
 
+        /// <summary>Is anything actually being PLAYED right now?
+        ///
+        /// "Frames are arriving" is a different question, and the two came apart
+        /// in testing. The arcade source publishes for as long as the cabinet IO
+        /// block EXISTS, so TeknoParrot left open at its menu keeps a telemetry
+        /// source running and NoTelemetryArriving answering false with nothing
+        /// being played at all. Every gate that meant "no game to fight" and
+        /// asked the frames question instead was wrong in that state: the rim
+        /// lights refused to preview a pattern change and logged "a game is
+        /// driving the bar" in a room with no game running.
+        ///
+        /// SimHub naming no game AND no source claiming a live session is as
+        /// close as the plugin gets to "nothing is happening". A real sim sitting
+        /// in its menus still names a game, so this stays false there and none of
+        /// the in-game safety is loosened.</summary>
+        private bool NothingIsPlaying =>
+            string.IsNullOrEmpty(_currentGameName) && !SessionRecentlyLive;
+
         /// <summary>The pipe-safety rule for a one-shot level write: never while a
-        /// game's own force feedback is live. With no telemetry arriving there is
-        /// no game to fight, so the answer is yes; with a game running, only the
-        /// proven-quiet term says so.
+        /// game's own force feedback is live. With nothing being played, or no
+        /// telemetry arriving at all, there is no game to fight, so the answer is
+        /// yes; with a game running, only the proven-quiet term says so.
         ///
         /// Outside Normal mode no telemetry source runs, so NoTelemetryArriving
         /// is trivially true and this cannot stand in for the mode check. Callers
         /// test the mode first.</summary>
-        private bool OneShotLevelWritesAllowed => NoTelemetryArriving() || _ffbQuietNow;
+        private bool OneShotLevelWritesAllowed =>
+            NothingIsPlaying || NoTelemetryArriving() || _ffbQuietNow;
 
         /// <summary>Whether a pattern change may SHOW itself with the preview
         /// sweep or the lit hold, seconds of level writes that drive the
@@ -8005,9 +9927,10 @@ namespace TrueforceForAll.Plugin
         /// writer and the strip flickers. The quiet-pipe term alone is not
         /// enough here, because the wire tap goes quiet at every standstill
         /// in a tap-path game and opened the sweep mid-session (owner, AC,
-        /// 2026-08-29). With no telemetry there is no game and no bar to
-        /// fight, so the answer is yes.</summary>
-        private bool PreviewSweepAllowed => NoTelemetryArriving() || _oledHidppFree;
+        /// 2026-08-29). With nothing being played, or no telemetry at all,
+        /// there is no game and no bar to fight, so the answer is yes.</summary>
+        private bool PreviewSweepAllowed =>
+            NothingIsPlaying || NoTelemetryArriving() || _ledsHidppFree;
 
         /// <summary>The level to leave the strip at after a slot rewrite that
         /// must not show itself: what the game last wrote to it, as seen on
@@ -8095,6 +10018,36 @@ namespace TrueforceForAll.Plugin
         /// without them asking for it. Reading the data costs them nothing.</summary>
         public bool LovelyLightingEnabled
             => LovelyDataEnabled && Settings?.LovelyCarDataEnabled == true;
+
+        /// <summary>A detected wheel whose rev strip has one fixed look, so there
+        /// is no pattern slot to borrow and no LIGHTSYNC tab. Both G923 variants,
+        /// and a G PRO wearing G923 compatibility mode.
+        ///
+        /// Requires a DETECTED wheel on purpose. The capability property answers
+        /// false both for "cannot" and for "no wheel found yet", and this one
+        /// turns a feature ON, so an unknown wheel must not qualify.</summary>
+        public bool WheelHasFixedLightPattern
+            => WheelDetected && !WheelHasSelectableLightPattern;
+
+        /// <summary>Whether the dataset may drive the strip's FILL TIMING: how far
+        /// up the bar the revs have got, taken from the car's own switch-on points
+        /// instead of an even spread from idle to redline.
+        ///
+        /// Split from the lighting switch because the two ask for different
+        /// things. Lighting borrows a wheel slot, which is why it is opt-in.
+        /// Filling borrows nothing: it changes a number we were already sending,
+        /// costs no extra traffic and touches nothing of the user's.
+        ///
+        /// So on a fixed-strip wheel it follows community features and the user
+        /// opts OUT. That is the only half of the feature those wheels can have,
+        /// the tab carrying the opt-in is collapsed for them, and the permission
+        /// the opt-in exists to ask for is meaningless on a strip with no slots.
+        /// A programmable wheel keeps the single opt-in, where filling and
+        /// lighting arrive together as one decision.</summary>
+        public bool LovelyFillEnabled
+            => LovelyDataEnabled
+            && (Settings?.LovelyCarDataEnabled == true
+                || (WheelHasFixedLightPattern && Settings?.LovelyFixedStripOptOut != true));
 
         /// <summary>The per-car data switch was flipped. Turning it ON adopts the
         /// active car immediately rather than waiting for the next car change;
@@ -8310,6 +10263,8 @@ namespace TrueforceForAll.Plugin
             // full it parks in the same idle sleep a disabled plugin has always used,
             // and tearing it down would mean rebuilding it on the way back for no gain.
             try { StopIRacingDirect(); } catch { }
+            try { StopR3EDirect(); } catch { }
+            try { StopLmuDirect(); } catch { }
 
             _capturePollStop = true;
             var poll = _capturePollThread;
@@ -8348,6 +10303,12 @@ namespace TrueforceForAll.Plugin
             if (_fsPipeSource != null && _fsPipeSource != _telemetrySource)
             { try { _fsPipeSource.Dispose(); } catch { } }
             _fsPipeSource    = null;
+            // Lights-only promises to touch nothing but the wheel's lights, and a
+            // live shared-memory reader thread breaks that the way a bound UDP
+            // port would.
+            if (_teknoSource != null && _teknoSource != _telemetrySource)
+            { try { _teknoSource.Dispose(); } catch { } }
+            _teknoSource     = null;
             _telemetrySource = null;
             _simHubSource    = null;
 
@@ -8442,7 +10403,7 @@ namespace TrueforceForAll.Plugin
             //
             // Claims the same single-flight slot the recovery watchdog and the UI
             // probe use. Without it, the watchdog on the data thread sees
-            // MasterMode == Full and _device == null the instant the mode latches,
+            // MasterMode == Normal and _device == null the instant the mode latches,
             // and starts a SECOND bring-up whose first act is CleanupDevice, which
             // disposes this one's half-built device out from under it.
             if (_device == null)
@@ -8484,13 +10445,13 @@ namespace TrueforceForAll.Plugin
         {
             try
             {
-                // Full is the only mode that drives a live bar. AbandonWheel rather
-                // than ForceOff: ForceOff stands down while a sweep owns the strip,
-                // which is exactly the case if the switch is made mid-preview, and
-                // that sweep would then keep writing levels for seconds afterwards
-                // with its auto-off ramp firing later still. This also stops the
-                // keepalive, which otherwise resends a level once a second forever
-                // on a pipe the game now owns.
+                // Normal is the only mode that drives a live bar. AbandonWheel
+                // rather than ForceOff: ForceOff stands down while a sweep owns the
+                // strip, which is exactly the case if the switch is made
+                // mid-preview, and that sweep would then keep writing levels for
+                // seconds afterwards with its auto-off ramp firing later still. This
+                // also stops the keepalive, which otherwise resends a level once a
+                // second forever on a pipe the game now owns.
                 if (now != TrueforceMasterMode.Normal)
                 {
                     _rpmLeds?.AbandonWheel();
@@ -8508,6 +10469,12 @@ namespace TrueforceForAll.Plugin
                     try { _f8Leds?.SetLevel(0, 5); } catch { }
                 }
                 else try { _oledDash?.AllowScreen(); } catch { }
+
+                // The audio meter follows the mode too. Off means off: leaving
+                // its thread polling the sound card for a mode that will never
+                // write a level is a background cost with nothing to show for
+                // it, and the AbandonWheel above has already taken the strip.
+                try { SyncAudioOutputMeter(); } catch { }
 
                 // Re-apply this car's lights on the way INTO a mode that may show
                 // them. The car-load edge is latched and only fires on a car change,
@@ -8650,13 +10617,37 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>Which per-car source should fill the strip this frame, as a
+        /// curve over (rpm, steps), or null when none of them has data and the
+        /// plain ramp should stand.
+        ///
+        /// The CAR's own shift lights win where the game hands them over (AC
+        /// publishes each dash LED's switch-on RPM through the CSP bridge):
+        /// nothing beats the data of the car being driven. Then the published
+        /// dataset, then nothing.
+        ///
+        /// Shared by both wheel families on purpose. The HID++ level channel
+        /// installs the result as its LevelCurve and the G923 PS F8 path invokes
+        /// it per frame, because that path writes a bitmask straight to the wheel
+        /// and has no controller to hold a curve for it. Step count is the
+        /// caller's, so a five-step bar and a ten-step one both land correctly.</summary>
+        private Func<double, int, int?> CarFillCurve(string gear)
+        {
+            var acSteps = (_telemetrySource as AcSharedMemoryTelemetrySource)?.CspAcLedStepRpms;
+            if (acSteps != null && acSteps.Length > 0)
+                return (r, steps) => AcCarLevel(acSteps, r, steps);
+            if (_lovelyCar != null && LovelyFillEnabled)
+                return (r, steps) => LovelyLevel(gear, r, steps);
+            return null;
+        }
+
         /// <summary>The active car's fill curve, or null when we have no data for
         /// it. Runs on the telemetry thread, so it only reads already-loaded state
         /// and re-picks the gear ramp when the gear actually changes.</summary>
         private int? LovelyLevel(string gear, double rpms, int steps)
         {
             var car = _lovelyCar;
-            if (car == null || !LovelyLightingEnabled) return null;
+            if (car == null || !LovelyFillEnabled) return null;
 
             var ramp = RampFor(car, gear);
             if (ramp == null || !ramp.IsUsable) return null;
@@ -8694,9 +10685,53 @@ namespace TrueforceForAll.Plugin
             if (rl != null)
                 rl.PublishedGearRedlines = have ? _lovelyCar.ForwardGearRedlines() : null;
 
+            // The car's OWN dash outranks the published dataset where the game
+            // hands it to us: BLINK_HZ comes out of the very car being driven,
+            // where the dataset is somebody's reading of that car.
+            int? acBlink = AcCarBlinkIntervalMs();
+
             // null means we know nothing about this car, which is NOT the same
             // as the car publishing zero. Zero is an answer: it does not blink.
-            PublishCarBlinkRate(have ? (int?)_lovelyCar.RedlineBlinkIntervalMs : null);
+            PublishCarBlinkRate(acBlink ?? (have ? (int?)_lovelyCar.RedlineBlinkIntervalMs : null));
+        }
+
+        /// <summary>Half-period of the active AC car's own shift-light flash,
+        /// from its data, or null when we are not in AC, the script is older
+        /// than v4, or the car models no shift lights.
+        ///
+        /// BLINK_HZ counts full flashes per second; PublishCarBlinkRate wants
+        /// how long one STATE lasts, so a 12 Hz car is 500/12 = 42 ms lit and
+        /// 42 ms dark.</summary>
+        private int? AcCarBlinkIntervalMs()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return null;
+            var s = src.CspLastSample;
+            if (s.AcLedCount <= 0) return null;
+            // A car with shift lights but no blink figure is saying it does not
+            // flash, which is an answer, not a gap: zero reaches
+            // PublishCarBlinkRate as "holds the bar solid".
+            if (s.AcLedBlinkHz <= 0f) return 0;
+            return Math.Max(1, (int)Math.Round(500.0 / s.AcLedBlinkHz));
+        }
+
+        /// <summary>Level for the active AC car's OWN shift lights: how many of
+        /// its dash LEDs are lit at these revs, scaled onto the wheel's bar.
+        ///
+        /// Scaled rather than mapped one-to-one because the two rarely match: a
+        /// car with five dash LEDs on a ten-step rim lights two steps per LED,
+        /// which keeps the wheel's bar full exactly when the car's dash is full.
+        /// The thresholds are the car's, so the ONSET matches the dash in front
+        /// of the driver instead of a percentage of the rev range.</summary>
+        private static int AcCarLevel(float[] stepRpms, double rpms, int steps)
+        {
+            int lit = 0;
+            for (int i = 0; i < stepRpms.Length; i++)
+                if (rpms >= stepRpms[i]) lit++;
+            if (lit <= 0) return 0;
+            if (lit >= stepRpms.Length) return steps;
+            int level = (int)Math.Round((double)steps * lit / stepRpms.Length);
+            return level < 1 ? 1 : level > steps ? steps : level;
         }
 
         /// <summary>Hand the active car's own blink rate to the two things that
@@ -9092,6 +11127,13 @@ namespace TrueforceForAll.Plugin
         /// perceptible; the wheel now takes the same 0.05 as the others.
         /// Damping is the only thing still separating the G923 from the G PRO.
         ///
+        /// The table also carries the Trueforce master gain (1.5 on the G923,
+        /// the factory 1.0 elsewhere), but that field is read ONLY by the
+        /// fresh-install seed on first wheel detection. It is not in
+        /// ModeBRecipeFields, so the defaults merge never moves it, and
+        /// "Reset FFB tuning to defaults" does not copy it: an existing
+        /// user's gain is theirs and is never changed under them.
+        ///
         /// Used by "Reset FFB tuning to defaults" (wheel-aware) and by the one-time
         /// fresh-install specialization on wheel detection.</summary>
         public static void ApplyWheelDefaults(TrueforceSettings s, string wheelModel)
@@ -9103,6 +11145,14 @@ namespace TrueforceForAll.Plugin
                     s.ModeBSatGain  = 0.60f;   // "Strength": RS50 defaults
                     break;
                 case "G923":
+                    // Trueforce master gain (owner call 2026-09-15): the belt
+                    // motor renders the haptic stream fainter than the direct
+                    // drives, so the G923 starts at 1.5 where every other
+                    // wheel starts at the factory 1.0. Global, not preset
+                    // scoped, so a built-in preset applied on a G923 inherits
+                    // it (presets never carry MasterGain). Read only by the
+                    // fresh-install seed; never merged onto an existing setup.
+                    s.MasterGain    = 1.5f;
                     s.ModeBSatGain  = 1.00f;   // "Strength": headroom on the weaker motor, retuned down from 1.25
                     s.ModeBDamper   = 0.09f;   // belt friction already damps; two clicks under the G PRO
                     // Min force is NOT set here any more: the G923 takes the
@@ -9117,6 +11167,22 @@ namespace TrueforceForAll.Plugin
                     // above: the belt eats what the G PRO delivers, so it
                     // keeps the headroom rather than following the retune.
                     s.SpringModeStrength = 1.0;
+                    // Effect-bench render gains (owner call 2026-09-22, from a
+                    // G923 owner's bench session). These are calibration for
+                    // the condition renderer rather than a taste setting, so
+                    // they join the defaults merge and move an install that
+                    // never deliberately tuned them.
+                    //
+                    // Inertia: the tester settled on 0.50. Their waveform
+                    // number came in at 1.2 where the owner judged 1.0 right,
+                    // so the same correction puts inertia near 0.42 and it
+                    // ships at 0.40. That is four times the G PRO's 0.10,
+                    // which still sits under the torque ratio between the two
+                    // wheels, so it is the conservative end of the reading.
+                    s.FfbConditionInertiaGain  = 0.40;
+                    // Waveform: the tester's 1.2 taken down to the owner's
+                    // 1.0, against the factory 0.9 the direct drives use.
+                    s.FfbConditionPeriodicGain = 1.00;
                     break;
                 // G PRO (and anything unrecognized): the coded defaults stand.
             }
@@ -9147,8 +11213,19 @@ namespace TrueforceForAll.Plugin
         /// 0.15 per wheel). Generation 7 = the 2026-08-10 FS strength
         /// re-snapshot: SpringModeStrength 1.0 to 0.80, the owner's own G PRO
         /// value, with the G923 pinned at the outgoing 1.0 in the per-wheel
-        /// table so the belt wheel keeps its headroom.</summary>
-        private const int ModeBDefaultsGeneration = 7;
+        /// table so the belt wheel keeps its headroom. The 2026-09-15 G923
+        /// master gain did NOT bump this: it is seeded on fresh installs only
+        /// and never merged, so no latched install needs to re-evaluate.
+        /// Generation 8 = the 2026-09-22 effect-bench gains: FfbConditionInertiaGain
+        /// and FfbConditionPeriodicGain joined the merge list, factory stays the
+        /// owner's G PRO calibration (0.10 and 0.9) and the G923 carries 0.40 and
+        /// 1.00 from a G923 owner's bench session.</summary>
+        private const int ModeBDefaultsGeneration = 8;
+
+        /// <summary>True when this session started with no settings file for us
+        /// (see Init). Gates first-run-only defaults such as the per-wheel
+        /// starting master gain.</summary>
+        private bool _wasFreshInstall;
 
         /// <summary>Recipes an UNTOUCHED install may legitimately hold besides the
         /// current factory values: every previously SHIPPED defaults-set, expressed
@@ -9233,12 +11310,24 @@ namespace TrueforceForAll.Plugin
             // 0.4 to 62 and forced the soft saturation. Only a machine that ran one
             // of that day's builds can hold a stored 1.0, and it means "the old
             // default" rather than a considered choice.
+
+            // Dev builds only: the effect-bench inertia gain before it was
+            // retuned to the current 0.10. These fields have never appeared in
+            // a published release, so only a dev or beta machine can hold the
+            // older number, and it means "the old default" rather than a bench
+            // session's result.
+            yield return new TrueforceSettings { FfbConditionInertiaGain = 0.15 };
         }
 
         // The Mode B recipe fields the defaults machinery owns (every tunable +
         // feel toggle; ModeBGameEnabled is per-user, not recipe). Drives the
         // per-field defaults merge, so a field added to the recipe only needs
         // listing here plus its initializer.
+        // NOTE: MasterGain is deliberately NOT a recipe field. The wheel table
+        // carries a master gain (the G923's 1.5), but it is seeded on a FRESH
+        // INSTALL only, never merged: master gain is the control users reach
+        // for constantly, and 1.0 is a value plenty of people chose on purpose,
+        // so the merge could not tell "untouched" from "deliberately 1.0".
         private static readonly string[] ModeBRecipeFields =
         {
             "ModeBSatGain", "ModeBRiseGamma", "ModeBPeakUtil", "ModeBDropFloor",
@@ -9260,6 +11349,12 @@ namespace TrueforceForAll.Plugin
             "SpringModeTerrainEnabled", "SpringModeTerrainGain",
             "SpringModeDragEnabled", "SpringModeDragGain", "SpringModeDragStrainFraction",
             "SpringModeChassisWeightEnabled", "SpringModeChassisWeightGain",
+            // Effect-bench render gains (joined the merge with generation 8).
+            // The bench itself is behind an access code, so an install holding
+            // a shipped value here has never been tuned and should follow the
+            // calibration; anyone who did set one on the bench keeps it, the
+            // same contract every other field in this list carries.
+            "FfbConditionInertiaGain", "FfbConditionPeriodicGain",
         };
 
         // Per-field defaults merge: every recipe field in <paramref name="s"/> still
@@ -9380,6 +11475,36 @@ namespace TrueforceForAll.Plugin
             }
             ApplyModeBFromSettings();
             ApplyModeBFeel();
+            PersistSettings();
+        }
+
+        /// <summary>Put FFB spike reduction back to the shipped defaults: the
+        /// on/off gate, the method, and BOTH methods' tuning. Global (not
+        /// preset-scoped), so unlike the Mode B reset there is no game family to
+        /// pick between. The per-section revert button next to the expander
+        /// restores the active PRESET's values, which left no route back to the
+        /// shipped ones once a preset had saved something else.</summary>
+        public void ResetSpikeReductionToDefaults()
+        {
+            var s = Settings;
+            if (s == null) return;
+            var d = new TrueforceSettings();
+            s.FfbSpikeTamingEnabled   = d.FfbSpikeTamingEnabled;
+            s.FfbSpikeUseSlewLimiter  = d.FfbSpikeUseSlewLimiter;
+            s.FfbSpikeMaxLsbPerMs     = d.FfbSpikeMaxLsbPerMs;
+            s.FfbPeakSoftLimitLsb     = d.FfbPeakSoftLimitLsb;
+            // Explicit, not d's null: the seed only runs at load, so copying a
+            // fresh instance's null would leave the peak limiter falling back to
+            // the rate value again, which is the trap the split removed.
+            s.FfbSpikeTransientThresholdLsb = TrueforceSettings.DefaultSpikeTransientThresholdLsb;
+            if (_device != null)
+            {
+                _device.FfbSpikeTamingEnabled  = s.FfbSpikeTamingEnabled;
+                _device.FfbSpikeUseSlewLimiter = s.FfbSpikeUseSlewLimiter;
+                _device.FfbSpikeMaxLsbPerMs    = s.FfbSpikeMaxLsbPerMs;
+                _device.FfbPeakSoftLimitLsb    = s.FfbPeakSoftLimitLsb;
+                _device.FfbSpikeTransientThresholdLsb = s.EffectiveSpikeTransientThresholdLsb;
+            }
             PersistSettings();
         }
 
@@ -9693,9 +11818,38 @@ namespace TrueforceForAll.Plugin
             public float   Latest;     // the per-frame scalar, Nm
             public float   MaxNm;      // SteeringWheelMaxForceNm, the sim's own full-scale
             public bool    GameFfbOn;  // SteeringFFBEnabled: the sim is driving the wheel itself
+            public bool    FixedScale; // frame already carries its final scale (the R3E route
+                                       // publishes a normalized value): the iRacing max-force
+                                       // override and per-car map must not rescale it
+            // Steering, for the soft lock. Normalised to the CAR's lock: +/-1 at
+            // the car's limit, beyond it past, carrying the sign the lock stage
+            // expects. iRacing: the angle over half of SteeringWheelAngleMax
+            // (the channel is lock-to-lock; MAIRA halves it the same way).
+            // RaceRoom: the raw axis scaled by the game's wheel rotation over
+            // the car's, signed from the physical wheel. HasSteer is false when
+            // the route did not stamp it.
+            public bool    HasSteer;
+            public float   SteerNorm;
+            public float   SteerSpeed; // d(SteerNorm)/dt per second, from consecutive frames
+            public float   LockDeg;    // the car's per-side lock, degrees
             public long    Ticks;      // Stopwatch timestamp at arrival
         }
         private volatile IRacingTorqueFrame _irFrame;
+        // Previous frame's steer for the lock's speed term. One pair for both
+        // routes: they never run together, and a route swap costs one bogus
+        // sample that the clamp on the target absorbs.
+        private float  _irSteerPrevNorm;
+        private long   _irSteerPrevTicks;
+        private double _irLastLoggedLockRad;
+        private float  _irSteerSpeedLp;            // low-passed speed for high-rate sources
+        private int    _r3eLastLoggedCarRot, _r3eLastLoggedRoadLock, _r3eLastLoggedWheelRot;
+        private long   _r3eNoPhysLogMs;            // Warn at most once a minute
+        private long   _r3eLastSoftLockDiagMs;
+        private long   _r3ePhysLastTicks;          // last physical update seen by the R3E handler
+        private float  _r3eRawAtPhys;              // the sim's raw axis at that update
+        private float  _r3eAxisRatio;              // |raw| / |physical|, slow average
+        private int    _r3eAxisRatioN;
+        private bool   _r3eAxisRatioLogged;
         private float _irRamp;
         private long  _irPrevTicks;
         // Lead-mode frame-join continuity (see ComputeIRacingForce). PrevOut is
@@ -9767,7 +11921,11 @@ namespace TrueforceForAll.Plugin
         // running entirely: staying on DataUpdate would keep us behind exactly
         // the hop this exists to remove.
         private IRacingSdkReader _irSdk;
+        private long _irResumeStampTicks;   // FFB thread; 0 = no fade-in being traced
+        private int  _irResumeSlot = -1;
+        private System.Text.StringBuilder _irResumeTrace;
         private volatile bool _irSdkLive;
+        private bool _irSdkChannelsMissingLogged;   // one Warn per gap, reader thread only
         private long _irSdkLastAttemptTicks;
 
         /// <summary>True while iRacing telemetry is coming straight from the
@@ -9870,11 +12028,26 @@ namespace TrueforceForAll.Plugin
         /// Writes the per-car slot when cars are kept separate, otherwise the
         /// shared one, so the button always sets whatever is actually in use.
         /// Returns the value written, or 0 if there is nothing learned yet.</summary>
+        /// <summary>Whether the Nm max force is kept per car here: the user's
+        /// choice in iRacing, always in Le Mans Ultimate. That game's numbers are
+        /// rack torque, 50 to 130 Nm, and iRacing's shared "for every car"
+        /// figure is a wheel rating of 10 to 20, so the two must never meet:
+        /// this game reads and writes only the per-car map.</summary>
+        public bool MaxForcePerCarHere
+            => (Settings?.IRacingMaxForcePerCar ?? false) || IsLmuGame(_activeGame);
+
+        /// <summary>The games whose Auto is iRacing's: learn the car's peak in
+        /// Nm, adopt it as that car's max force. iRacing, and Le Mans Ultimate
+        /// on its handover (its torque is Nm too). RaceRoom's is the normalized
+        /// press-to-apply, because RaceRoom publishes a percentage.</summary>
+        private bool IRacingStyleAutoHere
+            => IsIRacingReshapeGame(_activeGame) || IsLmuGame(_activeGame);
+
         public double ApplyIRacingAutoMaxForce()
         {
             double learned = IRacingLearnedMaxNm;
             if (learned <= 0.5 || Settings == null) return 0.0;
-            if (Settings.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId))
+            if (MaxForcePerCarHere && !string.IsNullOrEmpty(_activeCarId))
             {
                 if (Settings.IRacingMaxForceByCar == null)
                     Settings.IRacingMaxForceByCar = new Dictionary<string, float>();
@@ -9927,11 +12100,11 @@ namespace TrueforceForAll.Plugin
         {
             var s = Settings;
             if (s == null) return 0.0;
-            if (s.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId)
+            if (MaxForcePerCarHere && !string.IsNullOrEmpty(_activeCarId)
                 && s.IRacingMaxForceByCar != null
                 && s.IRacingMaxForceByCar.TryGetValue(_activeCarId, out float pc) && pc > 0.5f)
                 return pc;
-            return s.IRacingMaxForceNmOverride;
+            return IsLmuGame(_activeGame) ? 0.0 : s.IRacingMaxForceNmOverride;
         }
 
         /// <summary>Write the panel's number to whatever the force path is
@@ -9944,7 +12117,7 @@ namespace TrueforceForAll.Plugin
             var s = Settings;
             if (s == null) return;
             bool clear = v < 0.5;
-            if (s.IRacingMaxForcePerCar && !string.IsNullOrEmpty(_activeCarId))
+            if (MaxForcePerCarHere && !string.IsNullOrEmpty(_activeCarId))
             {
                 if (s.IRacingMaxForceByCar == null)
                     s.IRacingMaxForceByCar = new Dictionary<string, float>();
@@ -9969,7 +12142,16 @@ namespace TrueforceForAll.Plugin
             // the dash button fire at all" without a debugger on the rig.
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] max force nudge fired (delta={delta:+0.0;-0.0})");
-            if (!IsIRacingReshapeGame(_activeGame) || !ModeBEnabledForActiveGame)
+            // RaceRoom's per-car max is the same concept on a different scale, so
+            // the one pair of bindings serves both rather than each reshape game
+            // growing its own. Deliberately NOT every game: this nudges a learned
+            // per-car maximum, which only the reshape routes have.
+            if (IsR3EGame(_activeGame) && (Settings?.R3ESharedMemoryFfb ?? false))
+            {
+                NudgeR3EStrength(delta > 0 ? +1 : -1);
+                return;
+            }
+            if (!IRacingStyleAutoHere || !ModeBEnabledForActiveGame)
             {
                 DashReadout("PEAK FORCE","IRACING ONLY");
                 return;
@@ -9982,7 +12164,7 @@ namespace TrueforceForAll.Plugin
                 DashReadout("PEAK FORCE","NO NUMBER YET");
                 return;
             }
-            double v = Math.Max(1.0, Math.Min(50.0, cur + delta));
+            double v = Math.Max(1.0, Math.Min(IsLmuGame(_activeGame) ? 400.0 : 50.0, cur + delta));
             SetEditableMaxForceNm(v);
             DashReadout("PEAK FORCE", v.ToString("0.0",
                 System.Globalization.CultureInfo.InvariantCulture) + " NM");
@@ -10004,7 +12186,7 @@ namespace TrueforceForAll.Plugin
         /// this stays a pure ratchet.</summary>
         private void LearnIRacingPeak(double absTorqueNm, bool racingSurface)
         {
-            if (!racingSurface || absTorqueNm <= 0.0 || absTorqueNm > 200.0) return;
+            if (!racingSurface || absTorqueNm <= 0.0 || absTorqueNm > 400.0) return;
             // A car change resets it: the previous car's ceiling says nothing
             // about this one, which is the entire reason this is per-car.
             string car = _activeCarId;
@@ -10053,6 +12235,100 @@ namespace TrueforceForAll.Plugin
                 + " car=" + (_activeCarId ?? "?"));
         }
 
+        /// <summary>Steering fields for the torque frame, from a steer already
+        /// normalised to the car's lock (+/-1 at the limit, carrying the sign
+        /// the lock stage expects) and that lock in degrees per side. The speed
+        /// comes from consecutive frames; the first frame after a gap gets 0
+        /// rather than a spike, and a source faster than ~125 Hz (RaceRoom's
+        /// 400 Hz block) is low-passed so axis quantisation does not become
+        /// speed noise at the wall. The 60 Hz iRacing feed is untouched.</summary>
+        private void StampSteerFields(float norm, float lockDeg, long ticks, IRacingTorqueFrame f)
+        {
+            if (float.IsNaN(norm) || float.IsInfinity(norm) || !(lockDeg > 1f)) return;
+            float speed = 0f;
+            long prevT = _irSteerPrevTicks;
+            if (prevT != 0)
+            {
+                double dt = (ticks - prevT) / (double)Stopwatch.Frequency;
+                if (dt < 0.001)
+                {
+                    // Two samples inside a millisecond: hold the last speed and
+                    // the filter state rather than dividing by next to nothing.
+                    speed = _irSteerSpeedLp;
+                }
+                else if (dt < 0.25)
+                {
+                    speed = (float)((norm - _irSteerPrevNorm) / dt);
+                    if (dt < 0.008)
+                    {
+                        float a = (float)(1.0 - Math.Exp(-dt / 0.016));
+                        speed = _irSteerSpeedLp + (speed - _irSteerSpeedLp) * a;
+                    }
+                }
+                // A gap of 250 ms or more: speed stays 0 and the filter restarts.
+            }
+            _irSteerSpeedLp = speed;
+            _irSteerPrevNorm = norm;
+            _irSteerPrevTicks = ticks;
+            f.HasSteer = true;
+            f.SteerNorm = norm;
+            f.SteerSpeed = speed;
+            f.LockDeg = lockDeg;
+        }
+
+        /// <summary>iRacing: the wheel angle over the car's per-side lock, which
+        /// is half of SteeringWheelAngleMax (lock-to-lock). The angle's own sign
+        /// is the one the lock stage expects on this route (positive is left,
+        /// and a positive authored value pulls right).</summary>
+        private void IRacingSteerFields(double angleRad, double angleMaxRad, long ticks,
+                                        IRacingTorqueFrame f)
+        {
+            if (double.IsNaN(angleRad) || double.IsInfinity(angleRad) || !(angleMaxRad > 0.01)) return;
+            double lockRad = angleMaxRad * 0.5;
+            StampSteerFields((float)(angleRad / lockRad), (float)(lockRad * 180.0 / Math.PI), ticks, f);
+            MaybeLogIRacingSteerRange(angleMaxRad);
+        }
+
+        /// <summary>One line per change of the car's rotation, its road-wheel
+        /// lock or the game's wheel-rotation setting, so a rig can see where the
+        /// wall will sit on the axis before trusting it.</summary>
+        private void MaybeLogR3ESteerLock(int carRotDeg, int roadLockDeg, int wheelRotDeg)
+        {
+            if (carRotDeg == _r3eLastLoggedCarRot && roadLockDeg == _r3eLastLoggedRoadLock
+                && wheelRotDeg == _r3eLastLoggedWheelRot) return;
+            _r3eLastLoggedCarRot = carRotDeg;
+            _r3eLastLoggedRoadLock = roadLockDeg;
+            _r3eLastLoggedWheelRot = wheelRotDeg;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string wheel = wheelRotDeg == 0
+                ? "Auto (the game sets the wheel's own range to the car's, so the wheel's stop is the lock and none is added)"
+                : wheelRotDeg < 0 ? "not published"
+                : wheelRotDeg.ToString(ci) + " deg (Manual)";
+            string at = wheelRotDeg >= 180 && carRotDeg > 0
+                ? ", so the car's lock sits at " + ((double)carRotDeg / wheelRotDeg).ToString("F2", ci) + " of the axis"
+                : "";
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] RaceRoom steering: car rotation " + carRotDeg.ToString(ci)
+                + " deg lock-to-lock (road wheel lock " + roadLockDeg.ToString(ci) + " deg), wheel rotation "
+                + wheel + at + ". car=" + (_activeCarId ?? "?"));
+        }
+
+        /// <summary>One line per change of the car's steering range, so the rig
+        /// can confirm the channel is lock-to-lock (a 540 degree car should
+        /// print 540, not 270) before anyone trusts where the wall sits.</summary>
+        private void MaybeLogIRacingSteerRange(double angleMaxRad)
+        {
+            if (Math.Abs(angleMaxRad - _irLastLoggedLockRad) < 0.01) return;
+            _irLastLoggedLockRad = angleMaxRad;
+            double deg = angleMaxRad * 180.0 / Math.PI;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] iRacing steering range: SteeringWheelAngleMax="
+                + angleMaxRad.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + " rad = "
+                + deg.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " deg lock-to-lock ("
+                + (deg * 0.5).ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " per side)"
+                + " car=" + (_activeCarId ?? "?"));
+        }
+
         /// <summary>Full scale in Nm as the sim currently reports it, so the
         /// panel can show what Auto resolved to. An auto setting that displays
         /// nothing is indistinguishable from one that is broken.</summary>
@@ -10077,12 +12353,12 @@ namespace TrueforceForAll.Plugin
                 if (s != null)
                 {
                     float perCar;
-                    if (s.IRacingMaxForcePerCar && s.IRacingMaxForceByCar != null
+                    if (MaxForcePerCarHere && s.IRacingMaxForceByCar != null
                         && !string.IsNullOrEmpty(_activeCarId)
                         && s.IRacingMaxForceByCar.TryGetValue(_activeCarId, out perCar)
                         && perCar > 0.5f)
                         return perCar;
-                    if (s.IRacingMaxForceNmOverride > 0.5f) return s.IRacingMaxForceNmOverride;
+                    if (!IsLmuGame(_activeGame) && s.IRacingMaxForceNmOverride > 0.5f) return s.IRacingMaxForceNmOverride;
                 }
                 var fr = _irFrame;
                 return fr != null ? fr.MaxNm : 0.0;
@@ -10133,6 +12409,1100 @@ namespace TrueforceForAll.Plugin
                     "[TF4ALL] iRacing telemetry: direct reader stopped, back to SimHub's copy.");
         }
 
+        // ------------------------------------------------------------------
+        // RaceRoom shared-memory FFB route (dev; the R3EFFB and R3EPROBE
+        // access codes). Reads the sim's own pre-gain steering force straight
+        // from its "$R3E" block at the sim's physics rate and publishes it as
+        // reshape frames, so RaceRoom can run tap-free the way iRacing does:
+        // no USBPcap, and with the in-game FFB at 0 no HID++ force traffic
+        // left for the rev lights and screen to contend with. The A/B against
+        // the tap route is the whole point right now; nothing here runs unless
+        // the route or the probe is switched on.
+
+        private R3ESharedMemoryReader _r3e;
+        private bool _r3eLive;
+        // RaceRoom's own answer to "is the player driving right now", latched by
+        // the reader thread and read by the HID++ gate. See HidppSessionActive.
+        private volatile bool _r3eInCar;
+        private long _r3eSessionTicks;      // Stopwatch stamp of the latch above
+        // Friendly car name RaceRoom reports in telemetry, captured in
+        // DataUpdate and fed to the CarFacts name cascade (RaceRoom has no
+        // FS-style pipe source; this is its telemetryName input).
+        private volatile string _r3eCarDisplayName;
+        // VehicleInfo.EngineType for the car we are in: 0 combustion,
+        // 1 electric, 2 hybrid, -1 not read yet. Refreshed on car change from
+        // SimHub's copy of the same block, so it is there in every RaceRoom
+        // session and not only under the shared-memory route.
+        private volatile int _r3eEngineType = -1;
+        private volatile string _r3eEngineTypeCarId;
+        private volatile bool _r3eProbe;            // R3EPROBE: log signal lines, force not required
+        private volatile bool _r3eInvert;           // R3EFFB INV: flip the published sign (session)
+        private volatile float _r3eRawFullScaleNm;  // >0 = read raw SteeringForce with this full
+                                                    // scale (R3EFFB NM n); 0 = the percentage
+                                                    // channel (default)
+        private long _r3eProbeLogTicks;
+        private volatile float _r3ePrMinF, _r3ePrMaxF, _r3ePrMinP, _r3ePrMaxP;
+        private volatile bool _r3ePrHave;
+
+        // Le Mans Ultimate handover (LMUFFB), the RaceRoom route's shape on
+        // the sim's official shared memory. See LmuTelemetryTick.
+        private LmuSharedMemoryReader _lmu;
+        private bool _lmuLive;
+        private volatile bool _lmuProbe;            // LMUPROBE: log signal lines, force not required
+        private volatile bool _lmuInvert;           // LMUFFB INV: flip the published sign (session)
+        private long _lmuProbeLogTicks;
+        private volatile float _lmuPrMinT, _lmuPrMaxT, _lmuPrMinF, _lmuPrMaxF;
+        private volatile bool _lmuPrHave;
+        private long _lmuNoPhysLogMs;               // Warn at most once a minute
+        private long _lmuNoSimHubLogMs;             // same cadence, SimHub not reading the game
+        private float  _lmuAxisRatio;               // |raw| / |physical|, slow average, per car
+        private int    _lmuAxisRatioN;
+        private int    _lmuAxisRatioCarRot = -1;
+        private string _lmuLockLogKey;
+        private float  _lmuPrevRawSteer;
+        private const int LmuAxisRatioSettleN = 200; // ~2 s of steady cornering at the sim's 100 Hz
+
+        // RaceRoom's r3e_engine_type. Combustion and hybrid are both "it fires",
+        // so only the electric value is acted on; the others are kept for the
+        // probe line, which reads better in words than as a bare number.
+        private const int R3EEngineCombustion = 0;
+        private const int R3EEngineElectric   = 1;
+        private const int R3EEngineHybrid     = 2;
+
+        // Reflection handles onto SimHub's copy of the "$R3E" block. Resolved
+        // once per raw type rather than per car: the type never changes inside
+        // a session, and a GetField walk per car switch would be waste.
+        private static Type _r3eRawTypeSeen;
+        private static System.Reflection.FieldInfo _r3eRawVehicleInfo;
+        private static System.Reflection.FieldInfo _r3eRawEngineType;
+
+        /// <summary>VehicleInfo.EngineType from SimHub's raw RaceRoom sample:
+        /// 0 combustion, 1 electric, 2 hybrid, -1 when it cannot be read. Our
+        /// own reader has the same field at OFF_ENGINE_TYPE, but that reader
+        /// only runs under the shared-memory route, and whether a car is an EV
+        /// matters in every RaceRoom session. Reflection because the struct
+        /// lives in SimHub's RaceRoom reader assembly, which this plugin does
+        /// not reference.</summary>
+        private static int ReadR3EEngineType(GameData data)
+        {
+            try
+            {
+                object raw = data?.NewData?.GetRawDataObject();
+                if (raw == null) return -1;
+                var t = raw.GetType();
+                if (!ReferenceEquals(t, _r3eRawTypeSeen))
+                {
+                    const System.Reflection.BindingFlags PubI =
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+                    _r3eRawTypeSeen = t;
+                    _r3eRawVehicleInfo = t.GetField("VehicleInfo", PubI);
+                    _r3eRawEngineType = _r3eRawVehicleInfo?.FieldType.GetField("EngineType", PubI);
+                }
+                if (_r3eRawVehicleInfo == null || _r3eRawEngineType == null) return -1;
+                object vi = _r3eRawVehicleInfo.GetValue(raw);
+                if (vi == null) return -1;
+                return _r3eRawEngineType.GetValue(vi) is int et ? et : -1;
+            }
+            catch
+            {
+                // A layout change in SimHub's reader must never cost us a frame;
+                // -1 just means the EV fallback stays out of the cascade.
+                return -1;
+            }
+        }
+
+        /// <summary>Once per SimHub tick: run or stop the "$R3E" reader for
+        /// the active game. Cheap and silent for every other game.</summary>
+        private void R3ETelemetryTick()
+        {
+            // The reader is no longer only the FFB route's. It is also the one
+            // place RaceRoom's own session state (control type, paused, menus,
+            // replay, garage) reaches us, and the rev lights and the base screen
+            // need that to stop guessing from physics. So it runs for those too:
+            // reading a shared-memory page costs one thread, and the alternative
+            // is a rev bar that flicks back to the game on every telemetry gap.
+            var r3eCfg = Settings;
+            bool wantForSurfaces = (r3eCfg?.ModeBRevLightsEnabled ?? true)
+                                || (r3eCfg?.ModeBOledEnabled ?? false);
+            bool want = IsR3EGame(_activeGame)
+                && MasterMode == TrueforceMasterMode.Normal
+                && (_r3eProbe || (r3eCfg?.R3ESharedMemoryFfb ?? false) || wantForSurfaces);
+            if (!want) { StopR3EDirect(); return; }
+
+            if (_r3e == null)
+            {
+                _r3e = new R3ESharedMemoryReader
+                {
+                    Logger = msg => SimHub.Logging.Current.Info("[TF4ALL] " + msg),
+                    OnSample = R3EDirectSample,
+                };
+            }
+            if (!_r3eLive)
+            {
+                _r3e.Start();   // the reader retries the open itself while the sim is absent
+                _r3eLive = true;
+                SimHub.Logging.Current.Info("[TF4ALL] R3E shared-memory reader started"
+                    + (_r3eProbe ? " (probe on)" : "") + ".");
+            }
+
+            if (_r3eProbe) MaybeLogR3EProbe();
+        }
+
+        private void StopR3EDirect()
+        {
+            if (_r3e == null || !_r3eLive) return;
+            _r3eLive = false;
+            // Drop the session latch with the reader, so a later gate cannot
+            // answer from a reading nothing is refreshing any more.
+            _r3eInCar = false;
+            System.Threading.Interlocked.Exchange(ref _r3eSessionTicks, 0L);
+            try { _r3e.Stop(); } catch { }
+            SimHub.Logging.Current.Info("[TF4ALL] R3E shared-memory reader stopped.");
+        }
+
+        /// <summary>The takeover routes' per-car auto-strength, one physics
+        /// update's worth: load the incoming car's applied max, grow the
+        /// peak-hold observer while genuinely driving, and publish the full
+        /// scale fraction ComputeIRacingForce divides by. Written for RaceRoom
+        /// lifted out of the RaceRoom handler as its own step: the learner is keyed by
+        /// game and car, and <paramref name="latest"/> over
+        /// <paramref name="maxNm"/> is the same normalized force whichever
+        /// units the route publishes in. Reader thread.</summary>
+        private void TakeoverAutoStrengthTick(float latest, float maxNm, float speedMps)
+        {
+            // Auto-strength (iRacing press-to-apply): the reader thread owns the
+            // peak-hold observer and the applied max. ComputeIRacingForce reads
+            // the published fraction, and its low-speed ramp fades the boost out
+            // while parked so the closed loop can't ring at a standstill.
+            if (Settings?.R3EAutoStrength ?? true)
+            {
+                // Per-car load on a car change: bring in the committed max and
+                // start a fresh peak observer for the incoming car.
+                string curCar = _activeCarId;
+                if (!string.Equals(curCar, _r3eLastLoadedCar, StringComparison.Ordinal))
+                {
+                    lock (_r3eStrengthLock)
+                    {
+                        _r3eAppliedPeak = R3ETryLoadStrength(curCar, out float lp) && lp > 0.01f ? lp : 0f;
+                    }
+                    _r3eLastLoadedCar = curCar;
+                    _r3ePeakCarId = curCar;
+                    _r3ePeakObs = 0f;
+                    _r3ePeakGrowthTicks = 0;
+                    _r3ePeakRacingMs = 0.0;
+                    _r3ePrevStrengthTicks = 0;
+                }
+
+                // Peak-hold observer, no decay: while genuinely driving, grow the
+                // peak and accumulate driving time so R3EPeakSettled knows when
+                // Apply is worth pressing. Reset only by an apply.
+                long nowTicks = Stopwatch.GetTimestamp();
+                double dtMs = _r3ePrevStrengthTicks == 0
+                    ? 0.0 : (nowTicks - _r3ePrevStrengthTicks) * 1000.0 / Stopwatch.Frequency;
+                _r3ePrevStrengthTicks = nowTicks;
+                if (dtMs < 0.0) dtMs = 0.0; else if (dtMs > 100.0) dtMs = 100.0;
+                if (speedMps * 3.6 >= 15.0)   // driving, not parked/pitting
+                {
+                    _r3ePeakRacingMs += dtMs;
+                    double norm = maxNm > 0.0001f ? Math.Abs(latest) / maxNm : 0.0;
+                    if (norm > _r3ePeakObs + 0.001)
+                    {
+                        _r3ePeakObs = (float)norm;
+                        _r3ePeakGrowthTicks = nowTicks;
+                    }
+                }
+
+                // Press-to-apply, iRacing style: an unlearned car gets NO boost
+                // (frac 1.0), so R3EFFB matches the sim's own scale and the wheel
+                // feels like the game until the driver applies this car's learned
+                // max. Nothing changes under you until you press it. Only a
+                // committed peak boosts: a weak car's peak sits below target, so
+                // frac < 1 shrinks the divisor and lifts it toward target.
+                float applied = _r3eAppliedPeak;
+                double frac = applied > 0.01f ? applied / AutoStrengthTarget : 1.0;
+                if (frac < 0.08) frac = 0.08; else if (frac > 1.5) frac = 1.5;
+                _r3eFullScaleFrac = (float)frac;
+            }
+            else _r3eFullScaleFrac = 1f;
+        }
+
+        /// <summary>Reader thread, once per NEW physics tick: aggregate for
+        /// the probe and, while the reshape is armed for RaceRoom, publish the
+        /// force frame the iRacing consumer already knows how to render.</summary>
+        private void R3EDirectSample(R3EFfbSample s)
+        {
+            // Authoritative session state FIRST, before any of the force route's
+            // own gates: the rev lights and the screen need this whether or not
+            // the FFB reshape is armed, and RaceRoom has no telemetry source of
+            // its own to carry it. Without this the surfaces fall back to the
+            // physics proxy and stand down on every hiccup in SimHub's feed.
+            // Deliberately WITHOUT the garage term the force route uses below.
+            // There it guards against a runaway on a parked wheel, which is a
+            // real hazard; there is no such hazard in lighting the rev bar, and
+            // blipping the throttle in the garage is exactly when someone looks
+            // at it. Everything else (AI, remote, replay, menus, pause) means
+            // the player is not driving and both surfaces should stand down.
+            _r3eInCar = s.ControlType == 0 && !s.GamePaused && !s.GameInMenus
+                     && !s.GameInReplay;
+            System.Threading.Interlocked.Exchange(ref _r3eSessionTicks, Stopwatch.GetTimestamp());
+
+            if (_r3eProbe)
+            {
+                float fv = (float)s.SteeringForce, pv = (float)s.SteeringForcePct;
+                if (!_r3ePrHave)
+                {
+                    _r3ePrMinF = _r3ePrMaxF = fv;
+                    _r3ePrMinP = _r3ePrMaxP = pv;
+                    _r3ePrHave = true;
+                }
+                else
+                {
+                    if (fv < _r3ePrMinF) _r3ePrMinF = fv;
+                    if (fv > _r3ePrMaxF) _r3ePrMaxF = fv;
+                    if (pv < _r3ePrMinP) _r3ePrMinP = pv;
+                    if (pv > _r3ePrMaxP) _r3ePrMaxP = pv;
+                }
+            }
+
+            if (_forceMode != ForceModeIRacing || !IsR3EGame(_activeGame)) return;
+            var cfg = Settings;
+            if (cfg == null || !cfg.R3ESharedMemoryFfb) return;
+
+            // Player at the wheel, actually driving. Anything else (AI,
+            // remote, replay, menus, garage, pause) publishes nothing and the
+            // 250 ms age gate in ComputeIRacingForce decays whatever was last
+            // shown: same shape as iRacing's IsOnTrack guard against the
+            // parked-car runaway.
+            bool inCar = s.ControlType == 0 && !s.GamePaused && !s.GameInMenus
+                && !s.GameInReplay && !s.InGarage;
+            if (!inCar) { _irFrame = null; return; }
+
+            float latest, maxNm;
+            float rawScale = _r3eRawFullScaleNm;
+            if (rawScale > 0.5f) { latest = (float)s.SteeringForce; maxNm = rawScale; }
+            else { latest = (float)s.SteeringForcePct; maxNm = 1f; }
+            if (float.IsNaN(latest) || float.IsInfinity(latest)) return;
+            // Sign. RaceRoom's in-game Invert FFB flips this shared-memory value
+            // (it affects the torque-target route, not just the tap). On this
+            // wheel the driver keeps that in-game invert ON for the tap route to
+            // read right (owner, 2026-09-05), so R3EFFB expects invert ON and
+            // takes the value as-is. R3EFFB INV flips it for a rig that runs the
+            // in-game invert OFF.
+            if (_r3eInvert) latest = -latest;
+
+            TakeoverAutoStrengthTick(latest, maxNm, s.CarSpeedMps);
+
+            var prev = _irFrame;
+            var frR3e = new IRacingTorqueFrame
+            {
+                Sub = null,          // no sub-tick history; the scalar holds
+                Latest = latest,
+                MaxNm = maxNm,
+                GameFfbOn = false,   // R3E publishes no such flag; the setup
+                                     // instruction (in-game FFB at 0) is the guard
+                FixedScale = true,
+                Ticks = Stopwatch.GetTimestamp(),
+            };
+            // Steering for the soft lock. The raw axis spans the wheel rotation
+            // set in the game's controller profile (Manual), and the car's own
+            // rotation says where its lock sits on that axis. Not from
+            // steer_lock_degrees: that is the ROAD wheel's lock (17 for a
+            // Formula RaceRoom 3), and the first cut used it as the steering
+            // wheel's, which put the wall a tenth of the way in with a band six
+            // times too wide (rig, 2026-09-13). The PHYSICAL wheel supplies the
+            // sign: the raw axis's sign convention is undocumented, while the
+            // physical one is what the whole takeover path is authored
+            // against. No fresh physical position, no lock, rather than a
+            // guessed sign, said once in the log.
+            // The PHYSICAL wheel position is the axis, not the sim's raw value.
+            // steer_input_raw is normalised to the CAR's lock and clamps at 1
+            // there (rig, 2026-09-13: raw over physical measured 3.08 against
+            // a wheel-over-car of 3.09, and raw sat at 1.000 while the wheel
+            // went on to 0.42 of its travel), so it can never say how far past
+            // the lock the wheel is, and a wall built from it stopped early.
+            // The physical position is what the whole takeover path is
+            // authored against, so it supplies magnitude and sign alike. The
+            // raw value is kept to measure the two against each other (the
+            // ratio log below), which is how that was established.
+            //
+            // Liveness, not age: a wheel held still sends no reports, so a 500
+            // ms freshness gate flapped stale on every straight (11 warnings
+            // in one session). The receiver's own IsRunning is the death
+            // signal (WheelSteeringReader self-heal), backed by one sanity
+            // check: the raw axis moving while the physical one has not for
+            // two seconds is a reader that stopped without saying so.
+            var physRd = _steeringReader;
+            long physT = physRd != null ? physRd.LastUpdateTicks : 0;
+            bool physLive = physRd != null && physRd.IsRunning && physT != 0;
+            if (physLive)
+            {
+                if (physT != _r3ePhysLastTicks)
+                {
+                    _r3ePhysLastTicks = physT;
+                    _r3eRawAtPhys = s.SteerInputRaw;
+                }
+                else if (frR3e.Ticks - physT > Stopwatch.Frequency * 2
+                         && Math.Abs(s.SteerInputRaw - _r3eRawAtPhys) > 0.05f)
+                {
+                    physLive = false;
+                }
+            }
+            float physNow = physLive ? physRd.SteerNorm : float.NaN;
+            float r3eSteer = IRacingSoftLock.R3ESteer(physNow, s.CarRotationDeg, s.WheelMaxRotationDeg);
+            MaybeLogR3ESteerLock(s.CarRotationDeg, s.RoadWheelLockDeg, s.WheelMaxRotationDeg);
+            if (!float.IsNaN(r3eSteer))
+            {
+                StampSteerFields(IRacingSoftLock.SignedByPhysical(r3eSteer, physNow),
+                                 s.CarRotationDeg * 0.5f, frR3e.Ticks, frR3e);
+            }
+            else if (!physLive && (Settings?.IRacingSoftLockEnabled ?? false)
+                     && s.WheelMaxRotationDeg >= 180)
+            {
+                long wMs = Environment.TickCount;
+                if (wMs - _r3eNoPhysLogMs >= 60000)
+                {
+                    _r3eNoPhysLogMs = wMs;
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] RaceRoom soft lock: no physical steering position from the wheel "
+                        + (physRd == null ? "(steering reader not started)"
+                           : !physRd.IsRunning ? "(steering reader stopped; it will try to reopen)"
+                           : "(steering reader silent while the sim's axis moves)")
+                        + ", so no lock is rendered.");
+                }
+            }
+            // What the sim's raw axis IS, measured: its magnitude over the
+            // physical position, averaged where both are well off centre. 1.0
+            // means the device axis; the car's rotation over the wheel's means
+            // it is normalised to the car's lock. Logged once it has settled.
+            if (physLive && Math.Abs(s.SteerInputRaw) > 0.3f && Math.Abs(physNow) > 0.1f)
+            {
+                float ratio = Math.Abs(s.SteerInputRaw) / Math.Abs(physNow);
+                _r3eAxisRatio = _r3eAxisRatioN == 0 ? ratio : _r3eAxisRatio + (ratio - _r3eAxisRatio) * 0.02f;
+                if (_r3eAxisRatioN < int.MaxValue) _r3eAxisRatioN++;
+                if (!_r3eAxisRatioLogged && _r3eAxisRatioN >= 400)
+                {
+                    _r3eAxisRatioLogged = true;
+                    var rci = System.Globalization.CultureInfo.InvariantCulture;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] RaceRoom steering axis: raw over physical = "
+                        + _r3eAxisRatio.ToString("F2", rci)
+                        + (Math.Abs(_r3eAxisRatio - 1f) < 0.1f
+                           ? " (the sim's raw axis is the device axis)"
+                           : " (the sim's raw axis is scaled; the wheel's rotation over the car's is "
+                             + (s.CarRotationDeg > 0 && s.WheelMaxRotationDeg > 0
+                                ? ((float)s.WheelMaxRotationDeg / s.CarRotationDeg).ToString("F2", rci) : "?")
+                             + ")"));
+                }
+            }
+            // SOFTLOCK diagnostic, from the numbers this route builds the lock
+            // with. ApplySoftLock's own line only fires once a frame carries
+            // steering, so the states that keep it from doing so (Auto
+            // rotation, no physical position) would otherwise leave no trace.
+            if (_softLockDiag)
+            {
+                long dMs = Environment.TickCount;
+                if (dMs - _r3eLastSoftLockDiagMs >= 500
+                    && (Math.Abs(s.SteerInputRaw) > 0.25f || (physLive && Math.Abs(physNow) > 0.25f)))
+                {
+                    _r3eLastSoftLockDiagMs = dMs;
+                    var dci = System.Globalization.CultureInfo.InvariantCulture;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] SOFTLOCK r3e raw=" + s.SteerInputRaw.ToString("F3", dci)
+                        + " phys=" + (physLive ? physNow.ToString("F3", dci) : "none")
+                        + " wheelRot=" + s.WheelMaxRotationDeg.ToString(dci)
+                        + " carRot=" + s.CarRotationDeg.ToString(dci)
+                        + " steer=" + (frR3e.HasSteer ? frR3e.SteerNorm.ToString("F3", dci) : "none")
+                        + " speed=" + (frR3e.HasSteer ? frR3e.SteerSpeed.ToString("F2", dci) : "-")
+                        + " ratio=" + (_r3eAxisRatioN > 0 ? _r3eAxisRatio.ToString("F2", dci) : "-"));
+                }
+            }
+            _irFrame = frR3e;
+
+            if (prev == null)
+            {
+                var rd = _r3e;
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] R3E FFB: authoring force from "
+                    + (rawScale > 0.5f
+                        ? "SteeringForce (full scale " + rawScale.ToString("F1", ci) + ")"
+                        : "SteeringForcePercentage")
+                    + (_r3eInvert ? " INVERTED" : "")
+                    + ", tick rate " + (rd != null ? rd.MeasuredHz.ToString("F0", ci) : "?")
+                    + "/s. Disable RaceRoom's force feedback so the game is not also driving the wheel.");
+            }
+        }
+
+        /// <summary>One probe line every ~2 s while R3EPROBE is on, kept alive
+        /// even when the sim is paused and the tick counter is frozen so the
+        /// control state stays visible. SimHub data thread.</summary>
+        private void MaybeLogR3EProbe()
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_r3eProbeLogTicks != 0 && (now - _r3eProbeLogTicks) < Stopwatch.Frequency * 2) return;
+            _r3eProbeLogTicks = now;
+
+            var rd = _r3e;
+            if (rd == null) return;
+            if (!rd.IsOpen)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] R3EPROBE waiting for RaceRoom ($R3E not found yet).");
+                return;
+            }
+            var s = rd.LastSample;
+            if (s == null)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] R3EPROBE map open (layout " + rd.VersionSeen + "), no sample yet.");
+                return;
+            }
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string ctrl = s.ControlType == 0 ? "player" : s.ControlType == 1 ? "AI"
+                : s.ControlType == 2 ? "remote" : s.ControlType == 3 ? "replay"
+                : s.ControlType.ToString(inv);
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] R3EPROBE layout=" + rd.VersionSeen
+                + " ticksPerSec=" + rd.MeasuredHz.ToString("F0", inv)
+                + " force=" + s.SteeringForce.ToString("F3", inv)
+                + " [" + _r3ePrMinF.ToString("F2", inv) + ".." + _r3ePrMaxF.ToString("F2", inv) + "]"
+                + " pct=" + s.SteeringForcePct.ToString("F3", inv)
+                + " [" + _r3ePrMinP.ToString("F2", inv) + ".." + _r3ePrMaxP.ToString("F2", inv) + "]"
+                + " steer=" + s.SteerInputRaw.ToString("F2", inv)
+                + " speedKmh=" + (s.CarSpeedMps * 3.6f).ToString("F0", inv)
+                + " gear=" + s.Gear
+                + " ctrl=" + ctrl
+                + " paused=" + (s.GamePaused ? "Y" : "n")
+                + " menus=" + (s.GameInMenus ? "Y" : "n")
+                + " replay=" + (s.GameInReplay ? "Y" : "n")
+                + " garage=" + (s.InGarage ? "Y" : "n")
+                + " model=" + s.ModelId
+                + " engine=" + (s.EngineType == R3EEngineCombustion ? "combustion"
+                    : s.EngineType == R3EEngineElectric ? "electric"
+                    : s.EngineType == R3EEngineHybrid ? "hybrid"
+                    : s.EngineType.ToString(inv)) + ".");
+            _r3ePrHave = false;   // fresh min/max window per line
+        }
+
+        // ---- Access-code surface (SettingsControl) ----
+
+        /// <summary>R3EFFB: flip the RaceRoom shared-memory route. Enabling
+        /// also opts RaceRoom into Telemetry Based FFB so one code is the
+        /// whole A/B switch; disabling returns to the tap route.</summary>
+        public bool ToggleR3ESharedMemoryFfb()
+        {
+            var s = Settings;
+            if (s == null) return false;
+            SetR3ETakeover(!s.R3ESharedMemoryFfb);
+            return s.R3ESharedMemoryFfb;
+        }
+
+        /// <summary>Set the RaceRoom shared-memory route (R3EFFB) on or off. This
+        /// is the FFB tab's "take over force feedback" checkbox for RaceRoom, and
+        /// the R3EFFB access code routes through it too, so both are one A/B
+        /// switch. Keeps the route flag and the per-game opt-in in lockstep: on
+        /// arms the reshape, off returns to the tap route (never Mode B synthesis,
+        /// which RaceRoom has no slip model for). Persists.</summary>
+        public void SetR3ETakeover(bool on)
+        {
+            var s = Settings;
+            if (s == null) return;
+            s.R3ESharedMemoryFfb = on;
+            if (s.ModeBGameEnabled == null) s.ModeBGameEnabled = new Dictionary<string, bool>();
+            // Both RaceRoom game keys, so a settings file written under either name
+            // stays consistent.
+            s.ModeBGameEnabled["RaceRoomRacingExperience"] = on;
+            s.ModeBGameEnabled["RRRE"] = on;
+            ApplyModeBFromSettings(save: true);
+            SimHub.Logging.Current.Info("[TF4ALL] R3E shared-memory FFB route " + (on ? "ON" : "OFF") + ".");
+        }
+
+        /// <summary>R3EFFB AUTO: toggle the R3E per-car auto-strength (persisted).
+        /// Returns the new state (true = ON). Resets the learner so the change
+        /// is felt from the current car's next ticks.</summary>
+        public bool ToggleR3EAutoStrength()
+        {
+            var s = Settings;
+            if (s == null) return false;
+            bool on = !s.R3EAutoStrength;
+            s.R3EAutoStrength = on;
+            _r3eFullScaleFrac = 1f;
+            _r3ePeakObs = 0f;
+            _r3ePeakGrowthTicks = 0;
+            _r3ePeakRacingMs = 0.0;
+            _r3ePrevStrengthTicks = 0;
+            _r3eLastLoadedCar = null;   // force a reload on the next sample
+            try { PersistSettings(); } catch { }
+            SimHub.Logging.Current.Info("[TF4ALL] R3E auto-strength " + (on ? "ON" : "OFF") + ".");
+            return on;
+        }
+
+        /// <summary>R3EFFB DAMP access code: toggle or tune the R3E stationary
+        /// friction. No number toggles it on/off; one number sets the parked
+        /// strength (0..1 of full scale); a second sets the car speed (km/h) at
+        /// which it fades to nothing. The FFB thread reads these live; persisted.</summary>
+        public string SetR3EStationaryDamper(double? strength, double? fade)
+        {
+            var s = Settings;
+            if (s == null) return "settings not ready";
+            if (!strength.HasValue && !fade.HasValue)
+            {
+                s.R3EStationaryDamper = !s.R3EStationaryDamper;
+                try { PersistSettings(); } catch { }
+                SimHub.Logging.Current.Info("[TF4ALL] R3E stationary friction " + (s.R3EStationaryDamper ? "ON" : "OFF") + ".");
+                return s.R3EStationaryDamper
+                    ? $"R3E stationary friction ON: firm when parked (strength {s.R3EStationaryDamperStrength:0.00}), fading to nothing by {s.R3EStationaryDamperFadeKmh:0} km/h. Persists. Set strength with 'R3EFFB DAMP 0.5', fade with 'R3EFFB DAMP 0.5 30'."
+                    : "R3E stationary friction OFF. Persists.";
+            }
+            if (strength.HasValue)
+            {
+                double v = strength.Value;
+                if (v < 0.0) v = 0.0; else if (v > 1.0) v = 1.0;
+                s.R3EStationaryDamperStrength = v;
+                s.R3EStationaryDamper = v > 0.0001;
+            }
+            if (fade.HasValue)
+            {
+                double f = fade.Value;
+                if (f < 1.0) f = 1.0; else if (f > 200.0) f = 200.0;
+                s.R3EStationaryDamperFadeKmh = f;
+            }
+            try { PersistSettings(); } catch { }
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] R3E stationary friction: strength={s.R3EStationaryDamperStrength:0.00} fade={s.R3EStationaryDamperFadeKmh:0}km/h {(s.R3EStationaryDamper ? "on" : "off")}.");
+            return $"R3E stationary friction: strength {s.R3EStationaryDamperStrength:0.00}, fades to nothing by {s.R3EStationaryDamperFadeKmh:0} km/h. {(s.R3EStationaryDamper ? "On" : "Off")}. Persists.";
+        }
+
+        private string R3EStrengthKey(string carId) =>
+            string.IsNullOrEmpty(carId) ? null : (_activeGame ?? "") + "|" + carId;
+
+        // Persist a car's applied R3E max (no disk I/O; the settings save cadence
+        // writes it). Under _r3eStrengthLock.
+        private void R3EStoreStrength(string carId, float peak)
+        {
+            var s = Settings; if (s == null) return;
+            string key = R3EStrengthKey(carId); if (key == null) return;
+            if (s.R3EStrengthByCar == null) s.R3EStrengthByCar = new Dictionary<string, R3ECarStrength>();
+            s.R3EStrengthByCar[key] = new R3ECarStrength { Peak = peak };
+        }
+
+        private bool R3ETryLoadStrength(string carId, out float peak)
+        {
+            peak = 0f;
+            var s = Settings; if (s?.R3EStrengthByCar == null) return false;
+            string key = R3EStrengthKey(carId); if (key == null) return false;
+            if (!s.R3EStrengthByCar.TryGetValue(key, out var v) || v == null) return false;
+            peak = v.Peak;
+            return true;
+        }
+
+        private bool R3EPeakIsForActiveCar =>
+            string.Equals(_r3ePeakCarId, _activeCarId, StringComparison.Ordinal);
+
+        /// <summary>True once the observed R3E peak has stopped climbing for a
+        /// while AND enough driving has happened, so pressing Apply is worth it.
+        /// Mirrors iRacing's IRacingPeakSettled.</summary>
+        public bool R3EPeakSettled
+        {
+            get
+            {
+                if (!R3EPeakIsForActiveCar || _r3ePeakObs <= 0.02f || _r3ePeakGrowthTicks == 0) return false;
+                if (_r3ePeakRacingMs < R3EPeakMinDriveMs) return false;
+                double sinceMs = (Stopwatch.GetTimestamp() - _r3ePeakGrowthTicks) * 1000.0 / Stopwatch.Frequency;
+                return sinceMs >= R3EPeakSettleMs;
+            }
+        }
+
+        /// <summary>0..1 progress toward R3EPeakSettled, for a dash readout.</summary>
+        public double R3EPeakConfidence
+        {
+            get
+            {
+                if (!R3EPeakIsForActiveCar || _r3ePeakObs <= 0.02f || _r3ePeakGrowthTicks == 0) return 0.0;
+                double drive = _r3ePeakRacingMs / R3EPeakMinDriveMs; if (drive > 1.0) drive = 1.0;
+                double sinceMs = (Stopwatch.GetTimestamp() - _r3ePeakGrowthTicks) * 1000.0 / Stopwatch.Frequency;
+                double quiet = sinceMs / R3EPeakSettleMs; if (quiet > 1.0) quiet = 1.0;
+                return drive < quiet ? drive : quiet;
+            }
+        }
+
+        /// <summary>Apply the observed peak as this car's R3E max, once, the way
+        /// iRacing's Auto button does: drive, wait for R3EPeakSettled, press,
+        /// keep a value you can then nudge. Commits + resets the observer.
+        /// Returns the applied max, or 0 if nothing has been observed yet.</summary>
+        public float ApplyR3EAutoStrength()
+        {
+            string car; float applied;
+            lock (_r3eStrengthLock)
+            {
+                if (!R3EPeakIsForActiveCar || _r3ePeakObs <= 0.02f) return 0f;
+                applied = _r3ePeakObs;
+                _r3eAppliedPeak = applied;
+                car = _r3eLastLoadedCar;
+                if (!string.IsNullOrEmpty(car)) R3EStoreStrength(car, applied);
+                // Apply-and-reset: the next observation is "hardest since this press".
+                _r3ePeakObs = 0f;
+                _r3ePeakGrowthTicks = 0;
+                _r3ePeakRacingMs = 0.0;
+            }
+            try { PersistSettings(); } catch { }
+            SimHub.Logging.Current.Info($"[TF4ALL] R3E strength applied for '{car}': max = {applied:0.000}.");
+            return applied;
+        }
+
+        /// <summary>Nudge the ACTIVE car's applied R3E max (persisted), like
+        /// iRacing's Max Force nudge. steps &gt; 0 STRENGTHENS (lowers the max),
+        /// &lt; 0 weakens; ~7% per step. Bound to R3EStrengthUp/Down.</summary>
+        public void NudgeR3EStrength(int steps)
+        {
+            if (steps == 0) return;
+            string car; float newPeak;
+            lock (_r3eStrengthLock)
+            {
+                car = _r3eLastLoadedCar;
+                float cur = _r3eAppliedPeak > 0.01f ? _r3eAppliedPeak : (float)AutoStrengthTarget;
+                newPeak = cur * (float)Math.Pow(1.0 / 1.07, steps);   // stronger = smaller max
+                if (newPeak < 0.08f) newPeak = 0.08f; else if (newPeak > 1.20f) newPeak = 1.20f;
+                _r3eAppliedPeak = newPeak;
+                if (!string.IsNullOrEmpty(car)) R3EStoreStrength(car, newPeak);
+            }
+            try { PersistSettings(); } catch { }
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] R3E max for '{car}' nudged to {newPeak:0.000} ({(steps > 0 ? "stronger" : "weaker")}).");
+        }
+
+        /// <summary>This car's applied R3E max (normalized), or 0 if none applied
+        /// yet. The FFB tab shows it in an editable box.</summary>
+        public float R3EAppliedPeak => _r3eAppliedPeak;
+
+        /// <summary>The R3E max actually in use for the active car: the applied
+        /// value, or the auto-strength target (which means no boost) when nothing
+        /// is applied yet. This is the number the tab's "Car's max" box shows.</summary>
+        public float R3EEffectivePeak => _r3eAppliedPeak > 0.01f ? _r3eAppliedPeak : (float)AutoStrengthTarget;
+
+        /// <summary>The peak the active car is currently observed to push (0 while
+        /// none seen), so the tab can show what the car actually makes.</summary>
+        public float R3EObservedPeak => R3EPeakIsForActiveCar ? _r3ePeakObs : 0f;
+
+        /// <summary>Set the active car's R3E max directly (the tab's editable box
+        /// and typed edits). Lower = heavier (more boost), higher = lighter.
+        /// Clamped and persisted per car.</summary>
+        public void SetR3EAppliedPeak(float peak)
+        {
+            if (peak < 0.08f) peak = 0.08f; else if (peak > 1.5f) peak = 1.5f;
+            string car;
+            lock (_r3eStrengthLock)
+            {
+                car = _r3eLastLoadedCar;
+                _r3eAppliedPeak = peak;
+                if (!string.IsNullOrEmpty(car)) R3EStoreStrength(car, peak);
+            }
+            try { PersistSettings(); } catch { }
+            SimHub.Logging.Current.Info($"[TF4ALL] R3E max for '{car}' set to {peak:0.000}.");
+        }
+
+        public bool ToggleR3EProbe()
+        {
+            _r3eProbe = !_r3eProbe;
+            _r3ePrHave = false;
+            _r3eProbeLogTicks = 0;
+            SimHub.Logging.Current.Info("[TF4ALL] R3EPROBE " + (_r3eProbe ? "ON" : "OFF") + ".");
+            return _r3eProbe;
+        }
+
+        public bool ToggleR3EForceInvert()
+        {
+            _r3eInvert = !_r3eInvert;
+            return _r3eInvert;
+        }
+
+        public double SetR3ERawFullScaleNm(double nm)
+        {
+            float v = (float)(nm < 1.0 ? 1.0 : nm);
+            _r3eRawFullScaleNm = v;
+            return v;
+        }
+
+        public void UseR3EPctChannel() => _r3eRawFullScaleNm = 0f;
+
+        // ---- Le Mans Ultimate handover (LMUFFB) ----
+        // The RaceRoom route's shape on the sim's official "LMU_Data" shared
+        // memory: the reader publishes the player's physics updates, this
+        // handler turns each into the FixedScale torque frame the iRacing
+        // consumer renders, and the stationary friction, the spring and the
+        // soft lock are the RaceRoom ones, shared. What differs: the force is
+        // mSteeringShaftTorque in Nm (RaceRoom publishes a percentage), so the
+        // strength is iRacing's model, the car's peak force in Nm kept per
+        // car, with LmuFullScaleNm as the scale until a car has one; and the
+        // sim has Trueforce of its own, which must be off in the game before
+        // any of this runs (the native stand-down drops the plugin to
+        // Lightsync only otherwise).
+
+        /// <summary>Once per SimHub tick: run or stop the "LMU_Data" reader
+        /// for the active game. Cheap and silent for every other game.</summary>
+        private void LmuTelemetryTick()
+        {
+            var cfg = Settings;
+            bool want = IsLmuGame(_activeGame)
+                && MasterMode == TrueforceMasterMode.Normal
+                && (_lmuProbe || (cfg?.LmuSharedMemoryFfb ?? false));
+            if (!want) { StopLmuDirect(); return; }
+
+            if (_lmu == null)
+            {
+                _lmu = new LmuSharedMemoryReader
+                {
+                    Logger = msg => SimHub.Logging.Current.Info("[TF4ALL] " + msg),
+                    OnSample = LmuDirectSample,
+                };
+            }
+            if (!_lmuLive)
+            {
+                _lmu.Start();   // the reader retries the open itself while the sim is absent
+                _lmuLive = true;
+                SimHub.Logging.Current.Info("[TF4ALL] LMU shared-memory reader started"
+                    + (_lmuProbe ? " (probe on)" : "") + ".");
+            }
+
+            if (_lmuProbe) MaybeLogLmuProbe();
+
+            // The handover publishes frames from the game's own shared memory,
+            // but the force producer still takes the session state (paused,
+            // menu, not running) from SimHub's telemetry, and SimHub reads
+            // this game through its rFactor 2 plugin, which the driver has to
+            // let SimHub install. With that plugin disabled SimHub delivers
+            // nothing, the producer holds the wheel released as for a pause,
+            // and the route's frames go nowhere (rig, 2026-09-20). Say so.
+            var lmuRd = _lmu;
+            var lmuSrc = _telemetrySource;
+            if ((cfg?.LmuSharedMemoryFfb ?? false) && lmuRd != null
+                && (lmuRd.LastSample?.PlayerHasVehicle ?? false)
+                && (lmuSrc == null || lmuSrc.MsSinceLastFrame > 3000))
+            {
+                long nowMs = Environment.TickCount;
+                if (nowMs - _lmuNoSimHubLogMs >= 60000)
+                {
+                    _lmuNoSimHubLogMs = nowMs;
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] Le Mans Ultimate is on track by its own shared memory, but SimHub has delivered no "
+                        + "telemetry for it, so the force pipeline holds the wheel released as for a pause. SimHub reads "
+                        + "this game through its rFactor 2 plugin: with the game closed, open SimHub's Games page, pick "
+                        + "Le Mans Ultimate and let SimHub configure it (it enables the plugin in the game's "
+                        + "CustomPluginVariables.JSON), then start the game again.");
+                }
+            }
+        }
+
+        private void StopLmuDirect()
+        {
+            if (_lmu == null || !_lmuLive) return;
+            _lmuLive = false;
+            try { _lmu.Stop(); } catch { }
+            SimHub.Logging.Current.Info("[TF4ALL] LMU shared-memory reader stopped.");
+        }
+
+        /// <summary>Reader thread, once per NEW physics update: aggregate for
+        /// the probe and, while the handover is armed, publish the force frame
+        /// the iRacing consumer already knows how to render.</summary>
+        private void LmuDirectSample(LmuFfbSample s)
+        {
+            if (_lmuProbe)
+            {
+                float tv = (float)s.ShaftTorqueNm, fv = s.FfbTorque;
+                if (!_lmuPrHave)
+                {
+                    _lmuPrMinT = _lmuPrMaxT = tv;
+                    _lmuPrMinF = _lmuPrMaxF = fv;
+                    _lmuPrHave = true;
+                }
+                else
+                {
+                    if (tv < _lmuPrMinT) _lmuPrMinT = tv;
+                    if (tv > _lmuPrMaxT) _lmuPrMaxT = tv;
+                    if (fv < _lmuPrMinF) _lmuPrMinF = fv;
+                    if (fv > _lmuPrMaxF) _lmuPrMaxF = fv;
+                }
+            }
+
+            if (_forceMode != ForceModeIRacing || !IsLmuGame(_activeGame)) return;
+            var cfg = Settings;
+            if (cfg == null || !cfg.LmuSharedMemoryFfb) return;
+
+            // Player at the wheel, actually driving: in the car (realtime, not
+            // the monitor), the scoring row says the local player controls it,
+            // and not sat in the garage stall. Anything else (AI, remote,
+            // replay, monitor, garage, a scoring row not found yet) publishes
+            // nothing and the 250 ms age gate in ComputeIRacingForce decays
+            // whatever was last shown: same shape as iRacing's IsOnTrack guard
+            // against the parked-car runaway. A pause freezes the elapsed
+            // time, so no sample arrives and the same gate covers it.
+            bool inCar = s.PlayerHasVehicle && s.InRealtime && s.ScoringMatched
+                && s.Control == 0 && !s.InGarageStall && s.GamePhase != 9;
+            if (!inCar) { _irFrame = null; return; }
+
+            float latest = (float)s.ShaftTorqueNm;
+            if (float.IsNaN(latest) || float.IsInfinity(latest)) return;
+            float maxNm = cfg.LmuFullScaleNm;
+            if (!(maxNm >= 1f)) maxNm = 50f;
+            // Sign. The sim's shaft torque reads OPPOSITE to the takeover's
+            // authored space (owner's rig, 2026-09-20: as published, the wheel
+            // pulled into corners), so it is negated here. LMUFFB INV flips it
+            // back for a rig that reads the other way.
+            latest = -latest;
+            if (_lmuInvert) latest = -latest;
+
+            // iRacing's learner, since the torque is Nm here too: the peak this
+            // car pushes on track, adopted as its max force by the Auto button.
+            // "Racing" = out of the pit lane and moving, iRacing's own bar.
+            LearnIRacingPeak(Math.Abs(latest), !s.InPits && s.SpeedMps > 10f);
+
+            var prev = _irFrame;
+            var fr = new IRacingTorqueFrame
+            {
+                Sub = null,          // no sub-tick history; the scalar holds
+                Latest = latest,
+                MaxNm = maxNm,       // the fallback full scale until this car
+                                     // has a max force of its own
+                GameFfbOn = false,   // LMU publishes no such flag, and needs
+                                     // none: the wheel drops the game's slots
+                                     // while our stream runs
+                FixedScale = false,  // scaled by the car's Nm, as iRacing's are
+                Ticks = Stopwatch.GetTimestamp(),
+            };
+            // Steering for the soft lock, from the PHYSICAL wheel position as
+            // the RaceRoom route does. What the lock needs is the wheel's
+            // rotation over the car's (the car's is the visual range the sim
+            // publishes; its physical range field reads 0 on the rig,
+            // 2026-09-20). Two sources, measured first:
+            //   - the sim's raw axis over the physical position. With "Range
+            //     From Vehicle" and a wheel it could not re-range, the sim
+            //     rescales its axis so the car's lock is +/-1 and clamps
+            //     there, exactly as RaceRoom's does, and that ratio IS the
+            //     wheel's rotation over the car's. Averaged where both are
+            //     well off centre and the raw axis is short of its clamp.
+            //   - a rotation range the tap saw the host set on the wheel.
+            // A ratio near 1 means the sim's axis is the device axis: either
+            // the wheel's stop already is the car's lock, or the sim does not
+            // rescale, and with no range in degrees from anywhere the two
+            // cannot be told apart, so the lock stays quiet and says so.
+            var physRd = _steeringReader;
+            bool physLive = physRd != null && physRd.IsRunning && physRd.LastUpdateTicks != 0;
+            float physNow = physLive ? physRd.SteerNorm : float.NaN;
+            int carRot = (int)Math.Round(s.VisualRangeDeg);
+            if (carRot != _lmuAxisRatioCarRot)
+            {
+                // The ratio is per car (its lock differs); start over.
+                _lmuAxisRatioCarRot = carRot;
+                _lmuAxisRatioN = 0;
+                _lmuAxisRatio = 0f;
+            }
+            float rawSteer = s.SteerUnfiltered;
+            bool steerSlow = Math.Abs(rawSteer - _lmuPrevRawSteer) < 0.01f;   // under 1% per update
+            _lmuPrevRawSteer = rawSteer;
+            if (physLive && steerSlow && Math.Abs(rawSteer) > 0.25f && Math.Abs(rawSteer) < 0.97f
+                && Math.Abs(physNow) > 0.1f)
+            {
+                float ratio = Math.Abs(rawSteer) / Math.Abs(physNow);
+                if (ratio > 0.2f && ratio < 5f)
+                {
+                    _lmuAxisRatio = _lmuAxisRatioN == 0 ? ratio : _lmuAxisRatio + (ratio - _lmuAxisRatio) * 0.02f;
+                    if (_lmuAxisRatioN < int.MaxValue) _lmuAxisRatioN++;
+                }
+            }
+            float wheelOverCar = float.NaN;
+            string lockSrc = null;
+            if (_lmuAxisRatioN >= LmuAxisRatioSettleN)
+            {
+                if (_lmuAxisRatio > 1.03f) { wheelOverCar = _lmuAxisRatio; lockSrc = "measured"; }
+                else lockSrc = "device axis";
+            }
+            if (float.IsNaN(wheelOverCar) && lockSrc == null)
+            {
+                // Only until the measurement settles, and only if the visual
+                // range is the car's lock, which the rig says it is not
+                // (ratio 2.0 against 1080 over 719), so this rarely helps.
+                int tapDeg = _ffbTap?.ObservedRotationRangeDeg ?? 0;
+                if (tapDeg >= 180 && carRot >= 40 && tapDeg > carRot + 10)
+                {
+                    wheelOverCar = (float)tapDeg / carRot;
+                    lockSrc = "range the host set (" + tapDeg + " degrees)";
+                }
+            }
+            MaybeLogLmuSteerLock(carRot, wheelOverCar, lockSrc);
+            if (!float.IsNaN(wheelOverCar) && physLive && !float.IsNaN(physNow))
+            {
+                StampSteerFields(IRacingSoftLock.SignedByPhysical(physNow * wheelOverCar, physNow),
+                                 carRot * 0.5f, fr.Ticks, fr);
+            }
+            else if (!physLive && (Settings?.IRacingSoftLockEnabled ?? false))
+            {
+                long wMs = Environment.TickCount;
+                if (wMs - _lmuNoPhysLogMs >= 60000)
+                {
+                    _lmuNoPhysLogMs = wMs;
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] Le Mans Ultimate soft lock: no physical steering position from the wheel "
+                        + (physRd == null ? "(steering reader not started)"
+                           : "(steering reader stopped; it will try to reopen)")
+                        + ", so no lock is rendered.");
+                }
+            }
+            _irFrame = fr;
+
+            if (prev == null)
+            {
+                var rd = _lmu;
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] LMU FFB: authoring force from mSteeringShaftTorque (full scale "
+                    + maxNm.ToString("F1", ci) + " Nm)"
+                    + (_lmuInvert ? " (sign flipped back by LMUFFB INV)" : "")
+                    + ", update rate " + (rd != null ? rd.MeasuredHz.ToString("F0", ci) : "?")
+                    + "/s.");
+            }
+        }
+
+        /// <summary>Say, once per change, what the soft lock is built from in
+        /// this car: the measured axis ratio, a range the host was seen
+        /// setting, or nothing yet (with why).</summary>
+        private void MaybeLogLmuSteerLock(int carRot, float wheelOverCar, string src)
+        {
+            string key = carRot + "|" + (src ?? "-") + "|"
+                + (float.IsNaN(wheelOverCar) ? "-" : ((int)Math.Round(wheelOverCar * 4f)).ToString());
+            if (key == _lmuLockLogKey) return;
+            _lmuLockLogKey = key;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string head = "[TF4ALL] Le Mans Ultimate soft lock: the car's wheel animates through " + carRot + " degrees; ";
+            if (!float.IsNaN(wheelOverCar))
+            {
+                SimHub.Logging.Current.Info(head
+                    + (src == "measured"
+                        ? "the sim's steering axis reads " + wheelOverCar.ToString("F2", ci) + " times the physical position, so the car's lock"
+                        : "the " + src + " puts the car's lock")
+                    + " sits at " + ((int)Math.Round(100f / wheelOverCar)) + " percent of the wheel's travel, and the wall goes there.");
+            }
+            else if (src == "device axis")
+            {
+                SimHub.Logging.Current.Info(head
+                    + "the sim's raw axis equals the physical position, so either the wheel's stop already is the car's lock "
+                    + "or the sim is not rescaling; with no rotation range in degrees from the sim or the host, the lock stays quiet.");
+            }
+            else
+            {
+                SimHub.Logging.Current.Info(head
+                    + "measuring the sim's raw axis against the wheel (a few seconds of cornering) before the lock is placed.");
+            }
+        }
+
+        /// <summary>One probe line every ~2 s while LMUPROBE is on, kept alive
+        /// even when the sim is paused so the session state stays visible.
+        /// SimHub data thread.</summary>
+        private void MaybeLogLmuProbe()
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_lmuProbeLogTicks != 0 && (now - _lmuProbeLogTicks) < Stopwatch.Frequency * 2) return;
+            _lmuProbeLogTicks = now;
+
+            var rd = _lmu;
+            if (rd == null) return;
+            if (!rd.IsOpen)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] LMUPROBE waiting for Le Mans Ultimate (LMU_Data not found yet).");
+                return;
+            }
+            var s = rd.LastSample;
+            if (s == null)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] LMUPROBE map open (game version " + rd.VersionSeen + "), no sample yet.");
+                return;
+            }
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (!s.PlayerHasVehicle)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] LMUPROBE version=" + rd.VersionSeen
+                    + " no player vehicle (at the monitor or between sessions), ffbHz="
+                    + rd.MeasuredFfbHz.ToString("F0", inv) + ".");
+                return;
+            }
+            string ctrl = s.Control == 0 ? "player" : s.Control == 1 ? "AI"
+                : s.Control == 2 ? "remote" : s.Control == 3 ? "replay"
+                : s.ScoringMatched ? s.Control.ToString(inv) : "unmatched";
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] LMUPROBE version=" + rd.VersionSeen
+                + " updatesPerSec=" + rd.MeasuredHz.ToString("F0", inv)
+                + " ffbHz=" + rd.MeasuredFfbHz.ToString("F0", inv)
+                + " torqueNm=" + s.ShaftTorqueNm.ToString("F3", inv)
+                + " [" + _lmuPrMinT.ToString("F2", inv) + ".." + _lmuPrMaxT.ToString("F2", inv) + "]"
+                + " ffb=" + s.FfbTorque.ToString("F3", inv)
+                + " [" + _lmuPrMinF.ToString("F2", inv) + ".." + _lmuPrMaxF.ToString("F2", inv) + "]"
+                + " steer=" + s.SteerUnfiltered.ToString("F2", inv)
+                + " physRange=" + s.PhysicalRangeDeg.ToString("F0", inv)
+                + " visRange=" + s.VisualRangeDeg.ToString("F0", inv)
+                + " speedKmh=" + (s.SpeedMps * 3.6f).ToString("F0", inv)
+                + " gear=" + s.Gear
+                + " phase=" + s.GamePhase
+                + " realtime=" + (s.InRealtime ? "Y" : "n")
+                + " ctrl=" + ctrl
+                + " garage=" + (s.InGarageStall ? "Y" : "n")
+                + " pits=" + (s.InPits ? "Y" : "n")
+                + " car='" + s.VehicleName + "'.");
+            _lmuPrHave = false;   // fresh min/max window per line
+        }
+
+        /// <summary>LMUFFB: flip the Le Mans Ultimate handover. Enabling also
+        /// opts the game into Telemetry Based FFB so one code is the whole
+        /// switch; disabling returns to the tap route.</summary>
+        public bool ToggleLmuSharedMemoryFfb()
+        {
+            var s = Settings;
+            if (s == null) return false;
+            SetLmuTakeover(!s.LmuSharedMemoryFfb);
+            return s.LmuSharedMemoryFfb;
+        }
+
+        /// <summary>Set the Le Mans Ultimate handover on or off. This is the
+        /// FFB tab's "take over force feedback" checkbox for the game, and the
+        /// LMUFFB access code routes through it too. Keeps the route flag and
+        /// the per-game opt-in in lockstep: on arms the reshape, off returns to
+        /// the tap route. Persists.</summary>
+        public void SetLmuTakeover(bool on)
+        {
+            var s = Settings;
+            if (s == null) return;
+            s.LmuSharedMemoryFfb = on;
+            if (s.ModeBGameEnabled == null) s.ModeBGameEnabled = new Dictionary<string, bool>();
+            s.ModeBGameEnabled["LMU"] = on;
+            ApplyModeBFromSettings(save: true);
+            SimHub.Logging.Current.Info("[TF4ALL] LMU shared-memory FFB route " + (on ? "ON" : "OFF") + ".");
+        }
+
+        public bool ToggleLmuProbe()
+        {
+            _lmuProbe = !_lmuProbe;
+            _lmuPrHave = false;
+            _lmuProbeLogTicks = 0;
+            SimHub.Logging.Current.Info("[TF4ALL] LMUPROBE " + (_lmuProbe ? "ON" : "OFF") + ".");
+            return _lmuProbe;
+        }
+
+        public bool ToggleLmuForceInvert()
+        {
+            _lmuInvert = !_lmuInvert;
+            return _lmuInvert;
+        }
+
+        /// <summary>LMUFFB NM n: the shaft torque, in Nm, that is full wheel
+        /// force before a car's own peak is applied. Persists.</summary>
+        public double SetLmuFullScaleNm(double nm)
+        {
+            float v = (float)(nm < 1.0 ? 1.0 : nm > 100.0 ? 100.0 : nm);
+            var s = Settings;
+            if (s != null)
+            {
+                s.LmuFullScaleNm = v;
+                try { PersistSettings(); } catch { }
+            }
+            return v;
+        }
+
         /// <summary>Called on the reader's own thread, once per sim tick. Builds
         /// exactly the same latches the SimHub path builds, from the same
         /// channels, so everything downstream is unaware of which route is live.</summary>
@@ -10151,8 +13521,23 @@ namespace TrueforceForAll.Plugin
                 if (!r.IsConnected) { _irSdkLive = false; return; }
 
                 double torque, maxNm;
-                if (!SdkScalar(frame, vars, "SteeringWheelTorque", out torque)) return;
-                if (!SdkScalar(frame, vars, "SteeringWheelMaxForceNm", out maxNm)) return;
+                if (!SdkScalar(frame, vars, "SteeringWheelTorque", out torque)
+                    || !SdkScalar(frame, vars, "SteeringWheelMaxForceNm", out maxNm))
+                {
+                    // Never silent: with the reader live the SimHub copy is
+                    // not consulted, so a missing channel here is a dead wheel
+                    // with no other line in the log (rig, 2026-09-13).
+                    if (!_irSdkChannelsMissingLogged)
+                    {
+                        _irSdkChannelsMissingLogged = true;
+                        SimHub.Logging.Current.Warn(
+                            "[TF4ALL] iRacing direct reader: SteeringWheelTorque / SteeringWheelMaxForceNm not in the sim's "
+                            + vars.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                            + "-channel table, so no force is authored from it.");
+                    }
+                    return;
+                }
+                _irSdkChannelsMissingLogged = false;
                 if (!(maxNm > 0.01)) return;
 
                 double ffbOnD;
@@ -10200,14 +13585,39 @@ namespace TrueforceForAll.Plugin
                 float[] sub = SdkArray(frame, vars, "SteeringWheelTorque_ST");
                 if (sub != null && sub.Length < IRacingSubSamples) sub = null;
 
-                _irFrame = new IRacingTorqueFrame
+                // Kerb strikes softened here, on our own copy of the samples,
+                // so the frame the force thread sees is already the one to play.
+                long nowT = Stopwatch.GetTimestamp();
+                float latestF = (float)torque;
+                if (sub != null && (Settings?.IRacingKerbSofteningEnabled ?? false))
+                {
+                    double matD, pLF, pRF;
+                    bool onStrip = (SdkScalar(frame, vars, "PlayerTrackSurfaceMaterial", out matD)
+                                    && matD >= 10.5 && matD <= 14.5)   // irsdk_TrkSurf rumble strips are 11 to 14
+                        || (SdkScalar(frame, vars, "TireLF_RumblePitch", out pLF) && pLF > 0.0)
+                        || (SdkScalar(frame, vars, "TireRF_RumblePitch", out pRF) && pRF > 0.0);
+                    SoftenIRacingKerbStrikes(sub, ref latestF,
+                        SdkArray(frame, vars, "LFshockVel_ST"), SdkArray(frame, vars, "RFshockVel_ST"),
+                        SdkArray(frame, vars, "LRshockVel_ST"), SdkArray(frame, vars, "RRshockVel_ST"),
+                        nowT, (float)maxNm, onStrip);
+                }
+                else _kerbPrevTicks = 0;
+
+                var fr = new IRacingTorqueFrame
                 {
                     Sub = sub,
-                    Latest = (float)torque,
+                    Latest = latestF,
                     MaxNm = (float)maxNm,
                     GameFfbOn = ffbOn,
-                    Ticks = Stopwatch.GetTimestamp(),
+                    Ticks = nowT,
                 };
+                // Steering for the soft lock, filled in BEFORE the frame is
+                // published so the force thread never sees a half-built one.
+                double slAngle, slMax;
+                if (SdkScalar(frame, vars, "SteeringWheelAngle", out slAngle)
+                    && SdkScalar(frame, vars, "SteeringWheelAngleMax", out slMax))
+                    IRacingSteerFields(slAngle, slMax, fr.Ticks, fr);
+                _irFrame = fr;
 
                 BuildIRacingOverlayFromSdk(frame, vars, maxNm);
             }
@@ -10221,6 +13631,186 @@ namespace TrueforceForAll.Plugin
             IRacingSdkReader.VarDef v;
             if (vars == null || !vars.TryGetValue(name, out v)) return false;
             return IRacingSdkReader.TryReadDouble(frame, v, 0, out value);
+        }
+
+        // ---- Kerb strike softening for the takeover (producer thread) ------
+        // One producer runs at a time (the direct reader, or SimHub's copy
+        // while the reader is not live), and both call
+        // SoftenIRacingKerbStrikes on the six torque sub-samples before the
+        // frame is published, so the state below is single-writer. The FFB
+        // thread only ever sees the finished frame.
+        private float _kerbBaseNm;         // running average of the torque the wheel gets, Nm
+        private float _kerbLevelMps;       // slow average of shock speed between strikes, m/s
+        private float _kerbPrevMask;       // the last sub-sample's mask, for the dilation across frames
+        private long  _kerbPrevTicks;      // last frame softened; a gap resets the average
+        private bool  _kerbInStrike;
+        private long  _kerbLastLogTicks;
+        private long  _kerbStripUntilTicks;  // the surface flag said "rumble strip"; held a little past it
+        private const float KerbStripHoldMs = 120f;
+        private int   _kerbLogCount;       // the strike line stops after KerbLogMax a session
+        private const int KerbLogMax = 60;
+        private readonly float[] _kerbShock = new float[IRacingSubSamples];
+        private readonly float[] _kerbMask  = new float[IRacingSubSamples];
+        private readonly float[] _kerbDil   = new float[IRacingSubSamples];
+        // Calibrated on the rig (MX-5, 2026-09-13): the road between strikes
+        // reads 0.03 to 0.12 m/s, kerbs and hits 0.36 to 0.75. The first guess
+        // (floor 0.35, full mask at twice the threshold) sat on top of the
+        // strikes and cut them by a percent or two.
+        private const float KerbShockFloorMps  = 0.25f;   // below this a shock speed is never a strike
+        private const float KerbShockLevelMult = 2.5f;    // a strike is this many times the running level
+        private const float KerbShockCeilMps   = 0.40f;   // a rough track raises the bar, but never past this
+        private const float KerbMaskRampMps    = 0.15f;   // the mask goes 0 to 1 over this much above the threshold
+        private const float KerbBaseAlpha      = 0.085f;  // ~30 ms at 360 Hz: follows the load, not the spike
+        private const float KerbLevelAlpha     = 0.0014f; // ~2 s at 360 Hz
+
+        /// <summary>Soften the torque sub-samples that coincide with a shock
+        /// burst on a wheel. The fronts carry the steering, so they set the
+        /// mask; the rears count half. A sample's mask grows from 0 at the
+        /// threshold to 1 a small step above it, is widened by one sample each way so
+        /// a spike that lands a sample off the burst is still covered, and
+        /// blends that sample toward the running average of the torque by
+        /// the user's strength. The threshold is a floor or a multiple of a
+        /// slow average of the shock speed between strikes, whichever is
+        /// higher, so a bumpy track raises its own bar. One log line per
+        /// strike, rate-limited, carries the numbers for tuning.</summary>
+        private void SoftenIRacingKerbStrikes(float[] sub, ref float latest,
+                                              float[] lf, float[] rf, float[] lr, float[] rr,
+                                              long ticks, float maxNm, bool onStrip)
+        {
+            var cfg = Settings;
+            if (cfg == null || sub == null || lf == null || rf == null
+                || lf.Length < IRacingSubSamples || rf.Length < IRacingSubSamples)
+            { _kerbPrevTicks = 0; return; }
+            float strength = cfg.IRacingKerbSoftening;
+            if (strength <= 0f) { _kerbPrevTicks = 0; return; }
+            if (strength > 1f) strength = 1f;
+            float sens = cfg.IRacingKerbSensitivity;
+            if (!(sens > 0.05f)) sens = 1f;
+            bool rearsOk = lr != null && rr != null
+                && lr.Length >= IRacingSubSamples && rr.Length >= IRacingSubSamples;
+            // One bad torque sample would otherwise sit in the average until
+            // the next gap; the frame passes untouched instead.
+            for (int i = 0; i < IRacingSubSamples; i++)
+                if (float.IsNaN(sub[i]) || float.IsInfinity(sub[i])) { _kerbPrevTicks = 0; return; }
+
+            // A gap (pause, out of the car) means the average is stale.
+            bool fresh = _kerbPrevTicks != 0
+                && (ticks - _kerbPrevTicks) * 1000.0 / Stopwatch.Frequency < 250.0;
+            _kerbPrevTicks = ticks;
+
+            float peakShock = 0f, minShock = float.MaxValue;
+            int quietest = 0;
+            for (int i = 0; i < IRacingSubSamples; i++)
+            {
+                float v = Math.Max(Math.Abs(lf[i]), Math.Abs(rf[i]));
+                if (rearsOk) v = Math.Max(v, 0.5f * Math.Max(Math.Abs(lr[i]), Math.Abs(rr[i])));
+                if (float.IsNaN(v) || float.IsInfinity(v)) v = 0f;
+                _kerbShock[i] = v;
+                if (v > peakShock) peakShock = v;
+                if (v < minShock) { minShock = v; quietest = i; }
+            }
+            if (!fresh)
+            {
+                // Seeded from the quietest sample of the frame, so a resume
+                // that lands mid-strike does not make the strike the average
+                // (model, 2026-09-13).
+                _kerbBaseNm = sub[quietest];
+                _kerbPrevMask = 0f;
+                _kerbInStrike = false;
+                _kerbStripUntilTicks = 0;
+            }
+            if (!fresh || _kerbLevelMps <= 0f)
+                _kerbLevelMps = Math.Min(minShock, KerbShockFloorMps);
+            float threshold = Math.Min(KerbShockCeilMps,
+                                  Math.Max(KerbShockFloorMps, KerbShockLevelMult * _kerbLevelMps)) / sens;
+
+            for (int i = 0; i < IRacingSubSamples; i++)
+            {
+                float m = (_kerbShock[i] - threshold) / KerbMaskRampMps;
+                _kerbMask[i] = m <= 0f ? 0f : (m >= 1f ? 1f : m);
+                // The level learns only from the quiet samples, so a strike
+                // never raises its own bar.
+                if (_kerbMask[i] <= 0f)
+                    _kerbLevelMps += (_kerbShock[i] - _kerbLevelMps) * KerbLevelAlpha;
+            }
+            // Riding a rumble strip: a front tyre's rumble pitch (per tyre,
+            // nonzero while it is on a strip) or the car's surface flag says
+            // so, and the ridges that do not trip the shock detector are still
+            // the buzz the driver feels, so the whole traverse is masked. Held
+            // a little past the flag so its exit lag does not leave a hard tail
+            // (owner, 2026-09-13: strikes softened, strips not; the car-level
+            // flag alone fired three times in three minutes of strips).
+            if (onStrip)
+                _kerbStripUntilTicks = ticks + (long)(KerbStripHoldMs / 1000.0 * Stopwatch.Frequency);
+            bool strip = ticks < _kerbStripUntilTicks;
+            if (strip)
+                for (int i = 0; i < IRacingSubSamples; i++) _kerbMask[i] = 1f;
+
+            float prevM = _kerbPrevMask;
+            float maxMask = 0f;
+            for (int i = 0; i < IRacingSubSamples; i++)
+            {
+                float next = i + 1 < IRacingSubSamples ? _kerbMask[i + 1] : _kerbMask[i];
+                float d = Math.Max(prevM, Math.Max(_kerbMask[i], next));
+                prevM = _kerbMask[i];
+                _kerbDil[i] = d;
+                if (d > maxMask) maxMask = d;
+            }
+            _kerbPrevMask = _kerbMask[IRacingSubSamples - 1];
+
+            float peakRawAbs = 0f, peakRaw = 0f, peakOutAbs = 0f, peakOut = 0f;
+            for (int i = 0; i < IRacingSubSamples; i++)
+            {
+                float raw = sub[i];
+                float bse = _kerbBaseNm;
+                float d = _kerbDil[i];
+                if (d > 0f)
+                {
+                    float outV = bse + (raw - bse) * (1f - strength * d);
+                    // Softening only ever reduces: an average that crept up
+                    // under the strike must not lift the quiet sample on the
+                    // way out of it (model, 2026-09-13).
+                    if (Math.Abs(outV) > Math.Abs(raw)) outV = raw;
+                    sub[i] = outV;
+                    float ra = Math.Abs(raw), oa = Math.Abs(outV);
+                    if (ra > peakRawAbs) { peakRawAbs = ra; peakRaw = raw; }
+                    if (oa > peakOutAbs) { peakOutAbs = oa; peakOut = outV; }
+                }
+                // The average follows the raw torque at full rate between
+                // strikes and at a quarter of it under a mask, so a load that
+                // changes under a strike is partly followed and the rest lands
+                // when the mask clears.
+                _kerbBaseNm = bse + (raw - bse) * KerbBaseAlpha * Math.Max(0.25f, 1f - d);
+            }
+            latest = sub[IRacingSubSamples - 1];
+
+            if (maxMask > 0f)
+            {
+                if (!_kerbInStrike)
+                {
+                    _kerbInStrike = true;
+                    if (_kerbLogCount < KerbLogMax
+                        && (ticks - _kerbLastLogTicks) * 1000.0 / Stopwatch.Frequency >= 500.0)
+                    {
+                        _kerbLastLogTicks = ticks;
+                        _kerbLogCount++;
+                        int n = 0;
+                        for (int i = 0; i < IRacingSubSamples; i++) if (_kerbDil[i] > 0f) n++;
+                        var ci = System.Globalization.CultureInfo.InvariantCulture;
+                        double full = maxNm > 0.01f ? maxNm : 1.0;
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] iRacing curb strike: shock " + peakShock.ToString("0.00", ci)
+                            + " m/s (level " + _kerbLevelMps.ToString("0.00", ci)
+                            + ", threshold " + threshold.ToString("0.00", ci) + "), "
+                            + n.ToString(ci) + " of 6 samples softened, torque "
+                            + ((int)(peakRaw * 100.0 / full)).ToString(ci) + "% -> "
+                            + ((int)(peakOut * 100.0 / full)).ToString(ci) + "% at the peak."
+                            + (strip ? " On a rumble strip." : "")
+                            + (_kerbLogCount >= KerbLogMax ? " (Last strike line this session.)" : ""));
+                    }
+                }
+            }
+            else _kerbInStrike = false;
         }
 
         private static float[] SdkArray(byte[] frame, Dictionary<string, IRacingSdkReader.VarDef> vars, string name)
@@ -10317,7 +13907,11 @@ namespace TrueforceForAll.Plugin
             if (SdkScalar(frame, vars, "SteeringWheelAngle", out sr)
                 && SdkScalar(frame, vars, "SteeringWheelAngleMax", out smax) && smax > 0.01)
             {
-                double n = sr / smax;
+                // SteeringWheelAngleMax is lock-to-lock, so half of it is the
+                // per-side limit this normalises to. Dividing by the whole
+                // range (as this did until 2026-09-13) topped out at half
+                // scale at the car's full lock.
+                double n = sr / (smax * 0.5);
                 if (n > 1.5) n = 1.5; else if (n < -1.5) n = -1.5;
                 steerNorm = n;
             }
@@ -10420,7 +14014,18 @@ namespace TrueforceForAll.Plugin
             _irIncidentLimit = ParseIncidentLimit(yaml);
             var parsed = ParseIRacingSessionInfo(yaml);
             if (parsed == null) return;
+            var prevInfo = _irCarInfo;
             _irCarInfo = parsed;
+            // The YAML string is replaced on every session-info update (drivers
+            // joining, timing), so the reference check above only dedupes
+            // ticks. Log the car when the CAR changes, not once a second for
+            // the whole session (log, 2026-09-13).
+            if (prevInfo != null
+                && string.Equals(prevInfo.CarPath, parsed.CarPath, StringComparison.Ordinal)
+                && prevInfo.Cylinders == parsed.Cylinders
+                && prevInfo.RedlineRpm == parsed.RedlineRpm
+                && prevInfo.ForwardGears == parsed.ForwardGears)
+                return;
             SimHub.Logging.Current.Info(
                 "[TF4ALL] iRacing car: " + (parsed.ScreenName ?? "?")
                 + " path=" + (parsed.CarPath ?? "?")
@@ -10936,6 +14541,7 @@ namespace TrueforceForAll.Plugin
                 // the stationary spring +/-7.85 on a 900 degree wheel.
                 object oSteer, oSteerMax;
                 double? steerNorm = null;
+                double slAngleRaw = 0.0, slMaxRaw = 0.0;   // radians, for the soft lock below
                 if (IRacingChannel(tel, dict, null, "SteeringWheelAngle", out oSteer)
                     && IRacingChannel(tel, dict, null, "SteeringWheelAngleMax", out oSteerMax))
                 {
@@ -10945,9 +14551,13 @@ namespace TrueforceForAll.Plugin
                         double max = Convert.ToDouble(oSteerMax, System.Globalization.CultureInfo.InvariantCulture);
                         if (!double.IsNaN(sr) && !double.IsInfinity(sr) && max > 0.01)
                         {
-                            double n = sr / max;
+                            // SteeringWheelAngleMax is lock-to-lock, so half of
+                            // it is the per-side limit this normalises to.
+                            double n = sr / (max * 0.5);
                             if (n > 1.5) n = 1.5; else if (n < -1.5) n = -1.5;
                             steerNorm = n;
+                            slAngleRaw = sr;
+                            slMaxRaw = max;
                         }
                     }
                     catch { }
@@ -11057,15 +14667,52 @@ namespace TrueforceForAll.Plugin
                     }
                 }
 
+                long nowT = Stopwatch.GetTimestamp();
+                if (sub != null && dict != null && (Settings?.IRacingKerbSofteningEnabled ?? false))
+                {
+                    bool onStrip = false;
+                    object oMatK;
+                    if (IRacingChannel(tel, dict, null, "PlayerTrackSurfaceMaterial", out oMatK))
+                    {
+                        try
+                        {
+                            int mat = Convert.ToInt32(oMatK, System.Globalization.CultureInfo.InvariantCulture);
+                            onStrip = mat >= 11 && mat <= 14;
+                        }
+                        catch { }
+                    }
+                    string[] frontPitch = { "TireLF_RumblePitch", "TireRF_RumblePitch" };
+                    for (int i = 0; i < frontPitch.Length && !onStrip; i++)
+                    {
+                        object pv;
+                        if (!IRacingChannel(tel, dict, null, frontPitch[i], out pv)) continue;
+                        try
+                        {
+                            double d = Convert.ToDouble(pv, System.Globalization.CultureInfo.InvariantCulture);
+                            if (!double.IsNaN(d) && !double.IsInfinity(d) && d > 0.0) onStrip = true;
+                        }
+                        catch { }
+                    }
+                    SoftenIRacingKerbStrikes(sub, ref latest,
+                        IRacingSubArray(dict, "LFshockVel_ST"), IRacingSubArray(dict, "RFshockVel_ST"),
+                        IRacingSubArray(dict, "LRshockVel_ST"), IRacingSubArray(dict, "RRshockVel_ST"),
+                        nowT, (float)maxNm, onStrip);
+                }
+                else _kerbPrevTicks = 0;
+
                 var prev = _irFrame;
-                _irFrame = new IRacingTorqueFrame
+                var fr = new IRacingTorqueFrame
                 {
                     Sub = sub,
                     Latest = latest,
                     MaxNm = maxNm,
                     GameFfbOn = ffbOn,
-                    Ticks = Stopwatch.GetTimestamp(),
+                    Ticks = nowT,
                 };
+                // Steering for the soft lock, read with the overlay above and
+                // stamped before the frame is published.
+                if (slMaxRaw > 0.01) IRacingSteerFields(slAngleRaw, slMaxRaw, fr.Ticks, fr);
+                _irFrame = fr;
 
                 // One line on the first good frame, then only when the sim's own
                 // FFB flips. Enough to tell "never latched" from "latched but
@@ -11158,7 +14805,18 @@ namespace TrueforceForAll.Plugin
         private short? ComputeIRacingForce()
         {
             var f = _irFrame;
-            if (f == null) return null;
+            if (f == null)
+            {
+                // Out of the car, or the reader not live: nothing is authored,
+                // so the next engagement fades in the way arming does. Only the
+                // aged-out exit below used to reset the ramp; a pause that
+                // dropped the frame instead came back as a step to the
+                // corner's torque (rig, 2026-09-13).
+                _irRamp = 0f; _irPrevTicks = 0;
+                _irLeadFrameTicks = 0;
+                _irRingPrimed = false;
+                return null;
+            }
 
             long now = Stopwatch.GetTimestamp();
             double ageMs = (now - f.Ticks) * 1000.0 / Stopwatch.Frequency;
@@ -11499,11 +15157,23 @@ namespace TrueforceForAll.Plugin
             // the shared value, then iRacing's own figure as the fallback so a
             // driver who has set nothing still gets something sane.
             double fullScaleNm = f.MaxNm;
+            // R3E auto-strength: shrink the synthetic full scale toward this
+            // car's learned normalized peak (fed on the reader thread) so
+            // RaceRoom's weak percentage lands near target. The low-speed ramp
+            // below fades the boost out while parked.
+            if (f.FixedScale && (Settings?.R3EAutoStrength ?? true))
+            {
+                float frac = _r3eFullScaleFrac;
+                if (frac > 0.01f) fullScaleNm = f.MaxNm * frac;
+            }
             var irScale = Settings;
-            if (irScale != null)
+            // FixedScale frames (the R3E route) arrive pre-normalized with a
+            // synthetic full scale; the overrides below are iRacing wheel
+            // ratings in Nm and would divide them to nonsense.
+            if (irScale != null && !f.FixedScale)
             {
                 float perCar;
-                if (irScale.IRacingMaxForcePerCar
+                if (MaxForcePerCarHere
                     && irScale.IRacingMaxForceByCar != null
                     && !string.IsNullOrEmpty(_activeCarId)
                     && irScale.IRacingMaxForceByCar.TryGetValue(_activeCarId, out perCar)
@@ -11511,7 +15181,7 @@ namespace TrueforceForAll.Plugin
                 {
                     fullScaleNm = perCar;
                 }
-                else if (irScale.IRacingMaxForceNmOverride > 0.5f)
+                else if (!IsLmuGame(_activeGame) && irScale.IRacingMaxForceNmOverride > 0.5f)
                 {
                     fullScaleNm = irScale.IRacingMaxForceNmOverride;
                 }
@@ -11564,6 +15234,7 @@ namespace TrueforceForAll.Plugin
             _irPrevTicks = now;
             if (_irRamp < 1f)
             {
+                if (_irRamp <= 0f) { _irResumeStampTicks = now; _irResumeTrace = null; }
                 _irRamp += (float)(dtMs / 300.0);
                 if (_irRamp > 1f) _irRamp = 1f;
             }
@@ -11576,6 +15247,37 @@ namespace TrueforceForAll.Plugin
             double v = -f01 * _irRamp * 32767.0;
             if (v > short.MaxValue) v = short.MaxValue;
             else if (v < short.MinValue) v = short.MinValue;
+
+            // Once per fade-in, a short trace of the first half second: the
+            // authored force, the sim's own torque before the ramp, and where
+            // the wheel is, at a few instants. A kick at resume was reported on
+            // the rig (2026-09-13, "tries to center, then suddenly stops") with
+            // no way to tell whose it was; this line says whether the torque
+            // this path plays is the shape that was felt.
+            if (_irResumeStampTicks != 0)
+            {
+                double sinceMs = (now - _irResumeStampTicks) * 1000.0 / Stopwatch.Frequency;
+                if (_irResumeTrace == null) _irResumeTrace = new System.Text.StringBuilder(160);
+                int slot = sinceMs < 25 ? 0 : sinceMs < 50 ? 1 : sinceMs < 100 ? 2 : sinceMs < 200 ? 3
+                         : sinceMs < 300 ? 4 : sinceMs < 500 ? 5 : 6;
+                if (slot > _irResumeSlot)
+                {
+                    _irResumeSlot = slot;
+                    var ci = System.Globalization.CultureInfo.InvariantCulture;
+                    _irResumeTrace.Append(((int)sinceMs).ToString(ci)).Append("ms:")
+                        .Append(((int)(v * 100.0 / 32767.0)).ToString(ci)).Append("%/")
+                        .Append(((int)(f01 * 100.0)).ToString(ci)).Append("%/")
+                        .Append(_lastSteerNorm.ToString("0.00", ci)).Append(' ');
+                }
+                if (sinceMs >= 500.0)
+                {
+                    _irResumeStampTicks = 0;
+                    _irResumeSlot = -1;
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] iRacing force back on (ms: played% / sim torque% / wheel): " + _irResumeTrace);
+                    _irResumeTrace = null;
+                }
+            }
             return (short)v;
         }
 
@@ -11661,6 +15363,17 @@ namespace TrueforceForAll.Plugin
                 }
                 NoteModeBSlipRecovered();
                 target = synth;
+                // The stationary spring, rendered here because the synthesis
+                // assigned over the upstream stage's work. Same sign space as
+                // the synthesis (the game's; the device negates and scales),
+                // so the upstream recipe applies unchanged.
+                if (_fxTestMode == 0 && ActiveGameAllowsStationarySpring
+                    && EffectiveStationarySpringEnabled(_activeGame))
+                {
+                    var sprung = ApplyStationarySpring(target, inSynthesis: true);
+                    _lastSpringAddLsb = sprung.HasValue ? sprung.Value - (target ?? 0) : 0;
+                    target = sprung;
+                }
             }
             else
             {
@@ -11698,6 +15411,11 @@ namespace TrueforceForAll.Plugin
             // (plus the FS terrain kick above when enabled).
             if (!modeB || !target.HasValue) return target;
             double v = target.Value;
+            // The sim's torque alone, before the wheel-side terms below. The
+            // reshape's stationary spring deficit-fills against THIS: damper
+            // and friction are velocity terms, not centering, and must not
+            // count as "the sim already centres".
+            double simOnly = v;
 
             // Centering "fight": a directional force toward center
             // proportional to steering lock, so the wheel resists turning
@@ -11768,7 +15486,41 @@ namespace TrueforceForAll.Plugin
             float velLp = _mbDamperVelLp;
             float physSteer = float.NaN;   // NaN = no fresh physical position
             double dtD = 1.0;              // ms since the last physical-state tick
-            bool needPhys = damperGain != 0f || (_mbCenterPdOn && centerGain != 0f);
+            // Stationary friction (R3E reshape): resynthesize RaceRoom's low-speed
+            // parked damper, which lives in the FFB output this route replaces with
+            // the sim's shared-memory steering force (that value is ~0 parked). It
+            // needs the physical wheel velocity below, so fold it into needPhys.
+            var stFrCfg = Settings;
+            // Also under Telemetry Based FFB and Farming Simulator's spring
+            // mode: both replace the game's force outright, parking resistance
+            // included (owner, 2026-09-13 and 2026-09-19). Same setting and
+            // controls; the sign follows the route below, and spring mode
+            // shares the synthesis's frame (the device scales and negates both).
+            bool wantR3EFriction = ((reshapeMode && IsSharedMemoryTakeoverGame(_activeGame))
+                                    || _forceMode == ForceModeModeB
+                                    || _forceMode == ForceModeSpring)
+                && stFrCfg != null
+                && stFrCfg.R3EStationaryDamper
+                && stFrCfg.R3EStationaryDamperStrength > 0.0001;
+            // Stationary spring under the armed reshape: the same per-game
+            // spring ApplyStationarySpring renders on the tap route, rendered
+            // here because the reshape assigns over its input. Wants the
+            // physical wheel position below (RaceRoom publishes no steering
+            // through SimHub, so physical is the only position there on either
+            // route). FXTEST owns the wheel while it runs, as upstream.
+            // Requires the friction: on the tap route the spring works against
+            // RaceRoom's own parked damper, which this route replaces. With
+            // the friction off the only dissipation left is the 0.07 stability
+            // damper, and a lagged spring (HID position ~20 ms + the EMA) eats
+            // most of that margin, so a let-go would hunt around centre
+            // (review, 2026-09-12). The badge names this state.
+            bool wantReshapeSpring = reshapeMode
+                && _fxTestMode == 0
+                && wantR3EFriction
+                && ActiveGameAllowsStationarySpring
+                && EffectiveStationarySpringEnabled(_activeGame);
+            bool needPhys = damperGain != 0f || (_mbCenterPdOn && centerGain != 0f)
+                || wantR3EFriction || wantReshapeSpring;
             if (needPhys)
             {
                 // Prefer the physical wheel velocity; fall back to the telemetry
@@ -11894,10 +15646,152 @@ namespace TrueforceForAll.Plugin
                 // settling it (owner rig, 2026-08-15, the discriminating
                 // test). The closed loop through the sim is the one path that
                 // most needs a working damper, so flip it to match.
+                // No cap of its own (owner, 2026-09-12: "there shouldn't be
+                // caps on damper, friction or spring"). The full-scale clamp
+                // at the end is the wheel's limit and the only one.
                 double damp = (reshapeMode ? -damperGain : damperGain) * velLp * 32767.0;
-                if (damp > 16383.0) damp = 16383.0;
-                else if (damp < -16383.0) damp = -16383.0;
                 v += damp;
+            }
+
+            if (wantR3EFriction)
+            {
+                // Car-speed gate: firm parked, fading to nothing by FadeKmh. Above
+                // that the driver feels only the sim's own force. The GAIN is what
+                // fades with speed, so the resistance's presence tracks car speed,
+                // not turn speed.
+                double fade = stFrCfg.R3EStationaryDamperFadeKmh;
+                if (fade < 1.0) fade = 1.0;
+                double gate = 1.0 - _lastSpeedKmh / fade;
+                if (gate > 0.0)
+                {
+                    if (gate > 1.0) gate = 1.0;
+                    // A viscous damper, NOT a relay. The first cut SATURATED on a
+                    // small wheel motion, which in a feedback loop with the wheel's
+                    // ~20 ms reporting lag acts like bang-bang and set up a limit
+                    // cycle (owner, 2026-09-05: "it oscillates"). Linear in the
+                    // band-limited velocity is dissipative and stable, and it is
+                    // literally RaceRoom's own "stationary friction uses the damper
+                    // effect". NO deadband:
+                    // its edge made the force flick on and off as the wheel crept.
+                    // A LIGHT low-pass on the FORCE only takes the edge off this
+                    // term's own ripple. The graininess the owner felt turned out to
+                    // be general wheel-render notchiness present on the TAP route too
+                    // (2026-09-05), which the master Smoothing slider handles for
+                    // every source (~3 ms was enough); a heavy filter here just
+                    // double-smoothed and lagged the friction, so this stays light.
+                    // OPPOSES motion, same convention as that damper (-vel for
+                    // reshapeMode).
+                    // The slider means what it says: no gain cap and no
+                    // half-scale clamp (owner, 2026-09-12). Only the final
+                    // full-scale clamp applies.
+                    double gain = stFrCfg.R3EStationaryDamperStrength;
+                    // The friction and the Damping slider are the same kind of
+                    // term, velocity feedback off one delayed signal, and their
+                    // SUM is what the loop has to survive. 0.6 of damper alone
+                    // settles; 0.6 of damper plus 0.4 of friction rang on a
+                    // let-go from lock (rig, Forza, 2026-09-13). So the friction
+                    // yields as the damper rises, keeping the pair within the
+                    // 0.6 the damper slider allows by itself: untouched at the
+                    // 0.07 default, trimmed only past a damper of 0.2.
+                    double headroom = 0.6 - _pModeBDamperGain;
+                    if (headroom < 0.0) headroom = 0.0;
+                    if (gain > headroom) gain = headroom;
+                    // Opposes motion in each route's own frame: the takeover
+                    // authors the motor sign (-vel), the synthesis is authored
+                    // in the game's space where +vel opposes, the same split
+                    // the damper above makes.
+                    // On the synthesis route the term rides the same engage ramp
+                    // as the damper and centering: without it the friction was
+                    // at full strength from the first tick of an engage, and for
+                    // the ~3 s a parked telemetry stall takes to be called starved
+                    // (review, 2026-09-13). The takeover keeps its own ramp-free
+                    // shape, which has been driven.
+                    double fr = (reshapeMode ? -1.0 : ramp) * velLp * gain * gate * 32767.0;
+                    // One slider, one weight on both routes. The takeover skips
+                    // the device's FFB strength trim; the synthesis does not, so
+                    // pre-compensate here the way the stationary spring does,
+                    // and 0.40 lands as 0.40 either way (owner, 2026-09-13).
+                    if (!reshapeMode)
+                    {
+                        float trim = _device != null ? _device.FfbScale : 1f;
+                        if (trim < 0.05f) trim = 0.05f;
+                        fr /= trim;
+                    }
+                    float aFr = (float)(1.0 - Math.Exp(-dtD / 6.0));
+                    _r3eFrictionLp += (float)((fr - _r3eFrictionLp) * aFr);
+                    v += _r3eFrictionLp;
+                }
+                else _r3eFrictionLp = 0f;   // faded out: don't carry a stale term
+            }
+            else _r3eFrictionLp = 0f;
+
+            if (wantReshapeSpring)
+            {
+                // Same recipe as ApplyStationarySpring (position EMA, linear
+                // speed fade, strength x |steer| of full scale, deficit-fill),
+                // with two deliberate differences, both because TrueforceDevice
+                // skips FfbInvertSign and FfbScale under FfbBypassTapCorrections
+                // while the reshape is armed:
+                //   SIGN: authored here as the MOTOR sign. Upstream, dir =
+                //   sign(steer) in the game's space and the device negates it;
+                //   here nothing negates, so the centering direction is
+                //   -sign(steer), the same flip the damper and friction above
+                //   carry (reshapeMode ? -gain : gain).
+                //   SCALE: no division by FfbScale. The device does not multiply
+                //   by it here, so the pre-compensation would land 1/FfbScale
+                //   too strong.
+                // Position: the fresh physical wheel (physSteer), else a fresh
+                // game value, else no spring. No sim on this route publishes
+                // steering through SimHub today, so physical is the working
+                // case, exactly as on RaceRoom's tap route.
+                float steerR = !float.IsNaN(physSteer) ? physSteer
+                    : (Stopwatch.GetTimestamp() - System.Threading.Interlocked.Read(ref _lastSteerTicks)) <= SteerMaxAgeTicks
+                        ? _lastSteerNorm
+                        : float.NaN;
+                float cutoffR = (float)EffectiveStationarySpringCutoff(_activeGame);
+                float fadeR = cutoffR > 0f ? 1f - (_lastSpeedKmh / cutoffR) : 0f;
+                int springAdd = 0;
+                if (!float.IsNaN(steerR) && fadeR > 0f)
+                {
+                    if (fadeR > 1f) fadeR = 1f;
+                    if (steerR > 1f) steerR = 1f; else if (steerR < -1f) steerR = -1f;
+                    // Fresh start on every engage. The ramp below is ~0 for
+                    // the first ticks after arming or a telemetry gap (pause,
+                    // garage), and the spring contributes nothing there, so
+                    // seeding the EMA from the live position costs nothing and
+                    // means a wheel turned by hand during the gap never gets
+                    // a kick toward where it USED to be from a stale EMA.
+                    if (ramp < 0.05f) _rsSpringSteerEma = steerR;
+                    else _rsSpringSteerEma += SpringSteerEmaAlpha * (steerR - _rsSpringSteerEma);
+                    float steerS = _rsSpringSteerEma;
+                    // Engage on the route's own 300 ms ramp, like the damper
+                    // and the sim torque itself, so arming with lock on never
+                    // steps the wheel (the reshape's stated contract).
+                    double desired = EffectiveStationarySpringStrength(_activeGame)
+                                   * Math.Abs(steerS) * fadeR * ramp * 32767.0;
+                    // No cap (owner, 2026-09-12): strength x |steer| of full
+                    // scale, exactly the tap route's meaning. The full-scale
+                    // clamp at the end is the only limit, as it is upstream.
+                    if (desired >= 1.0)
+                    {
+                        double dirR = (steerS > 0f) ? -1.0 : 1.0;
+                        // Deficit-fill against the sim's own torque only: top
+                        // up the same-direction part to the floor, never
+                        // beyond, never against, so the spring lets go the
+                        // moment the sim centres the wheel itself.
+                        double have = (Math.Sign(simOnly) == Math.Sign(dirR)) ? Math.Abs(simOnly) : 0.0;
+                        double add  = desired - have;
+                        if (add > 0.0)
+                        {
+                            v += add * dirR;
+                            // Trace value in the GAME's sign space, the tap
+                            // route's convention, so `spring=` reads the same
+                            // way on both routes for the same direction.
+                            springAdd = -(int)(add * dirR);
+                        }
+                    }
+                }
+                _lastSpringAddLsb = springAdd;
             }
 
             if (v > short.MaxValue) v = short.MaxValue;
@@ -11997,7 +15891,7 @@ namespace TrueforceForAll.Plugin
         public void TestRpmLeds()
         {
             if (_rpmLeds == null) { SimHub.Logging.Current.Info("[RPM-LED] controller not initialized"); return; }
-            // Full only: the test is two full up/down sweeps plus a redline hold,
+            // Normal only: the test is two full up/down sweeps plus a redline hold,
             // about eleven seconds of continuous level writes, and the first of them
             // re-arms the keepalive a slot write had just stopped.
             if (MasterMode != TrueforceMasterMode.Normal)
@@ -12193,7 +16087,21 @@ namespace TrueforceForAll.Plugin
             // bar shows the new colours at once, which is the feedback the user
             // wanted. That is what "driving: the preview self-suppresses and the
             // live bar is the feedback" was always meant to mean.
-            if (!PreviewSweepAllowed) return;
+            if (!PreviewSweepAllowed)
+            {
+                SimHub.Logging.Current.Info(
+                    "[RPM-LED] preview sweep suppressed: a game is driving the bar.");
+                return;
+            }
+            // Says WHY a sweep ran, because the alternative is guessing. The
+            // rule is that a game driving the rim lights owns them and a sweep
+            // would flicker against its writes, so a sweep during a game means
+            // one of these two reads let it through and the pattern preview
+            // flickered as a result (owner, in Assetto Corsa, 2026-09-03).
+            SimHub.Logging.Current.Info(
+                $"[RPM-LED] preview sweep allowed: nothingPlaying={NothingIsPlaying}, "
+                + $"noTelemetry={NoTelemetryArriving()}, "
+                + $"ledsHidppFree={_ledsHidppFree}, liveBarLit={_rpmLeds.LiveBarIsLit}.");
             // Only skip when the live bar is actually LIT, not merely when a
             // game is loaded. In the pits at idle the strip is dark, the live
             // feed is showing nothing to fight, and skipping here left a pattern
@@ -12201,7 +16109,15 @@ namespace TrueforceForAll.Plugin
             // bar reasserting zero. The preview holds for a moment and the live
             // bar takes over again, which is correct, because the bar belongs to
             // the revs.
-            if (_rpmLeds.LiveBarIsLit) return;
+            //
+            // Only where a game is PLAYING, though. The test asks whether the
+            // strip is lit, not who lit it, and with nothing running the only
+            // thing that can have lit it is our own ambient mode. That one
+            // stands down for a preview on its own (OnAmbientLevel returns while
+            // a preview owns the strip), so there is nothing to fight and
+            // skipping meant a pattern pick did nothing at all while the audio
+            // meter happened to be showing a loud passage.
+            if (!NothingIsPlaying && _rpmLeds.LiveBarIsLit) return;
             // Parked, end LIT rather than dark. A sweep that finishes by turning
             // the strip off shows the user nothing, which is the whole reason
             // they picked something.
@@ -12395,8 +16311,138 @@ namespace TrueforceForAll.Plugin
             if (writes > 0 || renames > 0 || unreadable > 0)
                 SimHub.Logging.Current.Info(
                     $"[TF4ALL] slots synced: {writes} written, {renames} renamed, {unreadable} unreadable (left alone)");
+            NoteSlotSyncOutcome(unreadable);
             return writes;
         }
+
+        // ---- Slot-sync retry -------------------------------------------------
+        //
+        // Unreadable slots are not a permanent failure. They mean the wheel's
+        // HID++ pipe was busy at the moment we asked, which is what happens when
+        // the game is already running when SimHub starts: on the owner's rig
+        // (RaceRoom, 2026-09-05) four sessions split exactly that way, "5
+        // unreadable" in the two where the game came up first and a clean read in
+        // the two where SimHub did. The pipe frees up later, so ask again instead
+        // of leaving the wheel disagreeing with the user's list until they think
+        // to restart in the right order.
+        //
+        // The OLED channel already recovers this way ("open attempt 1 failed;
+        // retrying in 30 s"). This gives the rev-light slots the same treatment.
+        private int _slotSyncRetryAtMs;      // 0 = nothing owed
+        private int _slotSyncRetriesLeft;
+        private const int SlotSyncRetryDelayMs = 30000;
+        // Deliberately SHORT, and it was briefly raised to 20 minutes before
+        // being put back (owner, 2026-09-12): "if a game is saturating the LEDs
+        // then there's probably no reason to keep retrying if it means we
+        // sacrifice performance". Exactly right. A saturated pipe stays
+        // saturated for as long as the game drives the wheel, so a longer budget
+        // buys no extra chance of success and just spends more workers on five
+        // blocking reads each. And a game that owns the LED bar is one we should
+        // be standing down from anyway.
+        private const int SlotSyncMaxRetries   = 6;   // ~3 minutes of trying
+
+        /// <summary>Arm, re-arm or stand down the retry from a sync's result.
+        /// Called by SyncSlotsToWheel however it was reached, so a user-driven
+        /// sync that succeeds also cancels a retry we owed.</summary>
+        private void NoteSlotSyncOutcome(int unreadable)
+        {
+            if (unreadable <= 0)
+            {
+                if (_slotSyncRetryAtMs != 0)
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] light slots read cleanly; they now match your list.");
+                _slotSyncRetryAtMs = 0;
+                _slotSyncRetriesLeft = 0;
+                return;
+            }
+
+            // First sighting opens the budget. Re-arming on every attempt without
+            // this would make the budget meaningless.
+            if (_slotSyncRetryAtMs == 0 && _slotSyncRetriesLeft == 0)
+            {
+                _slotSyncRetriesLeft = SlotSyncMaxRetries;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] {unreadable} light slot(s) could not be read (the wheel's HID++ "
+                    + "pipe was busy, which is what happens when the game starts before SimHub); "
+                    + $"retrying in {SlotSyncRetryDelayMs / 1000} s.");
+            }
+
+            if (_slotSyncRetriesLeft > 0)
+            {
+                _slotSyncRetryAtMs = unchecked(Environment.TickCount + SlotSyncRetryDelayMs);
+                return;
+            }
+
+            _slotSyncRetryAtMs = 0;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] light slots still unreadable; leaving them alone for this session, so the "
+                + "rev lights and the wheel's screen stay off. This happens when the GAME is driving "
+                + "the wheel's HID++ pipe, so it does not apply to iRacing, RaceRoom or Assetto Corsa "
+                + "with the bridge, where the game's own force feedback is off. Elsewhere, starting "
+                + "SimHub before the game avoids it.");
+        }
+
+        /// <summary>Once per SimHub tick: re-run a sync that could not read the
+        /// wheel. Cheap and silent when nothing is owed.</summary>
+        private void RetrySlotSyncIfUnread()
+        {
+            if (_slotSyncRetryAtMs == 0) return;
+            // Wrap-safe: unchecked int subtraction stays correct across the
+            // TickCount rollover, which a plain "now >= due" compare does not.
+            if (unchecked(Environment.TickCount - _slotSyncRetryAtMs) < 0) return;
+            if (MasterMode == TrueforceMasterMode.Off) return;
+            if (_rpmLeds?.Channel == null) return;
+            // One at a time. The reads take over a second when the pipe is busy,
+            // which is longer than the retry interval, so without this a slow
+            // attempt would have a second one stacked behind it.
+            if (System.Threading.Interlocked.CompareExchange(ref _slotSyncRunning, 1, 0) != 0) return;
+
+            _slotSyncRetriesLeft--;
+            _slotSyncRetryAtMs = 0;   // the attempt itself re-arms below
+            // OFF THE TICK THREAD, and this is the whole point of the change.
+            //
+            // These are five feature reads that each block to a 250 ms timeout
+            // while the FFB stream saturates the HID++ pipe, so on SimHub's own
+            // tick thread they froze it for over a second: SimHub flagged
+            // "Abnormal Inactivity", the frozen tick read as a telemetry stall,
+            // and the rev lights and screen were handed back then re-taken, which
+            // is the flicker seen on 2026-09-05. The old answer was to refuse to
+            // retry at all while the wheel was being driven, which made the retry
+            // useless for the case it exists for: someone who starts the game
+            // first and drives straight into a session never offers an idle
+            // moment, the budget expires, and StageSlot has no slot it dares
+            // borrow, so there is no LED or OLED control for the whole session.
+            //
+            // On a worker the reads can fail as often as they like and cost
+            // nothing but their own thread. That is what lets the idle-only gate
+            // go (owner, 2026-09-12).
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    // Drop the cached map so this genuinely re-reads the wheel
+                    // rather than answering from whatever armed the retry.
+                    InvalidateSlotProgrammedCache();
+                    string msg;
+                    SyncSlotsToWheel(out msg);   // re-arms or stands down via NoteSlotSyncOutcome
+                }
+                catch (Exception ex)
+                {
+                    // The pattern list is also reachable from the settings UI, so
+                    // a user editing it at the exact moment this fires can throw.
+                    // Re-arm and let the next attempt pick it up.
+                    _slotSyncRetryAtMs = unchecked(Environment.TickCount + SlotSyncRetryDelayMs);
+                    SimHub.Logging.Current.Info("[TF4ALL] slot-sync retry failed: " + ex.Message);
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Exchange(ref _slotSyncRunning, 0);
+                }
+            });
+        }
+
+        /// <summary>1 while a slot-sync retry is in flight on a worker.</summary>
+        private int _slotSyncRunning;
 
         /// <summary>The level to write with when we put something on the strip
         /// deliberately. Driving, keep the live rev level: the bar IS the display
@@ -12406,7 +16452,7 @@ namespace TrueforceForAll.Plugin
         /// One rule, in one place. The editor used to pass a full bar and the
         /// cycle the live level, which is exactly why clicking a pattern lit up
         /// and cycling to the same pattern did not.</summary>
-        /// <summary>How long a lit strip stays up after an EDIT before fading.
+        /// <summary>How long a lit strip stays up after an EDIT before going out.
         /// Long: the user is working on that pattern, each change re-arms it, and
         /// a bar that drops out between color picks is the thing they are trying
         /// to look at going away.</summary>
@@ -12418,9 +16464,13 @@ namespace TrueforceForAll.Plugin
         /// bar for another eight seconds afterwards reads as the wheel being
         /// stuck rather than as an answer.
         ///
+        /// A second is the glance (owner, 2026-09-08). The fill itself already
+        /// runs about two seconds, so the bar has been in front of the user the
+        /// whole time it was rising; this is the beat at the top, not the look.
+        ///
         /// Not zero. Ending dark would mean a pick shows nothing at the moment it
         /// finishes, which is the whole reason someone pressed.</summary>
-        private const int PickHoldMs = 2500;
+        private const int PickHoldMs = 1000;
 
         private int ShowLevel =>
             (_rpmLeds?.IsDriving ?? false) ? -1 : WheelLedChannel.LedCount;
@@ -12461,7 +16511,17 @@ namespace TrueforceForAll.Plugin
             // A pattern the user pinned to THIS car is applied by the car-load
             // edge, which runs before this. Nothing to do here but stand down;
             // applying the sticky pattern as well would fight it for the slot.
-            if (HasExplicitCarLightChoice()) { _autoAppliedColors = false; return; }
+            if (HasExplicitCarLightChoice())
+            {
+                _autoAppliedColors = false;
+                // Said out loud. This returned silently, and a pinned pattern
+                // then looks exactly like the feature being broken: the car's
+                // data is read and logged, and nothing reaches the wheel.
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] car colors stood down for {carId}: a pattern is pinned to this car. "
+                    + "Pick \"Auto (this car's own colors)\" to hand it back.");
+                return;
+            }
 
             // ONE switch. There used to be a second flag here that only the
             // checkbox's change handler ever set, so a settings file where the two
@@ -12469,7 +16529,19 @@ namespace TrueforceForAll.Plugin
             // handler slaved them) gave a ticked box that did nothing until it was
             // toggled off and on. Reading the flag the control actually drives
             // makes that state impossible rather than merely unlikely.
-            bool haveData = LovelyLightingEnabled && _lovelyCar != null;
+            // The car's OWN dash colours first, where the game hands them to
+            // us. Same ranking as the fill thresholds and for the same reason:
+            // this is the car being driven, not a reading of it.
+            // A fixed strip has no slot to put them in. StageSlot would answer
+            // that eventually, but only after a round of slot reads that cannot
+            // succeed, once per car load; and the setting that gets us here is
+            // global, so a G PRO owner who ticked the box and then plugged in a
+            // G923 (or let G HUB put their G PRO in G923 mode) arrives here on
+            // every car. Ask the wheel first.
+            byte[] acCarColors = WheelHasFixedLightPattern ? null : AcCarColorsForLighting();
+            bool haveAcColors = acCarColors != null;
+            bool haveData = haveAcColors
+                         || (LovelyLightingEnabled && !WheelHasFixedLightPattern && _lovelyCar != null);
 
             if (!haveData)
             {
@@ -12500,6 +16572,12 @@ namespace TrueforceForAll.Plugin
                     if (!string.Equals(_activeGame, game, StringComparison.Ordinal)
                         || !string.Equals(_activeCarId, carId, StringComparison.Ordinal)) return;
 
+                    if (haveAcColors)
+                    {
+                        ApplyAcCarColors(acCarColors, carId);
+                        return;
+                    }
+
                     var car = _lovelyCar;
                     if (car == null) return;
 
@@ -12514,6 +16592,17 @@ namespace TrueforceForAll.Plugin
                         rgb[i * 3 + 2] = profile.Colors[i].B;
                     }
 
+                    // No stage: the slots would not read, so borrowing one would
+                    // overwrite a pattern with nothing standing behind it. The
+                    // car's colors are not worth that; leave the rim alone.
+                    int stage = StageSlot();
+                    if (stage == NoStageSlot)
+                    {
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] car colors not applied: " + NoStageSlotMessage);
+                        return;
+                    }
+
                     string msg;
                     // ALWAYS trimmed: no rawColors here, deliberately. These are
                     // upstream sRGB colors describing the real car, not bytes
@@ -12521,7 +16610,7 @@ namespace TrueforceForAll.Plugin
                     // correction as anything picked on screen.
                     bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
                     {
-                        Slot = (byte)StageSlot(),
+                        Slot = (byte)stage,
                         DirectionWire = profile.DirectionWire,
                         Rgb = rgb,
                     }, out msg,
@@ -12560,6 +16649,72 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Info("[TF4ALL] car-color apply failed: " + ex.Message);
                 }
             });
+        }
+
+        /// <summary>Paint the wheel with the car's OWN dash-LED colours.
+        ///
+        /// Cars carry fewer LEDs than the rim has steps (five is common against
+        /// ten here), so each car LED covers a run of rim LEDs. The same
+        /// proportional mapping the fill uses, so a colour change and the step
+        /// that lights it land on the same LED rather than a step apart.</summary>
+        private void ApplyAcCarColors(byte[] carRgb, string carId)
+        {
+            int strip = WheelLedChannel.LedCount;
+            var rgb = AcCarStripColors(carRgb, strip);
+
+            // Same refusal as the published-dataset path: no readable slot map
+            // means no slot may be borrowed.
+            int stage = StageSlot();
+            if (stage == NoStageSlot)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] car colors not applied: " + NoStageSlotMessage);
+                return;
+            }
+
+            string msg;
+            // Trimmed, not raw: these describe a car on screen, so they need
+            // the same correction as any other upstream sRGB colour. Same
+            // reasoning as the published-dataset path above.
+            bool ok = BorrowSlot(new WheelLedChannel.WheelLedSlot
+            {
+                Slot = (byte)stage,
+                DirectionWire = 3,          // left to right, the order cars number LED_0..n in
+                Rgb = rgb,
+            }, out msg,
+               displayLevel: -1,            // keep the live rev level
+               slotName: carId);
+
+            if (ok)
+            {
+                _autoAppliedColors = true;
+                LightPatterns.CurrentId = null;
+                LibraryPatternShowing = false;
+            }
+
+            PublishDashLightProfile(rgb, LightDirection.LeftToRight, carId);
+            SimHub.Logging.Current.Info(ok
+                ? $"[TF4ALL] car colors applied for {carId}: the car's own dash LED colors."
+                : "[TF4ALL] car colors not applied: " + msg);
+        }
+
+        /// <summary>Spread the car's LED colours across the rim's steps. Strip
+        /// LED i takes car LED floor(i * n / strip), so five car LEDs on a
+        /// ten-step rim colour two steps each.</summary>
+        private static byte[] AcCarStripColors(byte[] carRgb, int strip)
+        {
+            int n = carRgb.Length / 3;
+            var rgb = new byte[strip * 3];
+            if (n <= 0) return rgb;
+            for (int i = 0; i < strip; i++)
+            {
+                int src = (int)((long)i * n / strip);
+                if (src >= n) src = n - 1;
+                rgb[i * 3 + 0] = carRgb[src * 3 + 0];
+                rgb[i * 3 + 1] = carRgb[src * 3 + 1];
+                rgb[i * 3 + 2] = carRgb[src * 3 + 2];
+            }
+            return rgb;
         }
 
         // ---- LIGHTSYNC slot borrow / restore ----
@@ -12729,13 +16884,33 @@ namespace TrueforceForAll.Plugin
             int spare = FirstUnprogrammedSlot();
             if (spare >= 0) return _stageSlot = spare;
 
-            // Every slot is in use. Take the last one, but only LATCH that answer
-            // if we could actually read the wheel: a map built over five failed
-            // reads also says "all in use", and latching it would fix the stage
-            // to a guess for the rest of the session.
-            if (_slotProgrammed == null) return WheelLedChannel.CustomSlotCount - 1;
-            return _stageSlot = WheelLedChannel.CustomSlotCount - 1;
+            // Every slot is in use, so one has to be borrowed: take the last.
+            // Latching is safe here because the map was actually read.
+            if (_slotProgrammed != null) return _stageSlot = WheelLedChannel.CustomSlotCount - 1;
+
+            // The map came from five FAILED reads, which looks identical to
+            // "all five are in use" and is not the same thing at all. Borrowing
+            // on that basis writes over a slot we never managed to look at, so
+            // the backup that is supposed to hand it back holds nothing and the
+            // user loses a pattern for good. Refuse instead, and let the caller
+            // say so. The reads are retried (see RetrySlotSyncIfUnread), so a
+            // session that started while the game already held the wheel's
+            // HID++ pipe recovers on its own.
+            return NoStageSlot;
         }
+
+        /// <summary>What <see cref="StageSlot"/> returns when the wheel's slots
+        /// could not be read, so no slot may be borrowed yet. Callers must check
+        /// for it: casting it to a byte would address slot 255.</summary>
+        public const int NoStageSlot = -1;
+
+        /// <summary>The one message every caller shows when there is no stage.
+        /// One wording, because the user meets this from six different buttons
+        /// and it is the same situation each time.</summary>
+        internal const string NoStageSlotMessage =
+            "Could not read the wheel's light slots, so nothing was written. "
+            + "This usually clears on its own within a minute; starting SimHub "
+            + "before the game avoids it.";
 
         /// <summary>The slot on loan for this session, or -1 before one has been
         /// chosen. Latched: see <see cref="StageSlot"/>.</summary>
@@ -12941,10 +17116,30 @@ namespace TrueforceForAll.Plugin
             return false;
         }
 
-        /// <summary>Whether the active car would be driven by its published data
-        /// if nothing were pinned. Drives the "Auto" entry in the pickers.</summary>
+        /// <summary>Whether the active car would light itself if nothing were
+        /// pinned. Drives the "Auto" entry in the pickers.
+        ///
+        /// TWO sources now: the published dataset, and the car's OWN dash data
+        /// where the game hands it over. Auto is one idea to the user ("let this
+        /// car pick"), so both feed the same entry rather than growing a second
+        /// one that means almost the same thing.</summary>
         public bool AutoCarColorsAvailable()
-            => LovelyLightingEnabled && _lovelyCar != null;
+            => (LovelyLightingEnabled && _lovelyCar != null) || AcCarColorsForLighting() != null;
+
+        /// <summary>The active car's own dash-LED colours, if it gave any and the
+        /// user has allowed per-car data to drive the lights.
+        ///
+        /// Deliberately NOT behind the community switch that gates the published
+        /// dataset: this is the game's own file for the car being driven, nothing
+        /// to do with the backend. It IS behind the lights opt-in, because that
+        /// switch exists to ask before we borrow one of the user's five wheel
+        /// slots, and this borrows one exactly the same way.</summary>
+        private byte[] AcCarColorsForLighting()
+        {
+            if (Settings?.LovelyCarDataEnabled != true) return null;
+            var c = (_telemetrySource as AcSharedMemoryTelemetrySource)?.CspAcLedStepColors;
+            return c != null && c.Length >= 3 ? c : null;
+        }
 
         /// <summary>Hand this car back to its own data by clearing any pinned
         /// choice, then apply it now so the change is visible immediately rather
@@ -13061,6 +17256,7 @@ namespace TrueforceForAll.Plugin
             message = null;
             if (pattern == null) { message = "No pattern."; return false; }
             int slot = StageSlot();
+            if (slot == NoStageSlot) { message = NoStageSlotMessage; return false; }
 
             byte[] rgb = pattern.Rgb();
             if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
@@ -13732,6 +17928,681 @@ namespace TrueforceForAll.Plugin
         /// the only one the F8ANY experiment means anything on.</summary>
         public bool WheelIsLegacyF8 => _hidWheelPid == 0xC266 && !GProInG923Mode;
 
+        /// <summary>The other side of that split: wheels whose rev bar is the
+        /// HID++ 0x807A level channel. Ten steps on a G PRO or RS50, five on a
+        /// G923 Xbox, and the strip length comes from the wheel itself rather
+        /// than from this list. A G PRO wearing a G923 PID is here too, because
+        /// the routing follows the hardware.</summary>
+        public bool WheelIsHidppLevelBar =>
+               _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268   // G PRO (+ RS50 in compat mode)
+            || _hidWheelPid == 0xC276                             // RS50 native
+            || _hidWheelPid == 0xC26D || _hidWheelPid == 0xC26E   // G923 Xbox
+            || GProInG923Mode;
+
+        // ---------------- rim LEDs with no revs to draw ----------------
+
+        /// <summary>Start or stop the audio meter thread to match the settings,
+        /// and push the sensitivity through. Called at init, on a mode change
+        /// and from the settings panel, so nothing polls the audio endpoint for
+        /// a feature nobody has chosen.</summary>
+        public void SyncAudioOutputMeter()
+        {
+            var meter = _audioLeds;
+            if (meter == null) return;
+            var s = Settings;
+            // An arcade cabinet meters its audio between races whether or not either occasion was
+            // set to it, so the meter has to be running for one to be available. Costs nothing when
+            // no cabinet is live, because this only becomes true once one is.
+            bool arcadeWantsAudio = ActiveGameIsArcade
+                                 && _arcadeMemory != null && _arcadeMemory.Verified;
+            bool wantAudio = s != null
+                          && MasterMode != TrueforceMasterMode.Off
+                          && (s.IdleLedMode == AmbientLedMode.AudioLevel
+                           || s.NoRevLedMode == AmbientLedMode.AudioLevel
+                           || arcadeWantsAudio);
+            if (wantAudio)
+            {
+                meter.Start();
+                return;
+            }
+
+            meter.Stop();
+            // The strip does NOT come back here. Turning the meter off may leave
+            // a sweep chosen for the other occasion, and the idle driver below
+            // hands the bar over on its next tick either way; releasing from
+            // here would blink the strip dark in between for no reason.
+        }
+
+        /// <summary>Reads engine data out of an arcade game's own memory. Null until an arcade game
+        /// is running. Read only; see Id8MemoryTelemetry for the anti-cheat boundary.</summary>
+        private Id8FrameFiller _arcadeMemory;
+
+        /// <summary>Fills the game's own leaderboards and submits finished runs. Separate from
+        /// _arcadeMemory because that one is strictly read only and stays that way: this is the
+        /// only thing in the plugin that writes to a game's memory, and keeping the two apart is
+        /// what makes that boundary checkable rather than a claim.</summary>
+        private ArcadeLeaderboardService _arcadeBoards;
+
+        /// <summary>Raises each finished Time Attack run once. A finished race is visible for
+        /// hundreds of consecutive polls, so without this the same lap would submit repeatedly.</summary>
+        private readonly Id8RunWatcher _arcadeRuns = new Id8RunWatcher();
+
+        /// <summary>Guards against stacking overlapping network calls when the course changes
+        /// while a previous fill is still in flight.</summary>
+        private int _arcadeBoardBusy;
+
+        /// <summary>Fill the boards for whatever course is up, and submit a finished run.
+        ///
+        /// Both halves are fire-and-forget: they touch the network, and the telemetry frame must
+        /// not wait on that. Failure is silent by design here, because a leaderboard that cannot
+        /// be reached is not a reason to disturb the wheel.</summary>
+        private void StepArcadeLeaderboards(Id8FrameFiller filler)
+        {
+            var st = Settings;
+            if (st?.Arcade == null || !st.Arcade.Id8LeaderboardsEnabled) return;
+            // Gated on knowing the PROCESS, and nothing else. Not on a valid race sample, and not
+            // on the telemetry reader having verified itself either: both are only true once the
+            // game has built a session, which is to say once somebody is driving. The boards are
+            // read from the menus, where the reader reports "the game has not built its session
+            // yet" with verified=false, so either gate meant the boards were only ever written
+            // while racing. A player who started the game and walked straight to the leaderboards
+            // saw SEGA's placeholders, and since memory writes do not survive the process, that
+            // was true again after every restart.
+            //
+            // Nothing is lost by dropping the checks, because the leaderboard tables are not in
+            // the session. They hang off a static address, and Attach resolves them and runs
+            // LayoutLooksRight, which refuses to write unless all four tables match the analysed
+            // build. The fill validates itself; it never needed the telemetry reader's opinion.
+            if (filler == null || string.IsNullOrEmpty(filler.GameProcessName)) return;
+
+            if (_arcadeBoards == null)
+                _arcadeBoards = new ArcadeLeaderboardService(
+                    () => Settings,
+                    msg => SimHub.Logging.Current.Info(msg),
+                    async () => _auth != null ? await _auth.GetAccessTokenAsync() : null);
+
+            // Attach lazily: the process is already known to the reader, and Attach is cheap and
+            // idempotent once it has succeeded.
+            Process game = FindArcadeProcess(filler.GameProcessName);
+            if (game == null || !_arcadeBoards.Attach(game)) return;
+
+            // Fill every board, not just the one being driven: the player browses the leaderboard
+            // menu for courses they have not touched, and those would otherwise still show SEGA's
+            // filler. The service latches this so it only actually runs once per attach.
+            if (Interlocked.CompareExchange(ref _arcadeBoardBusy, 1, 0) == 0)
+            {
+                Task.Run(async () =>
+                {
+                    try { await _arcadeBoards.FillAllAsync(CancellationToken.None).ConfigureAwait(false); }
+                    catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade board fill failed: " + ex.Message); }
+                    finally { Interlocked.Exchange(ref _arcadeBoardBusy, 0); }
+                });
+            }
+
+
+            // The run watcher, unlike the fill, genuinely does need a live race sample: it is
+            // watching for a finished lap. This is the guard that used to sit at the top and stop
+            // the fill as well.
+            Id8Sample s = filler.Last;
+
+            // Menu work FIRST, and outside the validity guard below. Valid means the whole car
+            // chain resolved, which only happens in a race, so anything that has to act on a menu
+            // has to act before it: the ladder layout, and the rewrite deferred out of the results.
+            ObserveArcadeLadder(s);
+
+            if (!s.Valid) return;
+
+            Id8FinishedRun run = _arcadeRuns.Observe(s, s.GameMode);
+            if (run != null)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Arcade run finished: course {run.CourseId} dir {run.Direction} " +
+                    $"car {run.CarId} {run.GoalMs} ms (clock read {run.ClockMs})");
+                var toSend = run;
+
+                // Show it, but NOT YET. Deferred to the moment the game leaves the race.
+                //
+                // The fill runs once per attach, so without a refill the player's own lap never
+                // reaches the boards until they change a setting or relaunch: they set a record,
+                // look, and it is not there. The game has just written its own copy, with the
+                // cabinet name and card id on it, so the refill folds in THAT rather than anything
+                // we invent.
+                //
+                // But the watcher fires at the GOAL, which is the middle of the results sequence:
+                // the new-record flourish, the splits, the time they are reading. Rewriting the
+                // boards there changes what they are looking at while they look at it. It matters
+                // more under ladder climb, where the target is supposed to move on once beaten, and
+                // the moment to move it is when they come back out to the course select.
+                //
+                // Independent of submission, which needs an account, the network and the disclosure
+                // and can decline for any of them. Their own time appearing on their own cabinet
+                // should not wait on any of that.
+                _arcadeBoards.NoteFinishedRun();
+
+                Task.Run(async () =>
+                {
+                    try { await _arcadeBoards.SubmitAsync(toSend, CancellationToken.None).ConfigureAwait(false); }
+                    catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade submit failed: " + ex.Message); }
+                });
+            }
+        }
+
+        /// <summary>Put the game's own shop board back, from the snapshot taken before we first
+        /// wrote to it. For the settings toggle going off: leaving our rows in place until the
+        /// player restarts the game would make "off" mean "off next time".</summary>
+        public void RestoreArcadeBoards()
+        {
+            try { _arcadeBoards?.RestoreShopBoards(); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade restore failed: " + ex.Message); }
+        }
+
+        /// <summary>Rewrite the boards for the course that is up now.
+        ///
+        /// The fill normally only runs when the course changes, so a source picked in the settings
+        /// mid-session would otherwise not appear until the player left the course and came back,
+        /// which reads as the setting not working.</summary>
+        public void RefillArcadeBoards()
+        {
+            var boards = _arcadeBoards;
+            var filler = _arcadeMemory;
+            if (boards == null || filler == null) return;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    // force: nothing about the game has changed, only the chosen source, so the
+                    // once-per-attach latch has to be overridden rather than worked around.
+                    await boards.FillAllAsync(CancellationToken.None, force: true).ConfigureAwait(false);
+                }
+                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade refill failed: " + ex.Message); }
+            });
+        }
+
+        /// <summary>The running arcade game, by the name the reader already matched.</summary>
+        private static Process FindArcadeProcess(string processName)
+        {
+            if (string.IsNullOrEmpty(processName)) return null;
+            try
+            {
+                Process[] all = Process.GetProcessesByName(processName);
+                return all.Length > 0 ? all[0] : null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>The last lap time from the cabinet's own memory, else whatever SimHub had.
+        /// SimHub has never heard of this game, so its lap fields sit at zero and the lap card
+        /// never fired: the times are timed here instead, from the game's lap counter against its
+        /// race clock.</summary>
+        private int ArcadeLastLapOrDefault(int fallback)
+        {
+            var m = _arcadeMemory;
+            if (m == null) return fallback;
+            var s = m.Last;
+            return (s.Valid && s.InRace && s.LastLapMs > 0) ? s.LastLapMs : fallback;
+        }
+
+        private int ArcadeBestLapOrDefault(int fallback)
+        {
+            var m = _arcadeMemory;
+            if (m == null) return fallback;
+            var s = m.Last;
+            return (s.Valid && s.InRace && s.BestLapMs > 0) ? s.BestLapMs : fallback;
+        }
+
+        /// <summary>The technique the game just scored, held briefly so it can be read.
+        ///
+        /// These are the game's own judgement of good driving, not something inferred from physics,
+        /// which is what makes them worth showing. The bit numbering was taken from the code that
+        /// counts them rather than guessed: each counter shifts the flag word by its own amount and
+        /// then announces a display id, and the two together give the pairing. An earlier guess
+        /// that the bit equalled the id was wrong on every one.</summary>
+        private string ArcadeTechniqueText()
+        {
+            var m = _arcadeMemory;
+            if (m == null) { _arcadeTechniqueUntil = 0; return null; }
+
+            // A wall hit gets its own, shorter moment: it is a mistake rather than a flourish and
+            // wants to be gone before the next corner. It does NOT come from the technique bits.
+            // The game names a wall hit in its technique table but never awards one anywhere in
+            // this build, so the contact flag is the only real source for it.
+            if (m.TakeWallHit())
+            {
+                _arcadeTechniqueText = m.LastHitWasCar ? "CONTACT" : "WALL HIT";
+                _arcadeTechniqueIsImpact = true;
+                _arcadeTechniqueUntil = Environment.TickCount + 1200;
+            }
+
+            uint bits = m.TakeTechniques();
+            if (bits != 0)
+            {
+                string name = null;
+                if ((bits & (1u << 3)) != 0) name = "GUTTER RUN";
+                else if ((bits & (1u << 6)) != 0) name = "SHORTCUT";
+                else if ((bits & (1u << 4)) != 0) name = "WHEEL LIFT";
+                // bit 2 is tested and counted by the game but never set in this build.
+                if (name != null)
+                {
+                    // An award outranks a wall hit: it is rarer and the better news.
+                    _arcadeTechniqueText = name;
+                    _arcadeTechniqueIsImpact = false;
+                    _arcadeTechniqueUntil = Environment.TickCount + 2000;
+                }
+            }
+
+            if (_arcadeTechniqueUntil == 0) return null;
+            if (unchecked(Environment.TickCount - _arcadeTechniqueUntil) >= 0)
+            {
+                _arcadeTechniqueUntil = 0;
+                return null;
+            }
+            return _arcadeTechniqueText;
+        }
+
+        private int _arcadeTechniqueUntil;
+        private string _arcadeTechniqueText;
+
+        /// <summary>Whether the technique on show is something that HURT rather than something
+        /// that scored. Carried as a flag beside the text rather than re-derived from it: the
+        /// display used to test the text against "WALL HIT" alone, so hitting another car came
+        /// out as "NICE CONTACT". Whoever names a new impact should not have to know that.</summary>
+        private bool _arcadeTechniqueIsImpact;
+
+        /// <summary>Push the floor setting down to the live arcade source. Called when it is
+        /// edited and whenever a source is created, since the source is rebuilt per game.</summary>
+        /// <summary>Push the active cabinet's per-effect holds at the running
+        /// source, so a slider is felt now rather than at the next launch.</summary>
+        public void ApplyArcadeHolds()
+        {
+            var pub = _teknoSource as FfbArcadePluginSource;
+            if (pub == null) return;
+            var t = ArcadeTuningPeek(_activeGame);
+            pub.SteadyHoldMs    = ClampArcadeHold(t.SteeringHoldMs);
+            pub.VibrationHoldMs = ClampArcadeHold(t.VibrationHoldMs);
+        }
+
+        /// <summary>0 means "leave the published length alone". Anything shorter
+        /// than one publisher frame cannot hold at all and would read as a control
+        /// that silences the effect, so it is lifted to one frame instead.</summary>
+        internal static int ClampArcadeHold(int ms)
+        {
+            if (ms <= 0) return 0;
+            if (ms < 16) return 16;
+            if (ms > 20000) return 20000;
+            return ms;
+        }
+
+        public void ApplyArcadeMinForce()
+        {
+            var pub = _teknoSource as FfbArcadePluginSource;
+            if (pub == null) return;
+            int pct = Settings?.Arcade?.MinForcePercent ?? 0;
+            pub.MinForce01 = pct <= 0 ? 0.0 : pct / 100.0;
+        }
+
+        /// <summary>Knock the wheel as the cabinet's menus are used. Called on the telemetry tick,
+        /// which is the only place that sees the reader.
+        ///
+        /// The two strengths are the same voice as a gear change, which is what makes it read as
+        /// mechanical rather than as a beep. A confirmation gets the full thud and moving through
+        /// the options gets a third of it.
+        ///
+        /// What counts as confirming is approximate. The cabinet keeps no cursor or selected-item
+        /// field anywhere we have mapped, so a change of screen stands in for it. Confirming
+        /// something that leaves you on the same screen therefore feels like a move rather than a
+        /// choice, which is the honest limit of what the game exposes.</summary>
+        private void TickArcadeMenuHaptics()
+        {
+            if (Settings?.Arcade?.MenuHaptics != true) return;
+            var m = _arcadeMemory;
+            if (m == null || !m.Verified) return;
+            int action = m.TakeMenuAction();
+            if (action == 0) return;
+            var gs = GearShift;
+            if (gs == null) return;
+            try { gs.PlayOneShot(action == 2 ? 1.0f : 0.33f); } catch { }
+        }
+
+        /// <summary>The starting lights as text. The race clock runs negative before GO, so the
+        /// number is simply how many whole seconds are left, and GO is held for the first moment
+        /// after it reaches zero.</summary>
+        private string ArcadeCountdownText()
+        {
+            var m = _arcadeMemory;
+            if (m == null) return null;
+            var s = m.Last;
+            if (!s.InRace || !s.Valid) return null;
+            if (s.CountdownSeconds > 0)
+                return s.CountdownSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return s.JustStarted ? "GO" : null;
+        }
+
+        /// <summary>How the race ended, held for a few seconds so it is still there when the driver
+        /// looks down. Latched on the transition rather than polled, because the fields it is
+        /// judged from keep their values well past the moment they became true.</summary>
+        private string ArcadeResultText()
+        {
+            var m = _arcadeMemory;
+            if (m == null) { _arcadeResultShownUntil = 0; return null; }
+            var s = m.Last;
+
+            if (s.Finished && s.Valid && !_arcadeResultLatched)
+            {
+                _arcadeResultLatched = true;
+                _arcadeResultShownUntil = Environment.TickCount + 6000;
+                // Only a race decided at the goal gets a placing. Running out of time is its own
+                // ending, and a measured session proved the difference matters: it ended on the two
+                // minute limit with the rank field still at its initial 0, which the old logic
+                // would have announced as a win.
+                _arcadeResultText = s.Won == true ? "WIN"
+                                  : s.Won == false ? "LOSE"
+                                  : s.ReachedGoal ? "FINISH" : "TIME UP";
+                // The fields behind this are only LIKELY in the map, so the reading that produced
+                // the word is on the record next to it. One race settles the encoding.
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] [ID8MEM] race over, showing '{_arcadeResultText}'. rank={s.ActorRank} "
+                    + $"actorState={s.ActorState} resultCode={s.ResultCode} endReason={s.EndReason} "
+                    + $"finishMs={s.FinishTimeMs} gap={s.GapMetres:0.0}m reachedGoal={s.ReachedGoal}");
+            }
+            else if (!s.Finished)
+            {
+                _arcadeResultLatched = false;
+            }
+
+            if (_arcadeResultShownUntil == 0) return null;
+            if (unchecked(Environment.TickCount - _arcadeResultShownUntil) >= 0)
+            {
+                _arcadeResultShownUntil = 0;
+                return null;
+            }
+            return _arcadeResultText;
+        }
+
+        private bool _arcadeMeterSynced;
+        private bool _arcadeResultLatched;
+        private int _arcadeResultShownUntil;
+        private string _arcadeResultText;
+
+        /// <summary>The attract message, scrolled. The large row on the wheel holds ten characters
+        /// and "PRESS START" is eleven, so it was arriving cut off. Rather than shorten it to fit,
+        /// the whole message runs past the window the way the greeting does, which also lets it say
+        /// more than one thing without flicking between two static screens.</summary>
+        private string ArcadeAttractWindow()
+        {
+            const string Message = "INITIAL D 8   PRESS START   ";
+            const int Window = 10;
+            const int StepMs = 220;
+            // Doubled so a window near the end still has characters to read.
+            string loop = Message + Message;
+            int step = (Environment.TickCount / StepMs) % Message.Length;
+            return loop.Substring(step, Window);
+        }
+
+        /// <summary>Has anyone swiped a card? Until they do, the game fills the player record with
+        /// its own placeholder, whose name is katakana for "player". Romanised onto a wheel panel
+        /// that reads like a fault rather than like a driver, so nothing about the player is worth
+        /// showing yet.</summary>
+        private bool ArcadeHasCard()
+        {
+            var m = _arcadeMemory;
+            if (m == null) return false;
+            var s = m.Last;
+            return s.SessionValid && s.HasCard && !string.IsNullOrEmpty(s.PlayerNameAscii);
+        }
+
+        /// <summary>Top row between races: the driver once there is one, and otherwise nothing, so
+        /// the attract message below has the large row to itself.</summary>
+        private string ArcadeBetweenRacesTop()
+        {
+            var m = _arcadeMemory;
+            if (m == null) return null;
+            var s = m.Last;
+            if (s.InRace) return null;
+
+            // NO SESSION AT ALL IS THE MOST ATTRACT STATE THERE IS, and this used to return
+            // nothing for it. The session pointer genuinely comes and goes while a cabinet idles,
+            // so the panel went blank in exactly the state the message exists for, and only spoke
+            // up in the one state where somebody had already pressed start. Identity is what needs
+            // a session; the attract line needs nothing.
+            if (!s.SessionValid) return ArcadeAttractWindow();
+
+            // Nobody has swiped in, so there is no driver to name and the attract line takes the
+            // row instead. It reads better up here than down in the car slot: the top row is where
+            // the eye starts, and leaving it blank above a message made the panel look half broken.
+            if (!ArcadeHasCard()) return ArcadeAttractWindow();
+            // The panel draws ASCII only, and this is a Japanese game whose names are usually
+            // katakana, so the romanised form is what can actually be read there. The unromanised
+            // name still goes out on the Arcade.PlayerName property for dashes that can show it.
+            return s.PlayerNameAscii;
+        }
+
+        /// <summary>Bottom row between races. With a card, the chosen car. Without one, an attract
+        /// message that alternates every few seconds, because at that point there genuinely is no
+        /// driver and no car, and inventing either is worse than saying what the cabinet is.</summary>
+        private string ArcadeBetweenRacesBottom()
+        {
+            var m = _arcadeMemory;
+            if (m == null) return null;
+            var s = m.Last;
+            if (s.InRace) return null;
+
+            // Blank rather than null with no session, so the top row's attract line has the panel
+            // to itself rather than sitting above whatever was there before.
+            if (!s.SessionValid) return "";
+
+            // The attract line lives on the top row now, so this one stays empty until there is
+            // a real car to name.
+            if (!ArcadeHasCard()) return "";
+
+            var car = s.GarageCar ?? s.Car;
+            // The panel row is short, so the code beats the full name: a driver knows AE86T. No car
+            // chosen yet leaves the row blank rather than guessing at one.
+            return car != null ? car.Code : "";
+        }
+
+        /// <summary>Lap number from the cabinet's own memory while it is racing, else whatever
+        /// SimHub had. The map counts laps FINISHED, and a display wants the one being driven.</summary>
+        private int ArcadeLapOrDefault(int fallback)
+        {
+            var m = _arcadeMemory;
+            if (m == null) return fallback;
+            var s = m.Last;
+            return s.InRace && s.Valid ? s.LapsCompleted + 1 : fallback;
+        }
+
+        /// <summary>Total laps from the course record, else whatever SimHub had. Zero means the
+        /// course is a sprint rather than a circuit, and a display should show no lap count.</summary>
+        private int ArcadeTotalLapsOrDefault(int fallback)
+        {
+            var m = _arcadeMemory;
+            if (m == null) return fallback;
+            var s = m.Last;
+            return s.InRace && s.Valid && s.TotalLaps > 0 ? s.TotalLaps : fallback;
+        }
+
+        /// <summary>Stamp rpm, gear, speed and the pedals onto an arcade frame from the game's own
+        /// memory. Does nothing at all when the pointer chain does not resolve, so a build the map
+        /// does not describe simply produces no engine data rather than wrong data.</summary>
+        private void ApplyArcadeMemoryTelemetry(ref TelemetryFrame frame)
+        {
+            if (!ActiveGameIsArcade)
+            {
+                var stale = _arcadeMemory;
+                if (stale != null)
+                {
+                    _arcadeMemory = null;
+                    try { stale.Dispose(); } catch { }
+                }
+                // The boards live in the game's memory, so when the game goes so does everything
+                // we knew about them. Detaching also drops the pre-write snapshot, which must be
+                // retaken fresh next launch rather than carried across.
+                try { _arcadeBoards?.Detach(); } catch { }
+                _arcadeRuns?.Reset();
+                return;
+            }
+
+            var filler = _arcadeMemory;
+            if (filler == null)
+            {
+                filler = new Id8FrameFiller(msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"));
+                _arcadeMemory = filler;
+            }
+            // The frame counter only paces the retry, so any monotonic tick will do.
+            try { filler.Fill(ref frame, Environment.TickCount / 2); } catch { }
+
+            // Fill the game's leaderboards and submit a finished run. Deliberately after Fill, so
+            // it works from the sample this frame just produced, and deliberately wrapped: a
+            // leaderboard is a nicety and must never be able to take the telemetry path down.
+            try { StepArcadeLeaderboards(filler); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade leaderboards: " + ex.Message); }
+        }
+
+        /// <summary>Which output is being metered, or why none is, for the
+        /// settings panel.</summary>
+        public string AudioOutputMeterStatus => _audioLeds?.Status ?? "off";
+
+        /// <summary>Where the meter's own bar sits, 0..1, so the panel can show
+        /// it moving while the sensitivity is being set.</summary>
+        public double AudioOutputMeterLevel => _audioLeds?.Level01 ?? 0.0;
+
+        /// <summary>What should be on the rim LEDs right now given that the revs
+        /// are not driving them, or Off to leave the strip alone.
+        ///
+        /// Two occasions, resolved in this order and NOT the other one. A game
+        /// being PLAYED that has never mentioned an engine is the no-revs case
+        /// for as long as it runs, and it never falls through to the idle case.
+        /// That order is the whole reason this is written down: the arcade
+        /// sources publish no speed at all, so DashIdleElapsed reads a live
+        /// cabinet as parked, and a fall-through would swap a running game's
+        /// lights over to the idle choice partway through a race.
+        ///
+        /// The revs always win where there are revs. Neither occasion competes
+        /// for the bar; they fill the gaps where nothing else can.</summary>
+        /// <param name="gamePlaying">Whether a game is actually being played, as
+        /// opposed to merely feeding us frames. Those came apart in testing: the
+        /// arcade source publishes for as long as the cabinet IO block exists,
+        /// so TeknoParrot sitting open at its menu looked exactly like a running
+        /// game and held the no-revs case open forever. The caller answers this,
+        /// because only it has the session signal.</param>
+        private AmbientLedMode ResolveAmbientMode(bool gamePlaying)
+        {
+            var s = Settings;
+            if (s == null) return AmbientLedMode.Off;
+            // A mapped arcade cabinet answers this exactly rather than by latch: it says whether
+            // a race is running right now. The strip can therefore go back to the ambient choice
+            // between races, which is where the driver actually is when there is something to look
+            // at. Everywhere else the one-way latch stands, because a sim that has ever reported an
+            // engine will report one again and flicking the strip between two owners mid-session
+            // would be worse than holding it.
+            var arcadeMem = _arcadeMemory;
+            if (gamePlaying && arcadeMem != null && arcadeMem.Verified)
+            {
+                var arc = arcadeMem.Last;
+                if (arc.InRace) return AmbientLedMode.Off;   // the revs have the strip
+                if (arc.SessionValid)
+                {
+                    // Between races, and NEITHER of the two occasions describes it properly. The
+                    // no-revs one is about a game that never reports an engine, which this game
+                    // does; making it the only way in meant asking for the audio meter here forced
+                    // a claim about the game that is not true. The idle one is about a parked car,
+                    // which is closer but is separately suppressed for a live cabinet.
+                    //
+                    // So take whichever the owner has actually chosen, and when they have chosen
+                    // neither, meter the audio anyway. Between races a cabinet is showing menus and
+                    // attract screens with music playing over them, the strip has nothing else to
+                    // do, and asking someone to find a setting before the lights will move is a
+                    // toggle for its own sake. The revs take it straight back the moment a race
+                    // starts, so this cannot get in the way of driving.
+                    if (s.IdleLedMode != AmbientLedMode.Off) return s.IdleLedMode;
+                    if (s.NoRevLedMode != AmbientLedMode.Off) return s.NoRevLedMode;
+                    return AmbientLedMode.AudioLevel;
+                }
+            }
+            if (gamePlaying && !_revDataSeen) return s.NoRevLedMode;
+            // Asked before DashIdleElapsed, which is stateful and shared: with
+            // the idle occasion switched off there is no reason to be driving
+            // somebody else's stop-watch on the telemetry thread.
+            if (s.IdleLedMode == AmbientLedMode.Off) return AmbientLedMode.Off;
+            return DashIdleElapsed() ? s.IdleLedMode : AmbientLedMode.Off;
+        }
+
+        /// <summary>The level that mode wants, in whole steps of the strip it is
+        /// being drawn on. Off reads zero, which is also what a caller writes to
+        /// release a strip it was driving.</summary>
+        private int AmbientLevelFor(AmbientLedMode mode, int steps)
+        {
+            if (steps <= 0) return 0;
+            switch (mode)
+            {
+                case AmbientLedMode.Sweep:
+                    // A clock, not a counter: two callers at different rates
+                    // (the telemetry path and the DataUpdate tick) then agree on
+                    // the phase without either owning it.
+                    return LedSweep.Level(
+                        DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond,
+                        Settings?.LedSweepPeriodMs ?? LedSweep.DefaultPeriodMs,
+                        steps);
+
+                case AmbientLedMode.AudioLevel:
+                    double v = _audioLeds?.Level01 ?? 0.0;
+                    if (double.IsNaN(v)) return 0;
+                    int lvl = (int)Math.Floor(v * steps + 0.5);
+                    return lvl < 0 ? 0 : lvl > steps ? steps : lvl;
+
+                default:
+                    return 0;
+            }
+        }
+
+        /// <summary>Was the idle path last seen driving the strip, so it knows
+        /// it has a release to do when it stops.</summary>
+        private bool _ambientIdleDriving;
+
+        /// <summary>Run the ambient lights with no telemetry arriving: SimHub
+        /// open with nothing playing, or a game that has stopped feeding us.
+        /// Lives on the DataUpdate tick because the telemetry path does not run
+        /// at all in that state, exactly like the OLED's idle readout.
+        ///
+        /// The gate is Normal mode plus silence from the telemetry path, which
+        /// is the same reasoning the OLED idle readout uses: with no game
+        /// running there is no force anywhere, so the wheel's HID++ pipe is
+        /// nobody's to cut. Where a game IS running and feeding us, the frame
+        /// path drives this instead and it rides that path's tap-proven quiet
+        /// gate like the rev lights do.</summary>
+        private void DriveAmbientLedsIdle()
+        {
+            var leds = _rpmLeds;
+            if (leds == null) return;
+
+            var mode = MasterMode == TrueforceMasterMode.Normal && NoTelemetryArriving()
+                     ? ResolveAmbientMode(gamePlaying: false)
+                     : AmbientLedMode.Off;
+            bool own = mode != AmbientLedMode.Off;
+            // Nothing to write and nothing to hand back: stay off the wire
+            // entirely rather than releasing an already released strip on every
+            // tick of every session that never turns this on.
+            if (!own && !_ambientIdleDriving) return;
+            _ambientIdleDriving = own;
+
+            try
+            {
+                if (WheelIsLegacyF8)
+                {
+                    int lvl = AmbientLevelFor(mode, G923LedCount);
+                    DriveG923Leds(lvl / (double)G923LedCount, false, own);
+                }
+                else if (WheelIsHidppLevelBar)
+                {
+                    leds.OnAmbientLevel(AmbientLevelFor(mode, leds.MirrorSteps), own);
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Error("[TF4ALL] ambient LED error", ex);
+            }
+        }
+
         public bool WheelHasSelectableLightPattern =>
             _hidWheelPid == 0xC272 || _hidWheelPid == 0xC268 || _hidWheelPid == 0xC276;
 
@@ -13843,7 +18714,7 @@ namespace TrueforceForAll.Plugin
         /// (write-on-change), &gt;0 = forza-style resend every N ms (e.g. 16).</param>
         public string ToggleF8LedSweep(int? resendMs)
         {
-            // Full only. This opens the wheel's gamepad HID collection and then
+            // Normal only. This opens the wheel's gamepad HID collection and then
             // resends the legacy F8-12 rev-LED report roughly sixty times a second
             // until it is switched off again, which is both wheel traffic off
             // forbids and the continuous bar driving lights-only forbids. It is a
@@ -14213,6 +19084,30 @@ namespace TrueforceForAll.Plugin
         /// game preset, judge by whether that preset is a Forza game's default;
         /// otherwise judge by the running/active game. This stops the badge
         /// from appearing while a non-Forza preset is open.</summary>
+        /// <summary>True while a game is running that has no ABS, no DRS and no pit limiter, so
+        /// their sections are hidden rather than badged.
+        ///
+        /// The established treatment for an effect that cannot fire in the current game is a badge
+        /// and a dimmed section, because those settings are preset-scoped and still apply elsewhere.
+        /// That reasoning does not reach these three on an arcade cabinet: they are not merely inert
+        /// here, the game has no such systems at all, and a Japanese street racer will never gain
+        /// them. A row that can never do anything is better absent than explained.</summary>
+        public bool HideAssistEffectsForActiveGame
+        {
+            get
+            {
+                if (IsOfflineEditingCar)
+                {
+                    // ArcadeUnlocked too: a car preset saved under a cabinet outlives the switch,
+                    // so without this an old ID8 preset opened for editing would still hide the
+                    // assist sections on a build that no longer has an arcade path.
+                    var g = GetCarPresetGame(_offlineEditCarId, _offlineEditCarPresetName);
+                    return ArcadeUnlocked && !string.IsNullOrEmpty(g) && IsArcadeGameName(g);
+                }
+                return ActiveGameIsArcade;
+            }
+        }
+
         public bool ShowAbsUnsupportedBadge
         {
             get
@@ -14257,7 +19152,8 @@ namespace TrueforceForAll.Plugin
         /// a "not used in Forza" badge next to the Stationary spring
         /// checkbox so users don't tune the section expecting a behavior
         /// that won't apply. Other sources unchanged.</summary>
-        public bool ActiveSourceSupportsStationarySpring => !InForzaSession;
+        public bool ActiveSourceSupportsStationarySpring
+            => !InForzaSession || ModeBEnabledForActiveGame;
 
         /// <summary>True if SimHub's GameName looks like any Forza title
         /// (Horizon or Motorsport). Drives Forza UDP section visibility.
@@ -14344,13 +19240,60 @@ namespace TrueforceForAll.Plugin
             return string.Equals(game, "IRacing", StringComparison.Ordinal);
         }
 
+        /// <summary>SimHub's GameName for RaceRoom ("RaceRoomRacingExperience";
+        /// "RRRE" accepted defensively in case a build reports the short
+        /// code).</summary>
+        private static bool IsR3EGame(string game)
+        {
+            return string.Equals(game, "RaceRoomRacingExperience", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(game, "RRRE", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>SimHub's GameName for Le Mans Ultimate ("LMU", from its
+        /// LMUManager in RfactorReader).</summary>
+        private static bool IsLmuGame(string game)
+        {
+            return string.Equals(game, "LMU", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>The games whose handover reads the sim's own shared memory
+        /// (RaceRoom, Le Mans Ultimate), whatever the route's state. The FFB
+        /// tab keeps the take-over checkbox present for these on the tap route
+        /// too, so it is the one switch for the handover.</summary>
+        private static bool IsSharedMemoryTakeoverGame(string game)
+        {
+            return IsR3EGame(game) || IsLmuGame(game);
+        }
+
+        /// <summary>True while the shared-memory handover is switched on for
+        /// <paramref name="game"/>.</summary>
+        private bool SharedMemoryTakeoverOn(string game)
+        {
+            var s = Settings;
+            if (s == null) return false;
+            return (s.R3ESharedMemoryFfb && IsR3EGame(game))
+                || (s.LmuSharedMemoryFfb && IsLmuGame(game));
+        }
+
+        /// <summary>True for games whose Telemetry Based FFB is a RESHAPE of
+        /// the sim's own steering torque: iRacing always, and RaceRoom while
+        /// the R3EFFB shared-memory route is opted in (dev A/B against the USB
+        /// tap). This is the PIPELINE predicate; surfaces that mean "iRacing
+        /// the sim" (its setup notice, loadTrueForceAPI handling, the direct
+        /// SDK reader, incident points) stay on IsIRacingReshapeGame.</summary>
+        private bool IsReshapeGame(string game)
+        {
+            if (IsIRacingReshapeGame(game)) return true;
+            return SharedMemoryTakeoverOn(game);   // RaceRoom, Le Mans Ultimate
+        }
+
         /// <summary>True if a game offers Telemetry Based FFB by ANY pipeline.
         /// The per-game opt-in, the tab toggle and the arming logic all key off
         /// this; which pipeline actually runs is decided in
         /// ApplyModeBFromSettings.</summary>
-        private static bool IsTelemetryFfbCapableGame(string game)
+        private bool IsTelemetryFfbCapableGame(string game)
         {
-            return IsModeBCapableGame(game) || IsIRacingReshapeGame(game);
+            return IsModeBCapableGame(game) || IsReshapeGame(game);
         }
 
         /// <summary>Pick the right ITelemetrySource for <paramref name="game"/>
@@ -14365,6 +19308,654 @@ namespace TrueforceForAll.Plugin
         /// so the briefest possible window of "no dispatch" covers the swap.
         /// Pass <paramref name="silent"/>=true on retry attempts so we don't
         /// log a "fell back" message every second while AC is loading.</summary>
+        // ---- Process-detected arcade games (TeknoParrot) ----
+
+        // Keep-alive, like _forzaUdp and _fsPipeSource: it must survive while the
+        // active source is something else, so it is disposed explicitly at every
+        // teardown site rather than through _telemetrySource.
+        private ITelemetrySource _teknoSource;
+
+        /// <summary>Identity used when an arcade game is running but no configured
+        /// process names it. Deliberately NOT prefixed "Custom_": HasUsefulTelemetry
+        /// reads false for that prefix and would grey out telemetry UI for a source
+        /// that has a genuinely live force stream.</summary>
+        private const string GenericArcadeGameName = "TeknoParrotArcade";
+
+        private long _arcadeProbeTicks;
+        private bool _arcadeAmbiguityLogged;
+        private bool _arcadeProbeLogged;
+        private string _arcadeGameName;
+
+        /// <summary>The synthetic game identity for a running arcade title, or
+        /// null. Called once per data tick and throttled to 1 Hz internally.
+        ///
+        /// Identity comes from TeknoParrot's own profiles rather than from anything
+        /// the user has to configure: each profile names the executable it runs, so
+        /// a running process that matches one tells us exactly which cabinet this
+        /// is. That matters because tuning is per cabinet, and a shared name would
+        /// mean tuning Initial D detunes Wangan.
+        ///
+        /// The cheap test comes first. A shared block only exists while a game is
+        /// up, and it is the thing we actually read, so its presence is both
+        /// cheaper and truer than any process scan. Only once it is there do we
+        /// look for which cabinet. With nothing running this costs two failed
+        /// OpenExisting calls a second and never enumerates processes at all.</summary>
+        private string DetectArcadeGameName()
+        {
+            var s = Settings?.Arcade;
+            if (s == null || !s.Enabled) { _arcadeGameName = null; return null; }
+
+            long now = Stopwatch.GetTimestamp();
+            if (_arcadeProbeTicks != 0 && (now - _arcadeProbeTicks) < Stopwatch.Frequency)
+                return _arcadeGameName;
+            _arcadeProbeTicks = now;
+
+            bool publisherBlock = FfbArcadePluginSource.Present(s.PublisherMapName);
+            bool cabinetBlock = ArcadeBlockPresent();
+
+            // Upgrade to the publisher the moment it appears.
+            //
+            // The route is chosen in SwapTelemetrySourceLocked, which runs when the
+            // GAME CHANGES, and a cabinet is usually detected before its wrapper
+            // has initialised: the publisher's block cannot exist yet, so the
+            // choice fell to reading the IO block ourselves and was never revisited
+            // for the rest of the session. That was not just the weaker route. Our
+            // reader beacon is what tells a publishing build somebody is listening,
+            // so never opening its block left it in its own fallback, still driving
+            // the wheel through DirectInput while we rendered the same cabinet from
+            // the IO block. Two engines on one wheel, and the wrapper's own
+            // SharedMemoryOutput=2 looked like it was being ignored.
+            if (publisherBlock && _teknoSource is TeknoParrotJvsTelemetrySource)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Arcade: the publishing plugin's block has appeared, so switching to it "
+                    + "from the IO-block decode. It has already decoded this cabinet, and opening its "
+                    + "block is what stops it driving the wheel itself.");
+                // Retire the IO-block reader FIRST. SwapTelemetrySourceLocked only builds an arcade
+                // source when _teknoSource is null, so calling it with the old reader still in place
+                // was a no-op: the upgrade never happened, this branch stayed true, and it logged and
+                // retried once a second for the whole session while the publisher carried on driving
+                // the wheel directly. Taken under the same lock the swap uses so the poll thread
+                // cannot observe a half-swapped pair.
+                try
+                {
+                    lock (_sourceSwapLock)
+                    {
+                        if (_teknoSource is TeknoParrotJvsTelemetrySource old)
+                        {
+                            if (ReferenceEquals(_telemetrySource, old)) _telemetrySource = null;
+                            old.OnFrame = null;
+                            try { old.Dispose(); } catch { }
+                            _teknoSource = null;
+                        }
+                        SwapTelemetrySourceLocked(_activeGame, silent: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Arcade: the switch to the publishing plugin's block failed "
+                        + $"({ex.GetType().Name}): {ex.Message}. Staying on the IO-block decode.");
+                }
+            }
+
+            // Say what the first look saw, once. Without this a cabinet that never
+            // gets detected produces no log at all, which cannot be told apart from
+            // detection never running, and those two have completely different
+            // fixes. One line a session, and it names the thing to check.
+            if (!_arcadeProbeLogged)
+            {
+                _arcadeProbeLogged = true;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Watching for arcade games. The FFB Arcade Plugin is "
+                    + $"{(publisherBlock ? "sending force feedback" : "not sending anything yet")}, and "
+                    + $"TeknoParrot is {(cabinetBlock ? "sharing its cabinet controls" : "not sharing anything yet")}. "
+                    + "Neither one simply means no arcade game is running yet.");
+            }
+
+            bool anyBlock = publisherBlock || cabinetBlock;
+            string found = anyBlock ? IdentifyRunningCabinet() : null;
+
+            if (found != _arcadeGameName)
+            {
+                SimHub.Logging.Current.Info(found != null
+                    ? $"[TF4ALL] Arcade game detected; running as '{found}'."
+                    : "[TF4ALL] Arcade game closed.");
+                _arcadeGameName = found;
+            }
+            return found;
+        }
+
+        /// <summary>Which configured cabinet is running, as a game identity, or the
+        /// generic one when we cannot tell. Matched on the executable name from
+        /// TeknoParrot's own profile, so it needs no configuration from the user.</summary>
+        private string IdentifyRunningCabinet()
+        {
+            try
+            {
+                // Which executable names could possibly be a cabinet. Gathered
+                // BEFORE the process walk because it decides which processes are
+                // worth asking for a path.
+                var targets = ArcadeModTargets();
+                var pathWorthy = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var t in targets)
+                    if (!string.IsNullOrEmpty(t.ExeName)) pathWorthy.Add(t.ExeName);
+
+                var running = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var runningPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in Process.GetProcesses())
+                {
+                    try
+                    {
+                        string name = p.ProcessName;
+                        running.Add(name);
+                        // Full paths where we can get them, and ONLY for a name
+                        // that already looks like a cabinet.
+                        //
+                        // MainModule throws a Win32Exception for every process we
+                        // cannot open, which on a 32-bit host is most of a ~300
+                        // entry process table, and SimHub logs a full stack trace
+                        // for every first-chance throw. Asking about all of them
+                        // once a second produced ~18k stack dumps and tens of
+                        // megabytes of log per minute, which starved the UI badly
+                        // enough to be visible as stutter. Reading another
+                        // process's main module was always documented here as a
+                        // bonus rather than the mechanism; this makes the cost
+                        // match that billing.
+                        if (pathWorthy.Contains(name))
+                        {
+                            try { runningPaths.Add(p.MainModule.FileName); } catch { }
+                        }
+                    }
+                    catch { }
+                    finally { try { p.Dispose(); } catch { } }
+                }
+
+                // A user mapping wins, for a cabinet TeknoParrot does not describe.
+                var mapped = Settings?.Arcade?.Games;
+                if (mapped != null)
+                {
+                    foreach (var kv in mapped)
+                    {
+                        if (string.IsNullOrEmpty(kv.Key) || string.IsNullOrEmpty(kv.Value)) continue;
+                        if (running.Contains(kv.Key)) return kv.Value;
+                    }
+                }
+
+                // Full path first. Two profiles can share an executable NAME while
+                // living in different folders (the two Initial D Zero versions both
+                // run InitialD0_DX11_Nu), and matching on the name alone would pick
+                // whichever we happened to see first and then apply the other
+                // cabinet's tuning.
+                if (runningPaths.Count > 0)
+                {
+                    foreach (var t in targets)
+                    {
+                        if (string.IsNullOrEmpty(t.GameDir) || string.IsNullOrEmpty(t.ExeName)) continue;
+                        foreach (var rp in runningPaths)
+                        {
+                            if (string.Equals(Path.GetDirectoryName(rp), t.GameDir, StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(Path.GetFileNameWithoutExtension(rp), t.ExeName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                _arcadeMatchedExe = t.ExeName;
+                                return ArcadeGameName(t.ProfileName);
+                            }
+                        }
+                    }
+                }
+
+                // Name only. Ambiguous where two profiles share an executable name,
+                // so say so rather than pick silently.
+                ArcadeModTarget hit = null;
+                bool ambiguous = false;
+                foreach (var t in targets)
+                {
+                    if (string.IsNullOrEmpty(t.ExeName)) continue;
+                    if (!running.Contains(t.ExeName)) continue;
+                    if (hit != null && !string.Equals(hit.ExeName, t.ExeName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (hit != null) ambiguous = true;
+                    else hit = t;
+                }
+                if (hit != null)
+                {
+                    if (ambiguous && !_arcadeAmbiguityLogged)
+                    {
+                        _arcadeAmbiguityLogged = true;
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] More than one TeknoParrot profile runs '{hit.ExeName}', and the running "
+                            + $"copy could not be told apart by path, so its tuning is filed under "
+                            + $"'{ArcadeGameName(hit.ProfileName)}'.");
+                    }
+                    _arcadeMatchedExe = hit.ExeName;
+                    return ArcadeGameName(hit.ProfileName);
+                }
+
+                NoteCabinetNotIdentified();
+            }
+            catch { }
+            _arcadeMatchedExe = null;
+            return GenericArcadeGameName;
+        }
+
+        private bool _arcadeIdentifyFailLogged;
+
+        /// <summary>Say once that no cabinet was recognised.
+        ///
+        /// Deliberately does not list which programs the profiles expect against
+        /// which are running. That list answers WHY, and it is the thing worth
+        /// knowing when this fires, but it is a wall of executable names in a log
+        /// a player reads to find out why their wheel is quiet. Owner's call
+        /// (2026-09-07). If the question comes up again, the comparison is
+        /// t.ExeName against the running process names, both already in hand at
+        /// the call site.</summary>
+        private void NoteCabinetNotIdentified()
+        {
+            if (_arcadeIdentifyFailLogged) return;
+            _arcadeIdentifyFailLogged = true;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] An arcade game is running and sending force feedback, but none of "
+                + "TeknoParrot's game profiles match it, so we cannot tell which cabinet it is.");
+        }
+
+        /// <summary>The executable that identified the running cabinet, or null when
+        /// none did. Kept so a SimHub custom game profile can be matched against the
+        /// cabinet it claims to describe rather than assumed to describe it.</summary>
+        private string _arcadeMatchedExe;
+
+        // Said once per cabinet so the log records that a custom game was renamed
+        // rather than silently filed somewhere the user did not expect.
+        private string _customGameNamedAs;
+
+        private string _customGameMatchNoted;
+
+        /// <summary>What the cabinet match had to work with, said once per game.
+        ///
+        /// Names both sides because either can be the empty one: the custom game
+        /// may carry no program names, or TeknoParrot's profiles may not have been
+        /// read yet. Those have different fixes and look identical from the
+        /// outside, which is how this went round twice.</summary>
+        private void NoteCustomGameMatchInputs(string gameCode, CustomGameInfo info,
+                                               List<ArcadeModTarget> targets)
+        {
+            if (string.Equals(_customGameMatchNoted, gameCode, StringComparison.Ordinal)) return;
+            _customGameMatchNoted = gameCode;
+
+            string procs = info?.ProcessNames == null || info.ProcessNames.Length == 0
+                ? "none"
+                : string.Join(", ", info.ProcessNames);
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Checking whether custom game '" + (info?.Name ?? gameCode)
+                + "' is an arcade cabinet. It runs: " + procs + ". Cabinets known: "
+                + (targets == null ? 0 : targets.Count) + ".");
+        }
+
+        /// <summary>Which TeknoParrot cabinet this SimHub custom game runs, or null.
+        ///
+        /// A different question from CustomGameIsThisArcadeCabinet, which asks
+        /// whether a cabinet ALREADY identified is the one a profile describes.
+        /// This is asked when nothing has been identified, so it can only compare
+        /// executable names, and it answers null when it cannot tell.
+        ///
+        /// It returns the profile rather than a yes/no on purpose. A yes/no can
+        /// only be acted on by waiting for someone else to supply the name, and
+        /// waiting is what left the game sitting at its guid with the arcade path
+        /// switched off. The name was always available here.
+        ///
+        /// Ambiguity answers null. Two profiles sharing an executable cannot be
+        /// told apart from a name alone, and guessing would file a user's tuning
+        /// under the wrong cabinet, which is worse than the placeholder.</summary>
+        private string ProfileForCustomGame(string gameCode)
+        {
+            var info = TryGetCustomGameInfo(gameCode);
+            List<ArcadeModTarget> targets = null;
+            try { targets = ArcadeModTargets(); }
+            catch { }
+            NoteCustomGameMatchInputs(gameCode, info, targets);
+
+            if (info?.ProcessNames == null || info.ProcessNames.Length == 0) return null;
+            if (targets == null || targets.Count == 0) return null;
+
+            string hit = null;
+            foreach (string p in info.ProcessNames)
+            {
+                if (string.IsNullOrEmpty(p)) continue;
+                // Profiles are written with and without the extension, so compare
+                // the way SimHub's own detection has to.
+                string bare = p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                    ? p.Substring(0, p.Length - 4) : p;
+                foreach (var t in targets)
+                {
+                    if (string.IsNullOrEmpty(t.ExeName) || string.IsNullOrEmpty(t.ProfileName)) continue;
+                    if (!string.Equals(bare, t.ExeName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (hit != null && !string.Equals(hit, t.ProfileName, StringComparison.OrdinalIgnoreCase))
+                        return null;   // two cabinets, no way to choose
+                    hit = t.ProfileName;
+                }
+            }
+            return hit;
+        }
+
+        /// <summary>Is this SimHub custom game the arcade cabinet we are reading?
+        ///
+        /// Answered from the profile's own process names, which is the same list
+        /// SimHub detects the game with, against the executable that identified the
+        /// cabinet. Says YES when it cannot tell: an arcade block is already present
+        /// and a cabinet already identified by the time this is asked, so the two
+        /// being different games is far-fetched, and the cost of a wrong NO is a
+        /// user's tuning quietly re-filed under a guid.</summary>
+        private bool CustomGameIsThisArcadeCabinet(string gameCode)
+        {
+            var info = TryGetCustomGameInfo(gameCode);
+            if (info?.ProcessNames == null || info.ProcessNames.Length == 0) return true;
+
+            // The attached reader's own process is the best answer where there is
+            // one, because it names the exact executable we are reading memory from.
+            var filler = _arcadeMemory;
+            string proc = filler != null ? filler.GameProcessName : null;
+            if (string.IsNullOrEmpty(proc)) proc = _arcadeMatchedExe;
+            if (string.IsNullOrEmpty(proc)) return true;
+
+            foreach (string p in info.ProcessNames)
+            {
+                if (string.IsNullOrEmpty(p)) continue;
+                // Profiles are written with and without the extension, so compare
+                // the way SimHub's own detection has to.
+                string bare = p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                    ? p.Substring(0, p.Length - 4) : p;
+                if (string.Equals(bare, proc, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Is this SimHub's stand-in for a car rather than a car?
+        ///
+        /// SimHub fabricates "DC__" plus its own startup timestamp for a game it has no car
+        /// identity for, which is every custom game and Farming Simulator without our mod. It
+        /// looks like an id and behaves like noise: it differs every session, so anything keyed
+        /// on it (presets, car facts, engine pins, community lookups) can never resolve twice.
+        /// Farming Simulator still falls back to it, so this names the shape rather than banning
+        /// it, and each caller decides whether a placeholder is better than nothing.</summary>
+        private static bool IsSimHubPlaceholderCarId(string carId)
+        {
+            return !string.IsNullOrEmpty(carId)
+                && carId.StartsWith("DC__", StringComparison.Ordinal);
+        }
+
+        /// <summary>A comma or space separated list of numbers, skipping anything unreadable
+        /// rather than refusing the whole line over one typo.</summary>
+        private static double[] ParseNumberList(string text)
+        {
+            var found = new System.Collections.Generic.List<double>();
+            if (string.IsNullOrEmpty(text)) return found.ToArray();
+            foreach (string part in text.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                double v;
+                if (double.TryParse(part.Trim(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out v))
+                    found.Add(v);
+            }
+            return found.ToArray();
+        }
+
+        /// <summary>DIAGNOSTIC (2026-09-06): search the running cabinet for a known string and
+        /// log what surrounds every hit. Written to map the leaderboard, whose online board is
+        /// filled with SEGA placeholder rows while the cabinet has no network, which makes it a
+        /// repeated known string sitting in a table.
+        ///
+        /// Runs off the caller thread: a full address-space walk takes seconds and the access
+        /// code box is on the UI thread. Read-only throughout.</summary>
+        public string StartArcadeMemorySearch(string needle)
+        {
+            // Gated on being ATTACHED, not on the pointer chain having resolved. Verified means the
+            // telemetry map checked out, which needs a session and a race; a memory search needs
+            // only the process handle, and the leaderboard screen is exactly where the chain is not
+            // resolved and where we most want to look.
+            var filler = _arcadeMemory;
+            string attachedTo = filler == null ? null : filler.GameProcessName;
+            if (string.IsNullOrEmpty(attachedTo))
+                return "Not attached to an arcade cabinet right now"
+                     + (filler == null ? "" : ": " + filler.Status) + ".";
+            if (string.IsNullOrWhiteSpace(needle)) needle = "SEGA";
+
+            string text = needle.Trim();
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    // A leading # means a NUMBER: "#360000" searches for that value as an int,
+                    // a short, a float and a double at once, since how the game stores a duration
+                    // is precisely what we are trying to find out.
+                    string report;
+                    if (text.StartsWith("#", StringComparison.Ordinal))
+                    {
+                        // "#" alone searches the three ways six minutes could be stored:
+                        // milliseconds (the unit the game keeps its own race clock in), frames at
+                        // sixty a second (the unit it keeps yaw and speed delta in), and
+                        // centiseconds. A list is accepted too: "#360000,21600".
+                        string body = text.Substring(1).Trim();
+                        double[] values = body.Length == 0
+                            ? new double[] { 360000, 21600, 36000 }
+                            : ParseNumberList(body);
+                        report = values.Length == 0
+                            ? "could not read any numbers from " + body + "."
+                            : filler.ScanForNumbers(values, 256);
+                    }
+                    else if (text.StartsWith("~", StringComparison.Ordinal))
+                    {
+                        // "~139932" is a time in MILLISECONDS, searched as a range rather than a
+                        // value: milliseconds and centiseconds as integers, seconds as a float and
+                        // a double, and frames. An exact search for a known lap time found nothing,
+                        // which is what a duration accumulated in floating point looks like.
+                        double ms;
+                        report = double.TryParse(text.Substring(1).Trim(),
+                                     System.Globalization.NumberStyles.Float,
+                                     System.Globalization.CultureInfo.InvariantCulture, out ms)
+                            ? filler.ScanForTime(ms, 32)
+                            : "could not read a millisecond value from " + text.Substring(1) + ".";
+                    }
+                    else if (text.StartsWith("@", StringComparison.Ordinal))
+                    {
+                        // "@2,19,932" looks for those values sitting NEAR one another, which is how
+                        // a record holding minutes, seconds and milliseconds separately would look.
+                        // No single one of them is findable on its own; together they are rare.
+                        double[] parts = ParseNumberList(text.Substring(1));
+                        report = parts.Length < 2
+                            ? "give at least two values, like @2,19,932."
+                            : filler.ScanForCluster(parts, 64, 32);
+                    }
+                    else report = filler.ScanForString(text, 64);
+                    SimHub.Logging.Current.Info("[TF4ALL] ID8 search for '" + text + "': " + report);
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] ID8 search for '" + text + "' failed: " + ex.Message);
+                }
+            });
+            return "Searching " + attachedTo + " for '" + text + "'. Watch the log; it takes a few seconds.";
+        }
+
+        /// <summary>How to SAY a game identity, as opposed to how to file it.
+        ///
+        /// An arcade identity is "Arcade " plus TeknoParrot's profile id, a short code like
+        /// ID8. A custom game's identity is the guid SimHub files it under. Neither can be
+        /// prettied up in place: both are the preset key and the car-folder name, so
+        /// changing one re-files everything a user has tuned. The screen is free to say the
+        /// real title instead, and that is all this does.
+        ///
+        /// A custom game profile made for a cabinet IS that cabinet, running or not, so it
+        /// is named as one. Failing that, SimHub's own name for the profile beats a guid for
+        /// any custom game at all. Anything else falls through to the shared display map.
+        ///
+        /// Memoised on the last identity asked about. The old version read every TeknoParrot
+        /// profile XML off disk per call, and the caller is a UI refresh on a timer.</summary>
+        public string ArcadeDisplayName(string gameIdentity)
+        {
+            if (string.IsNullOrEmpty(gameIdentity)) return gameIdentity;
+            if (string.Equals(gameIdentity, _gameTitleKey, StringComparison.Ordinal))
+                return _gameTitleValue;
+
+            string title = ComputeGameTitle(gameIdentity);
+            _gameTitleKey = gameIdentity;
+            _gameTitleValue = title;
+            return title;
+        }
+
+        private string _gameTitleKey, _gameTitleValue;
+
+        private string ComputeGameTitle(string gameIdentity)
+        {
+            try
+            {
+                if (gameIdentity.StartsWith("Arcade ", StringComparison.Ordinal))
+                {
+                    foreach (var t in ArcadeModTargets())
+                    {
+                        if (string.IsNullOrEmpty(t.FullName)) continue;
+                        if (string.Equals(ArcadeGameName(t.ProfileName), gameIdentity, StringComparison.Ordinal))
+                            return t.FullName;
+                    }
+                    return gameIdentity;
+                }
+
+                if (gameIdentity.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
+                {
+                    // The cabinet's own title, where this profile runs one. True with
+                    // the game closed, because the match is on the program a profile
+                    // is configured to launch rather than on anything running.
+                    string profile = ProfileForCustomGame(gameIdentity);
+                    if (!string.IsNullOrEmpty(profile))
+                    {
+                        foreach (var t in ArcadeModTargets())
+                            if (string.Equals(t.ProfileName, profile, StringComparison.OrdinalIgnoreCase)
+                                && !string.IsNullOrEmpty(t.FullName))
+                                return t.FullName;
+                        return ArcadeGameName(profile);
+                    }
+
+                    // Not a cabinet, but SimHub still knows what the user called it.
+                    var info = TryGetCustomGameInfo(gameIdentity);
+                    if (!string.IsNullOrEmpty(info?.Name)) return info.Name;
+                    return gameIdentity;
+                }
+            }
+            catch { }
+
+            return GameNames.Display(gameIdentity);
+        }
+
+        /// <summary>The game identity for a TeknoParrot profile. Kept path-safe and
+        /// free of the "Custom_" prefix, because it becomes a preset key and a car
+        /// folder name, and that prefix makes HasUsefulTelemetry read false.</summary>
+        public static string ArcadeGameName(string profileName)
+            => "Arcade " + (profileName ?? "").Replace('\\', ' ').Replace('/', ' ').Replace(':', ' ').Trim();
+
+        /// <summary>True when TeknoParrot's cabinet IO block exists. Read-only, and
+        /// opened then immediately closed: a presence test, not the reader.</summary>
+        private static bool ArcadeBlockPresent()
+        {
+            string[] names =
+            {
+                "TeknoParrot_JvsState",
+                "Local\\TeknoParrot_JvsState",
+                "Global\\TeknoParrot_JvsState",
+            };
+            for (int i = 0; i < names.Length; i++)
+            {
+                try
+                {
+                    using (System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting(
+                               names[i], System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read))
+                        return true;
+                }
+                catch { }
+            }
+            return false;
+        }
+
+        /// <summary>Push the active cabinet's tuning at whichever arcade source is
+        /// running, so a slider takes effect now rather than at the next launch.</summary>
+        public void ApplyArcadeTuning()
+        {
+            _arcadeWaveGainDirty = true;
+            var src = _teknoSource as IArcadeForceSource;
+            if (src == null) return;
+            var t = ArcadeTuningPeek(_activeGame);
+            try { src.ApplyTuning(t.ForceScale, t.InvertDirection, t.AcceptPublishedDamper); } catch { }
+        }
+
+        /// <summary>True for any identity produced by arcade detection.</summary>
+        private bool IsArcadeGameName(string game)
+        {
+            if (string.IsNullOrEmpty(game)) return false;
+            if (string.Equals(game, GenericArcadeGameName, StringComparison.Ordinal)) return true;
+            if (game.StartsWith("Arcade ", StringComparison.Ordinal)) return true;
+            var g = Settings?.Arcade?.Games;
+            if (g == null) return false;
+            foreach (var kv in g)
+                if (string.Equals(kv.Value, game, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        /// <summary>The tuning for one arcade identity WITHOUT storing anything.
+        /// Use this to read: ArcadeTuningFor creates an entry as a side effect, so
+        /// calling it from the settings refresh would seed a saved tuning for every
+        /// game the user ever runs.</summary>
+        public ArcadeGameTuning ArcadeTuningPeek(string game)
+        {
+            var s = Settings?.Arcade;
+            ArcadeGameTuning t = null;
+            if (s?.Tuning != null && !string.IsNullOrEmpty(game)) s.Tuning.TryGetValue(game, out t);
+            return t ?? new ArcadeGameTuning();
+        }
+
+        /// <summary>The tuning for one arcade identity, created on first use so a
+        /// control can write to it. Per cabinet, never global: these decoders scale
+        /// their magnitudes by anything from 9 to 1000.</summary>
+        public ArcadeGameTuning ArcadeTuningFor(string game)
+        {
+            var s = Settings?.Arcade;
+            if (s == null) return new ArcadeGameTuning();
+            if (s.Tuning == null)
+                s.Tuning = new Dictionary<string, ArcadeGameTuning>(StringComparer.OrdinalIgnoreCase);
+            string key = string.IsNullOrEmpty(game) ? GenericArcadeGameName : game;
+            ArcadeGameTuning t;
+            if (!s.Tuning.TryGetValue(key, out t) || t == null)
+            {
+                t = NewArcadeTuningFor(key);
+                s.Tuning[key] = t;
+            }
+            return t;
+        }
+
+        /// <summary>A cabinet's opening tuning. Everything defaults to "do what
+        /// the game's own settings say" except where we have measured that those
+        /// settings are wrong for it.
+        ///
+        /// The one entry here is Initial D 8, and it is not a preference. The
+        /// cabinet commands a steering force of zero while the car slides, which
+        /// the reference plugin's decoder discards, so the previous force stands
+        /// until its length runs out. That game ships FeedbackLength=5000, so out
+        /// of the box the wheel keeps pushing for five seconds after the game said
+        /// to stop. Measured from the cabinet's own IO block, 2026-09-07: 937
+        /// readings across one lapse, every one of them the steering opcode, 930
+        /// of them asking for zero.
+        ///
+        /// Deliberately a table rather than a rule. Ninety other cabinets go
+        /// through this path and none of them have been measured, so they keep
+        /// deferring to whatever their own author chose.</summary>
+        private static ArcadeGameTuning NewArcadeTuningFor(string key)
+        {
+            var t = new ArcadeGameTuning();
+            if (string.Equals(key, "Arcade ID8", StringComparison.OrdinalIgnoreCase))
+                t.SteeringHoldMs = ArcadeFaithfulHoldMs;
+            return t;
+        }
+
+        /// <summary>The steady-force hold a measured cabinet opens on, in
+        /// milliseconds. Short enough that the wheel releases as soon as the game
+        /// stops asking, which for Initial D 8 is what it actually commands.</summary>
+        internal const int ArcadeFaithfulHoldMs = 50;
+
         private void SwapTelemetrySource(string game, bool silent = false)
         {
             lock (_sourceSwapLock) SwapTelemetrySourceLocked(game, silent);
@@ -14372,7 +19963,7 @@ namespace TrueforceForAll.Plugin
 
         private void SwapTelemetrySourceLocked(string game, bool silent)
         {
-            // Full only, checked HERE because this is the chokepoint every source
+            // Normal only, checked HERE because this is the chokepoint every source
             // creation passes through. Gating only the game-change caller left three
             // ungated ways in (a Forza port or bind edit, an account switch and a
             // backup restore all call ApplyForzaSettings), each of which would bind
@@ -14485,6 +20076,75 @@ namespace TrueforceForAll.Plugin
                 }
                 if (_fsPipeSource != null) newSource = _fsPipeSource;
             }
+            // Belt and braces against the naming gate above: a user is free to call a SimHub
+            // profile "InitialD8" by hand, and a locked build must not build an arcade source
+            // for it.
+            else if (ArcadeUnlocked && IsArcadeGameName(game))
+            {
+                // The arcade reader opens TeknoParrot's cabinet IO block lazily on
+                // its own thread, so unlike the AC source it never throws from
+                // Start() and needs no 1 Hz re-acquire retry: the game can be
+                // detected before TeknoParrot has published, and the reader simply
+                // waits. Kept alive for the session like the Forza and FS sources.
+                if (_teknoSource == null)
+                {
+                    try
+                    {
+                        var arc = Settings?.Arcade;
+                        // Per cabinet, never global: these decoders scale their
+                        // magnitudes by anything from 9 to 1000, so one shared
+                        // force scale would mean tuning one title detunes the next.
+                        var tune = ArcadeTuningFor(game);
+                        // Two ways in, and the better one wins automatically.
+                        // A publishing build of FFBArcadePlugin has already
+                        // decoded the cabinet for us and covers roughly ninety
+                        // games including the many whose forces are not in the IO
+                        // block at all; reading the block ourselves reaches only
+                        // the dozen we have written decoders for. So prefer the
+                        // publisher whenever it is actually running.
+                        if (FfbArcadePluginSource.Present(arc?.PublisherMapName))
+                        {
+                            var pub = new FfbArcadePluginSource
+                            {
+                                Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
+                                MapName = arc?.PublisherMapName,
+                                ForceScale = tune.ForceScale,
+                                InvertConstantDirection = tune.InvertDirection,
+                                AcceptPublishedDamper = tune.AcceptPublishedDamper,
+                                MinForce01 = (Settings?.Arcade?.MinForcePercent ?? 0) / 100.0,
+                                // Stored under its original name; see ArcadeGameTuning.
+                                SteadyHoldMs    = ClampArcadeHold(tune.SteeringHoldMs),
+                                VibrationHoldMs = ClampArcadeHold(tune.VibrationHoldMs),
+                            };
+                            pub.Start();
+                            _teknoSource = pub;
+                        }
+                        else
+                        {
+                            var tp = new TeknoParrotJvsTelemetrySource
+                            {
+                                Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
+                                ForceScale = tune.ForceScale,
+                                InvertConstantDirection = tune.InvertDirection,
+                                // Every cabinet encodes its command differently and
+                                // the block says nothing about which game wrote it,
+                                // so the protocol has to be chosen, not sniffed.
+                                GameId = tune.GameId != 0 ? tune.GameId : 18,
+                                SlotOverride = tune.FfbSlotOverride,
+                            };
+                            tp.Start();
+                            _teknoSource = tp;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!silent)
+                            SimHub.Logging.Current.Info(
+                                $"[TF4ALL] Arcade source unavailable ({ex.GetType().Name}): {ex.Message}.");
+                    }
+                }
+                if (_teknoSource != null) newSource = _teknoSource;
+            }
             if (newSource == null) newSource = _simHubSource;
 
             if (newSource != _telemetrySource)
@@ -14509,7 +20169,7 @@ namespace TrueforceForAll.Plugin
                 // long-lived fallback and the Forza listener (_forzaUdp) is torn
                 // down separately below; neither is disposed here.
                 if (old != null && old != _simHubSource && old != _forzaUdp
-                    && old != _fsPipeSource && old != newSource)
+                    && old != _fsPipeSource && old != _teknoSource && old != newSource)
                 {
                     try { old.Dispose(); } catch { }
                 }
@@ -14533,6 +20193,16 @@ namespace TrueforceForAll.Plugin
             {
                 try { _fsPipeSource.Dispose(); } catch { }
                 _fsPipeSource = null;
+            }
+
+            // Leaving an arcade game: same again. This is what closes the shared
+            // memory block when the cabinet exits. The synthetic name goes null the
+            // moment TeknoParrot stops publishing, which fires the game-change
+            // block, which lands here.
+            if (!IsArcadeGameName(game) && _teknoSource != null)
+            {
+                try { _teknoSource.Dispose(); } catch { }
+                _teknoSource = null;
             }
         }
 
@@ -17177,7 +22847,12 @@ namespace TrueforceForAll.Plugin
             if (!Settings.Presets.TryGetValue("Assetto Corsa (default)", out var seed) || seed == null)
                 return;
 
-            string presetName = gameName;
+            // The readable name, not the code. SimHub's codes are keys and are
+            // never renamed, but a preset's NAME is free, and a player looking at
+            // a dropdown row saying "RRRE" has to know it means RaceRoom. Existing
+            // presets keep whatever they were called; only new seeds get this.
+            string presetName = GameNames.Display(gameName);
+            if (string.IsNullOrEmpty(presetName)) presetName = gameName;
             if (!Settings.Presets.ContainsKey(presetName))
             {
                 // Write the seeded copy as a user-library file (it's a fresh,
@@ -19681,6 +25356,713 @@ namespace TrueforceForAll.Plugin
             try { PersistSettingsCore(); } catch { }
         }
 
+        // ---- Anonymous usage statistics (telemetry_ping, migration 0127) ----
+
+        /// <summary>Mint the analytics id if missing. Separate from the car-fact anon id
+        /// so the two anonymous datasets can't be cross-linked. Random, never
+        /// hardware-derived. Unlike CarFactsAnonId it deliberately does NOT travel in
+        /// backups (BackupProjection MachineLocal): a backup lives under the user's account,
+        /// so carrying it would record account -> anon-id and make the telemetry
+        /// joinable to a real identity. A second PC mints its own and counts as a second
+        /// install, which is the accepted trade.</summary>
+        internal void EnsureAnalyticsAnonId()
+        {
+            if (Settings == null) return;
+            if (!string.IsNullOrEmpty((Settings.AnalyticsAnonId ?? "").Trim())) return;
+            Settings.AnalyticsAnonId = Guid.NewGuid().ToString("N");
+            try { PersistSettingsCore(); } catch { }
+        }
+
+        // Portable settings that must NOT ride the snapshot even though they are
+        // genuine user state: free text the user typed, and account- / id-derived
+        // values. Non-portable fields (USB pins, paths, auth, migration latches,
+        // nag / UI state, caches) need no entry here: the Portable gate in
+        // BuildUsageSettingsSnapshot already drops everything outside Portable.
+        // AnalyticsAnonId is the exception that proves that rule: it is Excluded,
+        // not Portable, so the gate above already drops it and this entry can never
+        // fire. It stays listed deliberately, so that reclassifying it (which is how
+        // it reached the backup envelope once already) cannot silently start
+        // stamping the anon id into its own settings snapshot.
+        private static readonly System.Collections.Generic.HashSet<string> UsageSnapshotDeny =
+            new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+        {
+            "AnalyticsAnonId", "CarFactsAnonId", "SharingAuthor", "HasEverSupported",
+            "OledGreetingText", "OledCustomTexts",
+            "DashIdleDriverName", "DashIdleNumber", "DashIdleColor", "DashIdleFont",
+        };
+
+        // The only STRING settings sent by value: short fixed selector strings, no
+        // free text. Every other string stays out (paths, names, ids, greetings).
+        // Enum-typed selectors (IdleLedMode, OledScreen, ...) are captured by the
+        // enum branch below and need no entry here; dictionaries (CarLightPattern)
+        // are dropped by the scalar rule.
+        private static readonly System.Collections.Generic.HashSet<string> UsageSnapshotStringAllow =
+            new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+        {
+            "DashTheme", "DashIdleStyle", "CspBridgeFfbField",
+        };
+
+        /// <summary>Build the anonymous settings snapshot as a compact JSON object.
+        /// Emits only the genuine user settings (BackupProjection.Portable) that are
+        /// scalar bool / number / enum, plus a short allowlist of enum-like strings,
+        /// minus the portable-but-sensitive fields in UsageSnapshotDeny. Machine
+        /// fields, auth, migration latches, nag / UI state and caches are all
+        /// excluded by the Portable gate, so no personal or machine data rides
+        /// along, and a newly added field is sent only once it is deliberately
+        /// classified Portable and is a plain scalar.</summary>
+        internal string BuildUsageSettingsSnapshot()
+        {
+            try
+            {
+                if (Settings == null) return null;
+                var o = new Newtonsoft.Json.Linq.JObject();
+                foreach (var p in typeof(TrueforceSettings).GetProperties(
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+                {
+                    if (!p.CanRead || !p.CanWrite) continue;
+                    // Only genuine user settings: BackupProjection's Portable set.
+                    // This drops machine-local fields (USB, paths, auth) and the
+                    // Excluded bucket (migration latches, nag / UI state, caches) in
+                    // one move, and is safe-by-default (a new field is emitted only
+                    // once someone deliberately classifies it Portable).
+                    if (!BackupProjection.Portable.Contains(p.Name)) continue;
+                    if (UsageSnapshotDeny.Contains(p.Name)) continue;   // portable-but-sensitive
+                    var t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+                    bool isBool = t == typeof(bool);
+                    bool isNum  = t == typeof(int) || t == typeof(long)
+                               || t == typeof(float) || t == typeof(double);
+                    bool isEnum = t.IsEnum;
+                    bool isStr  = t == typeof(string);
+                    if (!isBool && !isNum && !isEnum && !isStr) continue;   // no collections / objects
+                    if (isStr && !UsageSnapshotStringAllow.Contains(p.Name)) continue;
+                    object v;
+                    try { v = p.GetValue(Settings); } catch { continue; }
+                    if (v == null) continue;
+                    if (isStr)
+                    {
+                        string sv = ((string)v).Trim();
+                        if (sv.Length == 0 || sv.Length > 40) continue;     // enum-like only
+                        o[p.Name] = sv;
+                    }
+                    else if (isEnum)
+                    {
+                        o[p.Name] = v.ToString();                           // enum name, never PII
+                    }
+                    else
+                    {
+                        // PresetPayloadSerializer, not the parameterless FromObject: that
+                        // overload resolves through JsonSerializer.CreateDefault() and so
+                        // honours the process-global JsonConvert.DefaultSettings, which
+                        // any plugin in the host can set. A converter registered there
+                        // that claims double/float would change this snapshot's bytes,
+                        // change its hash, and make it re-send daily with nothing
+                        // actually changed. The preset path was already immune; this
+                        // makes the two paths agree.
+                        o[p.Name] = Newtonsoft.Json.Linq.JToken.FromObject(v, PresetPayloadSerializer);
+                    }
+                }
+                return o.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage snapshot build failed: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>Send the anonymous usage ping if it is enabled and has not
+        /// already been sent today (UTC). Self-gating, so it is safe to call on
+        /// startup and on a timer. Fire-and-forget; never blocks.</summary>
+        internal void MaybeSendUsagePing()
+        {
+            // Serializes the BUILD only. It is released as soon as the POST is
+            // dispatched, so two requests can still be in flight at once (the day stamp
+            // no longer suppresses re-entry until a 2xx lands). That overlap is
+            // tolerated rather than prevented: CommitUsagePing is idempotent, and the
+            // server upserts. What this does prevent is two threads building the
+            // payload, which walks the preset graph under _carFactsLock.
+            if (System.Threading.Interlocked.CompareExchange(ref _usagePingBusy, 1, 0) != 0) return;
+            try
+            {
+                if (_shuttingDown || Settings == null || _telemetryClient == null) return;
+                if (!Settings.ShareUsageStats) return;                 // master off = nothing sent
+                // SimHub can be open with our plugin switched off; that is not an
+                // active user. Skip when the plugin is turned off entirely.
+                // LightsyncOnly still counts (the wheel's lights are in use).
+                if (StoredMasterMode == TrueforceMasterMode.Off) return;
+                string today = UsageDayKey();
+                if (string.Equals(Settings.LastTelemetryPingDay, today, StringComparison.Ordinal))
+                    return;                                            // already pinged today
+                EnsureAnalyticsAnonId();
+                string anonId = (Settings.AnalyticsAnonId ?? "").Trim();
+                if (anonId.Length == 0) return;
+                // _usageGameName, not _currentGameName: the same process-presence
+                // signal the game-day recorder uses, so a title open in menus is
+                // reported rather than showing up as no game at all.
+                // Never send a user-added game's label: SimHub names custom titles
+                // "Custom_<label>", whose suffix can be free text the user typed.
+                string game = _usageGameName;
+                if (!string.IsNullOrEmpty(game)
+                    && game.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
+                    game = "Custom";
+                // Settings snapshot, only when it changed since the last accepted
+                // send, so storage scales with installs rather than install-days.
+                // The new hash is held locally and committed only on success.
+                string snapshot     = BuildUsageSettingsSnapshot();
+                string snapshotHash = string.IsNullOrEmpty(snapshot) ? null : HashSnapshot(snapshot);
+                bool   sendSnapshot = !string.IsNullOrEmpty(snapshotHash)
+                    && !string.Equals(snapshotHash, Settings.LastTelemetrySettingsHash ?? "",
+                                      StringComparison.Ordinal);
+
+                // Per-game-day activity accumulated since the last ping. Fold in the
+                // live game too: NoteTelemetryGameActivity only fires on a game
+                // TRANSITION, so a session that spans UTC midnight, or one that began
+                // with the plugin switched off, would otherwise never be recorded.
+                string gamesJson = null;
+                System.Collections.Generic.List<string> sentGameDays = null;
+                var played = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                PruneUsageGameDays();
+                lock (_carFactsLock)
+                {
+                    var list = Settings.TelemetryGameDays;
+                    if (list != null)
+                    {
+                        if (!string.IsNullOrEmpty(game))
+                        {
+                            string liveKey = game + "|" + today;
+                            if (!list.Contains(liveKey))
+                            {
+                                if (list.Count >= UsageGameDayCap) list.RemoveAt(0);
+                                list.Add(liveKey);
+                            }
+                        }
+                        if (list.Count > 0)
+                        {
+                            var games = new Newtonsoft.Json.Linq.JArray();
+                            sentGameDays = new System.Collections.Generic.List<string>(list);
+                            foreach (var entry in sentGameDays)
+                            {
+                                int bar = entry.IndexOf('|');
+                                if (bar <= 0 || bar >= entry.Length - 1) continue;
+                                string g = entry.Substring(0, bar);
+                                games.Add(new Newtonsoft.Json.Linq.JObject
+                                    { ["g"] = g, ["d"] = entry.Substring(bar + 1) });
+                                played.Add(g);
+                            }
+                            if (games.Count > 0)
+                                gamesJson = games.ToString(Newtonsoft.Json.Formatting.None);
+                        }
+                    }
+                }
+
+                // Every game we have ever reported a body for is re-evaluated too, not
+                // just the ones played since the last ping. Without this the preset test
+                // fires only while a game still has an undrained activity entry, so a
+                // preset retuned offline (edit it Tuesday afternoon, do not launch the
+                // game) was never reported until that game was next played, and never at
+                // all if it was not. The global settings snapshot has no such gate, and
+                // the rule should be the same for both: send it when the body differs
+                // from what we last delivered. Also self-heals the 10-body batch limit,
+                // whose overflow games used to lose their activity entry in the same
+                // ping and drop out of the evaluation set entirely.
+                lock (_carFactsLock)
+                {
+                    var knownGames = Settings.TelemetryGamePresetHashes;
+                    if (knownGames != null)
+                        foreach (var kv in knownGames) played.Add(kv.Key);
+                }
+
+                // Per-game preset bodies for those games, staged (not stamped) so a
+                // lost send re-sends them rather than marking them already delivered.
+                var stagedPresetHashes =
+                    new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+                string gamePresetsJson = BuildChangedGamePresetsJson(played, stagedPresetHashes);
+
+                string commitHash  = sendSnapshot ? snapshotHash : null;
+                var    commitDays  = sentGameDays;
+                var    commitOwner = Settings;              // identity checked at commit
+                // One line per ping, so what was sent is answerable from a log alone.
+                // Without it the only telemetry lines are failures, and a ping that
+                // carried nothing looks exactly like a ping that never happened; that
+                // ambiguity already cost a live test. Counts only, never content.
+                SimHub.Logging.Current.Info(string.Format(
+                    "[TF4ALL] Usage ping: game='{0}' snapshot={1} gameDays={2} presets={3}",
+                    game ?? "(none)", sendSnapshot ? "yes" : "unchanged",
+                    commitDays?.Count ?? 0, stagedPresetHashes.Count));
+                _telemetryClient.SendPing(anonId, CurrentVersionString(),
+                    Settings.LastUsedWheel, game, sendSnapshot ? snapshot : null,
+                    gamesJson, gamePresetsJson,
+                    receipt => CommitUsagePing(commitOwner, today, commitHash, commitDays,
+                                               stagedPresetHashes, receipt));
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage ping error: " + ex.Message);
+            }
+            finally
+            {
+                // Released once the POST is DISPATCHED (it is fire-and-forget), not
+                // when it completes: the commit is idempotent, and the day stamp
+                // suppresses the next tick once the server has accepted one.
+                System.Threading.Interlocked.Exchange(ref _usagePingBusy, 0);
+            }
+        }
+
+        private int _usagePingBusy;
+
+        // Stable hex SHA-256 of the snapshot JSON, for the once-a-day
+        // settings-changed check. Property order is stable (reflection order over
+        // a fixed set), so an unchanged snapshot hashes the same across runs; a
+        // reorder at worst re-sends the snapshot once, which is harmless.
+        private static string HashSnapshot(string snapshot)
+        {
+            if (string.IsNullOrEmpty(snapshot)) return "";
+            try
+            {
+                using (var sha = System.Security.Cryptography.SHA256.Create())
+                {
+                    byte[] h = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(snapshot));
+                    var sb = new System.Text.StringBuilder(h.Length * 2);
+                    foreach (byte b in h) sb.Append(b.ToString("x2"));
+                    return sb.ToString();
+                }
+            }
+            catch { return ""; }
+        }
+
+        private string   _telemetryLastNotedGame;
+        private DateTime _telemetryLastNotedDate;   // UTC date component, MinValue until first note
+
+        /// <summary>The live game as ANALYTICS sees it: set whenever SimHub reports the
+        /// title's process up, even if no telemetry is flowing. Deliberately separate
+        /// from <see cref="_currentGameName"/>, which stays gated on GameRunning because
+        /// the force path must not act on a title that is sending nothing.</summary>
+        private volatile string _usageGameName;
+
+        /// <summary>Today's UTC date as the wire format expects it. InvariantCulture
+        /// is load-bearing, not tidiness: ToString on the current culture uses that
+        /// culture's CALENDAR, so a th-TH install writes 2569-09-21, ar-SA writes
+        /// 1448-04-10 and fa-IR writes 1405-06-30. All three are ISO-shaped, so they
+        /// pass the server's regex and then fall outside its date window, which
+        /// discards them while still answering 2xx. Those installs would count toward
+        /// DAU and never toward per-game DAU, silently.</summary>
+        private static string UsageDayKey() => UsageDayKey(DateTime.UtcNow);
+
+        private static string UsageDayKey(DateTime utc) =>
+            utc.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        // The server takes at most 200 game-days and 10 preset bodies per call and
+        // ignores anything past that, so the client never builds more than it will
+        // accept (an over-long array used to be dropped whole, silently).
+        private const int UsageGameDayCap  = 200;
+        private const int UsagePresetBatch = 10;
+
+        // Called every DataUpdate with the live game name (or null). Cheap on the
+        // hot path: two ordinal compares with no allocation; the record runs only on
+        // a transition into a game, and only while usage stats are on and the plugin
+        // is not off. Accumulates a (game|UTC-day) entry that the once-a-day ping
+        // drains, so we learn per-game daily activity without extra pings.
+        private void NoteTelemetryGameActivity(string game)
+        {
+            // The latch is keyed on game AND UTC date. Game alone made it blind to
+            // midnight: a session starting 20:30 and ending 01:00 never re-noted, so
+            // the new day got no entry at all unless the six-hour timer happened to
+            // tick before the user quit (it is MaybeSendUsagePing, not this method,
+            // that folds the live game in, and End() does not flush). Comparing the
+            // DateTime.Date rather than a formatted string keeps the hot path
+            // allocation-free; the string is built only once a transition is real.
+            DateTime utcNow = DateTime.UtcNow;
+            if (string.Equals(game, _telemetryLastNotedGame, StringComparison.Ordinal)
+                && utcNow.Date == _telemetryLastNotedDate) return;
+            if (string.IsNullOrEmpty(game)) { _telemetryLastNotedGame = null; return; }  // stopped
+            try
+            {
+                // Gates BEFORE latching: latching first would consume the transition, so
+                // a game launched while stats were off (or the plugin was Off) could
+                // never be noted once the gate opened, even though it is still running.
+                if (_shuttingDown || Settings == null || !Settings.ShareUsageStats) return;
+                if (StoredMasterMode == TrueforceMasterMode.Off) return;
+                _telemetryLastNotedGame = game;
+                _telemetryLastNotedDate = utcNow.Date;
+                string g = game.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase) ? "Custom" : game;
+                string key = g + "|" + UsageDayKey(utcNow);
+                bool added = false;
+                // _carFactsLock, not a private lock: this is a structural mutation of a
+                // collection in the Settings graph on the data thread, and
+                // PersistSettingsCore / BuildEnvelopeLocked walk that whole graph with
+                // Newtonsoft. Same contract as the GamesWithRedline add above.
+                lock (_carFactsLock)
+                {
+                    var list = Settings.TelemetryGameDays;
+                    if (list != null && !list.Contains(key))
+                    {
+                        // Evict oldest-first at the cap, never refuse the add. Refusing
+                        // was terminal: an entry whose day has aged past the server's
+                        // 60-day window can never be confirmed, so CommitUsagePing never
+                        // removes it. Let 200 of those accumulate (an install that plays
+                        // daily with no successful ping for a couple of months, a rig
+                        // offline in a garage) and the queue is permanently full of
+                        // entries that can never leave: activity stops being recorded for
+                        // good, the live game can no longer be folded in, and the preset
+                        // feed dies with it because `played` comes from this same list.
+                        // Keeping the newest 200 days is what the analytics want anyway.
+                        if (list.Count >= UsageGameDayCap) list.RemoveAt(0);
+                        list.Add(key);
+                        added = true;
+                    }
+                }
+                // Persist off the hot path so the entry survives a close before the next
+                // ping. At most one save per game per UTC day, and it lands at game
+                // START, where PersistSettingsCore's whole-graph write holds
+                // _carFactsLock and can briefly stall the data thread. Accepted: the
+                // alternative is losing the day's activity when SimHub closes.
+                if (added) System.Threading.Tasks.Task.Run(() => { try { PersistSettingsCore(); } catch { } });
+            }
+            catch { /* telemetry must never disturb DataUpdate */ }
+        }
+
+        // Identity / attribution fields that must never ride a preset body: author
+        // and description (free text), pack name, and the community-upload ids (one
+        // is a user uuid). Also the per-car override map (the payload is the GAME
+        // default; per-car is a separate, much larger question) and the custom-
+        // engine id. Stripped at any depth.
+        private static readonly System.Collections.Generic.HashSet<string> PresetPayloadDeny =
+            new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+        {
+            "Author", "AuthorVersion", "PackName", "Description",
+            "CommunitySourceId", "CommunityUploadedById", "CommunityUploadedByUserId",
+            "CommunityUploadedBodyHash", "CommunityUploadedVersion",
+            "CarOverrides", "DeclinedCommunityRedlineSig", "UserCustomEngineId",
+            // Reachable from EnginePulseSettings and user-authored:
+            // CustomFiringPatternName is a name the user types. They are also kept
+            // out by ShouldSerialize* on those properties, but that block is
+            // documented as migration hygiene for retired fields, so it must not be
+            // this payload's only defense.
+            "CustomEngineId", "CustomFiringPattern", "CustomFiringPatternName",
+            // Retired legacy car-fact values. Not personal data, but they are NUMBERS,
+            // so StripTextLeaves cannot backstop them: today they are only kept out by
+            // ShouldSerialize* on those properties, and that block is documented as
+            // removable migration hygiene.
+            "Cylinders", "FiringOrderEnabled",
+        };
+
+        private static void StripPresetIdentity(Newtonsoft.Json.Linq.JToken tok)
+        {
+            if (tok is Newtonsoft.Json.Linq.JObject o)
+            {
+                foreach (var name in System.Linq.Enumerable.ToList(
+                    System.Linq.Enumerable.Select(o.Properties(), p => p.Name)))
+                    if (PresetPayloadDeny.Contains(name)) o.Remove(name);
+                foreach (var p in o.Properties()) StripPresetIdentity(p.Value);
+            }
+            else if (tok is Newtonsoft.Json.Linq.JArray a)
+            {
+                foreach (var item in a) StripPresetIdentity(item);
+            }
+        }
+
+        /// <summary>Serializer for the per-game preset payload. Clears the converter on
+        /// enum members so they serialize as INTEGERS. Newtonsoft applies a member-level
+        /// [JsonConverter(typeof(StringEnumConverter))] regardless of serializer
+        /// settings, so without this every enum in the preset graph becomes a string and
+        /// StripTextLeaves deletes it (verified: 143 leaves -> 119, losing all 14
+        /// Waveform / Mode / ElectricMode / SurfaceWaveform fields). Resolver
+        /// subclassing follows the existing PresetBodyHasher pattern.
+        ///
+        /// BOTH hooks are needed. CreateProperty clears the MEMBER attribute, which is
+        /// what the settings model uses today; CreateContract clears a TYPE-level
+        /// attribute on the enum declaration itself, which nothing uses today but which
+        /// is the obvious tidy-up when someone notices the 14 identical member
+        /// attributes. Without the second hook that refactor silently reinstates the
+        /// bug, because a type-level converter is resolved from the enum's contract and
+        /// never passes through CreateProperty.</summary>
+        private sealed class EnumsAsIntegersResolver : Newtonsoft.Json.Serialization.DefaultContractResolver
+        {
+            protected override Newtonsoft.Json.Serialization.JsonProperty CreateProperty(
+                System.Reflection.MemberInfo member, Newtonsoft.Json.MemberSerialization memberSerialization)
+            {
+                var p = base.CreateProperty(member, memberSerialization);
+                var t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+                if (t != null && t.IsEnum) p.Converter = null;
+                // ItemConverter is the third route: [JsonProperty(ItemConverterType =
+                // typeof(StringEnumConverter))] on a collection-of-enums member would
+                // still write strings, and StripTextLeaves would then empty the array.
+                // Nothing in the graph is a collection of enums today, so this is a
+                // guard against the shape rather than a fix for a live bug.
+                p.ItemConverter = null;
+                return p;
+            }
+
+            protected override Newtonsoft.Json.Serialization.JsonContract CreateContract(Type objectType)
+            {
+                var c = base.CreateContract(objectType);
+                var t = Nullable.GetUnderlyingType(objectType) ?? objectType;
+                if (t != null && t.IsEnum) c.Converter = null;
+                return c;
+            }
+        }
+
+        private static readonly Newtonsoft.Json.JsonSerializer PresetPayloadSerializer =
+            new Newtonsoft.Json.JsonSerializer
+            {
+                ContractResolver = new EnumsAsIntegersResolver(),
+            };
+
+        private static bool IsTextLeaf(Newtonsoft.Json.Linq.JToken t)
+        {
+            var v = t as Newtonsoft.Json.Linq.JValue;
+            if (v == null) return false;
+            switch (v.Type)
+            {
+                case Newtonsoft.Json.Linq.JTokenType.String:
+                case Newtonsoft.Json.Linq.JTokenType.Uri:
+                case Newtonsoft.Json.Linq.JTokenType.Guid:
+                case Newtonsoft.Json.Linq.JTokenType.Date:
+                case Newtonsoft.Json.Linq.JTokenType.Bytes:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>Second pass, and the one that actually holds the line: drop every
+        /// TEXT leaf, so a free-text, path or id field added to GameSettingsSnapshot or
+        /// any of its effect classes later cannot reach the payload by default (name
+        /// denial alone is a blocklist over a surface that grows).
+        ///
+        /// This is only safe because the payload is serialized with
+        /// <see cref="PresetPayloadSerializer"/>, which forces enums to integers. The
+        /// enums here carry a [JsonConverter(StringEnumConverter)] attribute, which
+        /// beats serializer settings, so a plain serializer writes them as TEXT and
+        /// this pass would delete all 14 of them (Waveform, Mode, ElectricMode,
+        /// SurfaceWaveform, ...). Anything serialized here that is genuinely text and
+        /// genuinely wanted has the same problem and must be given a non-text
+        /// representation, not an exemption. Property NAMES are not inspected: no
+        /// dictionary is reachable from the snapshot today (CarOverrides is denied by
+        /// name), but a dictionary added later would carry its user-controlled KEYS
+        /// through this pass untouched.</summary>
+        private static void StripTextLeaves(Newtonsoft.Json.Linq.JToken tok)
+        {
+            if (tok is Newtonsoft.Json.Linq.JObject o)
+            {
+                foreach (var name in System.Linq.Enumerable.ToList(
+                    System.Linq.Enumerable.Select(o.Properties(), p => p.Name)))
+                {
+                    var val = o[name];
+                    if (IsTextLeaf(val)) o.Remove(name);
+                    else StripTextLeaves(val);
+                }
+            }
+            else if (tok is Newtonsoft.Json.Linq.JArray a)
+            {
+                for (int i = a.Count - 1; i >= 0; i--)
+                {
+                    if (IsTextLeaf(a[i])) a.RemoveAt(i);
+                    else StripTextLeaves(a[i]);
+                }
+            }
+        }
+
+        /// <summary>For each played game, its DEFAULT preset body (identity and text
+        /// stripped) as [{g, p}], but only for games whose body changed since we last
+        /// sent it. New hashes are STAGED into <paramref name="staged"/> rather than
+        /// written to Settings, so a send that never lands cannot mark a body as
+        /// "already sent". Takes _carFactsLock: it walks the Settings preset graph,
+        /// which is the documented rule (see BuildEnvelopeLocked).</summary>
+        private string BuildChangedGamePresetsJson(
+            System.Collections.Generic.HashSet<string> played,
+            System.Collections.Generic.Dictionary<string, string> staged)
+        {
+            try
+            {
+                if (played == null || played.Count == 0 || staged == null) return null;
+                var arr = new Newtonsoft.Json.Linq.JArray();
+                // Hashes accumulate HERE, not into `staged`, until the payload is fully
+                // built. `staged` is captured by the on-success commit, so writing into
+                // it early meant a mid-loop throw (the catch returns null, sending no
+                // presets) still marked those games delivered, defeating the very
+                // guarantee staging exists to give.
+                var built = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+                lock (_carFactsLock)
+                {
+                    if (Settings?.GameDefaults == null || Settings.Presets == null) return null;
+                    var known = Settings.TelemetryGamePresetHashes;
+                    foreach (var g in played)
+                    {
+                        if (arr.Count >= UsagePresetBatch) break;        // server takes 10
+                        if (!Settings.GameDefaults.TryGetValue(g, out var presetName)
+                            || string.IsNullOrEmpty(presetName)) continue;
+                        if (!Settings.Presets.TryGetValue(presetName, out var snap) || snap == null) continue;
+                        // PresetPayloadSerializer, not the parameterless FromObject: it
+                        // both avoids JsonConvert.DefaultSettings AND forces enums to
+                        // integers, without which StripTextLeaves below deletes every
+                        // enum in the body. The hash is taken AFTER stripping, so that
+                        // loss would also have made waveform/mode edits un-resendable.
+                        var body = Newtonsoft.Json.Linq.JObject.FromObject(snap, PresetPayloadSerializer);
+                        StripPresetIdentity(body);
+                        StripTextLeaves(body);
+                        string hash = HashSnapshot(body.ToString(Newtonsoft.Json.Formatting.None));
+                        if (known != null && known.TryGetValue(g, out var last)
+                            && string.Equals(last, hash, StringComparison.Ordinal)) continue;   // unchanged
+                        built[g] = hash;
+                        arr.Add(new Newtonsoft.Json.Linq.JObject { ["g"] = g, ["p"] = body });
+                    }
+                }
+                if (arr.Count == 0) return null;
+                string json = arr.ToString(Newtonsoft.Json.Formatting.None);   // can throw; staged stays empty
+                foreach (var kv in built) staged[kv.Key] = kv.Value;
+                return json;
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Game preset payload build failed: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>Drop queued game-days the server can no longer accept, and keep
+        /// the queue inside its cap. Returns true when anything was removed.
+        ///
+        /// Deliberately NOT gated on ShareUsageStats, and called from Init as well as
+        /// from the ping. The send path is gated, so an install that opted out would
+        /// otherwise keep whatever it had queued at that moment in its settings file
+        /// indefinitely: never sent, because sending is off, and never pruned, because
+        /// the only pruner ran behind the same gate. Holding a play history for someone
+        /// who opted out serves no purpose. Age-based rather than wholesale, so turning
+        /// the switch off and straight back on still reports the day.</summary>
+        private bool PruneUsageGameDays()
+        {
+            try
+            {
+                if (Settings == null) return false;
+                // The server accepts a 60-day window; anything older is refused, so it
+                // is never echoed in a receipt, so CommitUsagePing never removes it.
+                // Left alone such an entry is immortal: re-serialized into every future
+                // ping and occupying a cap slot for good. Cut at 55 days, safely inside
+                // the window, so nothing still deliverable is thrown away.
+                string cutoff = UsageDayKey(DateTime.UtcNow.AddDays(-55));
+                lock (_carFactsLock)
+                {
+                    var list = Settings.TelemetryGameDays;
+                    if (list == null || list.Count == 0) return false;
+                    int before = list.Count;
+                    list.RemoveAll(e =>
+                    {
+                        int b = e == null ? -1 : e.IndexOf('|');
+                        return b <= 0 || b >= e.Length - 1
+                            || string.CompareOrdinal(e.Substring(b + 1), cutoff) < 0;
+                    });
+                    // A file edited by hand, or written by an older build with a larger
+                    // cap, can still arrive over the limit; trim oldest-first.
+                    while (list.Count > UsageGameDayCap) list.RemoveAt(0);
+                    return list.Count != before;
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage game-day prune failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>Let a deliberate opt-IN send today's activity even though the
+        /// once-a-day stamp has already been spent. Turning the switch on is a fresh,
+        /// explicit consent, so the right response is to report rather than to sit on
+        /// what is already queued until tomorrow. It also makes the toggle the only
+        /// thing a tester needs in order to force a send; there is otherwise no way to
+        /// trigger one, which made the feature untestable by hand.
+        ///
+        /// Cheap to abuse only in the sense that toggling repeatedly re-sends: the
+        /// server upserts on (anon_id, day) so the row count cannot grow, and
+        /// MaybeSendUsagePing single-flights through _usagePingBusy.</summary>
+        internal void AllowUsagePingAgainToday()
+        {
+            try
+            {
+                if (Settings == null) return;
+                Settings.LastTelemetryPingDay = null;
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage ping re-arm failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>Commit the ping's local state, called ONLY after the server
+        /// accepted it, and then only for what the server's RECEIPT says it actually
+        /// stored. Nothing is stamped or dropped before that, so a failed send, or a
+        /// payload the server filtered (too large, out of its date window, past its
+        /// per-install game cap), retries on the next tick instead of being recorded
+        /// as delivered. That second half matters more than it looks: the resend test
+        /// is a hash compare, so a payload wrongly marked delivered is not lost for
+        /// one ping, it is lost until the user happens to change that setting again.
+        /// A null receipt (an older server, an unreadable body) commits the day stamp
+        /// only, which costs one extra send and can never lose data.</summary>
+        private void CommitUsagePing(TrueforceSettings owner, string day, string snapshotHash,
+            System.Collections.Generic.List<string> sentGameDays,
+            System.Collections.Generic.Dictionary<string, string> presetHashes,
+            TelemetryReceipt receipt)
+        {
+            try
+            {
+                // This runs on a ThreadPool thread up to the HTTP timeout after dispatch.
+                // Bail if we are tearing down (it would write the settings file after
+                // End()'s final save) or if the settings graph was REPLACED meanwhile by
+                // an import / restore: stamping a different object costs that install a
+                // day of DAU under a freshly minted id. Same guard pattern the other
+                // post-async callbacks in this file use.
+                if (owner == null || _shuttingDown || !ReferenceEquals(Settings, owner)) return;
+                SimHub.Logging.Current.Info(receipt == null
+                    ? "[TF4ALL] Usage ping accepted, no receipt: stamping the day only."
+                    : string.Format("[TF4ALL] Usage ping stored: settings={0} gameDays={1} presets={2}",
+                        receipt.SettingsStored ? "yes" : "no",
+                        receipt.Games.Count, receipt.Presets.Count));
+                // Every write below goes through `owner`, never a fresh read of the
+                // Settings property: the guard has already proven owner is the live
+                // graph, and re-reading a plain auto-property would let an import
+                // landing in between write this ping's state into the NEW object,
+                // which is the exact outcome the guard exists to prevent.
+                lock (_carFactsLock)
+                {
+                    // Re-checked inside the lock: End() sets the flag and then does its
+                    // own final save, so a callback that read it a moment earlier would
+                    // otherwise persist over the top of that save. Leaving the entries
+                    // queued is the right outcome; they go out on the next run.
+                    if (_shuttingDown) return;
+                    owner.LastTelemetryPingDay = day;
+                    if (!string.IsNullOrEmpty(snapshotHash) && receipt != null && receipt.SettingsStored)
+                        owner.LastTelemetrySettingsHash = snapshotHash;
+                    // Drop exactly the entries the server confirmed, BY VALUE. Not by
+                    // index or count: the day stamp now lands only on success, so two
+                    // pings can briefly overlap, and an index-based drop would then
+                    // remove entries that were never sent. Remove(item) on an
+                    // already-removed key is a no-op, which makes a repeated commit
+                    // harmless. Anything unconfirmed, and anything the data thread
+                    // appended meanwhile, stays queued.
+                    var list = owner.TelemetryGameDays;
+                    if (list != null && sentGameDays != null && receipt != null)
+                        foreach (var key in sentGameDays)
+                            if (receipt.Games.Contains(key)) list.Remove(key);
+                    if (presetHashes != null && presetHashes.Count > 0 && receipt != null)
+                    {
+                        var h = owner.TelemetryGamePresetHashes;
+                        if (h == null)
+                        {
+                            h = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+                            owner.TelemetryGamePresetHashes = h;
+                        }
+                        foreach (var kv in presetHashes)
+                            if (receipt.Presets.Contains(kv.Key)) h[kv.Key] = kv.Value;
+                    }
+                }
+                PersistSettingsCore();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage ping commit failed: " + ex.Message);
+            }
+        }
+
         /// <summary>Fire-and-forget submission of a redline correction.
         /// Mirrors <see cref="SubmitEngineLayoutToCommunity"/>: gated by
         /// CommunityEnabled, plumbs the active car's variant signature
@@ -19809,6 +26191,16 @@ namespace TrueforceForAll.Plugin
             if (_activeGame != null
                 && _activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal))
                 telemetryName = _fsPipeSource?.CarDisplayName;
+            else if (IsR3EGame(_activeGame))
+                telemetryName = _r3eCarDisplayName;
+            else if (ActiveGameIsArcade)
+            {
+                // The game's own name for the car, read from its data files by the static analysis.
+                // It is the authority here in exactly the way the mod's name is for Farming
+                // Simulator, so it belongs on the same rung.
+                var arcadeCar = ArcadeCarNow();
+                if (arcadeCar != null) telemetryName = arcadeCar.Name;
+            }
             if (!string.IsNullOrEmpty(localName))
             {
                 _activeCarDisplayName = localName;
@@ -19975,6 +26367,25 @@ namespace TrueforceForAll.Plugin
                         + $"redline={(v.RedlineRpm.HasValue ? v.RedlineRpm.Value.ToString() : "-")}, "
                         + $"source={v.Source} -> layout={EnginePulse.AutoLayout}");
             }
+            else if (EnginePulse.ObservedIsElectric)
+            {
+                // The game itself counted the cylinders of the car that is
+                // actually loaded and came back with none. That is first-hand
+                // truth about this car, so it outranks a catalog keyed on the
+                // car's id: Forza's EV lineup is large, grows with every
+                // update, and the FH6 table carries names only. Same rung as
+                // RaceRoom's own EngineType below.
+                EnginePulse.AutoLayout = Effects.EngineLayout.Electric;
+                EnginePulse.AutoLayoutSource = "telemetry";
+                EnginePulse.CatalogCyl = null;
+                if (string.IsNullOrEmpty(_activeCarDisplayName)
+                    && CarCylinderResolver.TryResolve(_activeGame, carId, out var evSpec))
+                    _activeCarDisplayName = evSpec.DisplayName;
+                if (logResolution)
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Car '{carId}' resolved from the game's own cylinder count: "
+                        + "no cylinders, so electric.");
+            }
             else if (CarCylinderResolver.TryResolve(_activeGame, carId, out var carSpec))
             {
                 EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
@@ -19990,6 +26401,43 @@ namespace TrueforceForAll.Plugin
                         + $"engineConfig={carSpec.EngineConfig} ({carSpec.EngineConfigSource ?? "auto"}), "
                         + $"name={carSpec.DisplayName ?? "(none)"}"
                         + $" -> layout={EnginePulse.AutoLayout}");
+            }
+            else if (ActiveGameIsArcade && ArcadeCarNow() != null)
+            {
+                // The cabinet's own car table, recovered by static analysis of the game and
+                // verified against its bytes. It knows the cylinder count and both tachometer
+                // faces for every car in the game, which is more than the seed catalog can offer
+                // for a title it has never heard of. A rotary reports no cylinders and the firing
+                // rate of a four instead, which is what the pulse actually needs.
+                var ac = ArcadeCarNow();
+                bool tunedFace = _arcadeMemory != null && _arcadeMemory.Last.TunedFace;
+                EnginePulse.AutoLayout = Effects.FiringPatternDb.LayoutFromLegacy(
+                    ac.PulseCylinderEquivalent, Effects.EngineConfig.Auto, false);
+                EnginePulse.AutoLayoutSource = "the game's own car table";
+                EnginePulse.CatalogCyl = ac.PulseCylinderEquivalent;
+                if (RevLimiter != null) RevLimiter.CarFactsRedline = ac.Redline(tunedFace);
+                if (string.IsNullOrEmpty(_activeCarDisplayName)) _activeCarDisplayName = ac.Name;
+                if (logResolution)
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Car '{carId}' resolved from the cabinet's own table: "
+                        + $"{ac.Name}, {(ac.IsRotary ? "rotary, pulsing as a 4" : ac.Cylinders + " cylinders")}, "
+                        + $"{ac.GearCount} gears, redline {ac.Redline(tunedFace)} of {ac.DialMax(tunedFace)} "
+                        + $"({(tunedFace ? "tuned" : "stock")} face) -> layout={EnginePulse.AutoLayout}");
+            }
+            else if (IsR3EGame(_activeGame) && _r3eEngineType == R3EEngineElectric)
+            {
+                // Seed miss, but RaceRoom itself says this car is electric.
+                // The sim publishes no cylinder count, so this branch can only
+                // ever resolve the EV way: a car the seed has never seen (new
+                // DLC) still gets silence rather than a generic six-cylinder
+                // hum. Combustion and hybrid say nothing we can act on and
+                // fall through to the manual path below.
+                EnginePulse.AutoLayout = Effects.EngineLayout.Electric;
+                EnginePulse.AutoLayoutSource = "telemetry";
+                EnginePulse.CatalogCyl = null;
+                if (logResolution)
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Car '{carId}' resolved from RaceRoom's own EngineType: electric.");
             }
             else if (_telemetrySource?.ProvidesNumCylinders == true)
             {
@@ -20199,7 +26647,8 @@ namespace TrueforceForAll.Plugin
                     if (IsAutoVariantLabel(match.Label))
                         match.Label = BuildAutoVariantLabel(match.Cylinders,
                                                             match.MaxRpm,
-                                                            match.RedlineRpm);
+                                                            match.RedlineRpm,
+                                                            EnginePulse?.ObservedIsElectric == true);
                 }
                 return match;
             }
@@ -20223,7 +26672,8 @@ namespace TrueforceForAll.Plugin
             };
             fresh.Label = BuildAutoVariantLabel(fresh.Cylinders,
                                                fresh.MaxRpm,
-                                               fresh.RedlineRpm);
+                                               fresh.RedlineRpm,
+                                               EnginePulse?.ObservedIsElectric == true);
             bundle.EngineVariants.Add(fresh);
             changed = true;
             return fresh;
@@ -20452,6 +26902,44 @@ namespace TrueforceForAll.Plugin
                     if (v == null || v.Id != variantId) continue;
                     v.UserEngineLayout   = layout;
                     v.UserCustomEngineId = layout == Effects.EngineLayout.Custom ? (customId ?? "") : "";
+                    saved = true;
+                    break;
+                }
+            }
+            if (!saved) return false;
+            ScheduleCarFactsFlush();
+            ResolveAndApplyCarFactsForActiveCar(_activeCarId, logResolution: false);
+            return true;
+        }
+
+        /// <summary>Pin, or clear, the redline on ONE listed variant rather than
+        /// the one being driven. Same shape as SaveActiveCarVariantUserEngineById,
+        /// and the same reason for existing: the variants window lists rows the
+        /// driver is not currently in, and SaveActiveVariantUserRedline can only
+        /// reach the live signature.
+        ///
+        /// A null rpm clears the pin and lets resolution decide again. It does
+        /// NOT touch AdoptedCommunityRedlineRpm, so clearing falls back to the
+        /// community value where there is one, which is what "no longer my own
+        /// number" should mean. Pinning does clear it, matching the live setter:
+        /// a deliberate pin supersedes an adopted value.</summary>
+        public bool SaveActiveCarVariantUserRedlineById(string variantId, int? rpm)
+        {
+            if (string.IsNullOrEmpty(_activeGame) || string.IsNullOrEmpty(_activeCarId)) return false;
+            if (string.IsNullOrEmpty(variantId) || Settings?.CarFacts == null) return false;
+            // Same range the live setter accepts, so the two cannot disagree
+            // about what counts as a plausible redline.
+            if (rpm.HasValue && (rpm.Value < 500 || rpm.Value > 25000)) return false;
+            string key = _activeGame + "/" + _activeCarId;
+            bool saved = false;
+            lock (_carFactsLock)
+            {
+                if (!Settings.CarFacts.TryGetValue(key, out var bundle) || bundle?.EngineVariants == null) return false;
+                foreach (var v in bundle.EngineVariants)
+                {
+                    if (v == null || v.Id != variantId) continue;
+                    v.UserRedlineRpm = rpm;
+                    if (rpm.HasValue) v.AdoptedCommunityRedlineRpm = null;
                     saved = true;
                     break;
                 }
@@ -20851,7 +27339,7 @@ namespace TrueforceForAll.Plugin
         // on upgrade without clobbering a label the user typed themselves.
         private static readonly System.Text.RegularExpressions.Regex AutoLabelPattern =
             new System.Text.RegularExpressions.Regex(
-                @"^(\d+ cyl|engine)(, \d+ RPM)?(, \d+ redline)?$",
+                @"^(\d+ cyl|electric|engine)(, \d+ RPM)?(, \d+ redline)?$",
                 System.Text.RegularExpressions.RegexOptions.Compiled);
 
         internal static bool IsAutoVariantLabel(string label)
@@ -20860,13 +27348,15 @@ namespace TrueforceForAll.Plugin
             return AutoLabelPattern.IsMatch(label);
         }
 
-        internal static string BuildAutoVariantLabel(int cyl, int? maxRpm, int? redlineRpm)
+        internal static string BuildAutoVariantLabel(int cyl, int? maxRpm, int? redlineRpm,
+                                                     bool isElectric = false)
         {
             var sb = new System.Text.StringBuilder();
             // Cyl=0 sentinel = "unknown cyl count" (SimHub-fallback game
             // with no bake entry). Lead with "engine" instead of "0 cyl"
-            // so the label reads cleanly.
-            sb.Append(cyl >= 1 ? (cyl + " cyl") : "engine");
+            // so the label reads cleanly, or with "electric" when the zero
+            // is an answer rather than a gap.
+            sb.Append(cyl >= 1 ? (cyl + " cyl") : (isElectric ? "electric" : "engine"));
             if (maxRpm.HasValue && maxRpm.Value > 0)
                 sb.Append(", ").Append(maxRpm.Value).Append(" RPM");
             if (redlineRpm.HasValue && redlineRpm.Value > 0)
@@ -23037,7 +29527,7 @@ namespace TrueforceForAll.Plugin
                     // has no MasterMode key, and ApplySettings only writes the keys
                     // it finds, so the OUTGOING account's mode would survive the
                     // switch and decide the incoming one. Same answer as the other
-                    // two pre-enum paths: Full, with the profile's own GameEnabled
+                    // two pre-enum paths: Normal, with the profile's own GameEnabled
                     // map carrying its per-game choices.
                     if (env.Settings["MasterMode"] == null)
                         Settings.MasterMode = TrueforceMasterMode.Normal;
@@ -23180,11 +29670,12 @@ namespace TrueforceForAll.Plugin
                 {
                     _device.FfbScale                = Settings.FfbScale;
                     _device.FfbInvertSign           = Settings.FfbInvertSign;
-                    _device.FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs;
+                    _device.FfbSmoothTimeConstantMs = EffectiveSmoothingMs();
                     _device.FfbSpikeTamingEnabled   = Settings.FfbSpikeTamingEnabled;
                     _device.FfbSpikeUseSlewLimiter  = Settings.FfbSpikeUseSlewLimiter;
                     _device.FfbSpikeMaxLsbPerMs     = Settings.FfbSpikeMaxLsbPerMs;
                     _device.FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb;
+                    _device.FfbSpikeTransientThresholdLsb = Settings.EffectiveSpikeTransientThresholdLsb;
                 }
             }
             catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Global FFB re-apply on slot mount failed: " + ex.GetType().Name); }
@@ -23877,12 +30368,17 @@ namespace TrueforceForAll.Plugin
                 && EqF1(Settings.FfbSmoothTimeConstantMs, snap.FfbSmoothTimeConstantMs);
         }
 
+        // The peak-limiter threshold is nullable: a preset saved before the two
+        // methods stopped sharing a number has no opinion on it, so compare it
+        // against the live value (never dirty), mirroring StationarySpringEquals.
         private bool SpikeReductionEquals(GameSettingsSnapshot snap)
         {
             return Settings.FfbSpikeTamingEnabled  == snap.FfbSpikeTamingEnabled
                 &&     Settings.FfbSpikeUseSlewLimiter == snap.FfbSpikeUseSlewLimiter
                 && EqI(Settings.FfbSpikeMaxLsbPerMs,  snap.FfbSpikeMaxLsbPerMs)
-                && EqI(Settings.FfbPeakSoftLimitLsb,  snap.FfbPeakSoftLimitLsb);
+                && EqI(Settings.FfbPeakSoftLimitLsb,  snap.FfbPeakSoftLimitLsb)
+                && EqI(Settings.EffectiveSpikeTransientThresholdLsb,
+                       snap.FfbSpikeTransientThresholdLsb ?? Settings.EffectiveSpikeTransientThresholdLsb);
         }
 
         // Stationary spring is a global (non-per-car) section. A preset saved
@@ -24254,7 +30750,7 @@ namespace TrueforceForAll.Plugin
                     {
                         _device.FfbScale                = Settings.FfbScale;
                         _device.FfbInvertSign           = Settings.FfbInvertSign;
-                        _device.FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs;
+                        _device.FfbSmoothTimeConstantMs = EffectiveSmoothingMs();
                     }
                     return true;
 
@@ -24263,12 +30759,17 @@ namespace TrueforceForAll.Plugin
                     Settings.FfbSpikeUseSlewLimiter = snap.FfbSpikeUseSlewLimiter;
                     Settings.FfbSpikeMaxLsbPerMs    = snap.FfbSpikeMaxLsbPerMs;
                     Settings.FfbPeakSoftLimitLsb    = snap.FfbPeakSoftLimitLsb;
+                    // Null = preset predates the rate/peak threshold split, so
+                    // leave the live threshold alone rather than reverting it.
+                    if (snap.FfbSpikeTransientThresholdLsb.HasValue)
+                        Settings.FfbSpikeTransientThresholdLsb = snap.FfbSpikeTransientThresholdLsb.Value;
                     if (_device != null)
                     {
                         _device.FfbSpikeTamingEnabled  = Settings.FfbSpikeTamingEnabled;
                         _device.FfbSpikeUseSlewLimiter = Settings.FfbSpikeUseSlewLimiter;
                         _device.FfbSpikeMaxLsbPerMs    = Settings.FfbSpikeMaxLsbPerMs;
                         _device.FfbPeakSoftLimitLsb    = Settings.FfbPeakSoftLimitLsb;
+                        _device.FfbSpikeTransientThresholdLsb = Settings.EffectiveSpikeTransientThresholdLsb;
                     }
                     return true;
 
@@ -24652,6 +31153,7 @@ namespace TrueforceForAll.Plugin
                     snap.FfbSpikeUseSlewLimiter = Settings.FfbSpikeUseSlewLimiter;
                     snap.FfbSpikeMaxLsbPerMs    = Settings.FfbSpikeMaxLsbPerMs;
                     snap.FfbPeakSoftLimitLsb    = Settings.FfbPeakSoftLimitLsb;
+                    snap.FfbSpikeTransientThresholdLsb = Settings.EffectiveSpikeTransientThresholdLsb;
                     break;
                 case SectionKind.StationarySpring:
                     snap.StationarySpringEnabled   = Settings.StationarySpringEnabled;
@@ -25380,7 +31882,13 @@ namespace TrueforceForAll.Plugin
             Settings.FfbSpikeTamingEnabled   = snap.FfbSpikeTamingEnabled;
             Settings.FfbSpikeUseSlewLimiter  = snap.FfbSpikeUseSlewLimiter;
             Settings.FfbSpikeMaxLsbPerMs     = SafeMath.SafeFloat(snap.FfbSpikeMaxLsbPerMs, 0.0f, 65535.0f, 2508.36f);
-            Settings.FfbPeakSoftLimitLsb     = SafeMath.SafeFloat(snap.FfbPeakSoftLimitLsb, 0.0f, 65535.0f, 2061.90f);
+            Settings.FfbPeakSoftLimitLsb     = SafeMath.SafeFloat(snap.FfbPeakSoftLimitLsb, 0.0f, 65535.0f, TrueforceSettings.DefaultPeakSoftLimitLsb);
+            // Nullable: a preset saved before the rate and peak limiters got
+            // separate numbers has no opinion, so keep the live threshold.
+            if (snap.FfbSpikeTransientThresholdLsb.HasValue)
+                Settings.FfbSpikeTransientThresholdLsb = SafeMath.SafeFloat(
+                    snap.FfbSpikeTransientThresholdLsb.Value, 0.0f, 65535.0f,
+                    TrueforceSettings.DefaultSpikeTransientThresholdLsb);
             Settings.DuckingEnabled          = snap.DuckingEnabled;
             Settings.DuckDepth               = SafeMath.SafeFloat(snap.DuckDepth, 0.0f, 1.0f, 0.60f);
             Settings.DuckAttackMs            = SafeMath.SafeFloat(snap.DuckAttackMs, 0.0f, 10000.0f, 5.0f);
@@ -25425,11 +31933,12 @@ namespace TrueforceForAll.Plugin
             {
                 _device.FfbScale                = Settings.FfbScale;
                 _device.FfbInvertSign           = Settings.FfbInvertSign;
-                _device.FfbSmoothTimeConstantMs = Settings.FfbSmoothTimeConstantMs;
+                _device.FfbSmoothTimeConstantMs = EffectiveSmoothingMs();
                 _device.FfbSpikeTamingEnabled   = Settings.FfbSpikeTamingEnabled;
                 _device.FfbSpikeUseSlewLimiter  = Settings.FfbSpikeUseSlewLimiter;
                 _device.FfbSpikeMaxLsbPerMs     = Settings.FfbSpikeMaxLsbPerMs;
                 _device.FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb;
+                _device.FfbSpikeTransientThresholdLsb = Settings.EffectiveSpikeTransientThresholdLsb;
             }
             if (_audio != null)
             {
@@ -25462,6 +31971,7 @@ namespace TrueforceForAll.Plugin
                 FfbSpikeUseSlewLimiter  = Settings.FfbSpikeUseSlewLimiter,
                 FfbSpikeMaxLsbPerMs     = Settings.FfbSpikeMaxLsbPerMs,
                 FfbPeakSoftLimitLsb     = Settings.FfbPeakSoftLimitLsb,
+                FfbSpikeTransientThresholdLsb = Settings.EffectiveSpikeTransientThresholdLsb,
                 StationarySpringEnabled   = Settings.StationarySpringEnabled,
                 StationarySpringStrength  = Settings.StationarySpringStrength,
                 StationarySpringCutoffKmh = Settings.StationarySpringCutoffKmh,
@@ -27395,6 +33905,11 @@ namespace TrueforceForAll.Plugin
         ///   user/                 (every preset, default, and metadata file
         ///                          the user owns; factory/ is intentionally
         ///                          excluded because the plugin ships with it).
+        ///   arcade/               (the two irreplaceable Initial D 8 archives:
+        ///                          the pre-write snapshot of this machine's own
+        ///                          save boards and the originals of records
+        ///                          removed from them. The TeknoParrot scrape
+        ///                          beside them is left out, being refetchable.)
         /// No customization, no per-preset metadata dialog. Conceptually
         /// different from ExportPack / ExportSinglePreset: backup is a
         /// snapshot of state, not a curated share.</summary>
@@ -27447,6 +33962,42 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
+
+                // 3) The arcade archives. These two files are the ONLY surviving copy of
+                // rows this machine's Initial D 8 save used to hold: the service snapshots
+                // a board before it writes to it, once per slot and never again, precisely
+                // because a second pass would capture the already-modified board. Losing
+                // the folder (reinstall, wiped PluginsData) loses those rows for good, so
+                // the local zip carries them. teknoparrot-id8.json is deliberately NOT
+                // here: it is a cache of a public web leaderboard that refetches itself,
+                // the same call already made for the community fact cache.
+                //
+                // Stamped with the machine that wrote them, because unlike everything else in
+                // this zip they are NOT portable. They describe one install's save file, and
+                // the restore only takes back its own (see RestoreAllFromZip). Without the
+                // stamp, carrying this zip to a second PC would hand that PC a snapshot of a
+                // save it does not have, and since the service refuses to snapshot a slot that
+                // is already keyed, that PC could then never record its own original rows.
+                string arcadeRoot = System.IO.Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-Arcade");
+                string arcadeStamp = ArcadeZipStamp();
+                foreach (var leaf in new[] { "id8-shop-board-backup.json", "id8-removed-records.json" })
+                {
+                    string src = System.IO.Path.Combine(arcadeRoot, leaf);
+                    if (!System.IO.File.Exists(src)) continue;
+                    try
+                    {
+                        var bytes = System.IO.File.ReadAllBytes(src);
+                        var entry = zip.CreateEntry("arcade/" + arcadeStamp + "/" + leaf, System.IO.Compression.CompressionLevel.Optimal);
+                        using (var ws = entry.Open())
+                            ws.Write(bytes, 0, bytes.Length);
+                        fileCount++;
+                        totalBytes += bytes.LongLength;
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Backup: couldn't add '{src}': {ex.Message}");
+                    }
+                }
             }
             SimHub.Logging.Current.Info($"[TF4ALL] Backup wrote {fileCount} entries ({totalBytes} bytes) to {zipPath}.");
             return (fileCount, totalBytes);
@@ -27457,7 +34008,9 @@ namespace TrueforceForAll.Plugin
         /// (after backing it up to a sibling .pre-restore-<timestamp>/ folder
         /// for safety), extracts the archive in its place, restores
         /// GeneralSettings.json into Settings, and reloads everything from
-        /// disk. Returns the number of files restored.
+        /// disk. The arcade/ archives are the one exception to "replace": they
+        /// are written back only where this machine has no copy of its own.
+        /// Returns the number of files restored.
         ///
         /// Destructive: the caller must have confirmed with the user.</summary>
         public int RestoreAllFromZip(string zipPath, bool applySettings = true)
@@ -27510,6 +34063,15 @@ namespace TrueforceForAll.Plugin
 
             int restored = 0;
             string settingsJson = null;
+            // Checked, not assumed: the arcade archives live in TrueforceForAll-Arcade, a
+            // SIBLING of the plugin root under PluginsData\Common, while the wipe above only
+            // moves UserPresets.CurrentFolder (the "user" subfolder INSIDE that root) aside.
+            // Nothing in the restore reaches this folder except the extraction below.
+            string arcadeRoot = System.IO.Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-Arcade");
+            // Arcade files this call creates, so a rollback can remove exactly those and no
+            // others. They are the one thing the restore writes outside the user folder, so
+            // they are also the one thing the wholesale rollback below cannot undo for free.
+            var arcadeWritten = new List<string>();
             try
             {
                 using (var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
@@ -27524,6 +34086,56 @@ namespace TrueforceForAll.Plugin
                             using (var es = entry.Open())
                             using (var sr = new System.IO.StreamReader(es))
                                 settingsJson = sr.ReadToEnd();
+                            continue;
+                        }
+                        if (name.StartsWith("arcade/", StringComparison.Ordinal))
+                        {
+                            // TWO rules, and the zip is the only place in this method where
+                            // "replace everything with the backup" is the wrong answer.
+                            //
+                            // ONLY THIS MACHINE'S. These files describe one install's Initial D 8
+                            // save, not a portable preference, so they are stored under the name
+                            // of the machine that wrote them and only that machine takes them
+                            // back. Handing them to a second PC would give it a snapshot of a
+                            // save it does not have, and the service refuses to snapshot a slot
+                            // that is already keyed, so that PC could never record its own rows.
+                            //
+                            // NEVER OVERWRITE. Even on the right machine, an existing file is the
+                            // only surviving record of its own original rows (the writer takes
+                            // one snapshot per slot and refuses to touch it again, for exactly
+                            // this reason), so a restore adds them back when they are missing and
+                            // otherwise leaves them entirely alone.
+                            string arel = name.Substring("arcade/".Length);
+                            int slash = arel.IndexOf('/');
+                            if (slash <= 0) continue;                       // unstamped: not ours
+                            string fromMachine = arel.Substring(0, slash);
+                            string leaf        = arel.Substring(slash + 1);
+                            if (!string.Equals(fromMachine, ArcadeZipStamp(), StringComparison.OrdinalIgnoreCase))
+                            {
+                                SimHub.Logging.Current.Info(
+                                    "[TF4ALL] Restore: skipped the arcade archive from '" + fromMachine
+                                    + "' (it records that machine's own board rows, not this one's).");
+                                continue;
+                            }
+                            if (!SafePath.IsSafeArchivePath(arcadeRoot, leaf, out string adest)) continue;
+                            if (System.IO.File.Exists(adest))
+                            {
+                                SimHub.Logging.Current.Info(
+                                    "[TF4ALL] Restore: kept this machine's own arcade archive '" + leaf
+                                    + "' (the backup's copy was not applied; these files are never overwritten).");
+                                continue;
+                            }
+                            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(adest));
+                            using (var es = entry.Open())
+                            using (var ws = System.IO.File.Create(adest))
+                                es.CopyTo(ws);
+                            // Remember what THIS call created, so the rollback below can undo it.
+                            // Everything else the restore writes lives under user/, which the
+                            // rollback replaces wholesale; these two sit in a sibling folder and
+                            // would otherwise survive a failed restore as if they were this
+                            // machine's own, permanently blocking it from recording its real ones.
+                            arcadeWritten.Add(adest);
+                            restored++;
                             continue;
                         }
                         if (name.StartsWith("user/", StringComparison.Ordinal))
@@ -27593,6 +34205,20 @@ namespace TrueforceForAll.Plugin
                 catch (Exception delEx)
                 {
                     SimHub.Logging.Current.Warn($"[TF4ALL] Restore rollback: couldn't delete partial extract: {delEx.Message}");
+                }
+                // The arcade archives sit outside the user folder, so the wipe above does not
+                // reach them. Remove only the ones THIS call created: left behind, they would
+                // look like this machine's own snapshot, and because neither the restore nor the
+                // writer ever overwrites an existing one, that would permanently stop this
+                // machine from recording its real original rows. Files that were already here
+                // were skipped rather than written, so they are not in this list.
+                foreach (var written in arcadeWritten)
+                {
+                    try { if (System.IO.File.Exists(written)) System.IO.File.Delete(written); }
+                    catch (Exception aEx)
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Restore rollback: couldn't remove restored arcade archive '{written}': {aEx.Message}");
+                    }
                 }
                 if (movedAside && System.IO.Directory.Exists(safeDir))
                 {
@@ -27938,21 +34564,130 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>The condition engine's data migrations: the inertia-spec repair and the
+        /// generation reset. Called at Init, and again after a restore or import whose payload
+        /// predates them, because the VALUES they fix up are Portable while the latches that
+        /// record them are not. Idempotent: each half is latched and re-running is a no-op once
+        /// the latch is current.</summary>
+        /// <summary>The machine an arcade board archive belongs to, used as its folder inside a
+        /// backup zip. Those files record one install's own Initial D 8 save, so unlike the rest
+        /// of the zip they are not portable, and the restore takes back only entries stamped with
+        /// the current machine. Sanitized because it becomes a zip path segment; a renamed machine
+        /// simply stops matching, which degrades to the old behavior of not restoring them.</summary>
+        private static string ArcadeZipStamp()
+        {
+            string raw;
+            try { raw = Environment.MachineName ?? ""; } catch { raw = ""; }
+            var sb = new System.Text.StringBuilder(raw.Length);
+            foreach (char c in raw)
+                if (char.IsLetterOrDigit(c) || c == '-' || c == '_') sb.Append(c);
+            return sb.Length > 0 ? sb.ToString() : "this-pc";
+        }
+
+        private void ApplyConditionMigrations()
+        {
+            // Inertia renders accurately from 2026-09-09: force per unit
+            // ACCELERATION, and it coasts. Settings written before that carry
+            // the damping-shaped defaults, and with them an inertia gain
+            // tuned as force per unit VELOCITY. The two domains are about an
+            // order of magnitude apart on a hand-turned wheel, so carrying
+            // the number over is not honouring a preference, it is a unit
+            // error that saturates the term on every push. Reset it to the
+            // acceleration default and let the bench retune. Only when the
+            // stored mode was the damping one: anyone already rendering
+            // acceleration has a gain that means what it says.
+            if (!Settings.FfbConditionInertiaSpecMigrated)
+            {
+                Settings.FfbConditionInertiaSpecMigrated = true;
+                if (Settings.FfbConditionInertiaAsDamping)
+                {
+                    Settings.FfbConditionInertiaAsDamping = false;
+                    Settings.FfbConditionInertiaGain = new TrueforceSettings().FfbConditionInertiaGain;
+                }
+                Settings.FfbConditionInertiaCoasts = true;
+            }
+            // Condition-engine defaults, generation 1 (G PRO bench, 2026-09-19):
+            // the engine changed underneath the old numbers (the estimator's
+            // second pole, the classic types), and every effect was re-matched
+            // against the wheel's own rendering. There is one right tuning per
+            // wheel, and the bench exists to find it, not to keep a tune of
+            // one's own, so EVERY file is brought to the new numbers once,
+            // bench-tuned or not (owner, 2026-09-20: reset them all, the goal is
+            // no tuning needed or possible). A fresh install carries the new
+            // numbers already. The direction flip and the inertia mode are
+            // wheel facts, not tuning, and stay.
+            if (Settings.FfbConditionDefaultsGeneration < 1)
+            {
+                Settings.FfbConditionDefaultsGeneration = 1;
+                var fresh = new TrueforceSettings();
+                Settings.FfbConditionDamperGain    = fresh.FfbConditionDamperGain;
+                Settings.FfbConditionSpringGain    = fresh.FfbConditionSpringGain;
+                Settings.FfbConditionFrictionGain  = fresh.FfbConditionFrictionGain;
+                Settings.FfbConditionInertiaGain   = fresh.FfbConditionInertiaGain;
+                Settings.FfbConditionPeriodicGain  = fresh.FfbConditionPeriodicGain;
+                Settings.FfbConditionRampGain      = fresh.FfbConditionRampGain;
+                Settings.FfbConditionLpfHz         = fresh.FfbConditionLpfHz;
+                Settings.FfbConditionDamperLpfHz   = fresh.FfbConditionDamperLpfHz;
+                Settings.FfbConditionSpringLpfHz   = fresh.FfbConditionSpringLpfHz;
+                Settings.FfbConditionFrictionLpfHz = fresh.FfbConditionFrictionLpfHz;
+                Settings.FfbConditionInertiaLpfHz  = fresh.FfbConditionInertiaLpfHz;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Condition-engine tuning brought to the generation 1 defaults (damper 1.0 at 10 Hz, "
+                    + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.10, waveforms 0.9, ramp 0.5).");
+            }
+        }
+
         /// <summary>Replace settings from a JSON file; live effects are re-derived from the new settings.</summary>
         public void ImportSettings(string path)
         {
             string json = System.IO.File.ReadAllText(path);
             var imported = Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(json);
             if (imported == null) throw new System.IO.InvalidDataException("File did not contain valid TrueforceSettings JSON.");
+            // The FILE's wheel, read before anything can overwrite it. LastUsedWheel is
+            // MachineLocal, so the restore below puts THIS PC's wheel on the imported object,
+            // and the cross-wheel gate has to be handed what the file said or it compares this
+            // PC against itself. That is precisely why the gate never fired: see its own note.
+            string importedWheel = imported.LastUsedWheel;
             // Preserve install identity + machine-bound fields (signed-in account, per-account slots,
-            // machine paths, FFB-tap pins, per-PC sync bookkeeping, baked backend config) so a backup
-            // file can't change who's signed in, import a foreign slots dict, or desync the active-
-            // account library folder. Mirrors the cloud restore, which keeps machine-local fields.
+            // machine paths, FFB-tap pins, per-PC sync bookkeeping, usage-stats identity, the cross-
+            // wheel FFB policy, baked backend config) so a backup file can't change who's signed in,
+            // import a foreign slots dict, or desync the active-account library folder. The WHOLE
+            // MachineLocal bucket goes back reflectively, plus the machine-local HALF of the two
+            // partial objects (Forza's bind address, which names a NIC that may not exist here; the
+            // Arcade block, which carries a shelved-feature master switch and a publish-consent
+            // latch), because a settings file carries those objects whole where the cloud envelope
+            // only ever bundles their portable fields. Mirrors the cloud restore.
             var preservedMachineLocal = Settings;
+            // Restored onto `imported` BEFORE it is published, never after. `Settings = imported`
+            // is visible to every other thread the instant it runs, so anything reading Settings
+            // in the gap (the usage-ping timer reads the anon id, the day stamp and the game-day
+            // queue with no coordination) would see the BACKUP's identity and could persist it.
+            // Do not move this below the assignment.
+            //
+            // Under _carFactsLock because TelemetryGameDays / TelemetryGamePresetHashes are
+            // MachineLocal, and NoteTelemetryGameActivity appends to exactly those from
+            // DataUpdate while the reflective pass is reading them off the live object. The pass
+            // ALIASES reference-typed fields rather than copying them, which is safe for the same
+            // reason it is safe for AuthSession / UserSlots / Performance: `preservedMachineLocal`
+            // is dropped the moment the import finishes, so exactly one live graph is left
+            // pointing at them.
+            lock (_carFactsLock)
+            {
+                PreserveMachineLocalSettings(preservedMachineLocal, imported);
+                BackupProjection.PreserveMachineLocalPartials(preservedMachineLocal, imported);
+                // The hand-written block this replaced also guaranteed these two were non-null
+                // after every import; a reflective copy just carries whatever was there, null
+                // included. NoteTelemetryGameActivity only appends when the collection exists
+                // and nothing ever re-creates it, so a null here would silently end game-activity
+                // recording for the life of the install.
+                if (imported.TelemetryGameDays == null)
+                    imported.TelemetryGameDays = new List<string>();
+                if (imported.TelemetryGamePresetHashes == null)
+                    imported.TelemetryGamePresetHashes = new Dictionary<string, string>(StringComparer.Ordinal);
+            }
             Settings = imported;
-            PreserveMachineLocalSettings(preservedMachineLocal, Settings);
             // A file written before the master switch had three states carries no
-            // MasterMode, so it deserializes to the C# default. Full is also the
+            // MasterMode, so it deserializes to the C# default. Normal is also the
             // right answer, for the same reason the startup migration uses it: the
             // imported GameEnabled map carries every per-game "off" the user ever
             // set, and the old bool never expressed a global one. Stamp the latch so
@@ -27962,12 +34697,9 @@ namespace TrueforceForAll.Plugin
                 Settings.MasterMode = TrueforceMasterMode.Normal;
                 Settings.MasterModeMigratedV1 = true;
             }
-            // The cross-wheel FFB policy and any pending prompt are per-PC (Excluded
-            // from backup); a wholesale import would otherwise replace this PC's choice
-            // with the file's. Restore them so the gate below reads this PC's policy.
-            Settings.CrossWheelFfbMode          = preservedMachineLocal.CrossWheelFfbMode;
-            Settings.PendingCrossWheelFfb       = preservedMachineLocal.PendingCrossWheelFfb;
-            Settings.PendingCrossWheelFfbSource = preservedMachineLocal.PendingCrossWheelFfbSource;
+            // (The cross-wheel FFB policy, the pending prompt, the usage-stats identity
+            // and the rest of the machine-local bucket were restored onto `imported`
+            // above, before publication.)
             // The imported file replaced Settings wholesale, so PluginEnabled can flip without a
             // SetPluginEnabled transition. Reconcile the device NOW, before the throw-capable
             // remainder (cross-wheel gating, slot remount, preset migration): PluginEnabled is
@@ -27978,8 +34710,18 @@ namespace TrueforceForAll.Plugin
             // different wheel model does not silently apply its force-feedback tuning.
             // Restore this PC's FFB and, on the Ask policy, surface the apply-anyway
             // prompt. preservedMachineLocal holds this PC's real FFB + wheel.
-            StashCrossWheelFfbIfGated(
-                BackupProjection.GateImportedCrossWheelFfb(imported, preservedMachineLocal, Settings));
+            // Under _carFactsLock: the gate serializes the whole settings graph with
+            // JObject.FromObject, and `imported` IS the live graph by now, so a
+            // concurrent append from DataUpdate would throw a collection-modified
+            // exception out of an unguarded call. Inside RestoreAllFromZip that
+            // exception triggers the FULL rollback. Same contract as
+            // PersistSettingsCore / BuildEnvelopeLocked. Only the serialize is held;
+            // the stash (which can raise UI) runs outside.
+            BackupApplyResult crossWheelGate;
+            lock (_carFactsLock)
+                crossWheelGate = BackupProjection.GateImportedCrossWheelFfb(
+                    imported, preservedMachineLocal, Settings, importedWheel);
+            StashCrossWheelFfbIfGated(crossWheelGate);
             // Re-establish active-account slot consistency (re-point its library folder + stash the
             // restored profile into the slot), exactly as the cloud restore remounts the slot.
             try { MountUserSlot(Settings.ActiveSlotKey ?? ""); }
@@ -28004,6 +34746,28 @@ namespace TrueforceForAll.Plugin
             // Rebuild the runtime cache from the (potentially updated) folders.
             RebuildPresetCacheFromFolders();
             ApplyActiveCarOverride();
+            // Re-run the condition-engine migrations against what the file just brought in.
+            // On this path the latches DO travel (they are Excluded, which the file path
+            // deliberately carries whole), so Settings already holds the file's own latch
+            // values; the only thing missing is that the migrations used to run at Init and
+            // nowhere else, so an old file's retired values survived until the next launch.
+            // Note the reset lands in SETTINGS, not on the wheel: the condition gains are read
+            // into the engine's fields at device bring-up, so what the wheel renders catches up
+            // on the restart this import already recommends.
+            //
+            // Unless the cross-wheel gate fired. The condition gains are wheel-specific now, so
+            // on a file from another wheel the gate put THIS PC's values back onto live while
+            // the file's latches stayed (they are Excluded, and Excluded travels here). That
+            // leaves a latch describing one wheel's values sitting over another wheel's, and
+            // running the migrations on that pair would reset tuning the gate just rescued. Put
+            // this PC's latches back with its values, so the pair is coherent again and the
+            // migrations become the no-op they should be.
+            if (crossWheelGate.FfbGated)
+            {
+                Settings.FfbConditionDefaultsGeneration  = preservedMachineLocal.FfbConditionDefaultsGeneration;
+                Settings.FfbConditionInertiaSpecMigrated = preservedMachineLocal.FfbConditionInertiaSpecMigrated;
+            }
+            ApplyConditionMigrations();
             // Imported settings carry the Mode B recipe too; push it live so
             // the wheel matches what the panel now shows.
             try { ApplyModeBFromSettings(); ApplyModeBFeel(); }
@@ -28034,6 +34798,8 @@ namespace TrueforceForAll.Plugin
         private AchievementClient _achievementClient;
         // Account session list + per-session revoke (Account tab "Active sessions").
         private SessionClient _sessionClient;
+        private TelemetryClient _telemetryClient;
+        private System.Threading.Timer _usagePingTimer;
         private ModerationClient _moderationClient;
 
         internal struct DiscordLinkResult
@@ -28572,6 +35338,12 @@ namespace TrueforceForAll.Plugin
                         {
                             ["Settings"] = baseEnv.Settings,
                             ["Forza"]    = baseEnv.Forza,
+                            // Arcade rides along for the same reason Forza does: the field-level
+                            // merge needs a common ancestor per sub-object. Without one it merges
+                            // against a permanently null baseline, which degrades to local-wins,
+                            // so every merge would silently revert the other PC's arcade edits.
+                            // That is worse than the not-syncing-at-all it replaces.
+                            ["Arcade"]   = baseEnv.Arcade,
                             ["Lib"]      = libObj,   // path -> content hash, for the 3-way merge + delete-propagation
                         }.ToString(Newtonsoft.Json.Formatting.None);
                     }
@@ -28781,10 +35553,53 @@ namespace TrueforceForAll.Plugin
             var ffbGate = BackupProjection.ApplySettings(env, Settings);
             StashCrossWheelFfbIfGated(ffbGate);
 
+            // Re-arm the condition-engine migrations against what the cloud just landed. The
+            // FfbCondition* gains and filters are Portable, so they travel; the latches that
+            // say whether a migration has already run against them are not, so they stay at
+            // whatever THIS PC reached. A payload built on a PC that never ran a migration
+            // therefore lands its unmigrated values here, finds the local latch already
+            // stamped, and is never migrated by anyone. Taking the LOWER of the two latches
+            // (the source's and ours) re-arms the half the source had not run and leaves the
+            // half it had alone, then the migrations themselves decide what to touch.
+            //
+            // Nothing shipped can reach this yet: no released version puts FfbCondition names in
+            // an envelope at all. It is hardening for the next generation bump, when a mixed
+            // fleet of versions will be exchanging these values for real.
+            //
+            // THREE conditions, and each one is load-bearing:
+            //
+            //  1. The envelope carried the governed values. One built by 0.3.x has no
+            //     FfbCondition keys, so this PC's own values were never replaced and there is
+            //     nothing here to re-migrate.
+            //  2. The envelope STATES its provenance. Silence is not "generation 0": every build
+            //     that has the counter was driven to the current generation by its own Init, and
+            //     a re-run rewrites every gain to shipped defaults, so guessing low would wipe
+            //     real bench tuning out of any backup made before this provenance existed.
+            //  3. The gate actually let those values through. The condition gains are in
+            //     FfbWheelSpecific now, so a restore from a different wheel withholds all of
+            //     them and this PC keeps its own. Re-migrating there would reset the very tuning
+            //     the gate just protected, using a latch that describes someone else's values.
+            //     Whatever was withheld is in the stash, and ApplyPendingCrossWheelFfb owns it.
+            bool conditionValuesLanded =
+                Settings.CrossWheelFfbMode == CrossWheelFfbMode.Always
+                || !BackupProjection.WheelModelsDiffer(env?.SourceWheelModel, Settings.LastUsedWheel);
+            if (env?.Settings?["FfbConditionDamperGain"] != null
+                && BackupProjection.HasLatchProvenance(env)
+                && conditionValuesLanded)
+            {
+                Settings.FfbConditionDefaultsGeneration = Math.Min(
+                    Settings.FfbConditionDefaultsGeneration,
+                    BackupProjection.SourceLatch(env, "FfbConditionDefaultsGeneration",
+                                                 Settings.FfbConditionDefaultsGeneration));
+                if (BackupProjection.SourceLatch(env, "FfbConditionInertiaSpecMigrated", 1) == 0)
+                    Settings.FfbConditionInertiaSpecMigrated = false;
+                ApplyConditionMigrations();
+            }
+
             // An envelope built by a version that predates the three-state switch
             // carries PluginEnabled and no MasterMode, and ApplySettings only writes
             // keys the envelope actually has, so the local mode would survive a
-            // restore that was meant to replace it. Land on Full and let the
+            // restore that was meant to replace it. Land on Normal and let the
             // restored GameEnabled map (Portable, so it travels) reproduce every
             // per-game "off" PC1 had. Deriving Off from the bool instead would take
             // whichever game PC1 happened to have selected at backup time and
@@ -29327,7 +36142,10 @@ namespace TrueforceForAll.Plugin
                         // merge first (cloud is the shared truth), then apply locally.
                         int changeGen = _backupChangeGen;   // detect a local edit during build+upload
                         var localEnv = await Task.Run(() => BuildEnvelopeLocked()).ConfigureAwait(false);
-                        Newtonsoft.Json.Linq.JObject baseSettings = null, baseForza = null;
+                        // Arcade needs its own ancestor exactly like Forza: merging a sub-object
+                        // against a null baseline degrades to local-wins, so leaving it out would
+                        // quietly revert the other PC's arcade edits on every merge.
+                        Newtonsoft.Json.Linq.JObject baseSettings = null, baseForza = null, baseArcade = null;
                         System.Collections.Generic.Dictionary<string, string> baseLib = null;
                         try
                         {
@@ -29337,6 +36155,7 @@ namespace TrueforceForAll.Plugin
                                 var bo = Newtonsoft.Json.Linq.JObject.Parse(bj);
                                 baseSettings = bo["Settings"] as Newtonsoft.Json.Linq.JObject;
                                 baseForza    = bo["Forza"]    as Newtonsoft.Json.Linq.JObject;
+                                baseArcade   = bo["Arcade"]   as Newtonsoft.Json.Linq.JObject;
                                 if (bo["Lib"] is Newtonsoft.Json.Linq.JObject libBase)
                                 {
                                     baseLib = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -29345,7 +36164,7 @@ namespace TrueforceForAll.Plugin
                             }
                         }
                         catch { /* missing/bad baseline: the 3-way merge degrades gracefully */ }
-                        var merged = BackupService.Merge(localEnv, cloudEnv, baseSettings, baseForza, baseLib, Environment.MachineName, DateTime.UtcNow);
+                        var merged = BackupService.Merge(localEnv, cloudEnv, baseSettings, baseForza, baseArcade, baseLib, Environment.MachineName, DateTime.UtcNow);
                         // A local edit that lands after the changeGen snapshot makes
                         // `merged` stale. Applying stale content would overwrite the
                         // newer on-disk edit with the pre-edit copy (and the uploaded
@@ -30108,7 +36927,7 @@ namespace TrueforceForAll.Plugin
 
         private void MaybeRecoverDevice()
         {
-            // Full only, and this is the gate that matters most. The watchdog fires
+            // Normal only, and this is the gate that matters most. The watchdog fires
             // on _device == null, which is the STEADY STATE of both other modes, and
             // it runs from every data tick. Without this, lights-only would appear
             // to work for a few seconds and then quietly resurrect the whole force
@@ -30449,7 +37268,7 @@ namespace TrueforceForAll.Plugin
 
         private const string AcCspScriptName = "tf4all";
         // Bumped when the bridge script changes so the mods list can show it.
-        private const string AcCspBridgeVersion = "1.0";
+        private const string AcCspBridgeVersion = "1.5";
         public string AcCspBridgeVersionString => AcCspBridgeVersion;
         public string FsModVersionString => FsModVersion;
 
@@ -30474,12 +37293,173 @@ namespace TrueforceForAll.Plugin
         /// <summary>Called on the game-change edge. Clears the once-per-session
         /// latch on the way OUT of AC so the next AC session offers again (until
         /// dismissed for good).</summary>
+        /// <summary>Keeps the DirectInput reader running whenever the
+        /// condition renderer needs it, checked every update rather than only
+        /// on the game-change edge: a game can start sending effects long
+        /// after it launches, and the renderer's damper wants a fresh velocity
+        /// from the first one.</summary>
+        private void MaintainRendererMotionSource()
+        {
+            if (_dampCal != null || _autoTuner != null || _fxTestMode != 0 || _diSpikeHold) return;
+            var tap = _ffbTap;
+            // Same two customers as the start/stop site: a tapped game whose effects the renderer
+            // is playing, and an arcade cabinet, whose conditions arrive through shared memory and
+            // are therefore invisible to the tap. A spring is a shape, not a force, so without a
+            // position it evaluates to silence and looks like a dead effect.
+            bool wants = (_dicondEnabled && tap != null && tap.AnyHidppParametricPlaying)
+                         || _telemetrySource is IArcadeForceSource;
+            var wheel = _wheelMotion;
+            if (wants && (wheel == null || !wheel.IsRunning))
+                EnsureWheelMotion(exclusive: false);
+        }
+
+        /// <summary>Turn our rev lights on alongside the wheel's screen in Assetto
+        /// Corsa, when they are off.
+        ///
+        /// The screen stands down whenever something else is writing the wheel's
+        /// LED bar, and in AC that something else is the game's own g27_lights
+        /// module. We only ask AC to stop writing it while OUR rev lights are on,
+        /// because silencing AC for the screen's sake alone would leave the bar
+        /// dark. With the lights off, then, the screen has no way to run: AC keeps
+        /// the bar and we keep yielding to it, with nothing on screen saying why.
+        ///
+        /// Turning the lights on is the one way out that leaves nothing dark, so
+        /// the screen brings them with it. Deliberately silent: the alternative is
+        /// a switch that visibly does nothing. Returns true if it changed
+        /// anything, so a caller can re-sync its checkbox.</summary>
+        public bool EnsureRevLightsForOled()
+        {
+            var s = Settings;
+            if (s == null || !s.ModeBOledEnabled || s.ModeBRevLightsEnabled) return false;
+            if (!string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                return false;
+            s.ModeBRevLightsEnabled = true;
+            try { PersistSettings(); } catch { }
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Rev lights turned on with the wheel's screen in Assetto Corsa: "
+                + "the screen cannot run while the game is driving the LED bar.");
+            return true;
+        }
+
         private void MaybeFireAcCspNotice(string game)
         {
             if (string.Equals(_lastGameSeenForAcCsp, game, StringComparison.Ordinal)) return;
             _lastGameSeenForAcCsp = game;
-            if (string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)) ShowAcCspNotice(null);
-            else _acCspNoticeShownThisSession = false;
+            if (string.Equals(game, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+            {
+                MaybeUpdateAcCspBridge();
+                ShowAcCspNotice(null);
+                // Also on entering AC, not only when the screen is switched on:
+                // most people set the screen up once and never touch that box
+                // again, so catching only the toggle would leave the screen dead
+                // for exactly the users who already had it on.
+                EnsureRevLightsForOled();
+                // The synthesized damper reads wheel speed from DirectInput;
+                // a shared reader rides along with every AC session. NEVER
+                // while a bench run holds the wheel: replacing the exclusive
+                // reader kills the run's sample loop with outputs latched
+                // (audit AT-03).
+                if (_dampCal == null && _autoTuner == null && _fxTestMode == 0 && !_diSpikeHold)
+                    EnsureWheelMotion(exclusive: false);
+            }
+            else
+            {
+                _acCspNoticeShownThisSession = false;
+                // Keep the shared reader for the DirectInput effect renderer,
+                // which needs it in EVERY game, not just AC.
+                //
+                // A damper is a feedback loop: it turns measured velocity back
+                // into force. Its stability is governed by how OLD that
+                // velocity is, and the fallbacks are far older than this
+                // reader. WheelSteeringReader arrives on HID reports and game
+                // steering arrives at frame rate, so a damper built on either
+                // is being asked to react to where the wheel WAS. That rings,
+                // and it rings worse the stronger the effect: a coefficient
+                // that is stable at the bench's 50 % need not be at the 75 %+
+                // a game sends (owner, 2026-09-02: matched on the bench, wheel
+                // shook in game, "I think it's the damper").
+                //
+                // The reader is only stopped when nothing needs it: no
+                // decoded effects to render and no bench tool holding it.
+                //
+                // An arcade cabinet needs it too, and for the same reason, but nothing above finds
+                // that out: its effects arrive through a shared memory block rather than over USB,
+                // so the tap never sees a parametric playing and this stayed false for the whole
+                // session. The cabinet's spring then evaluated at a position of zero and rendered
+                // as silence, which reads as a broken effect rather than as a missing input. The
+                // wheel knows where it is; nobody was asking it.
+                bool arcadeWantsIt = _telemetrySource is IArcadeForceSource;
+                bool rendererWantsIt = (_dicondEnabled
+                                        && (_ffbTap?.AnyHidppParametricPlaying ?? false))
+                                       || arcadeWantsIt;
+                if (_dampCal == null && !_diSpikeHold && _autoTuner == null && _fxTestMode == 0)
+                {
+                    if (rendererWantsIt) EnsureWheelMotion(exclusive: false);
+                    else                 StopWheelMotion();
+                }
+            }
+        }
+
+        // Once per session, entering AC: if the bridge is installed but older
+        // than the copy this build embeds, rewrite it in place. The consent
+        // moment was installing the mod; keeping a mod the user chose current
+        // is maintenance, so this asks nothing and logs one line. Safe with AC
+        // running (CSP reads scripts at launch); takes effect next start.
+        private bool _acCspUpdateChecked;
+        private void MaybeUpdateAcCspBridge()
+        {
+            if (_acCspUpdateChecked) return;
+            try
+            {
+                string ac = FindAcInstallDir();
+                // NOT latched on these three: each can become true later in the
+                // session (Assetto Corsa installed, the bridge installed from the
+                // Game mods list, a manifest that was mid-write when we looked).
+                // Latching here would mean a user who installs the bridge after
+                // SimHub started never gets an update until the next restart.
+                if (ac == null) return;
+                string dir = Path.Combine(ac, "extension", "lua", "ffb-postprocess", AcCspScriptName);
+                string manifest = Path.Combine(dir, "manifest.ini");
+                if (!File.Exists(manifest)) return;   // not installed: nothing to maintain
+                string installed = ReadAcCspInstalledVersion(manifest);
+                if (installed == null) return;
+                // A definite answer, so stop asking.
+                _acCspUpdateChecked = true;
+                if (AcCspVersionCurrent(installed)) return;
+                WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.ffb.lua",
+                                      Path.Combine(dir, "ffb.lua"));
+                WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.manifest.ini", manifest);
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] TF4ALL CSP Bridge updated {installed} -> {AcCspBridgeVersion}; "
+                    + "takes effect the next time Assetto Corsa starts.");
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] CSP bridge update check failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>True when the installed script is at least this build's
+        /// version, so an older plugin never DOWNGRADES a newer script. When
+        /// either side does not parse as a version, equality decides.</summary>
+        private static bool AcCspVersionCurrent(string installed)
+        {
+            if (Version.TryParse(installed, out var i) && Version.TryParse(AcCspBridgeVersion, out var e))
+                return i >= e;
+            return string.Equals(installed, AcCspBridgeVersion, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ReadAcCspInstalledVersion(string manifestPath)
+        {
+            foreach (var raw in File.ReadAllLines(manifestPath))
+            {
+                var line = raw.Trim();
+                if (!line.StartsWith("VERSION", StringComparison.OrdinalIgnoreCase)) continue;
+                int eq = line.IndexOf('=');
+                if (eq < 0) continue;
+                return line.Substring(eq + 1).Trim();
+            }
+            return null;
         }
 
         /// <summary>Show the Assetto Corsa CSP setup offer. Safe from any thread;
@@ -30670,8 +37650,142 @@ namespace TrueforceForAll.Plugin
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
             }
             catch (Exception ex) { return "could not delete the script: " + ex.Message; }
-            try { DeselectAcPostProcessScript(); } catch { }
-            SimHub.Logging.Current.Info("[TF4ALL] Assetto Corsa CSP bridge script removed.");
+            string how;
+            try { how = RestoreAcPostProcessScript(); }
+            catch (Exception ex) { how = "could not edit FFB Tweaks: " + ex.Message; }
+            SimHub.Logging.Current.Info("[TF4ALL] Assetto Corsa CSP bridge script removed; " + how + ".");
+            return null;
+        }
+
+        /// <summary>Put CSP's post-processing slot back the way the install found
+        /// it, but only while the slot is still ours, so a script the player
+        /// selected later is never touched. With a record, the whole
+        /// [POSTPROCESSING_SCRIPT] section body is restored verbatim (or the
+        /// section removed, if the install created it). Without one, an install
+        /// from before the record existed, the slot is disabled as before.
+        /// Returns a short phrase for the log.</summary>
+        private string RestoreAcPostProcessScript()
+        {
+            var st = Settings;
+            bool recorded = st?.CspBridgeDisplacedRecorded ?? false;
+            string cfg = AcFfbTweaksIniPath();
+            if (!File.Exists(cfg))
+            {
+                ClearDisplacedRecord();
+                return "FFB Tweaks override not present, nothing to restore";
+            }
+            var lines = new List<string>(File.ReadAllLines(cfg));
+            int sec, secEnd;
+            FindAcPostProcessSection(lines, out sec, out secEnd);
+            if (sec < 0)
+            {
+                ClearDisplacedRecord();
+                return "no post-processing section, nothing to restore";
+            }
+            if (!string.Equals(AcPostProcessImplementationIn(lines, sec, secEnd), AcCspScriptName,
+                               StringComparison.OrdinalIgnoreCase))
+            {
+                // The player has since selected something else. Leave it alone,
+                // and drop a record that no longer describes anything.
+                ClearDisplacedRecord();
+                return "another script is selected, left as is";
+            }
+            if (!recorded)
+            {
+                DeselectAcPostProcessScript();
+                return "slot disabled (no record of what the install displaced)";
+            }
+            string body = st.CspBridgeDisplacedSection ?? "";
+            if (body.Length == 0)
+            {
+                // The install created the section. Remove it, and the blank line
+                // the install put before it, if that is what precedes it.
+                int from = sec;
+                if (from > 0 && lines[from - 1].Trim().Length == 0) from--;
+                lines.RemoveRange(from, secEnd - from);
+                // (Cosmetic, known: a blank line that was already at the end of
+                // the file, or an empty section that existed with no body, is
+                // not told apart from what the install added, so those two
+                // shapes lose one blank line or an empty header. CSP reads the
+                // same keys either way.)
+            }
+            else
+            {
+                lines.RemoveRange(sec + 1, secEnd - sec - 1);
+                lines.InsertRange(sec + 1, body.Split('\n'));
+            }
+            if (lines.Count == 0)
+            {
+                // The install created the file for its section alone; an empty
+                // override left behind is not what the install found.
+                File.Delete(cfg);
+            }
+            else File.WriteAllLines(cfg, lines);
+            ClearDisplacedRecord();
+            return body.Length == 0
+                ? (lines.Count == 0 ? "FFB Tweaks override removed, as the install found it"
+                                    : "post-processing section removed, as the install found it")
+                : "previous post-processing selection put back";
+        }
+
+        private void ClearDisplacedRecord()
+        {
+            var st = Settings;
+            if (st == null || (!st.CspBridgeDisplacedRecorded && string.IsNullOrEmpty(st.CspBridgeDisplacedSection))) return;
+            st.CspBridgeDisplacedRecorded = false;
+            st.CspBridgeDisplacedSection = "";
+            try { PersistSettings(); } catch { }
+        }
+
+        /// <summary>Record the [POSTPROCESSING_SCRIPT] section body of the
+        /// player's FFB Tweaks override before the install rewrites it, unless
+        /// the slot is already ours (a reinstall or update), in which case the
+        /// existing record still describes what was there first.</summary>
+        private void RecordDisplacedAcPostProcessSection()
+        {
+            var st = Settings;
+            if (st == null) return;
+            string cfg = AcFfbTweaksIniPath();
+            var lines = File.Exists(cfg) ? new List<string>(File.ReadAllLines(cfg)) : new List<string>();
+            int sec, secEnd;
+            FindAcPostProcessSection(lines, out sec, out secEnd);
+            if (sec >= 0 && string.Equals(AcPostProcessImplementationIn(lines, sec, secEnd), AcCspScriptName,
+                                          StringComparison.OrdinalIgnoreCase))
+                return;
+            st.CspBridgeDisplacedRecorded = true;
+            st.CspBridgeDisplacedSection = sec < 0
+                ? ""
+                : string.Join("\n", lines.GetRange(sec + 1, secEnd - sec - 1));
+        }
+
+        // The [POSTPROCESSING_SCRIPT] header index (-1 when absent) and the
+        // index of the next section header or the end of the file.
+        private static void FindAcPostProcessSection(List<string> lines, out int sec, out int secEnd)
+        {
+            sec = -1; secEnd = lines.Count;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string t = lines[i].Trim();
+                if (t.Equals("[POSTPROCESSING_SCRIPT]", StringComparison.OrdinalIgnoreCase)) { sec = i; continue; }
+                if (sec >= 0 && t.StartsWith("[") && t.EndsWith("]")) { secEnd = i; break; }
+            }
+        }
+
+        // The IMPLEMENTATION value inside one section of the override, or null.
+        private static string AcPostProcessImplementationIn(List<string> lines, int sec, int secEnd)
+        {
+            for (int i = sec + 1; i < secEnd; i++)
+            {
+                string t = lines[i].TrimStart();
+                if (t.StartsWith(";")) continue;
+                if (t.StartsWith("IMPLEMENTATION", StringComparison.OrdinalIgnoreCase) && t.Contains("="))
+                {
+                    string val = t.Substring(t.IndexOf('=') + 1).Trim();
+                    int semi = val.IndexOf(';');
+                    if (semi >= 0) val = val.Substring(0, semi).Trim();
+                    return val;
+                }
+            }
             return null;
         }
 
@@ -30743,6 +37857,15 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex) { return "could not write the script into Assetto Corsa: " + ex.Message; }
 
+            // Remember what the selection is about to displace, so Remove can
+            // put it back. Recorded before the rewrite and persisted with the
+            // install so it survives to whichever session does the removal.
+            try { RecordDisplacedAcPostProcessSection(); }
+            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Could not record the displaced FFB Tweaks section: " + ex.Message); }
+            // Persisted BEFORE the rewrite: a record with an untouched slot is
+            // harmless (the restore clears it when the slot is not ours), but a
+            // rewritten slot with no record is the bug this exists to fix.
+            try { PersistSettings(); } catch { }
             try { SelectAcPostProcessScript(AcCspScriptName); }
             catch (Exception ex)
             {
@@ -31032,8 +38155,2424 @@ namespace TrueforceForAll.Plugin
             return on;
         }
 
+        // A/B for the damper pass-through (CSPFFB DAMP): tell the script to
+        // zero the DAMPER channel too, the pre-fix behaviour, so the fix can
+        // be felt against the bug in one session. Session only, applies on the
+        // next control heartbeat (instant, no game restart).
+        public bool ToggleCspZeroDamper()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            bool now = !(src?.CspZeroDamper ?? false);
+            if (src != null) src.CspZeroDamper = now;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] CSP synthesized damper {(now ? "OFF (A/B: wheel undamped)" : "ON")}.");
+            return now;
+        }
+
+        /// <summary>Sets the synthesized damper strength (CSPFFB DAMPK).
+        /// Returns the clamped value.</summary>
+        public double SetCspDamperGain(double k)
+        {
+            // Damper only: inertia is force per unit ACCELERATION and does
+            // not share this scale (see TrueforceSettings).
+            _damperGain = (float)ClampFxGain(k);
+            SimHub.Logging.Current.Info($"[TF4ALL] Synthesized damper gain = {_damperGain:F2}.");
+            return _damperGain;
+        }
+
+        /// <summary>CSPFFB DAMPSIGN: flip the synthesized damper's sign, for
+        /// the case where DirectInput's axis direction and the stream's torque
+        /// direction disagree (a wrong sign is an anti-damper).</summary>
+        public bool ToggleDamperSign()
+        {
+            _damperSign = -_damperSign;
+            SimHub.Logging.Current.Info($"[TF4ALL] Synthesized damper sign = {_damperSign:+0;-0}.");
+            return _damperSign < 0;
+        }
+
+        // ---- The synthesized damper (every game, DirectInput wheel speed) ----
+        // The wheel ignores the classic damper channel while any Trueforce
+        // stream is live (parked flick, 2026-08-31), so the damper is a torque
+        // we add to the stream: -coefficient x wheel speed x gain, capped at
+        // half of full scale so it resists but never dominates. Coefficient:
+        // the wizard's probe while calibrating, else AC's live value through
+        // the bridge (DAMP/DAMPTEST shape it there), else nothing (other games
+        // get a coefficient source later). Wheel speed: DirectInputWheel,
+        // started shared for AC sessions, exclusive for the wizard.
+        private DirectInputWheel _wheelMotion;
+        private float  _damperGain = 0.25f;
+        private int    _damperSign = 1;
+        private double _damperCoefOverride = double.NaN;
+        // Per-effect render gains (auto-tune measures damper/spring/friction;
+        // the bench tunes any of them by hand; Save persists). Spring,
+        // friction, periodic and ramp default 1.0: the DI model's own scale
+        // until a measurement says otherwise. Inertia is per ACCELERATION,
+        // a scale of its own, never the damper's (see TrueforceSettings).
+        private float  _springGain = 1f;
+        private float  _frictionGain = 1f;
+        private float  _inertiaGain = 0.05f;
+        private float  _periodicGain = 1f;
+        private float  _rampGain = 1f;
+        private bool   _inertiaCoasts;
+        private bool   _inertiaAsDamping = true;
+
+        // ---- Decoded DirectInput effects (every tap game) ----
+        // The tap decodes the game's 0x8123 effect downloads (damper,
+        // spring, friction, inertia, periodics; docs/di-condition-engine.md)
+        // and this renders them into the stream at the pump against the
+        // physical wheel's motion, because the firmware ignores its own
+        // slot engine while any ep3 stream is live. DICOND is the A/B;
+        // CSPFFB DAMPSIGN flips the output for a mismatched axis frame;
+        // CSPFFB DAMPK / DAMPCAL own the damper scale.
+        private volatile bool _dicondEnabled = true;
+        private long _diRenderDiagTick;   // throttle for the DI render diagnostic
+        private readonly WheelMotionEstimator _hidppMotion = new WheelMotionEstimator();
+
+        // The force the condition renderer added on the current pump tick, for
+        // the FFB trace's cond_term column. Written and read on the pump thread
+        // only. Zeroed at the top of AddHidppDiEffects, which runs first in the
+        // chain and unconditionally, so a renderer further down only ever has
+        // to write its own non-zero term.
+        private int _lastConditionTerm;
+
+        /// <summary>DICOND: A/B the decoded DirectInput effect rendering.
+        /// Returns true when the toggle lands OFF.</summary>
+        public bool ToggleDicondRendering()
+        {
+            _dicondEnabled = !_dicondEnabled;
+            SimHub.Logging.Current.Info($"[TF4ALL] Decoded DirectInput effect rendering {(_dicondEnabled ? "ON" : "OFF")}.");
+            return !_dicondEnabled;
+        }
+
+        // Adds the decoded parametric effects to the game force. Position
+        // source, best first: the shared DirectInput reader (AC sessions),
+        // the HID steering reader, the game's own steering while fresh.
+        // Velocity and acceleration come from one estimator so the units
+        // stay DAMPCAL's regardless of source. No live position = render
+        // nothing rather than render wrong.
+        /// <summary>What the wheel gets on the pause and focus releases: the
+        /// game's constant force silenced, its decoded condition shapes played
+        /// (a title's menu centring is a DirectInput spring), and, under
+        /// Telemetry Based FFB, our own stationary spring on top. On that route
+        /// the game's force is not on the wire, so there is nothing for the
+        /// spring to conflict with, and without it a parked wheel with the
+        /// spring ticked went limp the moment the game paused (owner, Forza,
+        /// 2026-09-13). The spring reads the wheel's physical position while
+        /// the game reports paused, so it holds in a menu.</summary>
+        private short? ReleasedWheelForce()
+        {
+            short? released = AddHidppDiEffects((short?)0, conditionsOnly: true);
+            if (_forceMode == ForceModeModeB)
+            {
+                // The synthesis is not run while released, so its engage ramp
+                // would otherwise sit at full and the force would step straight
+                // back on resume. Wound down here, it fades in over its usual
+                // 250 ms on the first tick back, the way the takeover's ramp
+                // does (owner, Forza, 2026-09-13). The pause spring below has
+                // its own shaping and does not read this ramp.
+                _mbRamp = 0f;
+                _mbPrevTicks = 0;
+                if (_fxTestMode == 0
+                    && ActiveGameAllowsStationarySpring
+                    && EffectiveStationarySpringEnabled(_activeGame))
+                    released = ApplyStationarySpring(released, inSynthesis: true);
+            }
+            return released;
+        }
+
+        private short? AddHidppDiEffects(short? force, bool conditionsOnly = false)
+        {
+            _lastConditionTerm = 0;
+            // A live decoded condition (damper/spring/friction) must render even
+            // on a keepalive base, or a parked wheel and momentary zero-force
+            // frames drop the game's damper. So do NOT bail on a null force
+            // here; the AnyHidppParametricPlaying gate below keeps this inert
+            // when nothing is playing, and the base is (force ?? 0).
+            if (!_dicondEnabled) return force;
+            // One owner per cabinet. On an arcade title the JVS decode is the
+            // deliberate route, and it renders the cabinet's spring itself. The
+            // arcade plugin ALSO sends that spring as a DirectInput effect, our
+            // tap decodes it, and this method used to render a second copy into
+            // the same sum: one session logged 221 samples with a TypeSpring
+            // effect playing while the arcade engine was running as well. Two
+            // saturated copies of one spring is a wheel on the rails, not a
+            // spring. Installing the publishing fork for the cabinet is the
+            // better answer, because then the plugin stops driving the wheel at
+            // all, but this has to be right whether or not it is installed.
+            if (_telemetrySource is IArcadeForceSource) return force;
+            // The bench owns the wheel while it runs.
+            //
+            // A NATIVE bench effect is a real DirectInput download, so it goes
+            // out over USB, and our own tap captures it and hands it to this
+            // renderer. Test a native damper, then an engine damper, and the
+            // wheel gets ours PLUS the captured copy of theirs: effects
+            // stacking as you test, and a native play appearing to "wake up"
+            // the engine side when it was only doubling it (owner, 2026-09-03).
+            // Nothing decoded belongs in a controlled comparison.
+            if (_fxTestMode != 0) return force;
+            var tap = _ffbTap;
+            if (tap == null || !tap.AnyHidppParametricPlaying) return force;
+            if (_dampCal != null || _dampCalActiveZero || _diSpikeHold) return force;
+
+            long now = Stopwatch.GetTimestamp();
+            if (!TryUpdateWheelMotion(now)) return force;
+            // DAMPSIGN is scoped inside the engine to the velocity-derived
+            // terms (damper, friction, inertia): flipping an anti-damper must
+            // not turn the game's spring into an anti-spring.
+            short? term = tap.TryEvaluateHidppEffects(
+                (float)_hidppMotion.Position, (float)_hidppMotion.Velocity,
+                (float)_hidppMotion.Acceleration, _damperGain, _inertiaGain, _damperSign,
+                _springGain, _frictionGain,
+                // Conditions only on the pause and focus releases: a periodic
+                // or ramp the game left playing when the pause landed has no
+                // freshness bound in the parametric table, and one with a DC
+                // offset would push the wheel toward a stop in the menu, the
+                // issue #13 class the release exists to prevent (review,
+                // 2026-09-13). Springs and dampers are what a menu needs.
+                conditionsOnly ? 0f : _periodicGain,
+                conditionsOnly ? 0f : _rampGain,
+                // The spring-mode stand-down belongs to the MAIN pump path,
+                // where MaybeReshapeFfb replaces the whole target with our
+                // own spring model and a second copy from the engine would
+                // double it. The releases below never reach that
+                // substitution: they return this value directly, so standing
+                // the captured spring down here would leave a pause menu with
+                // no centering at all, which is what these releases were
+                // written to restore.
+                allowSpringModeStandDown: !conditionsOnly);
+            if (!term.HasValue || term.Value == 0) return force;
+            int t = term.Value;
+            _lastConditionTerm = t;
+            // Diagnostic (throttled, only while a damper is live): the velocity
+            // we feed the damper, the position, and the rendered term. Lets an
+            // on-track stop-and-wiggle show whether a high-coeff parking damper
+            // is producing force or the motion source is reading ~0.
+            // Behind the FXDUMP trace: unconditional, this wrote a line every
+            // 400 ms for as long as any damper played, which in a Forza menu
+            // is the whole time (295 lines in one short rig session, 2026-09-13).
+            long diTick = Environment.TickCount;
+            if (tap.LogEffectDownloads && diTick - _diRenderDiagTick >= 400 && tap.AnyHidppDamperPlayingNow)
+            {
+                _diRenderDiagTick = diTick;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] DI render diag: vel={_hidppMotion.Velocity:0.0000} pos={_hidppMotion.Position:0.0000} term={t} base={(force?.ToString() ?? "keepalive")}");
+            }
+            // Full authority (owner, 2026-09-05): the ±16384 half-cap was a
+            // conservative limit from when DICOND's sign/scale were unproven, and
+            // it left a strong game damper (RaceRoom's is coeff ~0.998) at half
+            // strength. DICOND is validated, so decoded conditions reach full
+            // scale; the sum is still clamped to the wheel's range below.
+            int v = (force ?? 0) + t;   // ride a keepalive base so a parked condition still renders
+            if (v > short.MaxValue) v = short.MaxValue; else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
+        /// <summary>The soft lock, applied at the very end of the force chain.
+        ///
+        /// Three sources feed it. Assetto Corsa (issue #43): CSP runs its own lock
+        /// AFTER our post-processing script returns, so on the takeover path it
+        /// computes the lock from the zero we hand back and sends the result
+        /// down the game's FFB path, which the wheel ignores while we stream
+        /// Trueforce. The lock was being produced every frame and discarded. The
+        /// bridge now computes it and stands CSP's own down, and this is where
+        /// it lands. iRacing: the sim renders its stop inside the force feedback
+        /// the reshape turns off, and the torque it publishes has no stop in it,
+        /// so the lock is built from the sim's own steering angle and range in
+        /// the same shape (IRacingSoftLock, via TryComputeIRacingSoftLock).
+        /// RaceRoom on its shared-memory route: the same, from its raw axis, the
+        /// game's wheel-rotation setting and the car's rotation
+        /// (IRacingSoftLock.R3ESteer), with the sign from the physical wheel.
+        ///
+        /// The shape is CSP's, not an addition: cancel force opposing the
+        /// steering direction, then lerp toward the lock target by the amount.
+        /// In AC only the bridge route reaches this; on the capture route the
+        /// tap already reads a force with the lock in it.</summary>
+        private short? ApplySoftLock(short? force)
+        {
+            // Cleared every tick and set only on the packet that actually carries
+            // a lock, so taming resumes the instant the wheel leaves the limit.
+            var dev = _device;
+            if (dev != null) dev.FfbBypassSpikeTaming = false;
+            MaybeLogRingHealth(dev);
+            if (!force.HasValue) return force;   // keepalive: the firmware has it
+            float amt, target, steer, slDamper;
+            if (!TryGetSoftLockInputs(out amt, out target, out steer, out slDamper)) return force;
+            // Diagnostic BEFORE the early return: the failure we are hunting is
+            // an amount that never rises, so a log that only fires when it does
+            // cannot see it. Fires near the limit whether or not a lock resulted,
+            // which is what shows a steer input clamped at 1.
+            long slNow = Environment.TickCount;
+            if (_softLockDiag && Math.Abs(steer) > 0.9f && slNow - _lastSoftLockLogMs >= 500)
+            {
+                _lastSoftLockLogMs = slNow;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] SOFTLOCK steer={steer:F4} amount={amt:F3} "
+                    + $"target={target:F3} damper={slDamper:F2} in={force.Value} "
+                    + $"spring={_lastSpringAddLsb}");
+            }
+            if (amt <= 0f) return force;         // the usual case, nowhere near lock
+            if (amt > 1f) amt = 1f;
+
+            const float FullScale = 32767f;
+            float cur = force.Value;
+            // Opposing force first, the same pre-step the reference does. The
+            // wall's own direction carries the steer's sign, so a force with
+            // the opposite sign is pushing the wheel on past the stop, and it
+            // fades as the band opens rather than fighting the wall. Force in
+            // the wall's direction (the self-aligning torque at the stop) is
+            // kept and folded into the blend.
+            if (steer != 0f && Math.Sign(cur) != Math.Sign(steer))
+                cur = Lerp(cur, 0f, Math.Min(amt * 2f, 1f));
+            if (target < -1f) target = -1f; else if (target > 1f) target = 1f;
+            float outF = Lerp(cur, target * FullScale, amt);
+            if (outF > FullScale) outF = FullScale;
+            else if (outF < -FullScale) outF = -FullScale;
+            // From the first hint of lock, not just at full: taming that switched
+            // on partway up the ramp would put a kink in the wall.
+            if (dev != null) dev.FfbBypassSpikeTaming = true;
+            return (short)outF;
+        }
+
+        private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+        /// <summary>The lock's blend inputs from whichever source is live: the
+        /// AC bridge sample, or the takeover computation for iRacing and
+        /// RaceRoom. False when neither applies, which leaves the force
+        /// untouched.</summary>
+        private bool TryGetSoftLockInputs(out float amount, out float target, out float steer, out float damper)
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src != null)
+            {
+                var s = src.CspLastSample;
+                amount = s.SoftLockAmount;
+                target = s.SoftLockTarget;
+                steer  = (float)s.SteerInput;
+                damper = s.SoftLockDamper;
+                return true;
+            }
+            damper = 0f;
+            // Both takeover routes: iRacing, and RaceRoom on its shared-memory
+            // route. The frame only carries steering where a route stamped it.
+            if (_forceMode == ForceModeIRacing
+                && (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)
+                    || IsSharedMemoryTakeoverGame(_activeGame)))
+                return TryComputeIRacingSoftLock(out amount, out target, out steer);
+            amount = target = steer = 0f;
+            return false;
+        }
+
+        /// <summary>The takeover lock (iRacing, RaceRoom) from the latest torque frame.
+        ///
+        /// SIGN. The target carries the sign of the steer, and that is the way
+        /// back toward centre in this path's sign space, by two routes that
+        /// agree. MAIRA's lock adds -sign(angle) in the sim's torque space, and
+        /// the reshape maps that space to the wheel with a negation
+        /// (ComputeIRacingForce authors -f01), so the wheel-side lock is
+        /// +sign(angle). Independently, the reshape's friction opposes motion
+        /// as -velocity with velocity positive to the right, so a positive
+        /// value here pulls right, which is toward centre from iRacing's
+        /// positive (left) angle. The pre-step in ApplySoftLock then reads the
+        /// same way: force with the steer's sign is toward centre and stays,
+        /// force against it is pushing on past the stop and fades. RaceRoom
+        /// stamps its steer with the sign taken from the PHYSICAL wheel
+        /// (IRacingSoftLock.SignedByPhysical), which lands in this same space
+        /// without leaning on the raw axis's undocumented convention.</summary>
+        private bool TryComputeIRacingSoftLock(out float amount, out float target, out float steer)
+        {
+            amount = target = steer = 0f;
+            var cfg = Settings;
+            if (cfg == null || !cfg.IRacingSoftLockEnabled) return false;
+            var f = _irFrame;
+            if (f == null || !f.HasSteer) return false;
+            // A held frame is a held wall: ComputeIRacingForce already went
+            // silent past this age, and the lock must not outlive it.
+            if ((Stopwatch.GetTimestamp() - f.Ticks) * 1000.0 / Stopwatch.Frequency > 250.0) return false;
+            steer = f.SteerNorm;
+            IRacingSoftLock.Compute(steer, f.SteerSpeed, f.LockDeg, cfg.IRacingSoftLockStrength,
+                                    out amount, out target);
+            return true;
+        }
+
+        private long _lastRingLogMs;
+        private long _lastRingUnderruns = -1;
+
+        /// <summary>Say so when the Trueforce ring starves.
+        ///
+        /// An underrun is the stream running out of samples to send, and on a
+        /// 4 kHz audio-haptic stream that is exactly what a user hears as
+        /// crackle and feels as force dropping in and out. The device has
+        /// counted them all along and the settings panel shows the rate, but
+        /// nothing ever wrote them to the log, so a report of "the audio
+        /// crackles after I alt-tab" had no evidence behind it at all (rig,
+        /// 2026-09-10).
+        ///
+        /// Only on CHANGE, and at most every five seconds: a healthy stream
+        /// says nothing, and a starving one says how far it has got without
+        /// filling the log at tick rate.</summary>
+        private void MaybeLogRingHealth(TrueforceDevice dev)
+        {
+            if (dev == null) return;
+            long now = Environment.TickCount;
+            if (now - _lastRingLogMs < 5000) return;
+            _lastRingLogMs = now;
+            long u = dev.UnderrunCount;
+            if (u == _lastRingUnderruns) return;   // nothing new: stay quiet
+            long added = _lastRingUnderruns < 0 ? u : u - _lastRingUnderruns;
+            _lastRingUnderruns = u;
+            if (added <= 0) return;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Trueforce ring starved: {added} underrun(s) in the last 5 s "
+                + $"({u} this session), ring capacity {dev.RingCapacity}. "
+                + "Heard as crackle and felt as force dropping out.");
+        }
+
+        private long _lastSoftLockLogMs;
+        private volatile bool _softLockDiag;
+
+        /// <summary>SOFTLOCK: the soft-lock diagnostic. Off by default and session
+        /// only, like the other probes. Logs whenever steering passes 0.9 whether
+        /// or not a lock resulted, because the failures worth catching here are an
+        /// amount that never rises and a spring that never recedes, and a line that
+        /// only fired on a live lock could see neither.</summary>
+        public bool ToggleSoftLockDiagnostic()
+        {
+            _softLockDiag = !_softLockDiag;
+            _lastSoftLockLogMs = 0;
+            return _softLockDiag;
+        }
+
+        private short? AddSynthesizedDamper(short? force)
+        {
+            if (!force.HasValue) return force;
+            // When the tap is decoding the game's own damper off the wire,
+            // the decoded one is authoritative; adding the CSP-synthesized
+            // term on top would double the damping. The CSP synthesis stays
+            // for the tap-free AC path, which sees no downloads to decode.
+            var decodingTap = _ffbTap;
+            if (_dicondEnabled && decodingTap != null
+                && decodingTap.AnyHidppDamperPlayingNow)
+                return force;
+            var wheel = _wheelMotion;
+            if (wheel == null || !wheel.IsRunning) return force;
+            double coef = _damperCoefOverride;
+            if (double.IsNaN(coef))
+            {
+                var ac = _telemetrySource as AcSharedMemoryTelemetrySource;
+                coef = ac?.CspDamperCoefficientNow ?? 0f;
+            }
+            if (coef <= 0) return force;
+            // Same convention as the decoded HID++ damper (positive velocity
+            // = rightward, positive force pulls left = opposes): +coef, so
+            // one DAMPSIGN flips both paths together. The two used to carry
+            // opposite base signs, meaning one of them was an anti-damper
+            // (verify workflow 2026-09-01); the rig flick test settles which
+            // frame is right for good.
+            double term = coef * wheel.Velocity * _damperGain * _damperSign;
+            if (term > 0.5) term = 0.5; else if (term < -0.5) term = -0.5;
+            int v = force.Value + (int)Math.Round(term * 32767.0);
+            if (v > short.MaxValue) v = short.MaxValue; else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
+        private IntPtr MainWindowHandle()
+        {
+            try
+            {
+                var app = System.Windows.Application.Current;
+                if (app == null) return IntPtr.Zero;
+                return app.Dispatcher.Invoke(() =>
+                    app.MainWindow == null ? IntPtr.Zero
+                    : new System.Windows.Interop.WindowInteropHelper(app.MainWindow).Handle);
+            }
+            catch { return IntPtr.Zero; }
+        }
+
+        /// <summary>Start (or restart in the requested mode) the DirectInput
+        /// wheel reader. Shared mode for in-game synthesis; exclusive for the
+        /// wizard and the spike, which also need force effects.</summary>
+        private DirectInputWheel EnsureWheelMotion(bool exclusive)
+        {
+            var cur = _wheelMotion;
+            if (cur != null && cur.IsRunning && cur.IsExclusive == exclusive) return cur;
+            StopWheelMotion();
+            int pid = _hidWheelPid;
+            if (pid == 0) return null;
+            var w = new DirectInputWheel(m => SimHub.Logging.Current.Info("[TF4ALL] " + m));
+            try
+            {
+                if (!w.Start(0x046D, pid, MainWindowHandle(), exclusive)) { w.Dispose(); return null; }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] DirectInput wheel reader failed: " + ex.Message);
+                w.Dispose();
+                return null;
+            }
+            _wheelMotion = w;
+            return w;
+        }
+
+        private void StopWheelMotion()
+        {
+            var w = _wheelMotion;
+            _wheelMotion = null;
+            try { w?.Dispose(); } catch { }
+        }
+
+        // ---- DAMPCAL: the damper calibration wizard, no game required ----
+        // Three conditions of three hand flicks each, measured on the wheel's
+        // own DirectInput position: native (the plugin stands aside in
+        // keepalive and the wheel's damper effect, created by us, is the
+        // reference), friction (stream in raw-torque mode at zero, no
+        // synthesis), synthesized (same, synthesis at the current gain with a
+        // probe coefficient). CspDamperCalibration cancels friction and
+        // inertia and hands back the gain that matches the native damper.
+        private volatile bool _dampCalHold, _dampCalActiveZero;
+        private CspDamperCalibration _dampCal;
+        private const int DampCalProbePercent = 75;
+
+        public string StartDamperCalibration(Action<string> uiStatus)
+        {
+            if (_autoTuner != null) return "auto-tune is running; Stop it first";
+            if (_diSpikeHold) return "DIDAMP is running; DIDAMP OFF first";
+            CancelDamperCalibration();
+            if (_hidWheelPid == 0) return "no wheel detected";
+            var wheel = EnsureWheelMotion(exclusive: true);
+            if (wheel == null) return "could not acquire the wheel through DirectInput exclusively (is a game holding it?); see the log";
+
+            Action<string> status = msg =>
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] " + msg);
+                try { uiStatus?.Invoke(msg); } catch { }
+            };
+            Action<string> screen = brief => { try { DashReadout("DAMPCAL", brief); } catch { } };
+
+            CspDamperCalibration cal = null;
+            cal = new CspDamperCalibration(_damperGain, phase =>
+            {
+                switch (phase)
+                {
+                    case CspDamperCalibration.Phase.Native:
+                        _dampCalActiveZero = false;
+                        _damperCoefOverride = 0;
+                        _dampCalHold = true;
+                        // The native reference must be the wheel WITHOUT the
+                        // plugin: stream stopped outright, not keepalive.
+                        SuspendStreamForNativeTest("DAMPCAL native phase");
+                        if (!wheel.StartDamper(DampCalProbePercent))
+                            status("DAMPCAL: the wheel's damper effect could not be started; the native condition will read as friction.");
+                        break;
+                    case CspDamperCalibration.Phase.Friction:
+                        wheel.StopDamper();
+                        ResumeStreamAfterNativeTest("DAMPCAL");
+                        _dampCalHold = false;
+                        _damperCoefOverride = 0;
+                        _dampCalActiveZero = true;
+                        break;
+                    case CspDamperCalibration.Phase.Synth:
+                        _damperCoefOverride = DampCalProbePercent / 100.0;
+                        _dampCalActiveZero = true;
+                        break;
+                    default:
+                        wheel.StopDamper();
+                        ResumeStreamAfterNativeTest("DAMPCAL");
+                        _dampCalHold = false;
+                        _dampCalActiveZero = false;
+                        _damperCoefOverride = double.NaN;
+                        if (cal != null && cal.ResultGain > 0)
+                            _damperGain = (float)Math.Max(0, Math.Min(2, cal.ResultGain));
+                        // Hand the wheel back: shared reader for a running
+                        // AC session, nothing otherwise.
+                        wheel.OnSample = null;
+                        if (string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                            EnsureWheelMotion(exclusive: false);
+                        else
+                            StopWheelMotion();
+                        break;
+                }
+            }, status, screen);
+            _dampCal = cal;
+            wheel.OnSample = (vel, t) => cal.Sample(vel, t);
+            cal.Start(0);
+            return null;
+        }
+
+        public void CancelDamperCalibration()
+        {
+            var c = _dampCal;
+            _dampCal = null;
+            if (c != null && c.Running) c.Cancel("cancelled");
+            ResumeStreamAfterNativeTest("DAMPCAL");
+            _dampCalHold = false;
+            _dampCalActiveZero = false;
+            _damperCoefOverride = double.NaN;
+        }
+
+        // ---- DIDAMP: DAMPCAL feasibility spike ----
+        private volatile bool _diSpikeHold;
+
+        /// <summary>Drive the wheel's native DirectInput damper ourselves at
+        /// pct (0..100) with the Trueforce stream held in keepalive, logging
+        /// the position read rate for 60 s. Returns null or a reason.</summary>
+        public string StartDiDamperSpike(int pct, IntPtr hwnd)
+        {
+            if (_autoTuner != null) return "auto-tune is running; Stop it first";
+            if (_dampCal != null) return "DAMPCAL is running; finish or cancel it first";
+            StopDiDamperSpike();
+            if (_hidWheelPid == 0) return "no wheel detected";
+            var wheel = EnsureWheelMotion(exclusive: true);
+            if (wheel == null) return "could not acquire the wheel through DirectInput exclusively (see the log)";
+            wheel.LogRate = true;
+            wheel.AutoStopMs = 60000;
+            wheel.OnAutoStop = () => StopDiDamperSpike();
+            try
+            {
+                if (!wheel.StartDamper(pct)) { StopWheelMotion(); return "the DirectInput damper could not start (see the log)"; }
+            }
+            catch (Exception ex) { StopWheelMotion(); return "DirectInput error: " + ex.Message; }
+            _diSpikeHold = true;
+            SuspendStreamForNativeTest("DIDAMP");
+            return null;
+        }
+
+        public void StopDiDamperSpike()
+        {
+            if (!_diSpikeHold && (_wheelMotion == null || !_wheelMotion.IsExclusive)) return;
+            _diSpikeHold = false;
+            ResumeStreamAfterNativeTest("DIDAMP");
+            StopWheelMotion();
+            SimHub.Logging.Current.Info("[TF4ALL] DI spike: damper released, stream back to normal.");
+        }
+
+        // ---- FXTEST: native-vs-engine effect A/B, no game required ----
+        // FXTEST NATIVE <kind> plays the wheel's OWN DirectInput effect with
+        // the stream held in keepalive, so the firmware renders it: the
+        // reference feel. FXTEST ENGINE <kind> injects identical parameters
+        // as a synthetic 0x8123 download through the real decode-and-render
+        // path (FxTestPayloads -> HidppEffectEngine) and streams it as cur.
+        // Alternate the two on the same effect and tune (CSPFFB DAMPK for
+        // damper/inertia strength, CSPFFB DAMPSIGN for direction) until they
+        // feel identical: that IS the calibration, per effect, on the rig.
+        private readonly HidppEffectEngine _fxTestEngine = new HidppEffectEngine();
+        private volatile int _fxTestMode;          // 0 off, 1 native, 2 engine
+        private bool _fxTestNoMotionLogged;
+        private volatile bool _fxTestNativeHold;   // keepalive hold for native
+        private volatile bool _fxTestRenderNoted;
+        private long _fxTestEndTicks;
+        // 30 s, not 120. A bench effect is judged in a few seconds, and a
+        // forgotten one left holding the wheel (and the output chain) for two
+        // minutes is long enough to be mistaken for how the plugin behaves
+        // (owner, 2026-09-03).
+        private const int FxTestAutoOffMs = 30000;
+
+        /// <summary>Starts an FXTEST side. Returns null, or the reason it
+        /// could not start.</summary>
+        public string StartFxTest(string mode, string kind, int strengthPct, int periodMs)
+        {
+            CancelAutoTune(silent: true);
+            StopFxTest(silent: true);
+            _fxTestNoMotionLogged = false;
+            _fxTestRenderNoted = false;
+            if (_dampCal != null || _diSpikeHold) return "DAMPCAL / DIDAMP is running; finish or cancel it first";
+            bool native = string.Equals(mode, "NATIVE", StringComparison.OrdinalIgnoreCase);
+            if (!native && !string.Equals(mode, "ENGINE", StringComparison.OrdinalIgnoreCase))
+                return "the mode must be NATIVE or ENGINE";
+            if (FxTestPayloads.TypeForKind(kind) == 0)
+                return "unknown effect; kinds: DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP";
+            if (_hidWheelPid == 0) return "no wheel detected";
+            // With the plugin off there is no stream and no device, so an
+            // ENGINE effect renders into nothing while the wheel sits on its
+            // own centring spring. That reads as "the effect feels like a
+            // spring" rather than as "nothing happened", and it cost an
+            // evening of chasing a damper that was never playing. Say so.
+            if (Settings?.PluginEnabled == false || _device == null)
+                return "the plugin is off, so there is no stream to render into; turn it on first";
+
+            if (native)
+            {
+                var wheel = EnsureWheelMotion(exclusive: true);
+                if (wheel == null) return "could not acquire the wheel exclusively through DirectInput (is a game holding it?)";
+                wheel.AutoStopMs = FxTestAutoOffMs;
+                wheel.OnAutoStop = () => StopFxTest();
+                if (!wheel.StartNativeEffect(kind, strengthPct, periodMs))
+                {
+                    StopWheelMotion();
+                    return "the wheel refused the effect (see the log)";
+                }
+                _fxTestNativeHold = true;          // belt: provider null through the transition
+                SuspendStreamForNativeTest("FXTEST NATIVE");
+                _fxTestMode = 1;
+            }
+            else
+            {
+                EnsureWheelMotion(exclusive: false);   // game-agnostic velocity source
+                // The engine side renders THROUGH the stream, so make sure
+                // there is one. StopFxTest above returns early when no bench
+                // test was running, which means a stream suspended by anything
+                // else (an auto-tune that ended badly, DAMPCAL, DIDAMP) is
+                // still suspended here, and the effect would render into
+                // nothing.
+                ResumeStreamAfterNativeTest("FXTEST ENGINE");
+                // Neutralize the output chain for the comparison, exactly as
+                // auto-tune does for a measurement, but ONLY on a quiet wheel.
+                //
+                // In a live session the chain is shaping the game's own force,
+                // and borrowing it for a side-by-side would change how the car
+                // feels mid-drive: not a fair comparison, just a different
+                // wheel. The A/B argument only applies to a bench with nothing
+                // else running.
+                //
+                // The NATIVE side of this bench is rendered inside the wheel
+                // and touches none of our processing. The ENGINE side goes
+                // through the slew limiter, the smoothing pole and the
+                // transient ceiling, and every one of those delays force
+                // relative to position. A delayed spring is not just a late
+                // spring, it is a spring plus a damper: F = -k*x(t-tau) is
+                // -k*x + k*tau*x', and that second term is viscous damping
+                // whose size grows with the spring's own stiffness. Comparing
+                // the two sides with the chain in the way therefore judges our
+                // renderer for something the chain did (owner: "engine spring
+                // feels like it has a damper built in").
+                NeutralizeChainForBench(!(_telemetrySource?.IsSessionActive ?? false));
+                var payload = FxTestPayloads.Build(kind, strengthPct, periodMs);
+                _fxTestEngine.ResetAll();
+                _fxTestEngine.HandleDownload(payload, 0, payload.Length, Stopwatch.GetTimestamp());
+                System.Threading.Interlocked.Exchange(ref _fxTestEndTicks,
+                    Stopwatch.GetTimestamp() + Stopwatch.Frequency * (FxTestAutoOffMs / 1000));
+                _fxTestMode = 2;
+            }
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] FXTEST {(native ? "NATIVE" : "ENGINE")} {kind.ToUpperInvariant()} at {strengthPct}%"
+                + (native ? "." : $" ({FxGainFamilyLabel(kind).TrimEnd(':')} {FxKindGainNow(kind):F2}; a low gain reads as a weak effect until tuned).")
+                + FxTestRigNote(kind));
+            return null;
+        }
+
+        // Saved output-chain settings while the bench borrows them.
+        private bool  _benchChainNeutralized;
+        private bool  _benchSavedTaming;
+        private float _benchSavedSmoothMs;
+
+        /// <summary>Restores the output chain if the bench still holds it.
+        /// Called from teardown as well as from Stop, because a bench left
+        /// running when the plugin closes must not leave the user's spike
+        /// taming and smoothing switched off for the next session.</summary>
+        internal void RestoreChainAfterBench() => NeutralizeChainForBench(false);
+
+        // Borrowed from the UI thread (Play / Stop) and given back from the
+        // pump thread (the auto-off timer), so the save/restore pair has to be
+        // atomic between them: a torn hand-over here leaves the user's spike
+        // taming and smoothing in whatever half-state the race produced.
+        private readonly object _benchChainLock = new object();
+
+        private void NeutralizeChainForBench(bool on)
+        {
+            var dev = _device;
+            if (dev == null) return;
+            lock (_benchChainLock)
+            {
+            if (on)
+            {
+                if (_benchChainNeutralized) return;
+                _benchSavedTaming   = dev.FfbSpikeTamingEnabled;
+                _benchSavedSmoothMs = dev.FfbSmoothTimeConstantMs;
+                dev.FfbSpikeTamingEnabled = false;
+                dev.FfbSmoothTimeConstantMs = 0;
+                _benchChainNeutralized = true;
+            }
+            else if (_benchChainNeutralized)
+            {
+                dev.FfbSpikeTamingEnabled = _benchSavedTaming;
+                dev.FfbSmoothTimeConstantMs = _benchSavedSmoothMs;
+                _benchChainNeutralized = false;
+            }
+            }
+        }
+
+        public void StopFxTest(bool silent = false)
+        {
+            NeutralizeChainForBench(false);
+            if (_fxTestMode == 0 && !_fxTestNativeHold) return;
+            _fxTestMode = 0;
+            _fxTestNativeHold = false;
+            ResumeStreamAfterNativeTest("FXTEST");
+            _fxTestEngine.ResetAll();
+            // Drop what the bench's own native effects put into the decoded
+            // table on their way past the tap, so the next test starts from
+            // nothing. Safe here: the bench refuses to run with a live
+            // session, so there are no game effects to lose.
+            try { _ffbTap?.HidppEffects.ResetAll(); } catch { }
+            var w = _wheelMotion;
+            if (w != null && w.IsExclusive)
+            {
+                w.StopDamper();
+                if (string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                    EnsureWheelMotion(exclusive: false);
+                else
+                    StopWheelMotion();
+            }
+            if (!silent) SimHub.Logging.Current.Info("[TF4ALL] FXTEST off; stream back to normal.");
+        }
+
+        // Shared by the decoded-effect renderer and FXTEST: pick the best
+        // live wheel-position source and feed the motion estimator. False =
+        // no live source; render nothing rather than wrong.
+        // Which motion source the condition renderer is running on, logged
+        // when it changes. A damper's stability depends on how fresh this is,
+        // and the difference between the fastest and slowest option here is
+        // more than an order of magnitude, so "which one is it right now" is
+        // the first question worth answering when a rendered damper rings.
+        private string _motionSourceNoted;
+
+        // One bracket of rig facts on every FXTEST start line, so a field
+        // report identifies its wheel, its position source and its reader
+        // rate without a second round trip.
+        private string FxTestRigNote(string kind)
+        {
+            var wheel = _wheelMotion;
+            string reads = wheel != null && wheel.IsRunning ? $"{wheel.ReadsPerSecond}/s" : "off";
+            return $" [wheel 0x{_hidWheelPid:X4}, motion source {(_motionSourceNoted ?? "not yet chosen")}, DirectInput {reads}]";
+        }
+
+        private void NoteMotionSource(string what)
+        {
+            if (string.Equals(_motionSourceNoted, what, StringComparison.Ordinal)) return;
+            _motionSourceNoted = what;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Condition renderer motion source: {what}."
+                + (what.StartsWith("the DirectInput") ? "" :
+                   " This is slower than the DirectInput reader; a rendered damper may ring on it."));
+        }
+
+        private bool TryUpdateWheelMotion(long now)
+        {
+            var wheel = _wheelMotion;
+            var sr = _steeringReader;
+            if (wheel != null && wheel.IsRunning && (!wheel.IsExclusive || _autoTuner != null))
+            {
+                // The reader already differenced and smoothed its velocity;
+                // re-deriving it from quantized position was the slow-turn
+                // damper shake on the rig (2026-09-01). One derivation.
+                //
+                // The PUMP clock is right here, unlike the position-only paths
+                // below: nothing is being differentiated, so the estimator's
+                // output filter and its acceleration washout are continuous
+                // filters that should advance in real time whether or not the
+                // reader has a new sample for us.
+                _hidppMotion.UpdateWithVelocity(wheel.Position, wheel.Velocity, now, Stopwatch.Frequency);
+                NoteMotionSource("the DirectInput reader");
+                return true;
+            }
+            // Each position carries the time it ARRIVED, not the time we asked
+            // for it. Both sources below hold their last value between updates
+            // (HID reports at ~2 ms, game telemetry at frame rate) while this
+            // runs on the 1 kHz pump, so stamping them with the pump clock told
+            // the estimator a held position was a fresh one that had not moved:
+            // the alpha-beta tracker bled velocity toward zero between arrivals
+            // and got it back as a kick on each one, which is a damper input
+            // that ripples at the report rate. Feeding the arrival tick makes
+            // the interval the real one, and PrepareDt already no-ops on a
+            // stamp that has not advanced, so holding between reports is free.
+            double pos;
+            long arrived;
+            long srTicks = sr != null ? sr.LastUpdateTicks : 0;
+            if (srTicks != 0 && (now - srTicks) <= SteerMaxAgeTicks)
+            {
+                // Value read after the stamp, so it can be one report newer
+                // than the stamp claims. That skew is bounded by a single
+                // report and self-corrects on the next arrival.
+                pos = sr.SteerNorm;
+                arrived = srTicks;
+                NoteMotionSource("HID steering reader");
+            }
+            else
+            {
+                long steerTicks = System.Threading.Interlocked.Read(ref _lastSteerTicks);
+                if ((now - steerTicks) > SteerMaxAgeTicks) return false;
+                pos = _lastSteerNorm;
+                arrived = steerTicks;
+                NoteMotionSource("the game's own steering telemetry");
+            }
+            _hidppMotion.Update(pos, arrived, Stopwatch.Frequency);
+            return true;
+        }
+
+        // Pump thread: render the FXTEST ENGINE effect (base 0 with no game,
+        // so the stream enters the active shape and carries it).
+        // ---- Arcade (TeknoParrot) effect rendering ----
+        //
+        // A third HidppEffectEngine instance: the tap owns one for wire-decoded
+        // effects, FXTEST owns one for the bench, this one renders an arcade
+        // cabinet's commands. Instances are fully independent (own slot table,
+        // own filter state), which is what lets all three coexist.
+        //
+        // The waveform slew limiter is raised well above its 0.08 default here.
+        // At the default a sine is untouched only above about 79 ms of period at
+        // full amplitude, and arcade rumble lives well inside that, so the
+        // default would quietly deliver a fraction of the commanded amplitude and
+        // read on the rig as a weak effect rather than as a filter doing its job.
+        private readonly HidppEffectEngine _arcadeEngine = new HidppEffectEngine
+        {
+            WaveformMaxStepPerMs = 0.5f,
+        };
+
+        private const byte ArcadeSpringSlot   = 1;
+        private const byte ArcadePeriodicSlot = 2;
+
+        // Slot 1 is the spring, and the rest follow the vocabulary. One slot per
+        // trigger kind, because a cabinet can command a spring and a rumble at
+        // once and the engine only auto-retires other copies of the same
+        // CONDITION type: a periodic left playing under a new spring would keep
+        // buzzing forever.
+        private const byte ArcadeDamperSlot   = 3;
+        private const byte ArcadeFrictionSlot = 4;
+
+        // Per-cabinet scale for the waveform effects, cached because Evaluate
+        // runs on the pump thread and reaching into the settings dictionary
+        // there would allocate on every tick.
+        //
+        // Deliberately not folded into the cabinet's force scale. The buzz a
+        // cabinet commands and the steering force it commands are two different
+        // signals: a wheel set strong enough for the steering to feel right
+        // makes the same cabinet's waveforms too loud, and one number cannot
+        // bring the second down without taking the first with it.
+        private string _arcadeWaveGainGame;
+        private volatile bool _arcadeWaveGainDirty = true;
+        private float _arcadeWaveGain = 1f;
+
+        /// <summary>The active cabinet's waveform scale, reloaded when the game
+        /// changes or a slider marks it stale.</summary>
+        private float ArcadeWaveformGain()
+        {
+            if (_arcadeWaveGainDirty
+                || !string.Equals(_arcadeWaveGainGame, _activeGame, StringComparison.Ordinal))
+            {
+                double g = ArcadeTuningPeek(_activeGame).WaveformGain;
+                if (double.IsNaN(g) || g < 0.0) g = 0.0;
+                if (g > 2.0) g = 2.0;
+                _arcadeWaveGain = (float)g;
+                _arcadeWaveGainGame = _activeGame;
+                _arcadeWaveGainDirty = false;
+            }
+            return _arcadeWaveGain;
+        }
+
+        /// <summary>Make the next pump tick re-read the waveform scale, so a
+        /// slider is felt while it is being dragged.</summary>
+        public void InvalidateArcadeWaveformGain() { _arcadeWaveGainDirty = true; }
+
+        // Says, at most once every few seconds, when the cabinet starts a
+        // waveform and whether it had a steering force going at the same moment.
+        //
+        // A cabinet that drops its steering command while it buzzes reads on the
+        // wheel as "the wheel went limp and started humming", which looks like a
+        // fault and is usually the game doing exactly what it asked for. Our base
+        // force is the cabinet's constant and nothing else, so when the constant
+        // stops there is nothing left to hold the wheel. One line settles which
+        // of the two it was without another rig session guessing at it.
+        private bool _arcadeWaveWasPlaying;
+        private int  _arcadeWaveLastLogMs;
+
+        private void NoteArcadePeriodic(ArcadeFfbState st)
+        {
+            bool playing = st.Periodic.Present;
+            bool onset = playing && !_arcadeWaveWasPlaying;
+            _arcadeWaveWasPlaying = playing;
+            if (!onset) return;
+            int ms = Environment.TickCount;
+            if (_arcadeWaveLastLogMs != 0 && unchecked(ms - _arcadeWaveLastLogMs) < 3000) return;
+            _arcadeWaveLastLogMs = ms;
+            var p = st.Periodic;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Arcade waveform started: " + p.Kind
+                + ", magnitude " + p.Strength.ToString("0.000")
+                + ", period " + p.PeriodMs + " ms, our scale "
+                + ArcadeWaveformGain().ToString("0.00")
+                + ". Steering force at that moment: "
+                + (st.Constant.Present ? st.Constant.Strength.ToString("0.000") : "none")
+                + "." + Id8StateAtWaveform());
+        }
+
+        /// <summary>What the game itself was doing when the cabinet asked for a
+        /// waveform, for the log line above.
+        ///
+        /// The cabinet protocol carries one command per frame, so a waveform frame
+        /// says nothing about WHY. The game's own memory does: surface coarseness,
+        /// sideslip and a contact flag separate "this is the road surface" from
+        /// "this is the car sliding" from "this is a collision", and those are
+        /// three different answers to whether the limp feeling is a fault.
+        /// Returns an empty string when the reader is not live, which is every
+        /// cabinet other than Initial D 8.</summary>
+        private string Id8StateAtWaveform()
+        {
+            var f = _arcadeMemory;
+            if (f == null || !f.Verified) return "";
+            Id8Sample s = f.Last;
+            if (!s.Valid) return "";
+            return " Game state: " + s.SpeedKmh.ToString("0") + " km/h, surface "
+                 + s.SurfaceRumble.ToString("0.00") + ", sideslip "
+                 + s.SideslipDeg.ToString("0.0") + " deg, steer "
+                 + s.SteerNorm.ToString("0.00") + ", impact "
+                 + s.ImpactG.ToString("0.0") + " g"
+                 + (s.Airborne ? ", airborne" : "")
+                 + (s.WallHitStarted ? ", wall hit" : "") + ".";
+        }
+
+        // The state object currently downloaded, compared by reference. The
+        // source publishes a new instance only on a genuine change, so a
+        // reference compare is both correct and free.
+        private ArcadeFfbState _arcadeLastState;
+        private bool _arcadeNoMotionLogged;
+        private bool _arcadeRenderNoted;
+
+        /// <summary>Renders the arcade cabinet's effect-shaped commands (springs
+        /// and rumble) on top of whatever scalar force is already chosen.
+        ///
+        /// Modelled on ApplyFxTestEngine rather than AddHidppDiEffects, and that
+        /// choice is load-bearing: AddHidppDiEffects returns early both when there
+        /// is no base force and when the USBPcap tap has not armed its parametric
+        /// decode, and an arcade game supplies neither. `(force ?? 0) + t` is what
+        /// lets the stream enter the active shape with no game force at all.
+        ///
+        /// Ingest and evaluate both happen here, on the pump thread. The engine
+        /// documents ingest as parser-thread-only and evaluate as pump-only; doing
+        /// both on one thread satisfies that contract more strictly, not less.</summary>
+        private short? ApplyArcadeEffects(short? force)
+        {
+            var src = _telemetrySource as IArcadeForceSource;
+            if (src == null)
+            {
+                // Clear on the way out: a slot must not survive the game closing.
+                if (_arcadeLastState != null) { _arcadeEngine.ResetAll(); _arcadeLastState = null; }
+                return force;
+            }
+
+            long now = Stopwatch.GetTimestamp();
+
+            var state = src.TryGetFreshState(250);
+            if (state == null)
+            {
+                // The cabinet stopped commanding, or its IO block froze. Do not
+                // leave an effect playing: a held force nobody asked for is this
+                // project's worst failure mode and we have shipped a fix for it
+                // once already (issue #13).
+                if (_arcadeLastState != null) { _arcadeEngine.ResetAll(); _arcadeLastState = null; }
+                return force;
+            }
+
+            if (!ReferenceEquals(state, _arcadeLastState))
+            {
+                _arcadeLastState = state;
+                ApplyArcadeState(state, now);
+            }
+
+            // No live position source must not silence everything: a periodic
+            // needs no position, and a condition evaluated at zeros outputs zero
+            // anyway. Under TeknoParrot there is no game steering telemetry, so
+            // this is the DirectInput or HID reader or nothing.
+            float mp = 0f, mv = 0f, ma = 0f;
+            if (TryUpdateWheelMotion(now))
+            {
+                mp = (float)_hidppMotion.Position;
+                mv = (float)_hidppMotion.Velocity;
+                ma = (float)_hidppMotion.Acceleration;
+            }
+            else if (!_arcadeNoMotionLogged)
+            {
+                _arcadeNoMotionLogged = true;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Arcade: no wheel position source is live, so the cabinet's spring will render zero "
+                    + "while its rumble still plays. That reads as 'the effect does nothing'; it is a missing "
+                    + "position source, not a missing effect.");
+            }
+
+            // Spring gain 1.0 here, NOT the auto-tuned _springGain. That number
+            // is fitted to wire-decoded game springs, whose coefficients arrive
+            // as fractions of full scale, and it measured about 4 on this rig. A
+            // cabinet spring arrives at full scale already (InitialD8Decoder emits
+            // Spring(1.0) for the fixed opcode), so multiplying by 4 pinned it at
+            // the engine's ceiling past roughly a quarter of steering travel and
+            // held it flat for the rest. That is a rail, not a spring, and it set
+            // the size of every edge the other faults produced.
+            float f = _arcadeEngine.Evaluate(
+                mp, mv, ma, _damperGain, _inertiaGain,
+                now, Stopwatch.Frequency, out bool anyPlaying, _damperSign,
+                1f, _frictionGain, _periodicGain * ArcadeWaveformGain(), _rampGain);
+            if (!anyPlaying && !_arcadeEngine.AnyPlaying) return force;
+
+            if (!_arcadeRenderNoted)
+            {
+                _arcadeRenderNoted = true;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Arcade effects rendering (base force "
+                    + $"{(force.HasValue ? force.Value.ToString() : "null")}).");
+            }
+
+            // The engine and the arcade scalar count force OPPOSITE ways, and the
+            // device inversion used to hide it.
+            //
+            // HidppEffectEngine's contract is "positive force pulls toward LOWER
+            // steer (left)" (its header), because it was written for the TAPPED
+            // path, where TrueforceDevice negates the whole sum on the way out.
+            // Under that negation a positive spring term lands as leftward torque
+            // and centres the wheel correctly.
+            //
+            // The arcade constant is the other way round: positive means RIGHT,
+            // and it is measured correct with the arcade invert bypass in place.
+            // So bypassing the inversion fixed the constant and silently broke
+            // every condition effect beside it: a spring displaced right pushed
+            // further right, which runs away from centre instead of returning.
+            //
+            // Rig trace 2026-09-04 (ARCADEFX): in the menus the cabinet holds
+            // spring=1.000 coef 1.00/1.00, full authority, while the constant runs
+            // at 0.008 to 0.063. The spring is what the wheel is doing there by a
+            // factor of fifteen, which is why it read as "the force is reversed"
+            // even though the constant beside it was right.
+            //
+            // Negated HERE rather than in the engine because the engine is shared
+            // with the tapped path, where its convention is correct and hardware
+            // validated. This is the one place the two conventions meet.
+            int t = (int)(-f * 32767f);
+            _lastConditionTerm = t;   // traced like the other two renderers
+            // Full authority (cap removed across the board, owner 2026-09-05).
+            // The engine is the ONLY force here, so the old ±16384 cap cost half
+            // the cabinet's intended strength; the sum is still clamped below.
+            int v = (force ?? 0) + t;
+            if (v > short.MaxValue) v = short.MaxValue; else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
+        // Turns one decoded cabinet command into engine slot traffic. Called only
+        // when the command actually changed: HandleDownload rebuilds the effect
+        // with its filter state uninitialised, so re-issuing it every tick would
+        // defeat the condition low-pass the renderer leans on.
+        // Renders one decoded arcade state into engine slots. Every trigger the
+        // vocabulary carries is handled here, so adding a game means adding a
+        // decoder and nothing else: this method never learns a game's opcodes.
+        //
+        // Slot discipline matters more than it looks. The engine frees a slot only
+        // on an explicit destroy, and its own safety net retires other playing
+        // copies of the same CONDITION type only. So a trigger that was present
+        // last state and is absent now must be destroyed by name, or it keeps
+        // playing forever. That is the bug shape behind a damper that grew with
+        // every plugin off/on cycle.
+        private void ApplyArcadeState(ArcadeFfbState st, long now)
+        {
+            double scale = ArcadeTuningFor(_activeGame).ForceScale;
+            RenderArcadeSlot(ArcadeSpringSlot,   st.Spring,   scale, now);
+            RenderArcadeSlot(ArcadeDamperSlot,   st.Damper,   scale, now);
+            RenderArcadeSlot(ArcadeFrictionSlot, st.Friction, scale, now);
+            RenderArcadeSlot(ArcadePeriodicSlot, st.Periodic, scale, now);
+            NoteArcadePeriodic(st);
+
+            // Constant and Rumble are deliberately not rendered here. The engine
+            // refuses constants by design (the scalar path owns them) and the
+            // source publishes that one as the base force. Rumble is a
+            // gamepad-motor call in the reference implementation rather than a
+            // wheel effect: on a Trueforce wheel that texture is what the ep3
+            // stream already carries, so synthesising a periodic for it would be
+            // adding a second, invented one on top.
+        }
+
+        private void RenderArcadeSlot(byte slot, ArcadeTrigger t, double scale, long now)
+        {
+            if (!t.Present)
+            {
+                _arcadeEngine.HandleDestroy(slot);
+                return;
+            }
+            var p = ArcadeFfbPayloads.For(slot, t, scale);
+            if (p == null)
+            {
+                _arcadeEngine.HandleDestroy(slot);
+                return;
+            }
+            _arcadeEngine.HandleDownload(p, 0, p.Length, now);
+        }
+
+        private short? ApplyFxTestEngine(short? force)
+        {
+            if (_fxTestMode != 2) return force;
+            // Say, once per test, that the renderer actually got here and what
+            // it produced. A bench run whose ENGINE effect reached the wheel
+            // and one that silently never ran feel like different bugs and
+            // read the same in the log otherwise: on 2026-09-03 an engine
+            // damper "felt like a spring" while neither of this method's two
+            // status lines ever printed, so the effect under judgement was
+            // never rendered at all and something else was driving the wheel.
+            if (!_fxTestRenderNoted)
+            {
+                _fxTestRenderNoted = true;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] FXTEST ENGINE rendering: stream shape carries the provider, "
+                    + $"base force {(force.HasValue ? force.Value.ToString() : "null")}.");
+            }
+            long now = Stopwatch.GetTimestamp();
+            if (System.Threading.Interlocked.Read(ref _fxTestEndTicks) < now)
+            {
+                _fxTestMode = 0;
+                _fxTestEngine.ResetAll();
+                try { _ffbTap?.HidppEffects.ResetAll(); } catch { }
+                // Give the output chain back. This path expires the test on
+                // its own clock and used to skip the restore that Stop does,
+                // so a bench effect left to time out permanently disabled the
+                // user's spike taming and smoothing: every force after it,
+                // game force included, came through unattenuated and read as
+                // a step up in strength that persisted until the plugin was
+                // toggled (owner, 2026-09-02: "it doubles the strength and
+                // stays doubled").
+                NeutralizeChainForBench(false);
+                return force;
+            }
+            // No live position source must not silence the whole test:
+            // waveform effects (sine and friends) need no position, and a
+            // condition evaluated at zeros outputs zero anyway (rig
+            // 2026-09-01: engine effects read as doing nothing).
+            float mp = 0f, mv = 0f, ma = 0f;
+            if (TryUpdateWheelMotion(now))
+            {
+                mp = (float)_hidppMotion.Position;
+                mv = (float)_hidppMotion.Velocity;
+                ma = (float)_hidppMotion.Acceleration;
+            }
+            else if (!_fxTestNoMotionLogged)
+            {
+                _fxTestNoMotionLogged = true;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] FXTEST: no wheel position source is live; motion-based effects (damper/spring/friction) will output zero, waveforms still play.");
+            }
+            float f = _fxTestEngine.Evaluate(
+                mp, mv, ma, _damperGain, _inertiaGain,
+                now, Stopwatch.Frequency, out bool anyPlaying, _damperSign,
+                _springGain, _frictionGain, _periodicGain, _rampGain);
+            if (!anyPlaying && !_fxTestEngine.AnyPlaying) return force;
+            int t = (int)(f * 32767f);
+            _lastConditionTerm = t;   // the bench's term is the one to trace during a bench run
+            // Full authority, matching the decoded path (cap removed across the
+            // board 2026-09-05) so the A/B compares the same ceiling.
+            int v = (force ?? 0) + t;
+            if (v > short.MaxValue) v = short.MaxValue; else if (v < short.MinValue) v = short.MinValue;
+            return (short)v;
+        }
+
+        // A native-effect test (FXTEST NATIVE, DAMPCAL's native phase, the
+        // DIDAMP spike) must measure the wheel EXACTLY as it is with the
+        // plugin inactive. Whether the keepalive packet shape truly restores
+        // the firmware's ep0 effect rendering is an UNPROVEN protocol
+        // question (the "which field gates the ep0 fallback" note in
+        // TrueforceDevice), so the honest reference LEAVES Trueforce mode
+        // outright: a real Stop on the wire, pump paused, endpoint silent -
+        // the master-toggle-off sequence (owner's correction, 2026-09-01).
+        private volatile bool _nativeTestStreamSuspended;
+
+        /// <summary>Puts the stream back if it is suspended and nobody owns
+        /// the wheel any more.
+        ///
+        /// Suspension is a latch, and every tool that sets it is responsible
+        /// for clearing it. That is one failure away from a silently dead
+        /// wheel: with the stream stopped the renderer reaches nothing, and
+        /// the wheel falls back to its own centring spring, so the plugin
+        /// looks alive and every effect reads as "feels like a spring" (rig,
+        /// 2026-09-03). It cost an evening to find, and the log said it only
+        /// by the ABSENCE of a line.
+        ///
+        /// Written after misreading exactly that absence: the stream was not
+        /// stranded at all, the plugin had simply been switched off, and a
+        /// null device suspends and logs nothing. The guard is kept because
+        /// the latch really is one missed cleanup away from a silently dead
+        /// wheel, but no such leak has been observed. Resume checks
+        /// PluginEnabled, so this never fights the off switch.</summary>
+        private void MaintainStreamNotStuckSuspended()
+        {
+            if (!_nativeTestStreamSuspended) return;
+            if (_autoTuner != null || _dampCal != null || _dampCalHold
+                || _diSpikeHold || _fxTestMode == 1 || _fxTestNativeHold) return;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] The Trueforce stream was left suspended with no test holding it; resuming.");
+            ResumeStreamAfterNativeTest("stream watchdog");
+        }
+
+        private void SuspendStreamForNativeTest(string context)
+        {
+            var dev = _device;
+            if (dev == null || _nativeTestStreamSuspended) return;
+            lock (_enableDeviceLock)
+            {
+                dev.SendStopCommand();
+                dev.Pause();
+            }
+            _nativeTestStreamSuspended = true;
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] {context}: left Trueforce mode (stream stopped); the wheel is exactly as it is without the plugin.");
+        }
+
+        private void ResumeStreamAfterNativeTest(string context)
+        {
+            if (!_nativeTestStreamSuspended) return;
+            _nativeTestStreamSuspended = false;
+            var dev = _device;
+            if (dev == null) return;
+            lock (_enableDeviceLock)
+            {
+                // Mirror the toggle-on path; if the user disabled the plugin
+                // mid-test, the master reconciler owns the device state.
+                if (Settings?.PluginEnabled != false)
+                {
+                    dev.Resume();
+                    dev.SendStartCommand();
+                }
+            }
+            SimHub.Logging.Current.Info($"[TF4ALL] {context}: back in Trueforce mode.");
+        }
+
+        // ---- AUTO-TUNE: hands-free calibration on the bench ----
+        // WheelAutoTuner self-excites the wheel with bounded torque pulses
+        // and matches decay rates / oscillation frequencies / decelerations
+        // between the firmware-rendered effects (stream stopped) and our
+        // renderer, per effect. Results land in the live gains for the owner
+        // to verify by feel on the bench, then Save.
+        private volatile WheelAutoTuner _autoTuner;
+        private long _autoTuneLastSampleTicks;
+        private bool _autoTuneChainNeutralized;
+        private System.Threading.Timer _autoTuneWatchdog;
+
+        /// <summary>Starts the hands-free calibration. Returns null, or the
+        /// reason it could not start.</summary>
+        public string StartAutoTune(Action<string> uiStatus, int repeats = 1)
+        {
+            StopFxTest(silent: true);
+            CancelAutoTune(silent: true);
+            if (_dampCal != null || _diSpikeHold) return "DAMPCAL / DIDAMP is running; finish or cancel it first";
+            if (_hidWheelPid == 0) return "no wheel detected";
+            var wheel = EnsureWheelMotion(exclusive: true);
+            if (wheel == null) return "could not acquire the wheel exclusively through DirectInput (is a game holding it?)";
+            wheel.QuietEffects = true;
+            // Dedicated pulse slot: probe pulses must never evict the
+            // condition effect under test (audit AT-02).
+            if (!wheel.PrepareConstantPulse())
+            {
+                StopWheelMotion();
+                return "could not create the probe pulse effect (see the log)";
+            }
+            // Watchdogs (audit AT-01): a hard cap on the whole run, and the
+            // poll loop's exit callback (fires on abnormal death too) both
+            // funnel into CancelAutoTune, which zeroes outputs and resumes
+            // the stream.
+            // 7 minutes: the run grew (direction probes, hand-centering,
+            // per-trial centering); a healthy run must never be timeout-
+            // killed at 96% (audit AT2-06). The deadman covers hangs.
+            // x N: the cap covers the whole sequence, not one run.
+            if (repeats < 1) repeats = 1; else if (repeats > 5) repeats = 5;
+            wheel.AutoStopMs = Math.Min(1_800_000, 420000 * repeats);
+            wheel.OnAutoStop = () => CancelAutoTune();
+            // Neutralize the nonlinear chain stages for the run: the
+            // transient soft-knee compresses pulses and would be measured as
+            // 'force scale' (audit F6). FfbScale stays (linear, absorbed by
+            // the equalization and reported back out).
+            var devAt = _device;
+            if (devAt != null)
+            {
+                devAt.FfbSpikeTamingEnabled = false;
+                devAt.FfbSmoothTimeConstantMs = 0;
+                _autoTuneChainNeutralized = true;
+            }
+            System.Threading.Interlocked.Exchange(ref _autoTuneLastSampleTicks, Stopwatch.GetTimestamp());
+            // Independent watchdog thread: the pump-side deadman is blind
+            // through the native phases (the pump is paused there); this one
+            // is not (audit F7).
+            _autoTuneWatchdog?.Dispose();
+            _autoTuneWatchdog = new System.Threading.Timer(_ =>
+            {
+                var atW = _autoTuner;
+                if (atW == null) return;
+                long lastW = System.Threading.Interlocked.Read(ref _autoTuneLastSampleTicks);
+                if (lastW != 0 && Stopwatch.GetTimestamp() - lastW > Stopwatch.Frequency * 2)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] AUTO-TUNE watchdog: wheel samples stopped; cancelling.");
+                    try { CancelAutoTune(); } catch { }
+                }
+            }, null, 2000, 2000);
+
+            Action<string> status = msg =>
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] " + msg);
+                try { uiStatus?.Invoke(msg); } catch { }
+            };
+            // Repeatability mode. Successive auto-tunes are NOT independent
+            // samples: each measures a correction relative to the gains it
+            // starts from, so applying run 1 makes run 2 a feedback step
+            // (rig 2026-09-02: damper 0.25 -> 0.73 -> 0.40). To measure the
+            // SPREAD, every run starts from the same baseline and nothing is
+            // applied until the sequence ends, when the median lands.
+            _autoTuneRunsTotal = repeats;
+            _autoTuneRunIndex  = 1;
+            _autoTuneSamples.Clear();
+            _atBaseDamper   = _damperGain;
+            _atBaseSpring   = _springGain;
+            _atBaseFriction = _frictionGain;
+            _autoTuneStatus = status;
+            _autoTuneWheel  = wheel;
+            _autoTuner = NewAutoTuner(wheel, status);
+            wheel.OnSample = (vel, t) =>
+            {
+                System.Threading.Interlocked.Exchange(ref _autoTuneLastSampleTicks, Stopwatch.GetTimestamp());
+                var at = _autoTuner;
+                if (at != null) at.Sample(wheel.Position, vel, t);
+            };
+            return null;
+        }
+
+        // ---- Auto-tune repeat sequence ----
+        private int _autoTuneRunsTotal = 1;
+        private int _autoTuneRunIndex;
+        private readonly List<AutoTuneSample> _autoTuneSamples = new List<AutoTuneSample>();
+        private float _atBaseDamper, _atBaseSpring, _atBaseFriction;
+        private Action<string> _autoTuneStatus;
+        private DirectInputWheel _autoTuneWheel;
+
+        private struct AutoTuneSample
+        {
+            public double Damper, Spring, Friction, ForceRatio;
+            public double DragNative, DragEngine;
+            public bool   SignMeasured, SignCorrect, Suspect;
+        }
+
+        private WheelAutoTuner NewAutoTuner(DirectInputWheel wheel, Action<string> status)
+            => new WheelAutoTuner(_atBaseDamper, _atBaseSpring, _atBaseFriction,
+                                  cfg => AutoTuneEnterPhase(cfg, wheel, status),
+                                  cmd => AutoTuneDriveNative(wheel, cmd),
+                                  status,
+                                  on => AutoTuneSetEffectActive(wheel, on),
+                                  (pct, damp, at) => AutoTuneCenterSpring(wheel, pct, damp, at));
+
+        // Median of the finite samples, NaN when there are none. Median, not
+        // mean: one bad trial should not drag the shipped gain with it.
+        private static double MedianOf(List<double> xs)
+        {
+            var v = xs.Where(x => !double.IsNaN(x)).OrderBy(x => x).ToList();
+            if (v.Count == 0) return double.NaN;
+            return v.Count % 2 == 1 ? v[v.Count / 2] : (v[v.Count / 2 - 1] + v[v.Count / 2]) / 2;
+        }
+
+        private static string SpreadOf(List<double> xs, string name)
+        {
+            var v = xs.Where(x => !double.IsNaN(x)).ToList();
+            if (v.Count < 2) return "";
+            double lo = v.Min(), hi = v.Max(), med = MedianOf(xs);
+            double spread = med > 0 ? (hi - lo) / med : 0;
+            return $"{name} {lo:F2}..{hi:F2} (spread {spread:P0})";
+        }
+
+        // Silence or restore the effect under test for one trial. The
+        // ENGINE side needs nothing here: its renderer already consults the
+        // tuner's EffectEngaged every tick. The NATIVE side is a firmware
+        // effect, so it has to be stopped and started on the device, without
+        // destroying it (a re-creation between trials would change what is
+        // being measured, and can be refused outright).
+        private void AutoTuneSetEffectActive(DirectInputWheel wheel, bool active)
+        {
+            if (!_autoTuneNativePhase) return;
+            wheel.SetEffectActive(active);
+        }
+
+        private bool _autoTuneNativePhase;
+        private string _autoTuneEffectKind;
+        private int    _autoTuneEffectPct;
+
+        /// <summary>Loads a centring SPRING in place of the phase's effect, or
+        /// restores the phase's effect when pct is 0. Returns false when no
+        /// spring can be held, which tells the tuner to fall back to waiting
+        /// on the wheel's own friction.
+        ///
+        /// A firmware spring centres the wheel in the WHEEL's own frame, so it
+        /// needs nothing from us about which way our commands push, and it has
+        /// the wheel's full authority rather than the capped output a
+        /// hand-driven controller has to limit itself to. That cap was what
+        /// made the old walk overshoot and hunt.
+        ///
+        /// Native phases only. While an ep3 stream is live the firmware drops
+        /// its whole slot engine, so a DirectInput spring would do nothing at
+        /// all on the engine side; those phases keep the driven centring.</summary>
+        private bool AutoTuneCenterSpring(DirectInputWheel wheel, int pct, int dampPct, double centreAt)
+        {
+            if (!_autoTuneNativePhase || wheel == null) return false;
+            try
+            {
+                if (pct <= 0)
+                {
+                    wheel.SetCenteringDamper(0);
+                    if (_autoTuneEffectKind != null)
+                        wheel.StartNativeEffect(_autoTuneEffectKind, _autoTuneEffectPct, 0);
+                    else
+                        wheel.StopDamper();
+                    return true;
+                }
+                if (!wheel.StartNativeEffect("SPRING", pct, 0, centreAt)) return false;
+                // The damper is a bonus: without it the spring still centres,
+                // just with more ringing, so a device that will not hold a
+                // second condition is not a failure.
+                wheel.SetCenteringDamper(dampPct);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static void AutoTuneDriveNative(DirectInputWheel wheel, double cmd)
+        {
+            // The dedicated pulse slot: fast parameter update, and the
+            // condition effect under test in _fx stays untouched.
+            wheel.SetConstantPulse(cmd);
+        }
+
+        // Land the sequence: median across runs, so one bad trial cannot
+        // drag the shipped gain, and report the spread so a metric that is
+        // not repeatable stays visible instead of being averaged into
+        // looking solid.
+        private void ApplyAutoTuneResults(Action<string> status)
+        {
+            var runs = _autoTuneSamples;
+            if (runs.Count == 0) return;
+            var damper   = runs.Select(r => r.Damper).ToList();
+            var spring   = runs.Select(r => r.Spring).ToList();
+            var friction = runs.Select(r => r.Friction).ToList();
+            var ratios   = runs.Select(r => r.ForceRatio).ToList();
+
+            double mD = MedianOf(damper), mS = MedianOf(spring), mF = MedianOf(friction);
+            // Inertia is deliberately NOT carried over from the damper:
+            // different units (per acceleration, not per velocity), so the
+            // damper's number oversaturates it. It has no measurement phase
+            // yet and keeps its own value until one exists. Gains clamp to
+            // the same range the bench slider and SetFxKindGain use, so a
+            // measured value can never be one number in settings and another
+            // on screen.
+            if (!double.IsNaN(mD)) _damperGain   = (float)ClampFxGain(mD);
+            if (!double.IsNaN(mS)) _springGain   = (float)ClampFxGain(mS);
+            if (!double.IsNaN(mF)) _frictionGain = (float)ClampFxGain(mF);
+
+            // The engine probe measures the sign of the loop the renderer
+            // closes, so apply it rather than leaving it as advice:
+            // velTermSign +1 when a positive stream command drives the
+            // measured velocity negative.
+            var signed = runs.Where(r => r.SignMeasured).ToList();
+            if (signed.Count > 0)
+            {
+                bool correct = signed.Count(r => r.SignCorrect) * 2 >= signed.Count;
+                int want = correct ? 1 : -1;
+                if (want != _damperSign)
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] AUTO-TUNE: velocity-term direction set to {(want < 0 ? "FLIPPED" : "normal")} from the measured loop sign.");
+                _damperSign = want;
+            }
+
+            double mRatio = MedianOf(ratios);
+            double scaleNow = Settings?.FfbScale ?? 0.8;
+            double fwRatio = (!double.IsNaN(mRatio) && mRatio > 0 && scaleNow > 0)
+                ? 1.0 / (mRatio * scaleNow) : double.NaN;
+            bool anySuspect = runs.Any(r => r.Suspect);
+            bool signOk = signed.Count > 0 && signed.All(r => r.SignCorrect);
+
+            string spread = string.Join(", ", new[]
+            {
+                SpreadOf(damper, "damper"), SpreadOf(spring, "spring"),
+                SpreadOf(friction, "friction"),
+            }.Where(x => x.Length > 0));
+
+            status($"AUTO-TUNE done ({runs.Count} run{(runs.Count == 1 ? "" : "s")}). "
+                 + $"Wheel's stream-vs-native torque ratio ~{fwRatio:F2} "
+                 + $"(an FfbScale of {(double.IsNaN(fwRatio) || fwRatio <= 0 ? double.NaN : 1.0 / fwRatio):F2} would match native exactly, "
+                 + "but changing it rescales these gains by the same amount, so re-run afterwards); "
+                 + $"gains now damper {_damperGain:F2}, spring {_springGain:F2}, friction {_frictionGain:F2}"
+                 + (runs.Count > 1 ? $" (median of {runs.Count}; {spread})" : "")
+                 + (double.IsNaN(mD)
+                     ? $"; NOTE: the damper did not measure (drag native "
+                       + $"{MedianOf(runs.Select(r => r.DragNative).ToList()):F2}, engine "
+                       + $"{MedianOf(runs.Select(r => r.DragEngine).ToList()):F2})" : "")
+                 + (signOk ? "; render direction CHECKS OUT (the rendered effects resist motion)" : "")
+                 + (anySuspect ? " (SOME VALUES SUSPECT: verify on the bench before saving)" : "")
+                 + ". Verify by feel, then Save tuning.");
+        }
+
+        private void AutoTuneEnterPhase(WheelAutoTuner.PhaseConfig cfg, DirectInputWheel wheel, Action<string> status)
+        {
+            // A cancel that lands mid-callback must not let this phase entry
+            // re-suspend the stream after the cancel resumed it (audit
+            // AT2-03).
+            if (_autoTuner == null && cfg.Phase != WheelAutoTuner.Phase.Done
+                && cfg.Phase != WheelAutoTuner.Phase.Aborted) return;
+            _autoTuneNativePhase = cfg.Native;
+            _autoTuneEffectKind  = cfg.EffectKind;
+            _autoTuneEffectPct   = cfg.EffectPct;
+            switch (cfg.Phase)
+            {
+                case WheelAutoTuner.Phase.Done:
+                {
+                    var at = _autoTuner;
+                    if (at != null)
+                    {
+                        _autoTuneSamples.Add(new AutoTuneSample
+                        {
+                            Damper       = at.DamperGain,
+            DragNative   = at.MeasuredDragNative,
+            DragEngine   = at.MeasuredDragEngine,
+                            Spring       = at.SpringGain,
+                            Friction     = at.FrictionGain,
+                            ForceRatio   = at.MeasuredForceRatio,
+                            SignMeasured = at.RenderSignMeasured,
+                            SignCorrect  = at.RenderSignCorrect,
+                            Suspect      = at.ResultsSuspect,
+                        });
+                        if (_autoTuneRunIndex < _autoTuneRunsTotal)
+                        {
+                            // Another run from the SAME baseline: nothing is
+                            // applied yet, so each run is an independent
+                            // sample of the same quantity rather than a step
+                            // in a feedback sequence.
+                            _autoTuneRunIndex++;
+                            status($"AUTO-TUNE run {_autoTuneRunIndex - 1} of {_autoTuneRunsTotal}: "
+                                 + $"damper {at.DamperGain:F2}, spring {at.SpringGain:F2}, friction {at.FrictionGain:F2}. "
+                                 + $"Starting run {_autoTuneRunIndex}; hands OFF.");
+                            _autoTuner = NewAutoTuner(wheel, status);
+                            break;
+                        }
+                        ApplyAutoTuneResults(status);
+                    }
+                    AutoTuneCleanup(wheel);
+                    break;
+                }
+                case WheelAutoTuner.Phase.Aborted:
+                    AutoTuneCleanup(wheel);
+                    break;
+                default:
+                    wheel.SetConstantPulse(0);
+                    if (cfg.Native)
+                    {
+                        SuspendStreamForNativeTest("AUTO-TUNE");
+                        wheel.StopDamper();
+                        _fxTestEngine.ResetAll();
+                        if (cfg.EffectKind != null) wheel.StartNativeEffect(cfg.EffectKind, cfg.EffectPct, 0);
+                    }
+                    else
+                    {
+                        wheel.StopDamper();
+                        ResumeStreamAfterNativeTest("AUTO-TUNE");
+                        _fxTestEngine.ResetAll();
+                        if (cfg.EffectKind != null)
+                        {
+                            var payload = FxTestPayloads.Build(cfg.EffectKind, cfg.EffectPct, 0);
+                            if (payload != null)
+                                _fxTestEngine.HandleDownload(payload, 0, payload.Length, Stopwatch.GetTimestamp());
+                        }
+                    }
+                    break;
+            }
+        }
+
+        private void AutoTuneCleanup(DirectInputWheel wheel)
+        {
+            _autoTuner = null;
+            RestoreChainAfterAutoTune();
+            System.Threading.Interlocked.Exchange(ref _autoTuneLastSampleTicks, 0);
+            _autoTuneWatchdog?.Dispose();
+            _autoTuneWatchdog = null;
+            try
+            {
+                wheel.OnSample = null;
+                wheel.SetConstantPulse(0);
+                wheel.StopDamper();
+                wheel.QuietEffects = false;
+                wheel.AutoStopMs = 0;
+                wheel.OnAutoStop = null;
+            }
+            catch { }
+            ResumeStreamAfterNativeTest("AUTO-TUNE");
+            _fxTestEngine.ResetAll();
+            if (string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                EnsureWheelMotion(exclusive: false);
+            else
+                StopWheelMotion();
+        }
+
+        public void CancelAutoTune(bool silent = false)
+        {
+            var at = _autoTuner;
+            if (at == null) return;
+            _autoTuner = null;           // the Sample closure no-ops from here
+            _autoTuneRunsTotal = 1;      // a cancel ends the whole sequence
+            _autoTuneRunIndex = 0;
+            _autoTuneSamples.Clear();
+            at.Cancel("cancelled");
+            RestoreChainAfterAutoTune();
+            System.Threading.Interlocked.Exchange(ref _autoTuneLastSampleTicks, 0);
+            _autoTuneWatchdog?.Dispose();
+            _autoTuneWatchdog = null;
+            var w = _wheelMotion;
+            if (w != null)
+            {
+                try { w.OnSample = null; w.SetConstantPulse(0); w.StopDamper(); w.QuietEffects = false; w.AutoStopMs = 0; w.OnAutoStop = null; } catch { }
+            }
+            // Dispose FIRST (it joins the poll thread), THEN resume: an
+            // in-flight native phase entry can no longer re-suspend after
+            // our resume (audit AT2-03).
+            StopWheelMotion();
+            ResumeStreamAfterNativeTest("AUTO-TUNE");
+            _fxTestEngine.ResetAll();
+            // A live AC session keeps its shared velocity reader (the CSP
+            // damper needs it; audit AT2-07).
+            if (string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase))
+                EnsureWheelMotion(exclusive: false);
+            if (!silent) SimHub.Logging.Current.Info("[TF4ALL] AUTO-TUNE cancelled; stream back to normal.");
+        }
+
+        private void RestoreChainAfterAutoTune()
+        {
+            if (!_autoTuneChainNeutralized) return;
+            _autoTuneChainNeutralized = false;
+            var dev = _device;
+            var st = Settings;
+            if (dev == null || st == null) return;
+            dev.FfbSpikeTamingEnabled   = st.FfbSpikeTamingEnabled;
+            dev.FfbSmoothTimeConstantMs = st.FfbSmoothTimeConstantMs;
+        }
+
+        // Pump thread: the auto-tune engine phases' output = scripted probe
+        // pulse + the effect under test at the CURRENT gains, nothing else.
+        private short? AutoTuneTick(WheelAutoTuner at)
+        {
+            long now = Stopwatch.GetTimestamp();
+            // Deadman (audit AT-01): if wheel samples stop arriving (poll
+            // thread dead, wheel unplugged) the runaway guard inside Sample
+            // is dead too, and a latched pulse command must not stream. Zero
+            // now, clean up off the pump thread.
+            long lastSample = System.Threading.Interlocked.Read(ref _autoTuneLastSampleTicks);
+            if (lastSample != 0 && now - lastSample > Stopwatch.Frequency * 3 / 4)
+            {
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] AUTO-TUNE: wheel samples stopped; aborting and cleaning up.");
+                    try { CancelAutoTune(); } catch { }
+                });
+                return (short)0;
+            }
+            float term = 0f;
+            if (TryUpdateWheelMotion(now))
+                term = _fxTestEngine.Evaluate(
+                    (float)_hidppMotion.Position, (float)_hidppMotion.Velocity,
+                    (float)_hidppMotion.Acceleration, _damperGain, _inertiaGain,
+                    now, Stopwatch.Frequency, out _, _damperSign, _springGain, _frictionGain,
+                    _periodicGain, _rampGain);
+            // The effect under test acts during the pulse and the
+            // measurement, never while re-centering: there it is not being
+            // measured, only resisting, and it was strong enough to stop the
+            // engine friction phase getting the wheel home. Evaluate it
+            // regardless so the renderer's filters and the friction lock
+            // point keep tracking the wheel, then discard the output.
+            if (!at.EffectEngaged) term = 0f;
+            int v = (int)((at.EngineCommand + term) * 32767.0);
+            if (v > 20000) v = 20000; else if (v < -20000) v = -20000;
+            return (short)v;
+        }
+
+        // ---- Condition-render tuning surface (FXTEST UI + persistence) ----
+        private double _conditionLpfHz = 200;
+        // Per-condition low-pass overrides, the filter twins of the per-effect
+        // gains. Negative = follow _conditionLpfHz. Pushed to every engine in
+        // ApplyConditionLpf, edited per bench effect via SetFxKindLpf.
+        private double _damperLpfHz = -1, _springLpfHz = -1, _frictionLpfHz = -1, _inertiaLpfHz = -1;
+
+        public double DamperGainNow => _damperGain;
+        public bool   DamperSignInvertedNow => _damperSign < 0;
+        public double ConditionLpfHzNow => _conditionLpfHz;
+
+        /// <summary>The render gain that belongs to one bench effect kind.
+        /// The bench tunes one effect at a time, so its slider has to follow
+        /// the effect picker instead of always editing the damper (rig
+        /// 2026-09-01: "the values all show the same as i switch effects").
+        /// The five periodics share one gain (one waveform scale), as do the
+        /// two saw directions.</summary>
+        public double FxKindGainNow(string kind)
+        {
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   return _springGain;
+                case "FRICTION": return _frictionGain;
+                case "INERTIA":  return _inertiaGain;
+                case "PERIODIC": return _periodicGain;
+                case "RAMP":     return _rampGain;
+                default:         return _damperGain;
+            }
+        }
+
+        /// <summary>Sets the render gain for one bench effect kind. Live:
+        /// takes effect on the next pump tick, so it can be tuned while the
+        /// effect plays. Returns the clamped value.</summary>
+        /// <summary>The tunable range every gain path shares (slider,
+        /// setter, auto-tune result, DAMPCAL), so a measured value can never
+        /// be one number in settings and another on screen. 5 covers the
+        /// measured spring correction with headroom.</summary>
+        public const double FxGainMax = 5.0;
+
+        public static double ClampFxGain(double v)
+            => double.IsNaN(v) || v < 0 ? 0 : (v > FxGainMax ? FxGainMax : v);
+
+        public double SetFxKindGain(string kind, double v)
+        {
+            v = ClampFxGain(v);
+            float g = (float)v;
+            // No log line here: a slider drag calls this every tick, and the
+            // FXTEST start line already prints the gain in force.
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   _springGain   = g; break;
+                case "FRICTION": _frictionGain = g; break;
+                case "INERTIA":  _inertiaGain  = g; break;
+                case "PERIODIC": _periodicGain = g; break;
+                case "RAMP":     _rampGain     = g; break;
+                default:         _damperGain   = g; break;
+            }
+            return v;
+        }
+
+        /// <summary>The gain family a bench effect name belongs to.</summary>
+        public static string FxGainFamily(string kind)
+        {
+            switch ((kind ?? "").Trim().ToUpperInvariant())
+            {
+                case "SPRING":   return "SPRING";
+                case "FRICTION": return "FRICTION";
+                case "INERTIA":  return "INERTIA";
+                case "RAMP":     return "RAMP";
+                case "SINE":
+                case "SQUARE":
+                case "TRIANGLE":
+                case "SAWUP":
+                case "SAWDOWN":  return "PERIODIC";
+                default:         return "DAMPER";
+            }
+        }
+
+        /// <summary>The shipped default gain for one effect family, read
+        /// from the settings model so there is one source of truth.</summary>
+        public static double FxKindGainDefault(string kind)
+        {
+            var d = new TrueforceSettings();
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   return d.FfbConditionSpringGain;
+                case "FRICTION": return d.FfbConditionFrictionGain;
+                case "INERTIA":  return d.FfbConditionInertiaGain;
+                case "PERIODIC": return d.FfbConditionPeriodicGain;
+                case "RAMP":     return d.FfbConditionRampGain;
+                default:         return d.FfbConditionDamperGain;
+            }
+        }
+
+        /// <summary>Puts one effect family's gain back to its shipped
+        /// default (live; Save persists it). Returns the value.</summary>
+        public double ResetFxKindGain(string kind)
+        {
+            double v = FxKindGainDefault(kind);
+            SetFxKindGain(kind, v);
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Render gain {FxGainFamily(kind)} reset to {v:F2}.");
+            return v;
+        }
+
+        /// <summary>Set the low-pass cutoff (Hz) for ONE condition family. Waveform
+        /// families have no condition filter and are ignored. Live; Save persists.</summary>
+        public double SetFxKindLpf(string kind, double hz)
+        {
+            if (hz < 0) hz = 0; else if (hz > 1000) hz = 1000;
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   _springLpfHz   = hz; break;
+                case "FRICTION": _frictionLpfHz = hz; break;
+                case "INERTIA":  _inertiaLpfHz  = hz; break;
+                case "PERIODIC":
+                case "RAMP":     return hz;   // waveforms slew, they do not use this filter
+                default:         _damperLpfHz   = hz; break;
+            }
+            ApplyConditionLpf();
+            return hz;
+        }
+
+        /// <summary>The low-pass cutoff a bench effect kind renders at right now:
+        /// its own override when set, else the shared condition filter. Waveform
+        /// families report the shared value (which does not apply to them).</summary>
+        public double FxKindLpf(string kind)
+        {
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   return _springLpfHz   >= 0 ? _springLpfHz   : _conditionLpfHz;
+                case "FRICTION": return _frictionLpfHz >= 0 ? _frictionLpfHz : _conditionLpfHz;
+                case "INERTIA":  return _inertiaLpfHz  >= 0 ? _inertiaLpfHz  : _conditionLpfHz;
+                case "PERIODIC":
+                case "RAMP":     return _conditionLpfHz;
+                default:         return _damperLpfHz   >= 0 ? _damperLpfHz   : _conditionLpfHz;
+            }
+        }
+
+        /// <summary>True where the kind's low-pass is a real, applied control (the
+        /// four conditions), false for waveform families. Lets the bench grey the
+        /// filter slider when it would do nothing.</summary>
+        public static bool FxKindUsesLpf(string kind)
+        {
+            switch (FxGainFamily(kind))
+            {
+                case "PERIODIC":
+                case "RAMP": return false;
+                default:     return true;
+            }
+        }
+
+        /// <summary>Return one condition family's low-pass to "follow the shared
+        /// filter" (its shipped default). Live; Save persists.</summary>
+        public void ResetFxKindLpf(string kind)
+        {
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   _springLpfHz   = -1; break;
+                case "FRICTION": _frictionLpfHz = -1; break;
+                case "INERTIA":  _inertiaLpfHz  = -1; break;
+                case "PERIODIC":
+                case "RAMP":     return;
+                default:         _damperLpfHz   = -1; break;
+            }
+            ApplyConditionLpf();
+        }
+
+        /// <summary>Puts every bench tunable (all six gains, the velocity
+        /// direction and the condition filter) back to shipped defaults.
+        /// Live only: Save persists, so a reset can be undone by reopening
+        /// SimHub without saving.</summary>
+        public void ResetAllFxTuning()
+        {
+            // Wheel-aware, like "Reset FFB tuning to defaults": the effect
+            // gains are renderer calibration and the G923 carries its own, so
+            // a reset on that wheel must land on ITS numbers rather than the
+            // G PRO's.
+            var d = new TrueforceSettings();
+            ApplyWheelDefaults(d, Settings != null ? Settings.LastUsedWheel : null);
+            _damperGain   = (float)d.FfbConditionDamperGain;
+            _springGain   = (float)d.FfbConditionSpringGain;
+            _frictionGain = (float)d.FfbConditionFrictionGain;
+            _inertiaGain  = (float)d.FfbConditionInertiaGain;
+            _periodicGain = (float)d.FfbConditionPeriodicGain;
+            _rampGain     = (float)d.FfbConditionRampGain;
+            _damperSign   = d.FfbConditionSignInverted ? -1 : 1;
+            _conditionLpfHz = d.FfbConditionLpfHz;
+            _damperLpfHz   = d.FfbConditionDamperLpfHz;
+            _springLpfHz   = d.FfbConditionSpringLpfHz;
+            _frictionLpfHz = d.FfbConditionFrictionLpfHz;
+            _inertiaLpfHz  = d.FfbConditionInertiaLpfHz;
+            _inertiaCoasts  = d.FfbConditionInertiaCoasts;
+            _inertiaAsDamping = d.FfbConditionInertiaAsDamping;
+            ApplyConditionLpf();
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] All condition-render tuning reset to defaults (not saved yet).");
+        }
+
+        /// <summary>Label for the bench's gain row, so the slider says which
+        /// effect it is editing.</summary>
+        public static string FxGainFamilyLabel(string kind)
+        {
+            switch (FxGainFamily(kind))
+            {
+                case "SPRING":   return "Spring gain:";
+                case "FRICTION": return "Friction gain:";
+                case "INERTIA":  return "Inertia gain:";
+                case "PERIODIC": return "Waveform gain:";
+                case "RAMP":     return "Ramp gain:";
+                default:         return "Damper gain:";
+            }
+        }
+
+        /// <summary>Sets the per-condition output low-pass (Hz; 0 = off) on
+        /// both renderers (the tap's decoded effects and the FXTEST engine).</summary>
+        public double SetConditionLpfHz(double hz)
+        {
+            if (hz < 0) hz = 0; else if (hz > 1000) hz = 1000;
+            _conditionLpfHz = hz;
+            ApplyConditionLpf();
+            return hz;
+        }
+
+        private void ApplyConditionLpf()
+        {
+            var t = _ffbTap;
+            if (t != null)
+            {
+                PushConditionLpf(t.HidppEffects);
+                t.HidppEffects.InertiaCoasts = _inertiaCoasts;
+                t.HidppEffects.InertiaAsDamping = _inertiaAsDamping;
+            }
+            PushConditionLpf(_fxTestEngine);
+            _fxTestEngine.InertiaCoasts = _inertiaCoasts;
+            _fxTestEngine.InertiaAsDamping = _inertiaAsDamping;
+            // The arcade engine is a third instance and needs the same tunables,
+            // or it silently runs on constructor defaults and ignores the user's
+            // saved condition filter.
+            PushConditionLpf(_arcadeEngine);
+            _arcadeEngine.InertiaCoasts = _inertiaCoasts;
+            _arcadeEngine.InertiaAsDamping = _inertiaAsDamping;
+        }
+
+        // The shared cutoff plus the four per-condition overrides, onto one engine.
+        private void PushConditionLpf(HidppEffectEngine e)
+        {
+            if (e == null) return;
+            e.ConditionOutputCutoffHz = (float)_conditionLpfHz;
+            e.DamperCutoffHz   = (float)_damperLpfHz;
+            e.SpringCutoffHz   = (float)_springLpfHz;
+            e.FrictionCutoffHz = (float)_frictionLpfHz;
+            e.InertiaCutoffHz  = (float)_inertiaLpfHz;
+        }
+
+        public bool InertiaCoastsNow => _inertiaCoasts;
+
+        public bool InertiaAsDampingNow => _inertiaAsDamping;
+
+        /// <summary>Whether rendered inertia coasts like a flywheel (the
+        /// DirectInput reading, the default) or only ever resists, which is
+        /// what the wheel's own firmware does.</summary>
+        public void SetInertiaCoasts(bool coasts)
+        {
+            _inertiaCoasts = coasts;
+            ApplyConditionLpf();
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Rendered inertia {(coasts ? "COASTS (lossless flywheel)" : "only resists (matches the wheel's firmware)")}.");
+        }
+
+        /// <summary>Whether inertia is rendered from acceleration (the
+        /// default, and what the effect means) or from velocity, which is how
+        /// the wheel's own native inertia behaves. For the bench A/B; see
+        /// HidppEffectEngine.InertiaAsDamping.</summary>
+        public void SetInertiaAsDamping(bool asDamping)
+        {
+            _inertiaAsDamping = asDamping;
+            ApplyConditionLpf();
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] Rendered inertia reads "
+                + (asDamping ? "VELOCITY (damping-shaped, matches the firmware's own)"
+                             : "ACCELERATION (the DirectInput effect)")
+                + ". The gain means force per unit of that, so retune it.");
+        }
+
+        /// <summary>Sets the velocity-term direction explicitly (the UI
+        /// checkbox form of CSPFFB DAMPSIGN).</summary>
+        public void SetDamperSignInverted(bool inverted)
+        {
+            _damperSign = inverted ? -1 : 1;
+            SimHub.Logging.Current.Info($"[TF4ALL] Velocity-term direction {(inverted ? "FLIPPED" : "normal")}.");
+        }
+
+        /// <summary>Persists the current condition-render tuning (gain,
+        /// direction, filter) as the every-session defaults.</summary>
+        public void SaveFxTuning()
+        {
+            var s = Settings;
+            if (s == null) return;
+            s.FfbConditionDamperGain   = _damperGain;
+            s.FfbConditionSignInverted = _damperSign < 0;
+            s.FfbConditionLpfHz        = _conditionLpfHz;
+            s.FfbConditionDamperLpfHz   = _damperLpfHz;
+            s.FfbConditionSpringLpfHz   = _springLpfHz;
+            s.FfbConditionFrictionLpfHz = _frictionLpfHz;
+            s.FfbConditionInertiaLpfHz  = _inertiaLpfHz;
+            s.FfbConditionSpringGain   = _springGain;
+            s.FfbConditionFrictionGain = _frictionGain;
+            s.FfbConditionInertiaGain  = _inertiaGain;
+            s.FfbConditionPeriodicGain = _periodicGain;
+            s.FfbConditionRampGain     = _rampGain;
+            s.FfbConditionInertiaCoasts = _inertiaCoasts;
+            s.FfbConditionInertiaAsDamping = _inertiaAsDamping;
+            // Stamp the scale these gains are valid at: see the note on the
+            // setting. Without it a preset that carries a different FfbScale
+            // silently rescales every calibrated condition.
+            s.FfbConditionMeasuredAtScale = s.FfbScale;
+            PersistSettings();
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Condition tuning saved: damper {_damperGain:F2}, spring {_springGain:F2}, "
+                + $"friction {_frictionGain:F2}, inertia {_inertiaGain:F2}, waveform {_periodicGain:F2}, "
+                + $"ramp {_rampGain:F2}, inertia {(_inertiaAsDamping ? "as damping" : _inertiaCoasts ? "coasts" : "resists")}, "
+                + $"direction {(_damperSign < 0 ? "flipped" : "normal")}, "
+                + $"filter {_conditionLpfHz:F0} Hz, at FfbScale {Settings?.FfbScale ?? 1.0:F2}.");
+        }
+
+        /// <summary>Starts the CSPFFB DAMPTEST damper wiggle. True when AC is
+        /// the active source and the test is running.</summary>
+        public bool StartCspDamperTest()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return false;
+            src.StartCspDamperTest();
+            return true;
+        }
+
         private bool CspFieldIsFinalFf =>
             string.Equals(Settings?.CspBridgeFfbField, "finalff", StringComparison.OrdinalIgnoreCase);
+
+        // ---- Who owns the wheel's rev-light bar --------------------------
+        //
+        // One writer at a time on the wheel's HID++ pipe. Measured on the rig
+        // 2026-09-03: with our wheel-base screen streaming in Assetto Corsa,
+        // 60% of two-second windows saw AC's own light writes stall and 23%
+        // saw them stop dead, gaps of five seconds with the bar frozen where
+        // it last landed. With the screen off, 3% and 1%. The force is fine
+        // either way, which is why the 2026-08-29 CSP re-enable (validated on
+        // the force alone) missed it.
+        //
+        // So the rule is not a per-game table of which titles do rev lights.
+        // It is evidence: the tap sees every level write on the wire, we
+        // subtract the ones WE issued, and whatever is left is somebody else
+        // driving the bar. While somebody else is driving it, our screen stays
+        // off the pipe and we do not drive the bar either.
+        //
+        // Subtracting our own writes is load-bearing. The tap cannot tell our
+        // fn6 writes from a game's, so without the subtraction our own driving
+        // would read as contention and we would yield against ourselves, on
+        // and off, forever.
+        private long _foreignBarSampleMs;      // when the window last closed
+        private long _foreignBarOurWrites;     // our write counter at that moment
+        private long _foreignBarWireWrites;    // the tap's total at that moment
+        private long _foreignBarLastSeenMs;    // last window carrying foreign evidence
+        private bool _foreignBarActive;
+
+        // A game's light writes come in bursts around gear changes and idle in
+        // menus, so one quiet window is not proof it has stopped. Hold the
+        // verdict for a few seconds past the last evidence rather than flapping
+        // the screen and the bar on every pit stop.
+        private const int  ForeignBarWindowMs = 1000;
+        private const int  ForeignBarHoldMs   = 4000;
+        // The tap drops packets under load, so demand more than a stray write
+        // before calling it contention. A game actually driving the bar writes
+        // an order of magnitude above this (AC: ~6.5/s).
+        private const long ForeignBarMinWrites = 3;
+
+        /// <summary>True while a writer that is not us is driving the wheel's
+        /// rev-light bar. Fails CLOSED to "no foreign writer" only when we
+        /// genuinely cannot see the wire, so a missing tap never silently
+        /// disables anything; the caller decides what to do with that.</summary>
+        // ---- Session state for the HID++ surfaces ----------------------------
+        //
+        // The rev lights and the base screen stand down when the session is not
+        // live, and both the term and its timing matter more here than anywhere
+        // else: the game keeps writing the rev bar the whole time, so the instant
+        // we let go, ITS pattern is what the user sees. A term that chatters does
+        // not degrade gracefully, it visibly flicks the bar between two owners.
+        //
+        // Most games reach us through SimHub, whose source infers the session
+        // from physics (TelemetrySourceBase.IsSessionActive: engine turning,
+        // moving, or throttle). That proxy is fine for effects and wrong for a
+        // display, because it goes false on any gap in the feed. The owner's
+        // RaceRoom log carried eleven stalls in sixteen minutes plus an
+        // "[OLED] gate flapped" line, which is exactly this.
+        //
+        // Two answers, in order of how much they are worth trusting:
+        //   1. The game's OWN state, where we read it. RaceRoom publishes
+        //      control type, paused, menus, replay and garage in its shared
+        //      memory and we already parse all five. It can say "menus" the
+        //      instant it is true, so it needs no hold at all.
+        //   2. Otherwise the source's answer, with a short hold on the way DOWN
+        //      only. Coming up stays instant; going away waits, which is the
+        //      asymmetry a display wants and an effect does not.
+        private int _hidppSessionLastTrueMs;
+        private const int HidppSessionHoldMs = 1500;
+
+        private bool HidppSessionActive()
+        {
+            bool? authoritative = R3ESessionActive();
+            if (authoritative.HasValue)
+            {
+                if (authoritative.Value) _hidppSessionLastTrueMs = Environment.TickCount;
+                return authoritative.Value;
+            }
+
+            bool raw = _telemetrySource?.IsSessionActive ?? false;
+            if (raw)
+            {
+                _hidppSessionLastTrueMs = Environment.TickCount;
+                return true;
+            }
+
+            // A source with a REAL pause flag (Forza's IsRaceOn) already means
+            // what it says, so holding past it would light the bar through a
+            // pause the user can see. The hold is only for the physics proxy.
+            if (_telemetrySource?.HasAuthoritativeSessionState ?? false) return false;
+
+            int last = _hidppSessionLastTrueMs;
+            if (last == 0) return false;
+            return unchecked(Environment.TickCount - last) < HidppSessionHoldMs;
+        }
+
+        /// <summary>RaceRoom's own session state, or null when the "$R3E" reader
+        /// is not running or its last sample is stale. Authoritative: the sim
+        /// states these outright rather than us inferring them from physics.</summary>
+        private bool? R3ESessionActive()
+        {
+            if (!_r3eLive) return null;
+            long stamp = System.Threading.Interlocked.Read(ref _r3eSessionTicks);
+            if (stamp == 0) return null;
+            // Stale means the sim stopped filling the block (it closed, or the
+            // page froze). Fall back rather than answering from a dead reading.
+            if (Stopwatch.GetTimestamp() - stamp > FrameStallTicks) return null;
+            return _r3eInCar;
+        }
+
+        private bool ForeignRevBarWriterActive()
+        {
+            var tap  = _ffbTap;
+            var leds = _rpmLeds;
+            if (tap == null || leds == null) return false;
+            byte idx = leds.RevFeatureIndex;
+            if (idx == 0) return false;      // channel never resolved: nothing to read
+
+            long nowMs = Environment.TickCount;
+            tap.GetLevelWriteTotals(idx, out long wireTotal, out _, out _);
+            if (_foreignBarSampleMs == 0)
+            {
+                _foreignBarSampleMs   = nowMs;
+                _foreignBarOurWrites  = leds.LevelWritesIssued;
+                _foreignBarWireWrites = wireTotal;
+                return false;
+            }
+            if (nowMs - _foreignBarSampleMs >= ForeignBarWindowMs)
+            {
+                _foreignBarSampleMs = nowMs;
+                long ours  = leds.LevelWritesIssued;
+                long oursD = ours - _foreignBarOurWrites;
+                long wireD = wireTotal - _foreignBarWireWrites;
+                _foreignBarOurWrites  = ours;
+                _foreignBarWireWrites = wireTotal;
+                // The tap missing some of OUR writes must not read as a foreign
+                // writer, so a negative remainder is simply none. Erring this
+                // way costs nothing: the other direction (missing a game's
+                // writes) is what the threshold and the hold below absorb.
+                long foreign = wireD - oursD;
+                if (foreign >= ForeignBarMinWrites) _foreignBarLastSeenMs = nowMs;
+            }
+            _foreignBarActive = _foreignBarLastSeenMs != 0
+                             && (nowMs - _foreignBarLastSeenMs) < ForeignBarHoldMs;
+            return _foreignBarActive;
+        }
+
+        // ---- Rev-light contention diagnostic (ACLEDS) ---------------------
+        //
+        // Answers one question with measurements instead of inference: while a
+        // game drives the wheel's rev lights, are ITS writes getting through?
+        // The tap already decodes every level write on the wire from any host
+        // writer, so this reports the writes that landed in each window, the
+        // longest gap between two of them, and the level they left, alongside
+        // what our own two HID++ surfaces were allowed to do at the time.
+        //
+        // A stalled writer shows up as a long GAP with a stale level, which is
+        // what "the lights stick, then go dark, then catch up seconds later"
+        // looks like from the wire. Session-only and off by default: it is a
+        // steady 2 s log line, which is diagnosis material, not shipping noise.
+        private bool _revLightDiag;
+        private long _nextRevLightDiagMs;
+        private long _revLightDiagWire;   // the diagnostic's own baselines, so it
+        private long _revLightDiagOurs;   // and the detector never consume each other
+        // BOTH halves, because either one changing changes the answer: the
+        // module has to be active AND set to Disabled before AC stops writing
+        // the bar. Keyed on the mode alone, flipping the module active left the
+        // standing log line reading "inactive" while the bar was in fact free.
+        private AcLedMode _lastLoggedAcLedMode = (AcLedMode)(-1);
+        private bool _lastLoggedAcLedActive;
+        private int  _lastLoggedAcLedCount = -1;
+
+        /// <summary>Toggle the effect-download trace: one log line per effect
+        /// the wheel is asked to download, decoded off the wire.
+        ///
+        /// The question it answers is whether the wheel was asked for what we
+        /// think we asked for. On the bench a native effect goes out through
+        /// DirectInput, Windows and Logitech's driver before it reaches the
+        /// wire, and a type substituted or a parameter reshaped anywhere along
+        /// that path is indistinguishable by feel from the wheel simply
+        /// rendering it differently.</summary>
+        public string ToggleEffectDownloadTrace()
+        {
+            var tap = _ffbTap;
+            if (tap == null)
+                return "The FFB capture is not running, so there is nothing on the wire to trace.";
+            tap.LogEffectDownloads = !tap.LogEffectDownloads;
+            return tap.LogEffectDownloads
+                ? "Effect-download trace ON: every effect the wheel is asked to download is logged with its "
+                  + "type and parameters. Run the bench (FXTEST NATIVE INERTIA) and read SimHub.txt. Session only."
+                : "Effect-download trace OFF.";
+        }
+
+        /// <summary>Toggle the rev-light contention diagnostic. Returns the new
+        /// state.</summary>
+        public bool ToggleRevLightDiagnostic()
+        {
+            _revLightDiag = !_revLightDiag;
+            _nextRevLightDiagMs = 0;
+            _lastLoggedAcLedMode = (AcLedMode)(-1);
+            return _revLightDiag;
+        }
+
+        private void MaybeLogRevLightContention(bool weDriveLeds, bool weDriveScreen)
+        {
+            if (!_revLightDiag) return;
+            long nowMs = Environment.TickCount;
+            if (nowMs < _nextRevLightDiagMs) return;
+            _nextRevLightDiagMs = nowMs + 2000;
+
+            var tap  = _ffbTap;
+            var leds = _rpmLeds;
+            if (tap == null || leds == null) return;
+            // Feature index 0 means the LED channel never resolved, so there is
+            // no index on which to have seen anyone's writes.
+            byte idx = leds.RevFeatureIndex;
+            if (idx == 0) return;
+
+            if (!tap.GetLevelWriteTotals(idx, out long wireTotal, out int level, out double sinceMs))
+            {
+                SimHub.Logging.Current.Info(
+                    $"[REVLIGHT] feat=0x{idx:X2} nobody has written the bar this session "
+                    + $"(ours: leds={(weDriveLeds ? "driving" : "off")} screen={(weDriveScreen ? "streaming" : "off")}).");
+                return;
+            }
+
+            long ourTotal = leds.LevelWritesIssued;
+            long writes   = wireTotal - _revLightDiagWire;
+            long ourWrite = ourTotal  - _revLightDiagOurs;
+            _revLightDiagWire = wireTotal;
+            _revLightDiagOurs = ourTotal;
+            double maxGapMs = tap.TakeLevelWriteMaxGapMs(idx);
+            SimHub.Logging.Current.Info(
+                $"[REVLIGHT] feat=0x{idx:X2} writes={writes}/2s (ours={ourWrite}) level={level} "
+                + $"maxGap={maxGapMs:F0}ms sinceLast={sinceMs:F0}ms "
+                + $"ours=[leds={(weDriveLeds ? "driving" : "off")} "
+                + $"screen={(weDriveScreen ? "streaming" : "off")}] "
+                + $"foreignBar={(_foreignBarActive ? "yes" : "no")}"
+                + AcLedOwnerSuffix());
+        }
+
+        // ---- Handing AC's rev lights to us, and giving them back ----------
+        //
+        // The wheel's HID++ pipe carries one writer at a time. Where the user
+        // wants OUR rev lights in Assetto Corsa, the game has to stop writing
+        // the bar, and the only lever CSP offers is its g27_lights config (see
+        // AcRevLightModuleConfig). So we set it, rather than asking the user to
+        // find two coupled options in Content Manager and get the pairing right.
+        //
+        // Deliberately keyed on the REV-LIGHT opt-in, not the screen one. The
+        // screen also loses this contention, but the fix there is for the
+        // screen to yield, which it now does. Taking AC's lights away to keep
+        // the screen would leave the bar dark, since nothing else would drive
+        // it: strictly worse than the problem.
+        //
+        // And it needs the CSP bridge, because the bridge is what frees the
+        // pipe enough for hidppFreeForLeds to open at all. Without it we would
+        // silence AC's lights and then not drive them either.
+        private long _nextAcLedManageMs;
+        private const int AcLedManageIntervalMs = 3000;
+
+        private void MaintainAcRevLightModule()
+        {
+            long nowMs = Environment.TickCount;
+            if (nowMs < _nextAcLedManageMs) return;
+            _nextAcLedManageMs = nowMs + AcLedManageIntervalMs;
+
+            bool want = string.Equals(_activeGame, "AssettoCorsa", StringComparison.OrdinalIgnoreCase)
+                     && (Settings?.ModeBRevLightsEnabled ?? true)
+                     && (Settings?.CspBridgeFfbEnabled ?? true);
+
+            if (!want)
+            {
+                // Give it back the moment the user stops wanting our lights, so
+                // nobody is left with a dead bar because of a checkbox they
+                // turned off weeks ago. Cheap no-op when we never took it.
+                if (AcRevLightModuleConfig.TakenOver())
+                    AcRevLightModuleConfig.Revert(SimHub.Logging.Current.Info);
+                return;
+            }
+
+            // The bridge reports the module's live state, so only touch the
+            // disk when it is actually wrong. That also self-heals the case
+            // where Content Manager rewrites the file back under us.
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return;
+            var s = src.CspLastSample;
+            if (!s.AcLedsKnown) return;          // pre-v3 script: no evidence, no edit
+            if (s.AcLedsModuleActive && s.AcLedsMode == AcLedMode.Disabled) return;
+
+            AcRevLightModuleConfig.Apply(SimHub.Logging.Current.Info);
+        }
+
+        /// <summary>What CSP says about AC's own rev-light module, when the
+        /// bridge script is new enough to report it. This is the other half of
+        /// the contention question: whether the game intends to drive the bar
+        /// at all.</summary>
+        private string AcLedOwnerSuffix()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return "";
+            var s = src.CspLastSample;
+            if (!s.AcLedsKnown) return " acLeds=unreported";
+            return $" acLeds=[module={(s.AcLedsModuleActive ? "active" : "inactive")} mode={s.AcLedsMode}]";
+        }
+
+        /// <summary>Say once per car whether it carries its own shift-light
+        /// data, because "the bar lights at the same revs the dash does" is
+        /// otherwise invisible: it looks like the bar simply working.</summary>
+        private void NoteAcCarShiftLights()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return;
+            var s = src.CspLastSample;
+            if (!s.AcLedsKnown || s.AcLedCount == _lastLoggedAcLedCount) return;
+            _lastLoggedAcLedCount = s.AcLedCount;
+            if (s.AcLedCount <= 0)
+            {
+                SimHub.Logging.Current.Info(
+                    "[REVLIGHT] this car models no shift lights of its own; "
+                    + "the bar keeps whatever fill it would have used.");
+                return;
+            }
+            var steps = src.CspAcLedStepRpms;
+            string at = steps == null ? "" : " at " + string.Join("/", Array.ConvertAll(steps, r => ((int)r).ToString())) + " rpm";
+            bool colored = src.CspAcLedStepColors != null;
+            SimHub.Logging.Current.Info(
+                $"[REVLIGHT] using this car's own shift lights: {s.AcLedCount} LED(s){at}"
+                + (s.AcLedBlinkHz > 0 ? $", flashing at {s.AcLedBlinkHz:0.#} Hz from {(int)s.AcLedBlinkRpm} rpm" : ", no flash")
+                + (colored ? ", in the car's own colors." : ", no colors given."));
+
+            // The car-load edge usually runs BEFORE the bridge has read the
+            // car's data, so the colours it looked for were not there yet.
+            // Arriving is the event worth acting on, and this fires exactly
+            // once per car; ApplyCarColorsOnLoad re-checks every guard,
+            // including a pattern the user pinned to this car.
+            if (colored) ApplyCarColorsOnLoad(_activeGame, _activeCarId);
+        }
+
+        /// <summary>Log AC's rev-light ownership once, and again whenever the
+        /// user changes it, so a config edit made mid-session is visible in the
+        /// log without the 2 s diagnostic running.</summary>
+        private void NoteAcLedOwnershipChanges()
+        {
+            var src = _telemetrySource as AcSharedMemoryTelemetrySource;
+            if (src == null) return;
+            var s = src.CspLastSample;
+            if (!s.AcLedsKnown
+                || (s.AcLedsMode == _lastLoggedAcLedMode
+                    && s.AcLedsModuleActive == _lastLoggedAcLedActive)) return;
+            _lastLoggedAcLedMode   = s.AcLedsMode;
+            _lastLoggedAcLedActive = s.AcLedsModuleActive;
+            // Only an ACTIVE module set to Disabled actually silences AC. An
+            // inactive module leaves AC's own behaviour in place whatever its
+            // mode says, which is the trap that made this look configured when
+            // it was not.
+            bool acSilenced = s.AcLedsModuleActive && s.AcLedsMode == AcLedMode.Disabled;
+            SimHub.Logging.Current.Info(
+                $"[REVLIGHT] Assetto Corsa's own rev-light module is "
+                + $"{(s.AcLedsModuleActive ? "active" : "inactive")}, mode={s.AcLedsMode}. "
+                + (acSilenced
+                    ? "AC is not writing the bar, so it is free for us."
+                    : "AC drives the bar; we stay off it unless the wire says otherwise."));
+        }
 
         private bool CspBridgeSupplying()
         {
@@ -31069,6 +40608,15 @@ namespace TrueforceForAll.Plugin
         // the stream, so a quick-travel / teleport flap can't re-engage us.
         private const long ResumeHoldMs = 300;
         private long _resumeCandidateSinceTicks;   // 0 = no resume pending
+        // RPM on the first race-on tick after a pause. Movement or throttle
+        // are the usual "driver is active" signs, but Forza's Sled-only Data
+        // Out format (FM7/FM8 at 232 bytes) carries neither, and would have
+        // held the stream stopped for the rest of the session (review,
+        // 2026-09-13). Every Forza format carries engine RPM, and a flapping
+        // pause menu reports the same idle value every time, so RPM moving
+        // away from where it sat is the third sign. NaN = not yet noted.
+        private float _gateRpmAtCandidate = float.NaN;
+        private const float GateRpmMoveThreshold = 150f;
 
         // Drive the device in/out of Trueforce mode on pause edges when the
         // StopStreamOnPause toggle is on. Stopping the stream (vs streaming a
@@ -31088,6 +40636,10 @@ namespace TrueforceForAll.Plugin
             // mode on a dying stream (2026-08-08 review). End() owns the
             // device from here on.
             if (_shuttingDown) return;
+            // A bench run (auto-tune, FXTEST native, DAMPCAL/DIDAMP native
+            // hold) owns the stream state; the pause gate must neither stop
+            // nor resume it mid-run (audit F7).
+            if (_autoTuner != null || _nativeTestStreamSuspended || _fxTestMode != 0) return;
 
             // We may only actively hold the stream stopped while the toggle is
             // on AND we have a live game/source to judge pause state against.
@@ -31122,6 +40674,7 @@ namespace TrueforceForAll.Plugin
                            && Settings.PluginEnabled && _device != null
                            && src != null && !string.IsNullOrEmpty(_activeGame)
                            && _forceMode == ForceModeOff
+                           && !_nativeProbeHold
                            && !_activeGame.StartsWith("FarmingSimulator", StringComparison.Ordinal);
             if (!canGate)
             {
@@ -31129,7 +40682,13 @@ namespace TrueforceForAll.Plugin
                 {
                     lock (_enableDeviceLock)
                     {
-                        if (Settings != null && Settings.PluginEnabled && _device != null)
+                        // Not while the native-Trueforce probe holds the wheel:
+                        // that hold outranks this gate's release, and letting it
+                        // resume here would put our stream on an endpoint the
+                        // probe is still listening to. The probe resumes on its
+                        // own verdict.
+                        if (Settings != null && Settings.PluginEnabled && _device != null
+                            && !_nativeProbeHold)
                         {
                             _ffbTap?.ClearLastFfbTarget();
                             _device.BeginResumeRamp();
@@ -31175,14 +40734,38 @@ namespace TrueforceForAll.Plugin
                 // otherwise land a strong counter-force in the tap that replays
                 // on the next restart and slams the wheel (issue #13).
                 _ffbTap?.ClearLastFfbTarget();
+                _gateRpmAtCandidate = float.NaN;
                 return;
             }
 
             // Not paused. If we never stopped, nothing to do.
             if (!_stopStreamPauseActive) { _resumeCandidateSinceTicks = 0; return; }
 
-            // Stopped + telemetry back: wait out the hysteresis so a one-frame
-            // flap mid-transition can't restart us, and stay cleared until we do.
+            // Stopped + telemetry back. The flag alone is not enough to resume:
+            // with the wheel as Forza's active input device its pause menu
+            // alternates race-on frames and keepalives in stretches of three
+            // to eight seconds each, with the car sitting at idle, speed zero,
+            // no throttle, and the gate followed it up and down, taking the
+            // wheel from the game's native menu spring mid-swing every time
+            // (rig, 2026-09-13; an escalating hold was tried first and could
+            // not outwait a cycle that long). A real unpause is followed within
+            // a fraction of a second by movement or throttle, so the resume
+            // waits for one of those. Until then the wheel stays on the game's
+            // native FFB, which for a parked car is the game's own parking
+            // feel: nothing the driver is missing.
+            float rpmNow = _lastRpms;
+            if (float.IsNaN(_gateRpmAtCandidate)) _gateRpmAtCandidate = rpmNow;
+            bool driverActive = _lastSpeedKmh > 2f
+                                || _lastThrottle01 > 0.05f
+                                || Math.Abs(rpmNow - _gateRpmAtCandidate) > GateRpmMoveThreshold;
+            if (!driverActive)
+            {
+                _resumeCandidateSinceTicks = 0;
+                _ffbTap?.ClearLastFfbTarget();
+                return;
+            }
+            // Wait out the hysteresis so a one-frame flap mid-transition can't
+            // restart us, and stay cleared until we do.
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             if (_resumeCandidateSinceTicks == 0) _resumeCandidateSinceTicks = now;
             long heldMs = (now - _resumeCandidateSinceTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
@@ -31216,6 +40799,7 @@ namespace TrueforceForAll.Plugin
                 _stopStreamPauseActive = false;
             }
             _resumeCandidateSinceTicks = 0;
+            _gateRpmAtCandidate = float.NaN;
             if (resumed)
                 SimHub.Logging.Current.Info(
                     "[TF4ALL] StopStreamOnPause: resumed, restarted Trueforce stream.");
@@ -31255,6 +40839,44 @@ namespace TrueforceForAll.Plugin
         public bool NativeTrueforceStreamDemoted => _nativeStreamDemoted;
         /// <summary>The stream that demoted us was MAIRA's, not the game's.</summary>
         public bool NativeTrueforceStreamFromMaira => _nativeStreamFromMaira;
+
+        // ---- Native-Trueforce probe ------------------------------------------
+        // A title on the native list that the user has put on Normal is the one
+        // place we deliberately stream into a game that may stream too, and
+        // waiting for the contention verdict means two writers on the endpoint
+        // for as long as the verdict takes, on every launch. The endpoint takes
+        // one writer: two alternate, the motor steps between two targets every
+        // millisecond, and a wheel whines (a direct-drive base has more to lose
+        // than that). So the default is inverted here. On such a title the
+        // stream starts PAUSED and is promoted only once the tap has watched
+        // the endpoint stay quiet, which makes the damaging state the one that
+        // has to be proven absent rather than present.
+        //
+        // Nothing of ours reaches the wire while the hold is on (StreamTick
+        // emits nothing when paused), so what the tap counts is the game's. Our
+        // own writes are subtracted anyway, because a queued command packet is
+        // still dispatched while paused.
+        //
+        // The settle delay is for the capture, not the wheel: USBPcap can only
+        // ever trail the wire, so packets we wrote just before the hold can
+        // land inside it. Baselining after the backlog has drained keeps them
+        // from reading as somebody else's.
+        private const int NativeProbeSettleMs = 500;
+        private const int NativeProbeHoldMs   = 3000;
+        private volatile bool _nativeProbeHold;      // the hold is on the device right now
+        private bool _nativeProbeSettled;            // this game on this device has its verdict
+        private bool _nativeProbeBaselined;          // the settle delay is over, counters taken
+        private TrueforceDevice _nativeProbeDevice;  // whose verdict it is (compared, never used)
+        private long _nativeProbeArmedMs;
+        private long _nativeProbeMeasuredFromMs;
+        private long _nativeProbeTapBaseline;
+        private long _nativeProbeOursBaseline;
+
+        /// <summary>True while our stream is deliberately held out of the wheel
+        /// on a native-Trueforce title, waiting to see whether the game streams
+        /// (UI surface, and the reason the pause gate and the enable reconciler
+        /// must not resume the device).</summary>
+        public bool NativeTrueforceProbeHolding => _nativeProbeHold;
 
         // ---- "The plugin stepped aside" notice --------------------------------
         // A stand-down is a surprise from the driver's seat: the wheel goes
@@ -31357,6 +40979,21 @@ namespace TrueforceForAll.Plugin
         internal void NotePanel(SettingsControl panel)
             => _panelRef = panel == null ? null : new WeakReference<SettingsControl>(panel);
 
+        /// <summary>Whether SimHub has built the settings panel yet this run.
+        /// A caller that wants the guides and can also NAVIGATE to the plugin
+        /// page (the home-screen tile) checks this first, so a session where the
+        /// page was never opened lands on the guide rather than on the web
+        /// fallback below.</summary>
+        internal bool HasSettingsPanel
+        {
+            get
+            {
+                SettingsControl panel = null;
+                try { _panelRef?.TryGetTarget(out panel); } catch { panel = null; }
+                return panel != null;
+            }
+        }
+
         internal void OpenGuideFromAnywhere(string key)
         {
             SettingsControl panel = null;
@@ -31378,6 +41015,184 @@ namespace TrueforceForAll.Plugin
                 { UseShellExecute = true });
             }
             catch { }
+        }
+
+        /// <summary>Hold the stream paused on a native-Trueforce title set to
+        /// Normal until the tap has watched the wheel's stream endpoint stay
+        /// quiet, then promote (or stand down, if the game is streaming after
+        /// all). Ticks before the contention watch and owns the device's pause
+        /// state while it holds. See the NativeProbe fields for why.</summary>
+        private void UpdateNativeTrueforceProbe()
+        {
+            if (_shuttingDown) return;
+            var dev = _device;
+
+            // Only "Normal on a native title with a live device" is a hold.
+            // Every other state releases the flag without promoting, and is
+            // safe to: the mode that replaced Normal pauses the device itself,
+            // and a device that went away is not streaming anything.
+            bool wanted = dev != null && Settings != null
+                          && MasterMode == TrueforceMasterMode.Normal
+                          && IsNativeTrueforceGame(_activeGame);
+            if (!wanted)
+            {
+                _nativeProbeHold = false;
+                if (dev == null) _nativeProbeDevice = null;
+                return;
+            }
+
+            // The verdict belongs to the GAME session, not to the device: a
+            // re-attach into a title we already proved quiet must not stop the
+            // wheel again for another hold, mid-race. It is cleared on a game
+            // change and on an explicit mode choice ("Normal = try again").
+            //
+            // A device swap DURING a hold is different: the counters were
+            // baselined against the old device, and the new one starts its
+            // write count at zero, which would read as somebody else's packets.
+            // Drop the hold and let the arm below start it again on this one.
+            if (_nativeProbeHold && !ReferenceEquals(dev, _nativeProbeDevice))
+                _nativeProbeHold = false;
+            if (_nativeProbeSettled) return;
+
+            var tap = _ffbTap;
+            long nowMs = Stopwatch.GetTimestamp() * 1000L / Stopwatch.Frequency;
+
+            if (!_nativeProbeHold)
+            {
+                // iRacing does not need watching: whether the sim loads the
+                // Trueforce API at all is a line in app.ini, so read the answer
+                // instead of measuring it. Only a value we actually read
+                // counts, since "no file, no key" is not "switched off", and
+                // the contention watch stays armed behind both answers in case
+                // the file was edited after the sim launched.
+                if (IsIRacingReshapeGame(_activeGame))
+                {
+                    bool? api = IRacingTrueforceApiEnabled();
+                    if (api == true)
+                    {
+                        NativeProbeStandDown(0,
+                            "read from Documents\\iRacing\\app.ini (loadTrueForceAPI is on), not from the wire");
+                        return;
+                    }
+                    // app.ini answers for the SIM, not for the endpoint. MAIRA
+                    // streams over the same channel with its lights on, and a
+                    // MAIRA rig is exactly the rig that has loadTrueForceAPI at
+                    // 0, so that answer is not enough to skip the hold there.
+                    if (api == false && !IsMairaRunning())
+                    {
+                        NativeProbePromote(
+                            $"'{_activeGame}' has loadTrueForceAPI = 0 in app.ini, so the sim streams no Trueforce "
+                            + "of its own; starting our stream without holding off first.");
+                        return;
+                    }
+                }
+
+                // Arm. Pause with no Stop command: on a native title the
+                // wheel's engine may already belong to the game's session, and
+                // Stop is the one command that halts an engine that is not
+                // ours (the stand-down sends nothing for the same reason).
+                lock (_enableDeviceLock)
+                {
+                    dev.Pause();
+                    _nativeProbeHold = true;
+                }
+                _nativeProbeDevice    = dev;
+                _nativeProbeArmedMs   = nowMs;
+                _nativeProbeBaselined = false;
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] '{_activeGame}' brings Trueforce of its own and is set to Normal: holding our stream "
+                    + "off the wheel for a moment to check the game is not streaming its own.");
+                return;
+            }
+
+            if (!_nativeProbeBaselined)
+            {
+                if (nowMs - _nativeProbeArmedMs < NativeProbeSettleMs) return;
+                _nativeProbeTapBaseline     = tap?.TrueforceStreamPacketsOnOurDevice ?? 0;
+                _nativeProbeOursBaseline    = dev.Ep3Writes;
+                _nativeProbeMeasuredFromMs  = nowMs;
+                _nativeProbeBaselined       = true;
+                return;
+            }
+
+            long heldMs = nowMs - _nativeProbeMeasuredFromMs;
+            if (heldMs < NativeProbeHoldMs) return;
+
+            // Verdict. Negative means nothing was watching: without the tap
+            // there is no way to tell a quiet endpoint from a busy one.
+            long foreign = -1;
+            if (tap != null && tap.IsRunning)
+            {
+                foreign = (tap.TrueforceStreamPacketsOnOurDevice - _nativeProbeTapBaseline)
+                        - (dev.Ep3Writes - _nativeProbeOursBaseline);
+                if (foreign < 0) foreign = 0;
+            }
+
+            if (foreign >= TrueforceStreamContentionDetector.OnPackets)
+            {
+                // The game is streaming. Stand down now rather than let the
+                // contention watch measure the same thing a second time; the
+                // hold has already proved it, and it proved it without our
+                // packets on the endpoint.
+                NativeProbeStandDown((int)(foreign * 1000L / Math.Max(1L, heldMs)), "measured while we held off");
+                return;
+            }
+
+            NativeProbePromote(foreign >= 0
+                ? $"'{_activeGame}' is not streaming its own Trueforce ({foreign} packet(s) while we held off); starting our stream."
+                : $"'{_activeGame}' brings Trueforce of its own and there is no FFB capture running to check it "
+                  + "with, so we cannot tell whether it is streaming; starting our stream. If the wheel whines or feels "
+                  + "harsh, switch the game's own Trueforce off or set this game to Lightsync only.");
+        }
+
+        /// <summary>End the probe by handing the wheel to the game: the same
+        /// stand-down the contention watch performs, from whichever evidence
+        /// the probe had.</summary>
+        private void NativeProbeStandDown(int perSec, string evidence)
+        {
+            _nativeProbeSettled = true;
+            _nativeProbeHold    = false;
+            _nativeStreamFromMaira     = IsMairaRunning();
+            _nativeStreamIRacingApiOff = IsIRacingReshapeGame(_activeGame) && IRacingTrueforceApiOff();
+            lock (_enableDeviceLock)
+            {
+                // No stop command: the engine is the game's now (see
+                // ApplyEffectiveMode's leaving branch, which the mode change
+                // below runs through).
+                _device?.Pause();
+                _nativeStreamDemoted = true;
+            }
+            SimHub.Logging.Current.Warn($"[TF4ALL] {NativeStreamStandDownText(perSec)} [{evidence}]");
+            ApplyEffectiveMode("a second Trueforce stream on the wheel");
+            ShowStandDownNotice();
+        }
+
+        /// <summary>End the probe by letting our stream onto the wheel.</summary>
+        private void NativeProbePromote(string message)
+        {
+            _nativeProbeSettled = true;
+            _nativeProbeHold    = false;
+            bool resumed = false;
+            var dev = _device;
+            lock (_enableDeviceLock)
+            {
+                // PluginEnabled is re-read here for the same reason every other
+                // holder re-reads it: a mode change can land between the tick
+                // that decided and this line, and the loser must not resume a
+                // device the winner just parked.
+                if (dev != null && Settings != null && Settings.PluginEnabled)
+                {
+                    dev.BeginResumeRamp();
+                    dev.Resume();
+                    dev.SendStartCommand();
+                    resumed = true;
+                }
+                else
+                {
+                    _nativeProbeSettled = false;   // decide again under the mode that wins
+                }
+            }
+            if (resumed) SimHub.Logging.Current.Info($"[TF4ALL] {message}");
         }
 
         private void UpdateNativeTrueforceStreamWatch()
@@ -31512,13 +41327,24 @@ namespace TrueforceForAll.Plugin
         // True when Documents\iRacing\app.ini carries loadTrueForceAPI=0, so
         // iRacing itself cannot be streaming. Unknown reads as false: the
         // default advice (set it to 0) is then still the right one.
-        private static bool IRacingTrueforceApiOff()
+        private static bool IRacingTrueforceApiOff() => IRacingTrueforceApiEnabled() == false;
+
+        /// <summary>What Documents\iRacing\app.ini says about loadTrueForceAPI:
+        /// true = the sim loads the Trueforce API and will stream to the wheel
+        /// itself, false = it is switched off, null = no file, no key, or the
+        /// file could not be read, which is not the same answer as "off".
+        ///
+        /// iRacing reads app.ini when it launches, so this describes the
+        /// RUNNING session only while nobody has edited the file underneath it.
+        /// Every caller that acts on it leaves the contention watch armed
+        /// behind it, which is what catches an edit made mid-session.</summary>
+        private static bool? IRacingTrueforceApiEnabled()
         {
             try
             {
                 string ini = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "iRacing", "app.ini");
-                if (!File.Exists(ini)) return false;
+                if (!File.Exists(ini)) return null;
                 foreach (var raw in File.ReadAllLines(ini))
                 {
                     string line = raw.Trim();
@@ -31528,11 +41354,15 @@ namespace TrueforceForAll.Plugin
                     string val = line.Substring(eq + 1).Trim();
                     int semi = val.IndexOf(';');
                     if (semi >= 0) val = val.Substring(0, semi).Trim();
-                    return val == "0";
+                    if (val == "0") return false;
+                    // Anything else on a key that exists is the API loading:
+                    // iRacing writes 1, and a hand-typed "true" or "01" means
+                    // the same thing to it.
+                    return val.Length > 0 ? (bool?)true : null;
                 }
             }
             catch { }
-            return false;
+            return null;   // key absent: iRacing's own default is not ours to guess
         }
 
         // ---- MAIRA on the capture path ----------------------------------------
@@ -32259,6 +42089,10 @@ namespace TrueforceForAll.Plugin
             // Re-apply the dev/test no-FFB simulation across tap restarts.
             tap.SimulateNoFfbCapture = _simulateNoFfb;
 
+            // Classic damper/friction rendering (CLASSICCOND, persisted):
+            // re-applied on every tap (re)start like the flag above.
+            tap.ClassicConditionsEnabled = Settings?.ClassicConditionEmulationEnabled ?? false;
+
             // Per-wheel identity (mescon, 2026-07): seed the HID++ 0x8123
             // feature-index resolver (RS50 = 0x10, else the G PRO's 0x0e) and
             // open the RS50 report-0x12 path without the experimental opt-in. Seed
@@ -32419,6 +42253,32 @@ namespace TrueforceForAll.Plugin
             _ffbTap.SetRawPacketLogPath(enabled ? GetUsbTraceLogPath() : null);
         }
 
+        // CLASSICCOND: render the G923 PS/PC's classic-protocol damper and
+        // friction slots through the DirectInput condition engine. Persists
+        // (does not travel in a backup), applies to the live tap now and is
+        // re-applied by WireFfbTapCallbacks on every tap restart. Turning it
+        // OFF goes through the pause primitive so the engine's classic slots
+        // are dropped on the parser thread, never from here; only when the
+        // region was ever fed (a HID++ wheel never feeds it, so there is
+        // nothing to wipe and its own condition snapshot stays). Returns the
+        // new state.
+        public bool ToggleClassicConditionEmulation()
+        {
+            if (Settings == null) return false;
+            bool on = !Settings.ClassicConditionEmulationEnabled;
+            Settings.ClassicConditionEmulationEnabled = on;
+            try { PersistSettingsCore(); } catch { }
+            var tap = _ffbTap;
+            if (tap != null)
+            {
+                tap.ClassicConditionsEnabled = on;
+                if (!on && tap.HidppEffects.ExternalConditionUpdates > 0) tap.ClearLastFfbTarget();
+            }
+            SimHub.Logging.Current.Info(
+                $"[TF4ALL] Classic damper/friction rendering {(on ? "ON" : "OFF")} (G923 PS/PC slot protocol into the condition engine).");
+            return on;
+        }
+
         // Toggle the raw USB packet log. Persists the new state and applies
         // it to the live tap immediately. Called from the Diagnostics
         // checkbox in SettingsControl.
@@ -32428,6 +42288,26 @@ namespace TrueforceForAll.Plugin
             if (Settings.LogUsbBytesEnabled == enabled) return;
             Settings.LogUsbBytesEnabled = enabled;
             try { PersistSettingsCore(); } catch { }
+            // Switching it ON is the one place a FRESH capture is meant, so the
+            // old file goes here. The tap itself appends, because it cannot tell
+            // a deliberate re-enable from the restart that follows a device
+            // cycle, and truncating on the latter loses the capture someone
+            // turned this on to get.
+            if (enabled)
+            {
+                try
+                {
+                    string p = GetUsbTraceLogPath();
+                    if (System.IO.File.Exists(p)) System.IO.File.Delete(p);
+                }
+                catch (Exception ex)
+                {
+                    // Not fatal: the tap appends to whatever survives, so the
+                    // capture is merely longer than expected rather than absent.
+                    SimHub.Logging.Current.Info(
+                        "[TF4ALL] Could not clear the old USB trace: " + ex.Message);
+                }
+            }
             ApplyUsbBytesLoggingSetting();
             SimHub.Logging.Current.Info($"[TF4ALL] USB byte logging {(enabled ? "enabled" : "disabled")}.");
         }
@@ -32482,6 +42362,14 @@ namespace TrueforceForAll.Plugin
                     if (Settings != null) Settings.UsbPcapCmdPathOverride = "";
                     try { PersistSettingsCore(); } catch { }
                     RestartFfbTap();
+
+                    // The tap restart above is worth trying because a reinstall
+                    // that only restored a missing USBPcapCMD.exe works at once.
+                    // A reinstall of the DRIVER does not: it attaches while
+                    // Windows builds the USB stack, so nothing captures until
+                    // the machine restarts. Asked for only when the driver is
+                    // genuinely still absent, so the first case stays silent.
+                    ShowUsbPcapRestartNoticeIfStillDown();
                 }
                 catch (System.ComponentModel.Win32Exception)
                 {
@@ -32494,6 +42382,34 @@ namespace TrueforceForAll.Plugin
                     SimHub.Logging.Current.Error("[TF4ALL] USBPcap install failed", ex);
                 }
             });
+        }
+
+        /// <summary>Told after a reinstall that left the capture driver still
+        /// unattached, which is the normal outcome of actually reinstalling it.
+        /// Called from the installer's worker thread, so it marshals to the UI.
+        /// Silent when the driver came up, so a reinstall that only replaced a
+        /// missing USBPcapCMD.exe does not send anyone to reboot for nothing.</summary>
+        private void ShowUsbPcapRestartNoticeIfStillDown()
+        {
+            if (IsUsbPcapDriverReady) return;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] USBPcap's capture driver is still not attached after the install; a restart is needed.");
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    TrueforceDialog.Show(null, "Restart your computer to finish",
+                        "USBPcap is installed, but its capture driver only attaches to your USB ports while Windows "
+                            + "starts, so FFB pass-through stays off until you restart the computer.\n\n"
+                            + "If it is still off after a restart, check for a BIOS update from your PC or "
+                            + "motherboard maker. Out-of-date Secure Boot keys are the usual reason Windows "
+                            + "refuses to load the driver, and updating the BIOS refreshes them.",
+                        DialogKind.Warning);
+                }
+                catch { }
+            }));
         }
     }
 }

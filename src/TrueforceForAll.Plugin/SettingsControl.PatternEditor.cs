@@ -117,7 +117,13 @@ namespace TrueforceForAll.Plugin
             // rather than an arbitrary first entry. Writes nothing: the colors
             // are already on the wheel.
             if (string.IsNullOrEmpty(_patternLib.CurrentId))
-                AdoptSlotContentsAsPattern(_plugin.StageSlot());
+            {
+                // No stage means the slots would not read, so there is nothing
+                // to adopt. Leaving CurrentId empty is correct: the next open
+                // tries again rather than pinning the library to a guess.
+                int adopt = _plugin.StageSlot();
+                if (adopt != TrueforcePlugin.NoStageSlot) AdoptSlotContentsAsPattern(adopt);
+            }
 
             RefreshPatternList();
             RefreshBrightness();
@@ -293,10 +299,18 @@ namespace TrueforceForAll.Plugin
                 rgb[i * 3 + 2] = b;
             }
 
+            int stage = _plugin.StageSlot();
+            if (stage == TrueforcePlugin.NoStageSlot)
+            {
+                _trimTestColor = null;
+                SetPatternStatus(TrueforcePlugin.NoStageSlotMessage);
+                return;
+            }
+
             string msg;
             bool ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
             {
-                Slot = (byte)_plugin.StageSlot(),
+                Slot = (byte)stage,
                 DirectionWire = 3,
                 Rgb = rgb,
             }, out msg, displayLevel: WheelLedChannel.LedCount);
@@ -1055,6 +1069,11 @@ namespace TrueforceForAll.Plugin
                     // be seen at all. The slot on loan holds it while it is up, and
                     // its own pattern comes back afterwards.
                     int target = _plugin.StageSlot();
+                    if (target == TrueforcePlugin.NoStageSlot)
+                    {
+                        SetPatternStatus(TrueforcePlugin.NoStageSlotMessage);
+                        return;
+                    }
                     ShowOnWheelNow(row.Pattern, sweep: true);
                     SetPatternStatus("Showing " + row.Pattern.Name + " through CUSTOM " + (target + 1)
                                    + ". That slot's own pattern is saved and comes back.");
@@ -1425,10 +1444,17 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            int stage = _plugin.StageSlot();
+            if (stage == TrueforcePlugin.NoStageSlot)
+            {
+                SetPatternStatus(TrueforcePlugin.NoStageSlotMessage);
+                return;
+            }
+
             string msg;
             bool ok = _plugin.BorrowSlot(new WheelLedChannel.WheelLedSlot
             {
-                Slot = (byte)_plugin.StageSlot(),
+                Slot = (byte)stage,
                 DirectionWire = _editing.DirectionWire,
                 Rgb = rgb,
             }, out msg,

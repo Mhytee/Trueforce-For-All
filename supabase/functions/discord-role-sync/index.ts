@@ -3,7 +3,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Achievement -> Discord role reconciler. Reads compute_member_metrics() (per-member
 // metrics for ALL contributors) + the achievements table (rule definitions + role ids),
 // evaluates each enabled achievement (threshold OR top-X% percentile), and adds/removes the
-// mapped Discord roles via the REST API. Idempotent.
+// mapped Discord roles via the REST API. Idempotent, and cheap when nothing changed: it reads
+// each member's current roles once and writes only the differences.
 //
 //   op=diagnose (service role) : go-live preflight (lists guild roles, matches by label,
 //                                checks bot hierarchy). Read-only.
@@ -24,6 +25,9 @@ const GUILD_ID     = Deno.env.get("DISCORD_GUILD_ID") || "";
 function json(b: unknown, s = 200): Response {
   return new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 }
+// DECODES ONLY, it does not verify the signature. The service_role / authenticated gate below
+// is built on this, so it is sound only because the function is deployed verify_jwt = true and
+// the gateway has already checked the signature. Do not turn verify_jwt off.
 function jwtClaims(t: string): any {
   try { return JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); } catch { return null; }
 }
@@ -42,10 +46,26 @@ async function discord(method: string, path: string): Promise<{ ok: boolean; sta
   }
   return { ok: false, status: 429 };
 }
-async function discordGet(path: string): Promise<{ ok: boolean; status: number; body: any }> {
-  const r = await fetch(`https://discord.com/api/v10${path}`, { headers: { Authorization: `Bot ${BOT_TOKEN}` } });
-  let body: any = null; try { body = await r.json(); } catch { /* non-json */ }
-  return { ok: r.ok, status: r.status, body };
+// The member read is the hot path of op=sync, so it carries its own deadline and one
+// rate-limit retry. status 0 means the request never completed (deadline or socket error).
+// The per-member loops in op=sync and op=entitlements treat a non-ok, non-404 result as "leave
+// this member alone this run", and both also require the roles array before trusting a 2xx,
+// because the deadline can cut a body after the headers have landed. op=diagnose does NOT check
+// either way; it is a manual read-only endpoint and a null body there is a loud 500.
+async function discordGet(path: string): Promise<{ ok: boolean; status: number; body: any; headers: Headers | null }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await fetch(`https://discord.com/api/v10${path}`, { headers: { Authorization: `Bot ${BOT_TOKEN}` }, signal: AbortSignal.timeout(10000) }).catch(() => null);
+    if (!r) return { ok: false, status: 0, body: null, headers: null };
+    if (r.status === 429 && attempt === 0) {
+      const ra = Number(r.headers.get("retry-after") || "1");
+      try { await r.body?.cancel(); } catch { /* already drained */ }
+      await new Promise((res) => setTimeout(res, Math.min(Math.max(ra, 0) * 1000, 10000)));
+      continue;
+    }
+    let body: any = null; try { body = await r.json(); } catch { /* non-json */ }
+    return { ok: r.ok, status: r.status, body, headers: r.headers };
+  }
+  return { ok: false, status: 429, body: null, headers: null };
 }
 
 type Member = { user_id: string; discord_id: string | null; discord_username: string | null; upload_count: number; total_downloads: number; best_wilson: number; consensus_facts: number; votes_cast: number; founder: number; supporter_months: number; founding_supporter: number };
@@ -146,13 +166,18 @@ Deno.serve(async (req) => {
       if (patreonLinked.has(m.user_id)) { deferred++; continue; }   // Patreon owns this user's entitlement
       const mem = await discordGet(`/guilds/${GUILD_ID}/members/${m.discord_id}`);
       let on = false, tier: string | null = null;
-      if (mem.ok) {
-        const roles = new Set<string>((mem.body?.roles as string[]) || []);
+      // The roles array has to be there, not just a 2xx. A response whose body is cut after the
+      // headers land (the read deadline can do that) arrives as ok with a null body, and reading
+      // that as an empty role set means no tier matches, which falls straight through to
+      // set_supporter(p_on => false) and starts the 2 year retention timer on a paying supporter.
+      // Unusable body is a transient read, not a lapse.
+      if (mem.ok && Array.isArray(mem.body?.roles)) {
+        const roles = new Set<string>(mem.body.roles as string[]);
         for (const s of SUP) { if (roles.has(s.id)) { on = true; tier = s.tier; break; } }
       } else if (mem.status === 404) {
         on = false;   // not in the guild -> lapse (consistent with the role-as-entitlement model)
       } else {
-        skipped++; continue;   // transient error -> don't change their entitlement
+        skipped++; continue;   // transient error or unusable body -> don't change their entitlement
       }
       const current = ent.get(m.user_id) === true;
       if (!on && !current) { unchanged++; continue; }   // non-supporter, no change -> no spurious row
@@ -215,25 +240,66 @@ Deno.serve(async (req) => {
     return json({ dryRun: true, reason: !BOT_TOKEN ? "DISCORD_BOT_TOKEN not set" : !GUILD_ID ? "DISCORD_GUILD_ID not set" : "no achievements have a discord_role_id yet", scope: targetUid ?? "all", members: members.length, linked: plan.length, plan });
   }
 
-  let applied = 0;
+  // Read each member's roles ONCE, then write only the differences. Before this, the loop
+  // issued a PUT or DELETE for every managed role on every member every run (members x
+  // managed = 143 writes here), all sequential at roughly 0.9 s each, which is the whole of
+  // the ~142 s runtime and left the sweep about 8 s under the edge wall-clock ceiling.
+  // Steady state is now one read per member and no writes at all.
+  //
+  // p.add and p.remove are used exactly as built above: p.remove is already
+  // managed.filter(not desired), so the roles this can touch stay a subset of the achievement
+  // roles. Do not rebuild either list from `have`. A diff seeded from the member's actual
+  // roles would sweep in the Patreon tier roles, and op=entitlements reads those to decide
+  // is_supporter, which starts the backup retention timer on a paying supporter.
+  let applied = 0, removed = 0, unchanged = 0, notInGuild = 0, skipped = 0;
   const errors: string[] = [];
+  let sawLimits = false;
   for (const p of plan) {
+    const mem = await discordGet(`/guilds/${GUILD_ID}/members/${p.discord_id}`);
+    if (!sawLimits && mem.headers) {
+      // One line, once per run: the bucket the member read actually landed in. The write
+      // route's ceiling was never measured, only inferred, and now that writes are rare this
+      // is the budget that matters. Cheap enough to leave in.
+      sawLimits = true;
+      console.log(`[role-sync] member-read limits bucket=${mem.headers.get("x-ratelimit-bucket")} limit=${mem.headers.get("x-ratelimit-limit")} remaining=${mem.headers.get("x-ratelimit-remaining")} reset-after=${mem.headers.get("x-ratelimit-reset-after")}`);
+    }
+    if (!mem.ok) {
+      // 404 is a member who left the guild; anything else is transient. Neither is a reason
+      // to guess at their roles, so both skip. Never treat a failed read as "holds nothing":
+      // that reads as "missing every earned role" and would re-PUT every role they have earned,
+      // while skipping every remove, so it would be silent as well as wasteful.
+      if (mem.status === 404) notInGuild++;
+      else { skipped++; errors.push(`member ${p.discord_id}: ${mem.status}`); }
+      continue;
+    }
+    if (!Array.isArray(mem.body?.roles)) { skipped++; errors.push(`member ${p.discord_id}: no roles array`); continue; }
+    const have = new Set<string>(mem.body.roles as string[]);
     for (const roleId of p.add) {
+      if (have.has(roleId)) { unchanged++; continue; }
       const r = await discord("PUT", `/guilds/${GUILD_ID}/members/${p.discord_id}/roles/${roleId}`);
       if (r.ok) applied++; else if (r.status !== 404) errors.push(`add ${roleId}->${p.discord_id}: ${r.status}`);
     }
     for (const roleId of p.remove) {
+      if (!have.has(roleId)) { unchanged++; continue; }
       const r = await discord("DELETE", `/guilds/${GUILD_ID}/members/${p.discord_id}/roles/${roleId}`);
-      if (!r.ok && r.status !== 404) errors.push(`remove ${roleId}->${p.discord_id}: ${r.status}`);
+      if (r.ok) removed++; else if (r.status !== 404) errors.push(`remove ${roleId}->${p.discord_id}: ${r.status}`);
     }
   }
   // Role hygiene: strip our managed roles from discord ids that were unlinked or replaced (roles
   // apply to ONE account per user). Full sweep only. An id re-claimed by a current link is just
   // dequeued and left to the normal sync above.
-  let orphansCleared = 0;
+  //
+  // Bounded at ORPHAN_LIMIT rows a run, because these stay blind deletes: the queue is
+  // consume-once (only set_discord_link and unlink_my_discord ever add to it, and neither
+  // re-queues an id), so dequeuing on the strength of a read that came back partial would drop
+  // the cleanup for good. Blind costs 13 writes per row at roughly 0.9 s, hence the bound.
+  // Whatever does not fit stays queued and goes out on the next run.
+  const ORPHAN_LIMIT = 5;
+  let orphansCleared = 0, orphansMore = false;
   if (!targetUid && managed.length > 0) {
-    const or = await rest("discord_role_orphans?select=discord_id");
+    const or = await rest(`discord_role_orphans?select=discord_id&limit=${ORPHAN_LIMIT}`);
     const orphans = or.ok ? await or.json() as Array<{ discord_id: string }> : [];
+    orphansMore = orphans.length === ORPHAN_LIMIT;   // a full page: assume more are waiting
     const dl = await rest("discord_links?select=discord_id");
     const linkedIds = new Set<string>((dl.ok ? await dl.json() as any[] : []).map((d) => d.discord_id));
     for (const o of orphans) {
@@ -249,5 +315,11 @@ Deno.serve(async (req) => {
       if (ok) { await rest(`discord_role_orphans?discord_id=eq.${o.discord_id}`, { method: "DELETE" }); orphansCleared++; }
     }
   }
-  return json({ dryRun: false, scope: targetUid ?? "all", members: members.length, linked: plan.length, applied, orphansCleared, errors });
+  // console.log, not just the response body: the cron caller is pg_net, which hangs up long
+  // before this returns and throws the body away, so the response was never a health signal
+  // for the scheduled runs. `applied: 0` with everything in `unchanged` is the healthy steady
+  // state now, not a regression.
+  const result = { dryRun: false, scope: targetUid ?? "all", members: members.length, linked: plan.length, applied, removed, unchanged, notInGuild, skipped, orphansCleared, orphansMore, errors };
+  console.log(`[role-sync] ${JSON.stringify(result)}`);
+  return json(result);
 });

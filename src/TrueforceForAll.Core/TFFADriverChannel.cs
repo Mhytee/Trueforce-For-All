@@ -216,7 +216,16 @@ namespace TrueforceForAll.Core
                     && (buf[0] == 0x11 || buf[0] == 0x12)
                     && buf[1] == 0xFF
                     && buf[2] == _ffbFeatureIndex
-                    && (buf[3] & 0xF0) == 0x20)
+                    && (buf[3] & 0xF0) == 0x20
+                    // CONSTANT downloads only (type byte at offset 5). A
+                    // condition download carries its saturation at offset
+                    // 10-11 (typically 0x7FFF), which this decode would
+                    // publish as a full-scale force spike on the highest-
+                    // priority source: the issue-#8 misdecode, reintroduced
+                    // (audit 2026-09-01). Conditions are not rendered on this
+                    // experimental path yet; dropping them here at least
+                    // keeps them from becoming phantom forces.
+                    && (buf[5] & 0x7F) == 0x00)
                 {
                     short target = (short)((buf[10] << 8) | buf[11]);
                     long ts = _sw.ElapsedTicks & TimestampMask;

@@ -180,7 +180,7 @@ WONT-FIX (owner decision 2026-07-19): #7 builtin car preset engine picks (commun
 
 42. [LOW] Per-row 'Auto (...)' label can misstate what detection actually resolves to
    src/TrueforceForAll.Plugin/CarFactsVariantsWindow.cs:289 [misleading-ui]
-   BuildEngineOptions labels the Auto entry from variant-stored fields only, but the resolver has extra branches: (1) EngineConfig.Custom rows are labelled 'Auto (community custom)' unconditionally, while ResolveAndApplyCarFactsForActiveCar only rides the community custom when v.Source==Community AND the cached consensus custom is present (TrueforcePlugin.cs 10643-10649); otherwise it falls through to catalog/telemetry, so the label claims a custom 
+   BuildEngineOptions labels the Auto entry from variant-stored fields only, but the resolver has extra branches: (1) EngineConfig.Custom rows are labeled 'Auto (community custom)' unconditionally, while ResolveAndApplyCarFactsForActiveCar only rides the community custom when v.Source==Community AND the cached consensus custom is present (TrueforcePlugin.cs 10643-10649); otherwise it falls through to catalog/telemetry, so the label claims a custom 
 
 43. [LOW] Dead engine-dropdown action plumbing left behind after the Create/Manage links were removed
    src/TrueforceForAll.Plugin/SettingsControl.xaml.cs:5750 [stale-code]

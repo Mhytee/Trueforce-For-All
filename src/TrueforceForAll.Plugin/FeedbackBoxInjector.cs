@@ -27,6 +27,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using MahApps.Metro.IconPacks;
@@ -327,14 +328,22 @@ namespace TrueforceForAll.Plugin
             // for a wheel-haptics mod.
             var content = new StackPanel { Margin = new Thickness(6, 2, 6, 4) };
 
-            content.Children.Add(new PackIconMaterial
+            // The steering glyph, centered like the built-in tiles, with a small
+            // "?" in the corner beside it. Two sliders carrying one word each, in
+            // someone else's UI, have nowhere to say what they do, and "Master"
+            // reads to a wheel user as the wheel's own force strength, which is
+            // the one thing it is not. The corner glyph is the sentence the tile
+            // has no room for. Top-RIGHT: the box's own cog owns the left.
+            var head = new Grid { Margin = new Thickness(0, 2, 0, 6) };
+            head.Children.Add(new PackIconMaterial
             {
                 Kind = PackIconMaterialKind.Steering,
                 Width = 30,
                 Height = 30,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 2, 0, 6),
             });
+            head.Children.Add(MakeHelpGlyph());
+            content.Children.Add(head);
 
             // Master row: a switch toggle (whole-plugin enable) with its name as
             // the toggle's own label, then the gain slider, matching the Wind box.
@@ -410,6 +419,69 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 8, 0),
                 ToolTip = tip,
             };
+
+        // The "?" that opens the tile's guide.
+        //
+        // A Border and a glyph rather than a Button: a Button takes whatever
+        // chrome SimHub's theme hands it, and this has to read as a corner mark
+        // inside someone else's tile, not as a third control on it. Dim until
+        // the pointer reaches it, the way the built-in tiles treat their cog.
+        private FrameworkElement MakeHelpGlyph()
+        {
+            var hit = new Border
+            {
+                Child = new PackIconMaterial
+                {
+                    Kind = PackIconMaterialKind.HelpCircleOutline,
+                    Width = 13,
+                    Height = 13,
+                },
+                // Transparent, not null: a null Background is not hit-testable,
+                // so only the glyph's own strokes would take the click and the
+                // gaps inside the circle would fall through.
+                Background = Brushes.Transparent,
+                Padding = new Thickness(3),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, -2, -2, 0),
+                Cursor = Cursors.Hand,
+                Opacity = HelpGlyphIdleOpacity,
+                ToolTip = "What Master and Audio do",
+            };
+            hit.MouseEnter += (s, e) => hit.Opacity = 1.0;
+            hit.MouseLeave += (s, e) => hit.Opacity = HelpGlyphIdleOpacity;
+            hit.MouseLeftButtonUp += (s, e) => { OpenTileGuide(); e.Handled = true; };
+            return hit;
+        }
+
+        private const double HelpGlyphIdleOpacity = 0.45;
+
+        // The guides live on the settings panel, which SimHub builds the first
+        // time the plugin page is shown. On a session where it never was, go
+        // there first and open the guide once the panel has registered itself:
+        // OpenGuideFromAnywhere's own fallback is a web page about something
+        // else, which is the wrong answer to this particular question.
+        private void OpenTileGuide()
+        {
+            try
+            {
+                if (_plugin == null) return;
+                if (_plugin.HasSettingsPanel)
+                {
+                    _plugin.OpenGuideFromAnywhere(TileGuideKey);
+                    return;
+                }
+                NavigateToPluginPage();
+                UiDispatcher()?.BeginInvoke(new Action(() =>
+                {
+                    try { _plugin.OpenGuideFromAnywhere(TileGuideKey); }
+                    catch (Exception ex) { LogErrorOnce(ex); }
+                }), DispatcherPriority.Background);
+            }
+            catch (Exception ex) { LogErrorOnce(ex); }
+        }
+
+        private const string TileGuideKey = "home-tile";
 
         // One row: [toggle + its label] [slider], all on a single line. No numeric
         // value readout, the slider gets that space.

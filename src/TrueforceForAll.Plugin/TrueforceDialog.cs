@@ -49,6 +49,23 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Show a modal dialog and block until the user dismisses
         /// it. Returns true=affirmative, false=negative, null=closed.</summary>
+        /// <summary>An owner the dialog can actually take. A window that has not
+        /// been shown yet has no handle, and WPF throws on Owner = that window.
+        /// SimHub's main window is exactly that for the first seconds after
+        /// start, which is when a notice for a game that is already running
+        /// fires (rig, 2026-09-14: the RaceRoom notice died on it, logged and
+        /// never seen). Such a dialog centres on the screen instead.</summary>
+        private static Window UsableOwner(Window owner)
+        {
+            if (owner == null) return null;
+            try
+            {
+                return new System.Windows.Interop.WindowInteropHelper(owner).Handle != IntPtr.Zero
+                    ? owner : null;
+            }
+            catch { return null; }
+        }
+
         public static bool? Show(Window owner, string title, string body,
             DialogKind kind = DialogKind.Info,
             string okLabel = null, string cancelLabel = null,
@@ -68,6 +85,7 @@ namespace TrueforceForAll.Plugin
         {
             var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk, quietCancel,
                                           extraContent);
+            owner = UsableOwner(owner);
             if (owner != null)
             {
                 dlg.Owner = owner;
@@ -113,6 +131,7 @@ namespace TrueforceForAll.Plugin
         {
             var dlg = new TrueforceDialog(title, body, okLabel, cancelLabel,
                                           checkboxLabel, checkboxDefault);
+            owner = UsableOwner(owner);
             if (owner != null) dlg.Owner = owner;
             else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
             bool? r = dlg.ShowDialog();
@@ -128,6 +147,7 @@ namespace TrueforceForAll.Plugin
             string primaryLabel, string secondaryLabel, string cancelLabel)
         {
             var dlg = new TrueforceDialog(title, body, primaryLabel, secondaryLabel, cancelLabel);
+            owner = UsableOwner(owner);
             if (owner != null)
             {
                 dlg.Owner = owner;

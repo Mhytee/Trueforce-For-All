@@ -10,7 +10,7 @@ The wheel only holds five patterns on its own. To cycle the extended library, bi
 
 Tick **Match my wheel to the car I'm driving** and, for covered cars, your wheel takes on the real car's colors and fill direction as you get in it. A car without an entry keeps the pattern you chose. [Where the data comes from, and what else it sets](guide:lovely-car-data).
 
-## Color tuning trades brightness for accuracy
+## Getting the colors right on the rim
 
 The three colors inside an LED are not equally bright, so a color that looks right on screen can arrive on the rim looking like something else. The plugin corrects that using the [Color Trim](tab:color-trim) section. It is pretuned but can be adjusted manually for your wheel. It works by dimming color channels rather than boosting, so the accuracy costs some brightness.
 

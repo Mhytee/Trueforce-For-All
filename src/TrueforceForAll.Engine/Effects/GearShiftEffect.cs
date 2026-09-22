@@ -92,6 +92,22 @@ namespace TrueforceForAll.Plugin.Effects
             _envelopeRemaining = remaining;
         }
 
+        /// <summary>Play one envelope at a chosen strength, for something other than a gear change
+        /// that still wants this voice. The menus of an arcade cabinet use it: a full thud when a
+        /// choice is confirmed and a light tick while moving through the options, which is the same
+        /// mechanical knock the effect already makes, just quieter.
+        ///
+        /// Unlike TestPlay this does NOT enter test mode, so live telemetry is never suppressed by
+        /// it and a real shift landing in the same moment still plays.</summary>
+        public void PlayOneShot(float ampScale)
+        {
+            if (ampScale <= 0f) return;
+            _envelopeTotal = Math.Max(1, (int)(EnvelopeMs * SampleRateHz / 1000.0));
+            _envelopeRemaining = _envelopeTotal;
+            _envelopeAmpScale = ampScale > 1f ? 1f : ampScale;
+            _phase = 0;
+        }
+
         public override int TestPlay()
         {
             // Trigger one envelope at full amp, decays naturally over EnvelopeMs.

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Unit tests for the pure logic in TrueforceForAll.Core (telemetry
        parsing, synthesis math). Deliberately NOT added to TrueforceForAll.sln
@@ -18,6 +18,11 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <!-- InstalledPacksStore (linked below) serializes with Newtonsoft. -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- AudioOutputMeter (linked below) reaches Windows' per-endpoint peak
+         meter through NAudio.CoreAudioApi. Same version the plugin compiles
+         against; nothing here ships, so the never-overwrite-SimHub's-copy rule
+         that governs the plugin's reference does not apply. -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -79,6 +84,13 @@
          the frames where the write does not happen. -->
     <Compile Include="..\TrueforceForAll.Plugin\RpmLedController.cs">
       <Link>Linked\RpmLedController.cs</Link>
+    </Compile>
+    <!-- The audio level meter. Only its peak-to-bar mapping is testable
+         without a sound card, and that is the part worth pinning: get the
+         decibel window wrong and the strip either never lights or never moves,
+         with nothing in the log to say so. -->
+    <Compile Include="..\TrueforceForAll.Plugin\AudioOutputMeter.cs">
+      <Link>Linked\AudioOutputMeter.cs</Link>
     </Compile>
   </ItemGroup>
 

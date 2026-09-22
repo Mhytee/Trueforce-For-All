@@ -49,6 +49,12 @@ namespace TrueforceForAll.Plugin
 
             // Normalize line endings: GitHub bodies usually arrive with \r\n.
             string[] lines = body.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+            // A single newline inside a paragraph or a bullet is a soft break
+            // in Markdown, and GitHub renders it as a space. The 0.3.0 notes
+            // were the first body hard-wrapped at 76 columns, and each
+            // continuation line came out as its own short paragraph, with the
+            // two-tier bullet's dimmed description cut off at the first line.
+            lines = JoinSoftWrappedLines(lines);
             bool prevWasBlank = false;
             bool imageNoteShown = false;
             for (int i = 0; i < lines.Length; i++)
@@ -473,6 +479,75 @@ namespace TrueforceForAll.Plugin
 
         // True when text[0..count) is all digits. Guards the ordered-list match
         // so a sentence opening "Mr. Smith" or "v1. something" is not a list.
+        /// <summary>Merge each soft-wrapped continuation line into the line
+        /// before it. A line continues the previous one when neither starts a
+        /// block (heading, bullet, ordered item, quote, table row, image, rule
+        /// or fence) and neither is blank. Headings never take continuations.
+        /// Quote lines are left alone here; their content re-enters Render.</summary>
+        internal static string[] JoinSoftWrappedLines(string[] lines)
+        {
+            if (lines == null || lines.Length < 2) return lines;
+            var outLines = new System.Collections.Generic.List<string>(lines.Length);
+            foreach (string raw in lines)
+            {
+                string line = raw ?? "";
+                if (outLines.Count > 0)
+                {
+                    string prev = outLines[outLines.Count - 1];
+                    string prevTrim = prev.TrimStart();
+                    string curTrim = line.TrimStart();
+                    // Paragraphs, bullets and ordered items take continuations;
+                    // every other block start (and a blank) does not.
+                    bool prevTakesContinuation = prevTrim.Length > 0
+                        && (!StartsBlock(prevTrim) || IsBulletStart(prevTrim) || IsOrderedStart(prevTrim));
+                    if (prevTakesContinuation && curTrim.Length > 0 && !StartsBlock(curTrim))
+                    {
+                        outLines[outLines.Count - 1] = prev.TrimEnd() + " " + curTrim;
+                        continue;
+                    }
+                }
+                outLines.Add(line);
+            }
+            return outLines.ToArray();
+        }
+
+        // Anything the line loop above treats as its own block, plus the
+        // constructs it passes through untouched (tables, rules, fences).
+        private static bool StartsBlock(string trimmed)
+        {
+            if (trimmed.Length == 0) return true;
+            char c = trimmed[0];
+            if (c == '>' || c == '|') return true;
+            if (c == '#')
+            {
+                int n = 0;
+                while (n < trimmed.Length && trimmed[n] == '#') n++;
+                return n <= 6 && n < trimmed.Length && trimmed[n] == ' ';
+            }
+            if (IsBulletStart(trimmed) || IsOrderedStart(trimmed)) return true;
+            if (trimmed.StartsWith("![", StringComparison.Ordinal)
+                || trimmed.StartsWith("[![", StringComparison.Ordinal)
+                || trimmed.StartsWith("<img", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("<video", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("<picture", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("---", StringComparison.Ordinal)
+                || trimmed.StartsWith("```", StringComparison.Ordinal))
+                return true;
+            return false;
+        }
+
+        private static bool IsBulletStart(string trimmed)
+        {
+            return trimmed.Length >= 2 && (trimmed[0] == '-' || trimmed[0] == '*') && trimmed[1] == ' ';
+        }
+
+        private static bool IsOrderedStart(string trimmed)
+        {
+            int dot = trimmed.IndexOf('.');
+            return dot > 0 && dot <= 3 && dot + 1 < trimmed.Length
+                && trimmed[dot + 1] == ' ' && AllDigits(trimmed, dot);
+        }
+
         private static bool AllDigits(string text, int count)
         {
             for (int k = 0; k < count; k++)

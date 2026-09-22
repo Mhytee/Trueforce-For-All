@@ -645,9 +645,10 @@ namespace TrueforceForAll.Plugin
             { "FfbInvertSign", "Invert FFB" },
             { "FfbSmoothTimeConstantMs", "FFB smoothing (ms)" },
             { "FfbSpikeTamingEnabled", "FFB spike reduction" },
-            { "FfbSpikeUseSlewLimiter", "Spike: slew limiter" },
-            { "FfbSpikeMaxLsbPerMs", "Spike limit" },
-            { "FfbPeakSoftLimitLsb", "Spike cap softness" },
+            { "FfbSpikeUseSlewLimiter", "Spike method: rate limiter" },
+            { "FfbSpikeMaxLsbPerMs", "Spike rate limit" },
+            { "FfbSpikeTransientThresholdLsb", "Spike minimum reference" },
+            { "FfbPeakSoftLimitLsb", "Spike max hit" },
             { "DuckingEnabled", "Sidechain ducking" },
             { "DuckDepth", "Duck depth" },
             { "DuckAttackMs", "Duck attack (ms)" },
@@ -658,7 +659,8 @@ namespace TrueforceForAll.Plugin
             { "MasterGain", "Master gain" },
             { "FfbScale", "FFB scale" },
             { "PulseFreq", "Pulse rate (Hz)" },
-            { "Freq", "Carrier (Hz)" },
+            { "Freq", "Frequency (Hz)" },
+            { "PulseDuty", "Pulse length" },
         };
 
         private static string PrettyFieldName(string raw)

@@ -38,7 +38,7 @@ Key architectural calls (and why):
    ducks engine pulse HARD). SmoothDuck attack/release infra kept (10ms/150ms defaults).
 4. **Mode B synthesizes in utilization space** via the on-wheel-validated smoothstep
    peak-and-drop geometry (SlipSaturationShaper's shape, promoted to a full SAT model:
-   SatGain/FullU/DropFloor/RiseGamma + LoadEffect + speed trail ramp). Road/kerb texture
+   SatGain/FullU/DropFloor/RiseGamma + LoadEffect + speed trail ramp). Road/curb texture
    stays in the TrueForce window — the Horizon data proved texture in the force channel is
    exactly what makes Forza FFB jittery.
 5. **All gain lives in the SoftKneeCompressor** (out = G·f below T, hyperbolic knee above,

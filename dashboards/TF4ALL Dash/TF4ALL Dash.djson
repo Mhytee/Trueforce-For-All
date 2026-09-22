@@ -3,7 +3,7 @@
                                   "Maximized":  false
                               },
     "Version":  2,
-    "Id":  "3f1cbc2f-a540-43ec-ae21-799c69a9b3f5",
+    "Id":  "30df714b-e2d9-45e2-a0ae-28fcd8181955",
     "BaseHeight":  480,
     "BaseWidth":  800,
     "BackgroundColor":  "#FF000000",
@@ -13,7 +13,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a4ea562e-f779-45dd-b787-05f2a47cf3da",
+                        "ScreenId":  "c3cdbd5f-0c3b-4ba4-b551-4f136823495f",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -15552,7 +15552,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "16320bdf-aea4-4037-b037-3f0e7695559e",
+                        "ScreenId":  "72286cd3-16e7-4f3f-8ba6-50d79cff19ee",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -16647,7 +16647,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.IRacingMaxForceNm\");return v\u003e0?(v.toFixed(1)+\" Nm\"):\"--\""
+                                                                                        "Expression":  "var v=1*$prop(\"TrueforcePlugin.Dash.IRacingMaxForceNm\");var u=$prop(\"TrueforcePlugin.Dash.IRacingAutoUnit\");return v\u003e0?(v.toFixed(1)+(u?(\" \"+u):\"\")):\"--\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -16802,7 +16802,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");return rdy\u0026\u0026n\u003e0?(\"AUTO  \"+n.toFixed(1)+\" NM\"):\"AUTO\""
+                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");var u=$prop(\"TrueforcePlugin.Dash.IRacingAutoUnit\");return rdy\u0026\u0026n\u003e0?(\"AUTO  \"+n.toFixed(1)+(u?(\" \"+u):\"\")):\"AUTO\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -43725,7 +43725,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "a984fc3c-d3f8-434c-83ca-a205c9f51edf",
+                        "ScreenId":  "16fb8ae6-0dbf-41d3-bb6f-5407cced77aa",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -69204,7 +69204,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "982cb87b-35a0-4238-9eb9-7e3893472f04",
+                        "ScreenId":  "fa6f8ee1-bbf8-49c2-919c-737a0d1cf4d4",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -83691,7 +83691,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "60aaf455-d5c1-4823-a3c9-076f481968fe",
+                        "ScreenId":  "4d64c6ac-9436-48e5-a9cd-f0627eabd85b",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -104515,7 +104515,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "54a93366-b0a2-40d1-8e97-a876528c4468",
+                        "ScreenId":  "a2f2ac01-7fe2-4340-82b3-cc0e2ade2aaa",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -126515,7 +126515,7 @@
                         "InGameScreen":  true,
                         "IdleScreen":  true,
                         "PitScreen":  false,
-                        "ScreenId":  "da5a74c3-fa19-4750-a280-6636e7322762",
+                        "ScreenId":  "fe19336a-43a4-41d4-904d-363544369c6d",
                         "AllowOverlays":  true,
                         "IsForegroundLayer":  false,
                         "IsOverlayLayer":  false,
@@ -128525,7 +128525,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");if(rdy)return \"SET PEAK FORCE  \"+(n\u003e0?n.toFixed(1):\"--\")+\" NM\";var c=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoConfidence\");if(isNaN(c))c=0;return \"LEARNING CAR  \"+Math.round(c*100)+\"%\""
+                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");var u=$prop(\"TrueforcePlugin.Dash.IRacingAutoUnit\");if(rdy)return \"SET PEAK FORCE  \"+(n\u003e0?n.toFixed(1):\"--\")+(u?(\" \"+u):\"\");var c=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoConfidence\");if(isNaN(c))c=0;return \"LEARNING CAR  \"+Math.round(c*100)+\"%\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -143503,7 +143503,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");if(rdy)return \"SET PEAK FORCE  \"+(n\u003e0?n.toFixed(1):\"--\")+\" NM\";var c=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoConfidence\");if(isNaN(c))c=0;return \"LEARNING CAR  \"+Math.round(c*100)+\"%\""
+                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");var u=$prop(\"TrueforcePlugin.Dash.IRacingAutoUnit\");if(rdy)return \"SET PEAK FORCE  \"+(n\u003e0?n.toFixed(1):\"--\")+(u?(\" \"+u):\"\");var c=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoConfidence\");if(isNaN(c))c=0;return \"LEARNING CAR  \"+Math.round(c*100)+\"%\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -158681,7 +158681,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");if(rdy)return \"SET PEAK FORCE  \"+(n\u003e0?n.toFixed(1):\"--\")+\" NM\";var c=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoConfidence\");if(isNaN(c))c=0;return \"LEARNING CAR  \"+Math.round(c*100)+\"%\""
+                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");var u=$prop(\"TrueforcePlugin.Dash.IRacingAutoUnit\");if(rdy)return \"SET PEAK FORCE  \"+(n\u003e0?n.toFixed(1):\"--\")+(u?(\" \"+u):\"\");var c=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoConfidence\");if(isNaN(c))c=0;return \"LEARNING CAR  \"+Math.round(c*100)+\"%\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"
@@ -176245,7 +176245,7 @@
                                                            "Text":  {
                                                                         "Formula":  {
                                                                                         "Interpreter":  1,
-                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");if(rdy)return \"SET PEAK FORCE  \"+(n\u003e0?n.toFixed(1):\"--\")+\" NM\";var c=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoConfidence\");if(isNaN(c))c=0;return \"LEARNING CAR  \"+Math.round(c*100)+\"%\""
+                                                                                        "Expression":  "var rdy=$prop(\"TrueforcePlugin.Dash.IRacingAutoReady\");var n=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoNm\");var u=$prop(\"TrueforcePlugin.Dash.IRacingAutoUnit\");if(rdy)return \"SET PEAK FORCE  \"+(n\u003e0?n.toFixed(1):\"--\")+(u?(\" \"+u):\"\");var c=1*$prop(\"TrueforcePlugin.Dash.IRacingAutoConfidence\");if(isNaN(c))c=0;return \"LEARNING CAR  \"+Math.round(c*100)+\"%\""
                                                                                     },
                                                                         "Mode":  2,
                                                                         "TargetPropertyName":  "Text"

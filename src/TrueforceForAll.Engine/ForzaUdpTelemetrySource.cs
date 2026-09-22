@@ -911,6 +911,14 @@ namespace TrueforceForAll.Core
                 OnRumbleStrip = !settling && anyRumbleStrip,
                 NumCylinders  = numCyl > 0 ? numCyl : (int?)null,
 
+                // Zero cylinders on a packet that carries a real rev range is
+                // Forza telling us the car has no engine to fire: the Honda e
+                // and the rest of the EV lineup report exactly that. Safe to
+                // read as an answer here because the zero-filled keepalive
+                // returns long before this point (maxRpm <= 0 above), so a
+                // zero that reaches here came from a populated car block.
+                EngineIsElectric = numCyl <= 0,
+
                 // Per-tire quads for the CTM. Suppressed to zero during the
                 // settle window like the scalar grip channels (data present,
                 // placement transient must not reach the effects). Wheel

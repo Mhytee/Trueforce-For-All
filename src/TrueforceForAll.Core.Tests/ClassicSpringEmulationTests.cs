@@ -248,9 +248,10 @@ namespace TrueforceForAll.Core.Tests
         [Fact]
         public void OtherForceTypes_AreStillNotGuessedAt()
         {
-            // Type 0x0e (high-res auto-center) stays undecoded: no scalar, no
-            // spring, no invented force.
-            var tap = Run(Record(new byte[] { 0x21, 0x0e, 0x80, 0x80, 0x88, 0x00, 0xff }));
+            // Type 0x04 (a periodic) stays undecoded: no scalar, no spring,
+            // no invented force. (0x0e is friction, decoded behind the
+            // CLASSICCOND gate; see ClassicConditionEmulationTests.)
+            var tap = Run(Record(new byte[] { 0x21, 0x04, 0x80, 0x80, 0x88, 0x00, 0xff }));
             Assert.False(tap.AnyClassicSpringPlaying);
             Assert.Null(tap.TryEvaluateClassicSprings(0.8f));
             Assert.Null(tap.TryGetFreshFfbTarget(1000));

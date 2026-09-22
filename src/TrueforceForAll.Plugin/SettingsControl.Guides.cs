@@ -109,14 +109,28 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "iracing-setup", Group = GroupSetup,
-                    Title = "iRacing: setup guide",
+                    Title = "iRacing",
+                    ActionLabel = TelemetryFfbTabLabel(),
+                    Action = () => SelectTab(TelemetryFfbTab),
+                },
+                new GuideEntry
+                {
+                    Key = "raceroom-setup", Group = GroupSetup,
+                    Title = "RaceRoom",
+                    ActionLabel = TelemetryFfbTabLabel(),
+                    Action = () => SelectTab(TelemetryFfbTab),
+                },
+                new GuideEntry
+                {
+                    Key = "lmu-setup", Group = GroupSetup,
+                    Title = "Le Mans Ultimate",
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
                 new GuideEntry
                 {
                     Key = "forza-setup", Group = GroupSetup,
-                    Title = "Forza: UDP & Data Out setup",
+                    Title = "Forza",
                     ActionLabel = "Open the UDP settings",
                     Action = () => JumpToForzaTelemetrySetup(openTroubleshooter: false),
                     // The forwarding half lives in its own file because the panel
@@ -128,21 +142,54 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "farming-sim", Group = GroupSetup,
-                    Title = "Farming Simulator: install the telemetry mod",
+                    Title = "Farming Simulator",
                     ActionLabel = "Open the mod installer",
                     Action = JumpToFsModSetup,
                 },
                 new GuideEntry
                 {
                     Key = "assetto-corsa-setup", Group = GroupSetup,
-                    Title = "Assetto Corsa: the TF4ALL CSP Bridge",
+                    Title = "Assetto Corsa",
                     ActionLabel = "Install the TF4ALL CSP Bridge",
                     Action = () => _plugin.InstallAcCspBridgeInteractive(),
+                },
+                // What the bridge IS, kept apart from how to install it: the setup
+                // guide above is a procedure and already long, and someone asking
+                // "what is this thing about to touch my game" wants a page, not a
+                // paragraph buried above the install steps.
+                new GuideEntry
+                {
+                    Key = "csp-bridge", Group = GroupSetup,
+                    Title = "The TF4ALL CSP Bridge",
+                    ActionLabel = "Install the TF4ALL CSP Bridge",
+                    Action = () => _plugin.InstallAcCspBridgeInteractive(),
+                },
+                // Game-specific like the rows above it, and the thing to read
+                // when a title the plugin stands aside in is the one you want to
+                // drive: the cure is a game-side switch, which is setup.
+                new GuideEntry
+                {
+                    Key = "native-trueforce", Group = GroupSetup,
+                    Title = "Games with native Trueforce",
+                    ActionLabel = "Open the full table",
+                    Action = () => OpenUrl(
+                        "https://github.com/Mhytee/Trueforce-For-All#games-with-native-trueforce"),
                 },
                 new GuideEntry
                 {
                     Key = "telemetry-ffb", Group = GroupSetup,
-                    Title = "Telemetry Based FFB: what it does",
+                    Title = "Telemetry Based FFB",
+                    ActionLabel = TelemetryFfbTabLabel(),
+                    Action = () => SelectTab(TelemetryFfbTab),
+                },
+                // The other half of that story, kept separate because the two want
+                // OPPOSITE game-side settings and one page could not say both
+                // without hedging the sentence that matters most. The FFB tab
+                // already renames itself per game along the same line.
+                new GuideEntry
+                {
+                    Key = "force-handover", Group = GroupSetup,
+                    Title = "Force handover",
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
@@ -157,7 +204,7 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "weak-effects", Group = GroupTrouble,
-                    Title = "Effects feel weak, and the dial on the wheel does nothing",
+                    Title = "Effects feel weak",
                     ActionLabel = "Open the gain controls",
                     Action = () =>
                     {
@@ -168,12 +215,51 @@ namespace TrueforceForAll.Plugin
                 },
                 new GuideEntry
                 {
-                    Key = "wheel-lights", Group = GroupTrouble,
-                    Title = "Rev lights and wheel screen: why they only work in some games",
+                    Key = "car-facts", Group = GroupAbout,
+                    Title = "Car facts",
+                    ActionLabel = "Open Car Facts",
+                    Action = JumpToCarFacts,
+                },
+                new GuideEntry
+                {
+                    Key = "tuning-effects", Group = GroupAbout,
+                    Title = "Tuning the effects",
+                    ActionLabel = "Open the Effects tab",
+                    Action = () => SelectTab(EffectsTab),
+                },
+                // Gated the same way the lights guide's own entry is not: the
+                // screen is G PRO / RS50 only, so on a detected wheel without one
+                // the entry would open a page about hardware the reader does not
+                // have. Fails OPEN on an undetected wheel, like the LIGHTSYNC tab.
+                // Why the lights and screen are conditional at all: the page the
+                // two force guides, the bridge and the screen guide all point at
+                // to explain themselves. Sits beside the screen guide rather than
+                // in Game setup, since it is an explainer and not a procedure;
+                // the titles keep them apart (this one is WHERE they work, the
+                // other is what you put on the screen).
+                new GuideEntry
+                {
+                    Key = "force-and-lights", Group = GroupAbout,
+                    Title = "Where your rev lights and screen work",
                     ActionLabel = "Open the lights settings",
                     Action = JumpToWheelLights,
                 },
-
+                new GuideEntry
+                {
+                    Key = "wheel-screen", Group = GroupAbout,
+                    Title = "The wheel's screen",
+                    Visible = () => !(_plugin != null && _plugin.WheelDetected
+                                      && !_plugin.WheelHasOledScreen),
+                    ActionLabel = "Open the screen settings",
+                    Action = JumpToWheelScreen,
+                },
+                new GuideEntry
+                {
+                    Key = "backup-sync", Group = GroupAbout,
+                    Title = "Backup and sync",
+                    ActionLabel = "Open Backup & Sync",
+                    Action = JumpToBackupSync,
+                },
                 new GuideEntry
                 {
                     // Gated on the tab existing, which is BOTH terms of the rule in
@@ -184,7 +270,7 @@ namespace TrueforceForAll.Plugin
                     // pane. Fails OPEN on an undetected wheel, same as the tab does,
                     // so a wheel powered on after SimHub does not lose the entry.
                     Key = "light-patterns", Group = GroupAbout,
-                    Title = "Light patterns: the library, cycling, and color tuning",
+                    Title = "Light patterns",
                     Visible = () => _plugin?.Settings?.LightsyncTabUnlocked == true
                                  && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern),
                     ActionLabel = "Open the LIGHTSYNC tab",
@@ -193,22 +279,35 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "lovely-car-data", Group = GroupAbout,
-                    Title = "Per-car data: what it sets, and where it comes from",
+                    Title = "Per-car rev light data",
                     ActionLabel = "Open the Lovely dataset",
                     Action = () => OpenUrl("https://github.com/Lovely-Sim-Racing/lovely-car-data"),
                 },
+                // TF4ALL Dash. The phone button in the header and the Settings
+                // section are both entry points to the QR dialog, which carries
+                // the getting-it-there steps; what neither surface says is what
+                // the dash IS, which is the thing a user has to know before
+                // they would ever press a phone-shaped button.
                 new GuideEntry
                 {
-                    Key = "native-trueforce", Group = GroupAbout,
-                    Title = "Games with native Trueforce: why the plugin steps aside",
-                    ActionLabel = "Open the full table",
-                    Action = () => OpenUrl(
-                        "https://github.com/Mhytee/Trueforce-For-All#games-with-native-trueforce"),
+                    Key = "dash", Group = GroupAbout,
+                    Title = "TF4ALL Dash",
+                    ActionLabel = "Open it on your phone",
+                    Action = () => DashPhoneAccess_Click(null, null),
+                },
+                // The home-screen tile. Its two sliders carry one word each, in
+                // someone else's UI, with no room for a sentence: "Master" reads
+                // to a wheel user as the wheel's own force strength, which is the
+                // one thing it is not. The "?" in the tile's corner opens this.
+                new GuideEntry
+                {
+                    Key = "home-tile", Group = GroupAbout,
+                    Title = "The Trueforce widget",
                 },
                 new GuideEntry
                 {
                     Key = "bindings", Group = GroupAbout,
-                    Title = "Bindings: what you can control without opening the panel",
+                    Title = "Bindings",
                     ActionLabel = "Open the Controls tab",
                     Action = () => SelectTab(ControlsTab),
                 },
@@ -315,7 +414,7 @@ namespace TrueforceForAll.Plugin
         }
 
         private void WheelLightsWhy_Click(object sender, RoutedEventArgs e)
-            => OpenGuides("wheel-lights");
+            => OpenGuides("force-and-lights");
 
         /// <summary>The "What this covers" link beside the Lovely credit. The
         /// credit itself stays in the panel because the licence asks for it;
@@ -334,6 +433,40 @@ namespace TrueforceForAll.Plugin
             var tab = FindAncestorTab(WheelLightsBlock);
             if (tab != null) SelectTab(tab);
             Dispatcher.BeginInvoke(new Action(() => WheelLightsBlock.BringIntoView()),
+                DispatcherPriority.Background);
+        }
+
+        /// <summary>The OLED block, wherever it currently lives. The twin of
+        /// JumpToWheelLights, and reparented the same way: the screen settings sit
+        /// on the LIGHTSYNC tab when that tab is unlocked and on the FFB tab when
+        /// it is not, so the tab cannot be named here without being wrong for half
+        /// of users.</summary>
+        private void JumpToWheelScreen()
+        {
+            if (WheelScreenBlock == null) return;
+            var tab = FindAncestorTab(WheelScreenBlock);
+            if (tab != null) SelectTab(tab);
+            Dispatcher.BeginInvoke(new Action(() => WheelScreenBlock.BringIntoView()),
+                DispatcherPriority.Background);
+        }
+
+        /// <summary>The Car Facts block in the pinned header. No tab to select:
+        /// the header card sits above the tabs and is on screen whatever is
+        /// selected, so this only opens the expander and scrolls to it.</summary>
+        private void JumpToCarFacts()
+        {
+            if (CarFactsExpander == null) return;
+            CarFactsExpander.IsExpanded = true;
+            Dispatcher.BeginInvoke(new Action(() => CarFactsExpander.BringIntoView()),
+                DispatcherPriority.Background);
+        }
+
+        /// <summary>Settings tab, Backup &amp; Sync open and scrolled to.</summary>
+        private void JumpToBackupSync()
+        {
+            SelectTab(SettingsTab);
+            if (BackupExpander != null) BackupExpander.IsExpanded = true;
+            Dispatcher.BeginInvoke(new Action(() => BackupExpander?.BringIntoView()),
                 DispatcherPriority.Background);
         }
 
@@ -414,6 +547,35 @@ namespace TrueforceForAll.Plugin
                     found, t.Installed, status,
                     found ? (Action)(() => InstallFsModFor(target)) : null,
                     inst ? (Action)(() => UninstallFsModFor(target)) : null));
+            }
+
+            // Arcade cabinets under TeknoParrot: one card per configured game.
+            // The list comes from TeknoParrot's own profiles, so it reflects what
+            // this PC actually has rather than a fixed catalogue.
+            foreach (var a in _plugin.ArcadeModTargets())
+            {
+                var target = a;
+                bool ready = a.GameFound && a.IniFound && !string.IsNullOrEmpty(a.WrapperName);
+                bool arcIn = ready && a.Installed;
+                string arcStatus = !a.GameFound
+                    ? "Game folder not found on this PC."
+                    : string.IsNullOrEmpty(a.WrapperName)
+                    ? "Set FFBArcadePlugin up for this game first, then this can take it over."
+                    : !a.IniFound
+                        ? "Run this game once in TeknoParrot first, so its FFB settings file exists."
+                        : a.Installed
+                            ? "Installed. Restart the game so it loads."
+                            : a.HasStamp && !a.PublishModeOn
+                                ? "Installed, but this game is no longer set to send us its force. Install again to fix it."
+                                : "Not installed.";
+                Add(arcIn, ready, BuildModCard(
+                    a.DisplayName,
+                    "Brings the cabinet's own force feedback through the plugin, so you feel the real "
+                    + "arcade forces as Trueforce and the wheel's lights and screen stay free.",
+                    "v" + _plugin.ArcadeModVersionString,
+                    ready, a.Installed, arcStatus,
+                    ready ? (Action)(() => InstallArcadeModFor(target)) : null,
+                    arcIn ? (Action)(() => UninstallArcadeModFor(target)) : null));
             }
 
             // Assetto Corsa: the TF4ALL CSP Bridge. Greyed when Assetto Corsa
@@ -585,7 +747,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             bool? go = TrueforceDialog.Show(Window.GetWindow(this),
                 "Remove the TF4ALL CSP Bridge?",
-                "This deletes the bridge script from Assetto Corsa and unselects it in CSP's FFB Tweaks.\n\n"
+                "This deletes the bridge script from Assetto Corsa and puts CSP's FFB Tweaks post-processing slot back the way it was before the install.\n\n"
                 + "Your force feedback keeps working through the USB capture. What you lose is the wheel's "
                 + "Dynamic OLED display and drop-free LIGHTSYNC pattern changes in Assetto Corsa.\n\n"
                 + "It stops loading the next time Assetto Corsa starts.\n\nIf Content Manager is open, close it first, then click Remove.",
@@ -629,6 +791,45 @@ namespace TrueforceForAll.Plugin
             string err = _plugin.UninstallFsMod(t.Game);
             string outcome = err == null
                 ? t.DisplayName + ": removed. It stops loading the next time the game starts."
+                : t.DisplayName + ": could not remove it. " + err + ".";
+            RefreshModsList();
+            if (FsModTargetsStatus == null) return;
+            FsModTargetsStatus.Text = outcome;
+            FsModTargetsStatus.Visibility = Visibility.Visible;
+        }
+
+        private void InstallArcadeModFor(TrueforcePlugin.ArcadeModTarget t)
+        {
+            if (_plugin == null) return;
+            string err = _plugin.InstallArcadeMod(t);
+            string outcome = err == null
+                ? t.DisplayName + ": installed. Restart the game so it loads, and leave "
+                  + "SimHub running while you play so the force has somewhere to go."
+                : t.DisplayName + ": install failed. " + err + ".";
+            // Rebuild first, THEN write the outcome: the rebuild owns that line.
+            RefreshModsList();
+            if (FsModTargetsStatus == null) return;
+            FsModTargetsStatus.Text = outcome;
+            FsModTargetsStatus.Visibility = Visibility.Visible;
+        }
+
+        private void UninstallArcadeModFor(TrueforcePlugin.ArcadeModTarget t)
+        {
+            if (_plugin == null) return;
+            bool? go = TrueforceDialog.Show(Window.GetWindow(this),
+                "Remove the arcade plugin?",
+                "This puts " + t.DisplayName + " back the way it was. Whatever force feedback "
+                + "file was in the game's folder before we installed ours is restored, and the "
+                + "game goes back to driving your wheel directly.\n\n"
+                + "You lose the arcade effects through Trueforce, and the wheel's lights and "
+                + "screen go back to cutting out while force is playing.\n\n"
+                + "It takes effect the next time the game starts.",
+                DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Keep it");
+            if (go != true) return;
+
+            string err = _plugin.UninstallArcadeMod(t);
+            string outcome = err == null
+                ? t.DisplayName + ": removed. It takes effect the next time the game starts."
                 : t.DisplayName + ": could not remove it. " + err + ".";
             RefreshModsList();
             if (FsModTargetsStatus == null) return;

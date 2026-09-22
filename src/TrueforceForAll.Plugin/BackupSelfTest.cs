@@ -5,7 +5,15 @@
 //   - Forza's portable split travels but its bind address stays local,
 //   - the preset library files round-trip verbatim, with the import inbox and
 //     hidden working dirs correctly skipped,
-//   - the classification audit is clean (every field classified, none twice).
+//   - the classification audit is clean (every field classified, none twice, and
+//     every classified NAME resolves to a real property, which is the direction
+//     that let two Portable entries match nothing for a month),
+//   - a MERGED envelope keeps its provenance. Both merge paths used to hand-build
+//     an envelope and set 6 of its 8 members, dropping the wheel stamp, which
+//     silently disarmed the cross-wheel FFB gate on every merged backup,
+//   - the cross-wheel gate withholds on a real DIFFERENCE rather than on the mere
+//     presence of a key, so syncing two wheels does not raise a prompt per sync,
+//   - the file-import path keeps this PC's half of the two partial objects.
 //
 // Pure logic (no SimHub, no network). Run it from the DEV panel, or standalone via
 // the SelfTestHarness console. Returns (ok, report-lines).
@@ -13,6 +21,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json.Linq;
 
 namespace TrueforceForAll.Plugin
@@ -288,7 +297,7 @@ namespace TrueforceForAll.Plugin
             var impFile        = new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.77f };
             var impLocalBefore = new TrueforceSettings { LastUsedWheel = "G923",  ModeBSatGain = 0.10f };
             var impLiveMis = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.77f, MasterGain = 0.44f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
-            var impMis = BackupProjection.GateImportedCrossWheelFfb(impFile, impLocalBefore, impLiveMis);
+            var impMis = BackupProjection.GateImportedCrossWheelFfb(impFile, impLocalBefore, impLiveMis, "G PRO");
             Check("import gate: mismatch restores this PC's Mode B", Math.Abs(impLiveMis.ModeBSatGain - 0.10f) < 1e-6);
             Check("import gate: mismatch leaves non-FFB alone", Math.Abs(impLiveMis.MasterGain - 0.44f) < 1e-6);
             Check("import gate: mismatch reports FfbGated + source + stashed foreign value",
@@ -300,14 +309,200 @@ namespace TrueforceForAll.Plugin
             var impMatch = BackupProjection.GateImportedCrossWheelFfb(
                 new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.77f },
                 new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.10f },
-                impLiveMatch);
+                impLiveMatch, "G PRO");
             Check("import gate: matching wheel keeps imported FFB (no gate)",
                 Math.Abs(impLiveMatch.ModeBSatGain - 0.77f) < 1e-6 && !impMatch.FfbGated);
 
             var impLiveAlways = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.77f, CrossWheelFfbMode = CrossWheelFfbMode.Always };
-            var impAlways = BackupProjection.GateImportedCrossWheelFfb(impFile, impLocalBefore, impLiveAlways);
+            var impAlways = BackupProjection.GateImportedCrossWheelFfb(impFile, impLocalBefore, impLiveAlways, "G PRO");
             Check("import gate: Always keeps imported FFB across wheels",
                 Math.Abs(impLiveAlways.ModeBSatGain - 0.77f) < 1e-6 && !impAlways.FfbGated);
+
+            // The import gate's source wheel is a PARAMETER, and this is why. On the real
+            // import path `importedFile` and `live` are the same object and LastUsedWheel is
+            // MachineLocal, so by the time the gate ran the file's wheel had been replaced by
+            // this PC's. Passing the laundered label must produce no gate, which is exactly
+            // the dead-code state the parameter exists to make impossible to reach by
+            // accident: if someone "simplifies" the signature back, this check goes red.
+            var impLiveLaundered = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.77f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
+            var impLaundered = BackupProjection.GateImportedCrossWheelFfb(
+                impFile, impLocalBefore, impLiveLaundered, "G923");   // the laundered label
+            Check("import gate: a laundered source wheel does NOT gate (regression marker)",
+                !impLaundered.FfbGated);
+
+            // Value-aware gating: the foreign wheel's value is identical to this PC's, so
+            // there is nothing to ask about. Before this, Build emitted every wheel-specific
+            // key on every push and the gate fired on mere presence, so each sync between two
+            // wheels raised a fresh "apply anyway" prompt about values that never changed.
+            var srcSame = BackupProjection.Build(
+                new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.55f, MasterGain = 0.9f },
+                "PC", wheelDate);
+            var tgtSame = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.55f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
+            var rSame = BackupProjection.ApplySettings(srcSame, tgtSame);
+            Check("cross-wheel gate: identical values across wheels do not raise a prompt", !rSame.FfbGated);
+            Check("cross-wheel gate: identical values still not adopted from the other wheel",
+                Math.Abs(tgtSame.ModeBSatGain - 0.55f) < 1e-6);
+            Check("cross-wheel gate: non-FFB still applied alongside", Math.Abs(tgtSame.MasterGain - 0.9f) < 1e-6);
+
+            // ...but a genuine difference must still be caught (guard against the value-aware
+            // check turning into a blanket false negative).
+            var tgtDiff = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.11f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
+            var rDiff = BackupProjection.ApplySettings(srcSame, tgtDiff);
+            Check("cross-wheel gate: a real difference is still withheld and reported",
+                rDiff.FfbGated && Math.Abs(tgtDiff.ModeBSatGain - 0.11f) < 1e-6);
+
+            // The condition-engine gains are wheel-specific (one right tuning per wheel, found
+            // at the bench), so they ride the same gate as Mode B and the LED trim.
+            Check("cross-wheel gate: condition gains are in the wheel-specific set",
+                BackupProjection.FfbWheelSpecific.Contains("FfbConditionDamperGain")
+                && BackupProjection.FfbWheelSpecific.Contains("FfbConditionSpringGain")
+                && BackupProjection.FfbWheelSpecific.Contains("FfbConditionInertiaGain"));
+            var srcCond = BackupProjection.Build(
+                new TrueforceSettings { LastUsedWheel = "G PRO", FfbConditionDamperGain = 0.66f }, "PC", wheelDate);
+            var tgtCond = new TrueforceSettings { LastUsedWheel = "G923", FfbConditionDamperGain = 0.22f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
+            BackupProjection.ApplySettings(srcCond, tgtCond);
+            Check("cross-wheel gate: condition gains withheld across wheels",
+                Math.Abs(tgtCond.FfbConditionDamperGain - 0.22f) < 1e-6);
+
+            // ---- Merge carries provenance (findings 1 + 2) ----------------
+            // The bug: both Merge overloads hand-built an envelope and set 6 of its 8 members,
+            // so every merged backup lost SourceWheelModel and Arcade. A null wheel never
+            // gates, so one merge silently disarmed the cross-wheel gate for BOTH devices
+            // until somebody pushed a fresh envelope.
+            var gproEnv = BackupProjection.Build(
+                new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.77f, MasterGain = 0.5f },
+                "PC1", wheelDate);
+            var g923Env = BackupProjection.Build(
+                new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.22f, MasterGain = 0.6f },
+                "PC2", wheelDate);
+
+            var sidePickLocal = BackupService.Merge(gproEnv, g923Env, keepCloudSettings: false, "PC1", wheelDate);
+            var sidePickCloud = BackupService.Merge(gproEnv, g923Env, keepCloudSettings: true, "PC1", wheelDate);
+            Check("merge (side-pick): keeps the settings side's wheel stamp",
+                sidePickLocal.SourceWheelModel == "G PRO" && sidePickCloud.SourceWheelModel == "G923");
+            Check("merge (side-pick): carries Arcade", sidePickLocal.Arcade != null);
+            Check("merge (side-pick): carries latch provenance", sidePickLocal.SourceLatches != null);
+            Check("merge (side-pick): drops no envelope member",
+                BackupProjection.FindDroppedEnvelopeFields(gproEnv, sidePickLocal).Count == 0);
+
+            // A merged envelope must still gate on the other wheel. This is the end-to-end
+            // statement of the bug: build -> merge -> apply on a different wheel.
+            var tgtAfterMerge = new TrueforceSettings { LastUsedWheel = "G923", ModeBSatGain = 0.22f, CrossWheelFfbMode = CrossWheelFfbMode.Ask };
+            var rAfterMerge = BackupProjection.ApplySettings(sidePickLocal, tgtAfterMerge);
+            Check("merge (side-pick): the merged envelope still gates on the other wheel",
+                rAfterMerge.FfbGated && Math.Abs(tgtAfterMerge.ModeBSatGain - 0.22f) < 1e-6);
+
+            // 3-way merge across two wheels: the wheel-specific keys must resolve to LOCAL, so
+            // the shared copy is one wheel's tuning rather than a blend of two. A blend would
+            // be laundered as native by the next ordinary push from either PC.
+            var merged3 = BackupService.Merge(gproEnv, g923Env, null, null, null, null, "PC1", wheelDate);
+            Check("merge (3-way): wheel-specific keys resolve to the local side",
+                merged3.Settings?["ModeBSatGain"] != null
+                && Math.Abs(merged3.Settings["ModeBSatGain"].Value<float>() - 0.77f) < 1e-6);
+            Check("merge (3-way): stamped with the local wheel", merged3.SourceWheelModel == "G PRO");
+            Check("merge (3-way): drops no envelope member",
+                BackupProjection.FindDroppedEnvelopeFields(gproEnv, merged3).Count == 0);
+
+            // Same wheel on both sides: no resolution, ordinary field merge still applies the
+            // cloud's changed leaf (guard against the cross-wheel rule over-reaching).
+            var g923Env2 = BackupProjection.Build(
+                new TrueforceSettings { LastUsedWheel = "G PRO", ModeBSatGain = 0.99f }, "PC2", wheelDate);
+            var merged3Same = BackupService.Merge(gproEnv, g923Env2, null, null, null, null, "PC1", wheelDate);
+            Check("merge (3-way): same wheel still field-merges normally",
+                merged3Same.SourceWheelModel == "G PRO" && merged3Same.Settings?["ModeBSatGain"] != null);
+
+            // ---- Latch provenance (finding 7) -----------------------------
+            // Hardening, not a live bug: no released build puts FfbCondition names in an
+            // envelope at all. It bites on the next generation bump, when a payload built
+            // before the reset lands on a PC that already stamped the latch.
+            var genEnv = BackupProjection.Build(
+                new TrueforceSettings { FfbConditionDefaultsGeneration = 0, FfbConditionDamperGain = 0.33f },
+                "PC", wheelDate);
+            Check("latch provenance: the generation is stamped into the envelope",
+                BackupProjection.SourceLatch(genEnv, "FfbConditionDefaultsGeneration", 9) == 0);
+            Check("latch provenance: the generation is NOT a portable setting",
+                genEnv.Settings?["FfbConditionDefaultsGeneration"] == null);
+            // Absent provenance means UNKNOWN, not "migrated nothing". Reading it as 0 would
+            // re-run the generation reset against a backup made before this existed and wipe
+            // real bench tuning, so callers ask HasLatchProvenance first.
+            Check("latch provenance: an envelope without the block states nothing",
+                !BackupProjection.HasLatchProvenance(new BackupEnvelope())
+                && BackupProjection.HasLatchProvenance(genEnv));
+            var genHigh = BackupProjection.Build(
+                new TrueforceSettings { FfbConditionDefaultsGeneration = 1 }, "PC", wheelDate);
+            var mergedLatch = BackupService.Merge(genHigh, genEnv, null, null, null, null, "PC", wheelDate);
+            Check("latch provenance: a merge takes the LOWER generation of the two sides",
+                BackupProjection.SourceLatch(mergedLatch, "FfbConditionDefaultsGeneration", 9) == 0);
+            Check("latch provenance: a merge with one side silent claims nothing",
+                BackupService.Merge(genHigh, new BackupEnvelope { Settings = new JObject() },
+                    null, null, null, null, "PC", wheelDate).SourceLatches == null);
+
+            // ---- Forza's third portable field (restore rot) ---------------
+            // ForwardGapBridge joined ForzaPortableFields and Build started bundling it, but
+            // the restore hand-wrote only Enabled and Port, so turning the gap bridge off on
+            // PC1 left it on everywhere else. The old "round-trips byte-equal" check could not
+            // see it: both sides sat at the default.
+            var fzSrc = new TrueforceSettings();
+            fzSrc.Forza.Enabled = true;
+            fzSrc.Forza.Port = 5300;
+            fzSrc.Forza.ForwardGapBridge = false;          // the non-default the user chose
+            fzSrc.Forza.BindAddress = "192.168.1.50";      // machine-local, must not travel
+            var fzEnv = BackupProjection.Build(fzSrc, "PC1", wheelDate);
+            var fzTgt = new TrueforceSettings();
+            fzTgt.Forza.BindAddress = "0.0.0.0";
+            BackupProjection.ApplySettings(fzEnv, fzTgt);
+            Check("forza: every portable field restores, including ForwardGapBridge",
+                fzTgt.Forza.ForwardGapBridge == false && fzTgt.Forza.Port == 5300);
+            Check("forza: the bind address stays this PC's", fzTgt.Forza.BindAddress == "0.0.0.0");
+
+            // ---- Arcade taste travels, arcade machine facts do not --------
+            var acSrc = new TrueforceSettings();
+            acSrc.Arcade.Enabled = true;                   // shelved-feature gate: must NOT travel
+            acSrc.Arcade.MenuHaptics = true;               // taste: must travel
+            acSrc.Arcade.MinForcePercent = 25;             // taste: must travel
+            acSrc.Arcade.TeknoParrotPath = @"D:\PC1\TP";   // machine fact: must NOT travel
+            var acEnv = BackupProjection.Build(acSrc, "PC1", wheelDate);
+            var acTgt = new TrueforceSettings();
+            BackupProjection.ApplySettings(acEnv, acTgt);
+            Check("arcade: menu haptics + force floor now travel (they matched no property before)",
+                acTgt.Arcade.MenuHaptics && acTgt.Arcade.MinForcePercent == 25);
+            Check("arcade: the shelved-feature master switch does not travel", !acTgt.Arcade.Enabled);
+            Check("arcade: the TeknoParrot path does not travel",
+                string.IsNullOrEmpty(acTgt.Arcade.TeknoParrotPath));
+
+            // The machine-local half of the partials, restored after a WHOLESALE replace.
+            // This is the file/zip path, which the cloud projection never exercises.
+            var partialLocal = new TrueforceSettings();
+            partialLocal.Forza.BindAddress   = "10.0.0.9";
+            partialLocal.Arcade.Enabled      = false;
+            partialLocal.Arcade.TeknoParrotPath = @"C:\PC2\TP";
+            var partialImported = new TrueforceSettings();
+            partialImported.Forza.BindAddress   = "192.168.1.50";   // PC1's NIC, not on PC2
+            partialImported.Forza.Port          = 5301;             // portable: keep the file's
+            partialImported.Arcade.Enabled      = true;             // PC1 had arcade unlocked
+            partialImported.Arcade.MenuHaptics  = true;             // taste: keep the file's
+            partialImported.Arcade.TeknoParrotPath = @"D:\PC1\TP";
+            BackupProjection.PreserveMachineLocalPartials(partialLocal, partialImported);
+            Check("import partials: the file's bind address is replaced by this PC's",
+                partialImported.Forza.BindAddress == "10.0.0.9");
+            Check("import partials: the file's portable Forza fields survive",
+                partialImported.Forza.Port == 5301);
+            Check("import partials: an imported file cannot unlock the shelved arcade path",
+                !partialImported.Arcade.Enabled);
+            Check("import partials: this PC's TeknoParrot path survives",
+                partialImported.Arcade.TeknoParrotPath == @"C:\PC2\TP");
+            Check("import partials: the file's arcade taste survives", partialImported.Arcade.MenuHaptics);
+
+            // ---- Classification guards (finding 5) ------------------------
+            var stale = BackupProjection.FindStaleClassifications();
+            Check($"every classified name resolves to a real property (stale: {stale.Count})", stale.Count == 0);
+            if (stale.Count > 0) lines.Add("        -> " + string.Join(", ", stale));
+            var partialUnclassified = BackupProjection.FindUnclassifiedPartialFields();
+            Check($"every Forza/Arcade field is classified (unclassified: {partialUnclassified.Count})",
+                partialUnclassified.Count == 0);
+            if (partialUnclassified.Count > 0) lines.Add("        -> " + string.Join(", ", partialUnclassified));
+            Check("the wheel-specific set is still a subset of Portable",
+                BackupProjection.FfbWheelSpecific.All(k => BackupProjection.Portable.Contains(k)));
 
             lines.Add(ok ? "ALL PASS" : "FAILURES PRESENT");
             return (ok, lines);

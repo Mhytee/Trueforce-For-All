@@ -39,6 +39,9 @@ namespace TrueforceForAll.Plugin.Effects
     /// speak the flat <see cref="EngineLayout"/> instead. Translate via
     /// <see cref="FiringPatternDb.LayoutFromLegacy"/> at the boundary.
     /// </summary>
+    // APPEND ONLY. These ordinals are a wire format: the anonymous per-game preset
+    // body sends enums as integers, so inserting or reordering a member silently
+    // reinterprets every row already stored. Add new configs at the end.
     public enum EngineConfig
     {
         Auto,            // pick from cylinder count
@@ -59,8 +62,10 @@ namespace TrueforceForAll.Plugin.Effects
     /// <summary>
     /// Flat enum of every engine the user can pick from the dropdown. Each
     /// entry implies its own cylinder/rotor count and firing pattern, so the
-    /// UI no longer needs a separate "cylinders" control. Append-only
-    /// removing or renumbering invalidates any user's saved preset value.
+    /// UI no longer needs a separate "cylinders" control. Append-only:
+    /// removing or renumbering invalidates any user's saved preset value, and
+    /// these ordinals are also the wire format of the anonymous preset-body
+    /// payload, which sends enums as integers.
     ///
     /// Auto = resolver decides (or fall back to a generic 6-cyl even-fire).
     /// Electric = treat as EV (no firing pattern, AutoGainScale takes over).

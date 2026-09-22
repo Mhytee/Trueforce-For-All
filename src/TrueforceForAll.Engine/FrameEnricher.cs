@@ -53,9 +53,26 @@ namespace TrueforceForAll.Core
         /// never brakes past ~0.7g, so the margin holds).</summary>
         public static void Enrich(ref TelemetryFrame frame, bool sourceIsEnhanced,
                                   in SimHubOverlay overlay, bool suppressRedlineOverlay,
-                                  double collisionThresholdMps2 = CollisionThresholdMps2)
+                                  double collisionThresholdMps2 = CollisionThresholdMps2,
+                                  bool sourcePublishesPhysics = true)
         {
-            if (sourceIsEnhanced)
+            // A source can be enhanced and still carry no physics at all. The
+            // arcade readers are exactly that: they publish force, not telemetry,
+            // and emit an empty frame purely so the rate tracking stays alive.
+            //
+            // Overlaying SimHub's cached flags onto one of those is actively
+            // harmful rather than merely useless. AbsActive is copied
+            // unconditionally, so a flag left set by the last game SimHub DID
+            // read becomes a permanent ABS buzz on an arcade cabinet. The
+            // overlaid MaxRpm is worse still: it makes the resampler classify an
+            // empty frame as physics, which is the very thing that tells the
+            // effects to stay quiet.
+            //
+            // The SOURCE is asked, not the frame. Judging the frame looks
+            // tempting and is wrong: a car parked in the pits with the engine off
+            // carries no revs, no speed and no throttle either, and AC's whole
+            // contract is that it leaves MaxRpm at 0 for this overlay to fill.
+            if (sourceIsEnhanced && sourcePublishesPhysics)
             {
                 // MaxRpm: fill-only, never clobber. AC leaves it at 0 on
                 // purpose (SimHub already does that work correctly), but

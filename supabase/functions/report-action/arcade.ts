@@ -1,0 +1,546 @@
+// Initial D 8 leaderboard slash commands.
+//
+// A MODULE, not an endpoint. A Discord application has exactly one Interactions Endpoint URL,
+// and this application's is report-action, because that is where the moderation card buttons
+// arrive. Registering /id8 on the same application therefore delivers command interactions to
+// that same URL, so the handler has to live behind it. index.ts verifies the Ed25519 signature
+// once, for everything, and routes here for the two interaction types it does not handle.
+//
+// The moderation code is not touched by any of this: the two paths are disjoint by interaction
+// type, MESSAGE_COMPONENT and MODAL_SUBMIT there, APPLICATION_COMMAND and AUTOCOMPLETE here.
+//
+// /id8 board <course> <direction> [car]   public     Any Car top ten AND every car with a time
+// /id8 me                                 ephemeral  your own record, needs a linked Discord
+// /id8 ranking                            public     the overall ranking
+// /id8 digest                             ephemeral, moderators, this week's message unposted
+//
+// THE THREE SECOND RULE. Discord discards an interaction not answered in three seconds, so every
+// handler does the fewest round trips it can and runs them with Promise.all. If cold starts ever
+// push this over, the fix is a deferred response (type 5) plus a webhook PATCH, not more
+// parallelism.
+
+// The digest embed, and the course/car/time helpers, shared with arcade-digest so a preview and
+// the posted message cannot drift apart. See _shared/id8.ts.
+import { buildEmbed, COURSES, courseName, lap, esc, GAME_NAME } from "../_shared/id8.ts";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const MOD_ROLE_ID  = Deno.env.get("DISCORD_MOD_ROLE_ID") || "";
+
+const GAME = "ID8";
+// Interaction types, then response types. Same numbers report-action uses.
+const PING = 1, APPLICATION_COMMAND = 2, AUTOCOMPLETE = 4;
+const PONG = 1, CHANNEL_MESSAGE = 4, AUTOCOMPLETE_RESULT = 8;
+const EPHEMERAL = 64;
+
+function json(b: unknown, s = 200): Response {
+  return new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
+}
+
+async function callRpc(fn: string, body: unknown): Promise<any | null> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`,
+                 "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    if (!r.ok) {
+      console.error(`[arcade] ${fn} ${r.status}: ${(await r.text()).slice(0, 200)}`);
+      return null;
+    }
+    return await r.json();
+  } catch (e) { console.error(`[arcade] ${fn} threw: ${e}`); return null; }
+}
+
+async function restRows(path: string): Promise<any[]> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+    });
+    if (!r.ok) {
+      console.error(`[arcade] GET ${path.split("?")[0]} ${r.status}: ${(await r.text()).slice(0, 200)}`);
+      return [];
+    }
+    const a = await r.json();
+    return Array.isArray(a) ? a : [];
+  } catch (e) { console.error(`[arcade] GET ${path.split("?")[0]} threw: ${e}`); return []; }
+}
+
+// The car list, from arcade_cars rather than a second hardcoded copy. That table exists precisely
+// so the allowlist that bounds submissions and the list that feeds autocomplete cannot disagree.
+// Cached in module scope because autocomplete fires on every keystroke and the list changes when a
+// migration runs, not when a player drives.
+let carCache: { at: number; rows: any[] } | null = null;
+const CAR_TTL_MS = 10 * 60 * 1000;
+
+async function cars(): Promise<any[]> {
+  if (carCache && Date.now() - carCache.at < CAR_TTL_MS) return carCache.rows;
+  const rows = await restRows(
+    `arcade_cars?game=eq.${GAME}&select=car_id,code,name&order=car_id.asc`);
+  if (rows.length) carCache = { at: Date.now(), rows };
+  return rows.length ? rows : (carCache?.rows ?? []);
+}
+
+/** The display label inside a monospace table: the model name without the trailing chassis, which
+ *  the row does not need and which costs seven characters that mobile does not have. */
+function shortCar(name: string): string {
+  return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+/** Names are capped so a row cannot wrap, because a wrapped row destroys the alignment that is the
+ *  only reason these are code blocks at all. 14 is measured, not guessed: of the 107 usernames on
+ *  the service the longest is 19 and the average is 9.3, so this leaves about nine people shortened
+ *  and holds every row to 46 characters, inside what a phone shows. The marker is ASCII on purpose,
+ *  for the same width reason the car names were romanised. */
+const NAME_W = 14;
+function padName(s: string | null): string {
+  const n = String(s ?? "?");
+  return (n.length > NAME_W ? n.slice(0, NAME_W - 1) + "+" : n).padEnd(NAME_W);
+}
+
+function ephemeralText(content: string) {
+  return json({ type: CHANNEL_MESSAGE, data: { flags: EPHEMERAL, content: content.slice(0, 1900) } });
+}
+
+function embed(e: any, flags = 0) {
+  return json({ type: CHANNEL_MESSAGE, data: { flags, embeds: [e], allowed_mentions: { parse: [] } } });
+}
+
+/** Split pre-built lines into code blocks that fit Discord's 1024 character field limit, never
+ *  cutting a line in half. Returns one field per chunk, numbered only when there is more than one. */
+function codeFields(name: string, lines: string[]): any[] {
+  const out: any[] = [];
+  let buf: string[] = [];
+  let len = 0;
+  const FENCE = 8;                       // ```\n ... \n```
+  for (const line of lines) {
+    if (len + line.length + 1 + FENCE > 1024 && buf.length) {
+      out.push(buf); buf = []; len = 0;
+    }
+    buf.push(line); len += line.length + 1;
+  }
+  if (buf.length) out.push(buf);
+  return out.map((chunk, i) => ({
+    name: out.length > 1 ? `${name} (${i + 1}/${out.length})` : name,
+    value: "```\n" + chunk.join("\n") + "\n```",
+  }));
+}
+
+// ---- the commands ----------------------------------------------------------
+
+/** Strict, because these options are free text. Discord shows a picker but does not force the user
+ *  to use it: whatever they type is sent as the value. Number() is far too generous for that job.
+ *  Number(" ") and Number("") are both 0, so a single space in the course box would have passed
+ *  every range check and publicly rendered Lake Akina downhill, answering a question nobody asked.
+ *  "0x0e" is 14, "1e1" is 10, "+2" is 2 and " 3 " is 3, all of which reach a real board too. */
+function optInt(raw: string | undefined): number | null {
+  if (raw === undefined || !/^\d+$/.test(raw)) return null;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** "Only you can see this". Discord sends a BOOLEAN option as true/false, which optionMap
+ *  stringifies, so compare against the string. Defaults to public: a leaderboard is a thing people
+ *  are supposed to see, and a private-by-default board would quietly stop the commands doing the
+ *  one job the digest is also trying to do. */
+function privateFlag(opts: Map<string, string>): number {
+  return opts.get("private") === "true" ? EPHEMERAL : 0;
+}
+
+async function cmdBoard(opts: Map<string, string>) {
+  const flags = privateFlag(opts);
+  const course = optInt(opts.get("course"));
+  const dir = optInt(opts.get("direction"));
+  const carRaw = opts.get("car");
+  const car = carRaw === undefined || carRaw === "" ? null : optInt(carRaw);
+
+  if (course === null || course < 0 || course > 15 || dir === null || dir < 0 || dir > 1) {
+    return ephemeralText("Pick a course and a direction from the list rather than typing them.");
+  }
+  if (carRaw !== undefined && carRaw !== "" && car === null) {
+    return ephemeralText("Pick a car from the list rather than typing it.");
+  }
+
+  const carRows = await cars();
+  if (!carRows.length) {
+    return ephemeralText("I could not read the car list just now. Try again in a moment.");
+  }
+  const carName = car === null ? null : (carRows.find((c) => c.car_id === car)?.name ?? null);
+  if (car !== null && carName === null) return ephemeralText("That car is not in this game.");
+
+  const where = courseName(course, dir);
+
+  // One car: the ranked board for that car, which is a different question from the course board.
+  if (car !== null) {
+    const rows = await callRpc("get_arcade_leaderboard",
+      { p_game: GAME, p_course_id: course, p_direction: dir, p_car_id: car, p_limit: 10 });
+    if (rows === null) return ephemeralText("Could not read the leaderboards right now.");
+    if (!rows.length) {
+      return embed({
+        title: `${where} · ${carName}`,
+        description: "Nobody has set a time in this car here yet. Someone has to be first.",
+        color: 0xE5C04A,
+      }, flags);
+    }
+    const lines = rows.map((r: any) =>
+      String(r.rank).padStart(2) + "  " + padName(r.author) + "  " + lap(r.goal_ms).padStart(8));
+    return embed({ title: `${where} · ${carName}`, color: 0xE5C04A, fields: codeFields("Times", lines) }, flags);
+  }
+
+  // No car: both boards, because they are the two the cabinet itself shows.
+  const [anyRows, perRows] = await Promise.all([
+    callRpc("get_arcade_leaderboard",
+      { p_game: GAME, p_course_id: course, p_direction: dir, p_car_id: null, p_limit: 10 }),
+    callRpc("get_arcade_course_cars", { p_game: GAME, p_course_id: course, p_direction: dir }),
+  ]);
+  if (anyRows === null || perRows === null) {
+    return ephemeralText("Could not read the leaderboards right now.");
+  }
+  const any: any[] = anyRows;
+  const per: any[] = perRows.slice().sort((a: any, b: any) => a.best_ms - b.best_ms);
+
+  if (!any.length) {
+    return embed({
+      title: where,
+      description: "No times on this board yet. Drive it with TF4ALL open and it is yours.",
+      color: 0xE5C04A,
+    }, flags);
+  }
+
+  const byId = new Map(carRows.map((c: any) => [c.car_id, c]));
+  const anyLines = any.map((r: any) =>
+    String(r.rank).padStart(2) + "  " + padName(r.author) + "  " +
+    lap(r.goal_ms).padStart(8) + "  " + (byId.get(r.car_id)?.code ?? "?"));
+
+  // SKYLINE GT-R (BNR32) and (BNR34) are the only pair whose short names collide, and two rows
+  // labelled identically is worse than two characters of width. Disambiguate just those.
+  const shortCounts = new Map<string, number>();
+  for (const c of carRows) {
+    const k = shortCar(c.name);
+    shortCounts.set(k, (shortCounts.get(k) ?? 0) + 1);
+  }
+  const label = (id: number): string => {
+    const full = byId.get(id)?.name;
+    if (!full) return "?";
+    const short = shortCar(full);
+    if ((shortCounts.get(short) ?? 0) < 2) return short;
+    // The backslashes matter. Without them this reads as a group containing a group, then a
+    // literal "s", and it matches with an EMPTY capture: both Skylines came out as
+    // "SKYLINE GT-R " with a trailing space, which is the collision this exists to prevent.
+    const chassis = /\(([^)]*)\)\s*$/.exec(full);
+    return chassis && chassis[1] ? `${short} ${chassis[1]}` : short;
+  };
+  const carW = Math.max(...per.map((p: any) => label(p.car_id).length));
+  const perLines = per.map((p: any) =>
+    label(p.car_id).padEnd(carW) + "  " +
+    lap(p.best_ms).padStart(8) + "  " + padName(p.best_author).trimEnd());
+
+  return embed({
+    title: where,
+    color: 0xE5C04A,
+    fields: [
+      ...codeFields("Any Car", anyLines),
+      ...codeFields(`Per car (${per.length} of ${carRows.length} cars)`, perLines),
+    ],
+  }, flags);
+}
+
+async function cmdRanking(opts: Map<string, string>) {
+  const flags = privateFlag(opts);
+  const rows = await callRpc("get_arcade_overall_ranking", { p_game: GAME, p_limit: 10 });
+  if (rows === null) return ephemeralText("Could not read the ranking right now.");
+  if (!rows.length) {
+    return embed({ title: "Overall ranking", color: 0xE5C04A,
+      description: "Nobody has set a time yet. Someone has to be first." }, flags);
+  }
+  const lines = rows.map((r: any) =>
+    `**${r.rank}.** ${esc(r.author)} · ${r.points} pts` +
+    (r.course_crowns ? ` (${r.course_crowns} course record${r.course_crowns === 1 ? "" : "s"})` : ""));
+  return embed({
+    title: "Overall ranking",
+    color: 0xE5C04A,
+    description: lines.join("\n").slice(0, 4000),
+    // Both rules the RPC actually applies, not a simplification of them. 0111 caps car crowns at
+    // ten (`least(a.carc, 10) * 5`) and only counts one where somebody else has driven that car on
+    // that board (`b.players >= 2`), so an uncontested car is worth nothing.
+    footer: { text: "Course record 25, car record 5 for up to 10 cars, a top ten place 11 minus " +
+                    "its rank. A car record counts once someone else has driven that car there." },
+  }, flags);
+}
+
+function ordinal(n: number): string {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+async function cmdMe(discordId: string) {
+  // The only place this function joins a Discord identity to a TF4ALL one, and it does it for the
+  // person asking about themselves, into an ephemeral reply nobody else sees.
+  const link = (await restRows(`discord_links?discord_id=eq.${encodeURIComponent(discordId)}&select=user_id`))[0];
+  if (!link?.user_id) {
+    return ephemeralText(
+      "I cannot tell which account is yours. Link Discord in the plugin's Account tab and try again.");
+  }
+  const rows = await callRpc("get_arcade_player_stats", { p_game: GAME, p_user_id: link.user_id });
+  if (rows === null) return ephemeralText("Could not read your record right now.");
+  const s = rows[0];
+  if (!s || !s.boards_entered) {
+    return json({ type: CHANNEL_MESSAGE, data: { flags: EPHEMERAL, embeds: [{
+      title: `Your ${GAME_NAME} record`,
+      color: 0xE5C04A,
+      description: "No times yet. Finish a Time Attack run with TF4ALL open and you are on the boards.",
+    }], allowed_mentions: { parse: [] } }});
+  }
+  const carRows = await cars();
+  const fav = carRows.find((c: any) => c.car_id === s.favourite_car_id);
+  // FIELDS, not one paragraph. The previous version put "65 of 204 overall" and "18 course
+  // records" on adjacent lines with nothing saying the second was tf4all only, so it read as
+  // though the records were overall too. A field NAME states the scope structurally, instead of
+  // asking the reader to infer it from where a line happens to sit.
+  const fields: any[] = [];
+
+  // "N of M", never a bare number: a rank means nothing without the size of the field. Everybody
+  // with a time has one, including whoever is last, which is the point of showing it at all.
+  //
+  // The merged line goes first deliberately. On a young server the tf4all number is "1 of 1" and
+  // says nothing, while the other one is where you stand among people who actually play this game.
+  const standing: string[] = [];
+  if (s.merged_rank && s.merged_players) {
+    standing.push(`**${s.merged_rank} of ${s.merged_players}** · Worldwide (TF4ALL + TeknoParrot leaderboards)`);
+  }
+  standing.push(`**${s.overall_rank ?? "-"} of ${s.players_ranked ?? "-"}** · Among TF4ALL users, ${s.points} pts`);
+  fields.push({ name: "Where you stand", value: standing.join("\n") });
+
+  // The worldwide counterpart to the tf4all line below. Without it "18 first times" has nothing to
+  // be measured against, and the tf4all numbers on a one-driver server flatter in a way the
+  // worldwide ones do not: 18 unchallenged firsts here, 17th of 61 out there.
+  //
+  // Records and top tens appear only when there are some. A row of zeroes is not information, and
+  // on a board somebody is climbing it reads as a scoreboard of their failures.
+  const wide: string[] = [];
+  if (s.merged_crowns) wide.push(`**${s.merged_crowns}** world record${s.merged_crowns === 1 ? "" : "s"}`);
+  if (s.merged_top_ten) wide.push(`**${s.merged_top_ten}** top ten place${s.merged_top_ten === 1 ? "" : "s"}`);
+
+  // The best board, NAMED. "best finish 17th" is trivia; where, in what and how fast is the version
+  // a driver can act on, because it points at the board they are closest to breaking into.
+  if (s.merged_best_finish && s.merged_best_course !== null && s.merged_best_course !== undefined) {
+    const bestCar = carRows.find((c: any) => c.car_id === s.merged_best_car_id);
+    const place = s.merged_best_players
+      ? `**${ordinal(s.merged_best_finish)} of ${s.merged_best_players}**`
+      : `**${ordinal(s.merged_best_finish)}**`;
+    wide.push(`Best board: ${place} on ${courseName(s.merged_best_course, s.merged_best_direction)}` +
+      (s.merged_best_ms ? `, **${lap(s.merged_best_ms)}**` : "") +
+      (bestCar ? ` in the ${bestCar.name}` : ""));
+  }
+  if (wide.length) fields.push({ name: "Worldwide", value: wide.join("\n") });
+
+  // AN UNCONTESTED WIN IS NOT A WIN, and the scoring already says so: beating nobody is worth
+  // nothing. Calling it a "record" directly above a score that prices it at zero reads as a bot
+  // contradicting itself. Read as a first time it is both true and an invitation, which is the
+  // more useful thing for a board nobody has challenged yet.
+  const crowns = s.course_crowns ?? 0;
+  const contested = s.course_crowns_contested ?? 0;
+  const unchallenged = Math.max(0, crowns - contested);
+  const bits: string[] = [];
+  if (contested) bits.push(`**${contested}** course record${contested === 1 ? "" : "s"}`);
+  if (unchallenged) {
+    bits.push(`**${unchallenged}** first time${unchallenged === 1 ? "" : "s"} nobody has challenged yet`);
+  }
+  if (s.car_crowns) bits.push(`**${s.car_crowns}** car record${s.car_crowns === 1 ? "" : "s"}`);
+  if (s.course_top_ten) bits.push(`**${s.course_top_ten}** top ten place${s.course_top_ten === 1 ? "" : "s"}`);
+  // Only worth saying to somebody with no wins at all. To a driver with records it is noise; to one
+  // with none it is the encouraging number, because fourth is not nowhere.
+  if (!crowns && s.best_course_finish) bits.push(`best finish ${ordinal(s.best_course_finish)}`);
+  if (bits.length) fields.push({ name: "Among TF4ALL users", value: bits.join(" · ") });
+
+  const driving = [
+    `On **${s.boards_entered}** of 32 boards, in **${s.cars_driven}** car${s.cars_driven === 1 ? "" : "s"}`,
+  ];
+  if (fav) driving.push(`Most driven: ${fav.name}, ${s.favourite_car_runs} run${s.favourite_car_runs === 1 ? "" : "s"}`);
+  fields.push({ name: "Driving", value: driving.join("\n") });
+
+  return json({ type: CHANNEL_MESSAGE, data: { flags: EPHEMERAL, embeds: [{
+    title: `${s.author}, in ${GAME_NAME}`,
+    color: 0xE5C04A,
+    fields,
+  }], allowed_mentions: { parse: [] } }});
+}
+
+/** The weekly message, exactly as it would post, shown only to the person who asked.
+ *
+ *  Renders with the SAME buildEmbed the digest posts with, imported from _shared, so this is the
+ *  message rather than a lookalike of it.
+ *
+ *  It used to fetch arcade-digest?op=preview over HTTP. That failed with a 403, and the reason is
+ *  worth keeping: the edge runtime injects SUPABASE_SERVICE_ROLE_KEY as a new-style sb_secret_ key,
+ *  not a JWT, so a function-to-function call carries no role claim and a gate that reads claims
+ *  rejects its own project. PostgREST accepts that key perfectly well, which is why every other
+ *  command worked and only this one did not. Importing the renderer removes the call, the auth
+ *  problem, and a second cold start out of Discord's three second budget. */
+/** A busy week, invented, for checking the layout in a real Discord client.
+ *
+ *  The live week on a young server fills two sections, which cannot tell you whether the full
+ *  message reads well: whether five sections is too many, whether the scope subtexts land, whether
+ *  anything wraps badly on a phone. This is every section populated at once, rendered through the
+ *  SAME buildEmbed, so it is the layout rather than a picture of it.
+ *
+ *  Obviously fictional names on purpose. A sample using real drivers and plausible times could be
+ *  screenshotted out of context and read as a real result. */
+const SAMPLE_WEEK = {
+  times_set: 47, drivers: 4, boards_with_times: 26,
+  steals: [
+    { scope: "course", course_id: 3, direction: 0, actor: "SampleDriver", victim: "SampleRival",
+      goal_ms: 148200, previous_ms: 151900, car_id: 0 },
+    { scope: "car", course_id: 0, direction: 0, actor: "SampleRival", victim: "SampleDriver",
+      goal_ms: 141050, previous_ms: 142400, car_id: 515 },
+  ],
+  gains: [
+    { actor: "SampleDriver", course_id: 0, direction: 0, car_id: 0, goal_ms: 135700,
+      previous_ms: 139932, gain_ms: 4232, next_ms: 131053, next_author: "SampleAce" },
+    { actor: "SampleRival", course_id: 9, direction: 0, car_id: 515, goal_ms: 197400,
+      previous_ms: 200695, gain_ms: 3295, next_ms: null, next_author: null },
+    { actor: "SampleThird", course_id: 5, direction: 0, car_id: 516, goal_ms: 213100,
+      previous_ms: 215385, gain_ms: 2285, next_ms: 211900, next_author: "SampleRival" },
+  ],
+  moves: [
+    { author: "SampleRival", rank_then: 58, rank_now: 41, of: 207 },
+    { author: "SampleDriver", rank_then: 71, rank_now: 65, of: 207 },
+  ],
+  world_records: [
+    { author: "SampleRival", course_id: 9, direction: 0, goal_ms: 197400, is_tf4all: true,
+      prev_author: "SampleAce", prev_ms: 199100 },
+    { author: "SampleAce", course_id: 3, direction: 0, goal_ms: 145900, is_tf4all: false,
+      prev_author: null, prev_ms: null },
+  ],
+  top: [
+    { rank: 1, author: "SampleRival", points: 2140, course_crowns: 6, merged_rank: 41, merged_of: 207 },
+    { rank: 2, author: "SampleDriver", points: 1980, course_crowns: 5, merged_rank: 46, merged_of: 207 },
+    { rank: 3, author: "SampleThird", points: 1610, course_crowns: 3, merged_rank: 65, merged_of: 207 },
+    { rank: 4, author: "SampleFourth", points: 1450, course_crowns: 2, merged_rank: 49, merged_of: 207 },
+  ],
+  unclaimed: {
+    held: [
+      { author: "SampleThird", course_id: 12, direction: 0, goal_ms: 231400, world_rank: 22, world_of: 42 },
+      { author: "SampleDriver", course_id: 8, direction: 1, goal_ms: 244383, world_rank: 26, world_of: 29 },
+    ],
+    undriven: 6,
+  },
+};
+
+async function cmdDigest(opts: Map<string, string>) {
+  if (opts.get("sample") === "true") {
+    return json({ type: CHANNEL_MESSAGE, data: {
+      flags: EPHEMERAL,
+      content: "SAMPLE, not real data. A busy week with every section filled, so the layout can be " +
+               "checked. Nobody else can see this.",
+      embeds: [buildEmbed(SAMPLE_WEEK)],
+      allowed_mentions: { parse: [] },
+    }});
+  }
+
+  const week = await callRpc("get_arcade_week", { p_game: GAME });
+  if (week === null) return ephemeralText("Could not read this week's numbers right now.");
+  return json({ type: CHANNEL_MESSAGE, data: {
+    flags: EPHEMERAL,
+    content: "This is what the weekly digest would post right now. Nobody else can see this.",
+    embeds: [buildEmbed(week)],
+    allowed_mentions: { parse: [] },
+  }});
+}
+
+// ---- autocomplete ----------------------------------------------------------
+
+function choices(list: { name: string; value: string }[]) {
+  return json({ type: AUTOCOMPLETE_RESULT, data: { choices: list.slice(0, 25) } });
+}
+
+async function autocomplete(name: string, typed: string) {
+  const q = typed.trim().toLowerCase();
+  if (name === "course") {
+    const all = COURSES.map((c, i) => ({ name: c, value: String(i) }));
+    return choices(q ? all.filter((c) => c.name.toLowerCase().includes(q)) : all);
+  }
+  if (name === "car") {
+    const rows = await cars();
+    // Match the code as well as the name, so "AE86" finds both Truenos and the Levin.
+    const all = rows.map((c: any) => ({ name: c.name, value: String(c.car_id), code: String(c.code) }));
+    if (q) {
+      const hit = all.filter((c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q));
+      return choices(hit.map((c) => ({ name: c.name.slice(0, 100), value: c.value })));
+    }
+    // Empty box: 25 of 50 have to be dropped, so drop them fairly. car_id is (maker << 8) | member,
+    // so taking them in car_id order shows Toyota, Nissan and Honda and hides Mazda, Subaru,
+    // Mitsubishi, Suzuki and every tuned car. Round-robin by maker instead.
+    const byMaker = new Map<number, typeof all>();
+    for (const c of all) {
+      const maker = Number(c.value) >> 8;
+      if (!byMaker.has(maker)) byMaker.set(maker, []);
+      byMaker.get(maker)!.push(c);
+    }
+    const spread: typeof all = [];
+    for (let i = 0; spread.length < all.length; i++) {
+      let placed = false;
+      for (const list of byMaker.values()) if (list[i]) { spread.push(list[i]); placed = true; }
+      if (!placed) break;
+    }
+    return choices(spread.map((c) => ({ name: c.name.slice(0, 100), value: c.value })));
+  }
+  return choices([]);
+}
+
+// ---- entry point -----------------------------------------------------------
+
+function optionMap(sub: any): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const o of (sub?.options ?? [])) m.set(o.name, String(o.value ?? ""));
+  return m;
+}
+
+function focusedOption(sub: any): { name: string; value: string } | null {
+  for (const o of (sub?.options ?? [])) if (o.focused) return { name: o.name, value: String(o.value ?? "") };
+  return null;
+}
+
+function isMod(member: any): boolean {
+  const roles: string[] = Array.isArray(member?.roles) ? member.roles : [];
+  return !!MOD_ROLE_ID && roles.includes(MOD_ROLE_ID);
+}
+
+/** Handles APPLICATION_COMMAND and APPLICATION_COMMAND_AUTOCOMPLETE. The caller has already
+ *  verified the signature and parsed the body, so this never sees an unsigned request. */
+export async function handleArcade(body: any): Promise<Response> {
+  // One command with subcommands, so the options live one level down.
+  const sub = body?.data?.options?.[0];
+  const name = String(sub?.name ?? "");
+
+  try {
+    if (body?.type === AUTOCOMPLETE) {
+      const f = focusedOption(sub);
+      return f ? await autocomplete(f.name, f.value) : choices([]);
+    }
+
+    switch (name) {
+      case "board":   return await cmdBoard(optionMap(sub));
+      case "ranking": return await cmdRanking(optionMap(sub));
+      case "me": {
+        const id = body?.member?.user?.id || body?.user?.id || "";
+        return id ? await cmdMe(String(id)) : ephemeralText("I could not read your Discord id.");
+      }
+      case "digest":
+        if (!isMod(body.member)) return ephemeralText("That one is for moderators.");
+        return await cmdDigest(optionMap(sub));
+      default:
+        return ephemeralText("Unrecognised command.");
+    }
+  } catch (e) {
+    // Never let an exception become a silent timeout: Discord shows "the application did not
+    // respond", which tells the user nothing and tells us nothing either.
+    console.error(`[arcade] ${name} threw: ${e}`);
+    // An autocomplete has to be answered with an autocomplete, not a message: Discord silently
+    // drops a mismatched response type and the picker hangs instead of simply coming back empty.
+    if (body?.type === AUTOCOMPLETE) return choices([]);
+    return ephemeralText("Something went wrong reading the leaderboards. It has been logged.");
+  }
+}

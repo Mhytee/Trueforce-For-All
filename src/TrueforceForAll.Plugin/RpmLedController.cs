@@ -161,6 +161,9 @@ namespace TrueforceForAll.Plugin
         /// full strip as a half-full one.</summary>
         public int MirrorSteps => _channel.StripLength;
         public byte RevFeatureIndex => _channel.RevFeatureIndex;
+        /// <summary>Level writes WE have put on the wire, for telling our own
+        /// traffic apart from a game's when reading the tap's count.</summary>
+        public long LevelWritesIssued => _channel.LevelWritesIssued;
 
         public void OnFrame(double rpmPercent, double rpms, double maxRpm, bool redline, bool gateOpen)
         {
@@ -173,28 +176,75 @@ namespace TrueforceForAll.Plugin
             int level = ComputeLevel(rpmPercent, redline, rpms, _channel.StripLength);
             LastLevel = level;
 
-            if (!gateOpen)
-            {
-                // Release the wheel when the gate closes (game switch, pause,
-                // Mode B disarm). Clear() also STOPS the keepalive thread, so
-                // we stop writing entirely and whatever drives this game's LEDs
-                // natively (or SimHub) has the wheel to itself. Fire on any
-                // prior drive, not just level > 0: leaving during the redline
-                // flash's off-phase (last level 0) must still stop the
-                // keepalive, else it keeps resending 0 and fights the native
-                // writer. Once cleared (_lastBucket = -1) this no-ops.
-                if (_lastBucket != -1 && _channel.IsReady)
-                {
-                    try { _channel.Clear(); } catch { }
-                }
-                _lastBucket = -1;
-                return;
-            }
+            if (!gateOpen) { ReleaseStrip(); return; }
 
             if (!EnsureOpening()) return;
             if (!_channel.IsReady) return;
 
             Commit(level, redline, force: false, NowMs());
+        }
+
+        /// <summary>Drive the bar from something that is not the revs, given as
+        /// a fraction: same write path, same pattern, a different number.
+        /// <paramref name="level01"/> is 0..1 and is scaled to this wheel's own
+        /// strip (ten steps on a G PRO or RS50, five on a G923).
+        ///
+        /// This is the audio meter's entry point. A sweep already knows the step
+        /// it wants and uses <see cref="OnAmbientLevel"/> directly.</summary>
+        public void OnAmbientFrame(double level01, bool gateOpen)
+        {
+            if (double.IsNaN(level01)) level01 = 0;
+            int steps = _channel.StripLength;
+            OnAmbientLevel((int)Math.Floor(level01 * steps + 0.5), gateOpen);
+        }
+
+        /// <summary>Drive the bar from something that is not the revs, given in
+        /// whole levels.
+        ///
+        /// None of these signals has a redline, so the flash is off here, and
+        /// the rev ramp's hysteresis latch is dropped: that latch exists to stop
+        /// telemetry jitter flickering the bar around one boundary, and applying
+        /// it to a signal that is SUPPOSED to move every frame would only make
+        /// it sticky. The push-rate limit in Commit still holds the wire traffic
+        /// down.</summary>
+        public void OnAmbientLevel(int level, bool gateOpen)
+        {
+            if (_testing) return;   // test sweep owns the LEDs while it runs
+
+            // Same order as OnFrame: the level is decided before any gate,
+            // because the dash mirror wants what the strip WOULD show.
+            int steps = _channel.StripLength;
+            if (level < 0) level = 0; else if (level > steps) level = steps;
+            LastLevel = level;
+            // Neither latch belongs to this signal. Clearing them also means
+            // handing the bar back to the revs starts from the revs, rather
+            // than from wherever the meter happened to leave the ramp.
+            _hystLevel = -1;
+            _redlineStartMs = 0;
+
+            if (!gateOpen) { ReleaseStrip(); return; }
+
+            if (!EnsureOpening()) return;
+            if (!_channel.IsReady) return;
+
+            Commit(level, redline: false, force: false, nowMs: NowMs());
+        }
+
+        /// <summary>Release the wheel when the gate closes (game switch, pause,
+        /// Mode B disarm). Clear() also STOPS the keepalive thread, so we stop
+        /// writing entirely and whatever drives this game's LEDs natively (or
+        /// SimHub) has the wheel to itself. Fires on any prior drive, not just
+        /// level > 0: leaving during the redline flash's off-phase (last level
+        /// 0) must still stop the keepalive, else it keeps resending 0 and
+        /// fights the native writer. Once cleared (_lastBucket = -1) this
+        /// no-ops.</summary>
+        private void ReleaseStrip()
+        {
+            if (_lastBucket != -1 && _channel.IsReady)
+            {
+                try { _channel.Clear(); } catch { }
+            }
+            _lastBucket = -1;
         }
 
         private int _hystLevel = -1;
@@ -534,7 +584,7 @@ namespace TrueforceForAll.Plugin
         /// finishes, or -1 to turn the strip off. Parked, a pick that ends dark
         /// shows the user nothing, which is the whole reason they pressed.</param>
         /// <param name="holdMs">How long to leave the strip lit after the sweep
-        /// before fading it out, or 0 to leave it lit indefinitely.</param>
+        /// before putting it out, or 0 to leave it lit indefinitely.</param>
         public int PreviewPattern(int endLevel = -1, int holdMs = 0)
         {
             const int stepMs = 180;   // just above the channel's 160 ms change floor
@@ -568,14 +618,14 @@ namespace TrueforceForAll.Plugin
                         return;
                     }
 
+                    // Fill and stop. The preview used to rise, fall all the
+                    // way back to dark, and only then settle on the finished
+                    // pattern: three animations to say one thing, and long
+                    // enough to sit through (owner, 2026-09-03). The rise
+                    // shows the fill direction, which is the only reason to
+                    // animate it, and the hold after it shows the colours.
                     int steps = _channel.StripLength;
                     for (int lvl = 0; lvl <= steps && _channel.IsReady && _previewGen == gen; lvl++)
-                    {
-                        _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
-                        _channel.SetLevel(lvl);
-                        Thread.Sleep(stepMs);
-                    }
-                    for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady && _previewGen == gen; lvl--)
                     {
                         _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
                         _channel.SetLevel(lvl);
@@ -614,7 +664,10 @@ namespace TrueforceForAll.Plugin
             });
 
             int stepsGuess = _channel.IsReady ? _channel.StripLength : WheelLedChannel.LedCount;
-            return (2 * stepsGuess + 1) * stepMs + 300;
+            // One rise, not a rise and a fall: the reported duration has to
+            // match what the strip actually does or the caller's status text
+            // and hold timing describe an animation that already finished.
+            return (stepsGuess + 1) * stepMs + 300;
         }
 
         /// <summary>Light the strip for a deliberate action and start the clock on
@@ -636,9 +689,16 @@ namespace TrueforceForAll.Plugin
             ArmAutoOff(holdMs);
         }
 
-        /// <summary>Fade the strip out after a quiet period. The fade is a level
-        /// ramp rather than a brightness ramp: brightness is the user's own
-        /// setting and dimming it here would leave their wheel changed.</summary>
+        /// <summary>Put the strip out after a quiet period, in one write.
+        ///
+        /// This used to walk the levels back down at 70 ms a step, which on a ten
+        /// step rim drained for the better part of a second. That is the same fall
+        /// animation the preview dropped on 2026-09-03, just moved to the end: it
+        /// says nothing the rise has not already said, and it reads as the wheel
+        /// hesitating rather than finishing. Off means off (owner, 2026-09-08).
+        ///
+        /// Brightness is still never touched. It is the user's own setting and
+        /// dimming it here would leave their wheel changed.</summary>
         private void ArmAutoOff(int holdMs)
         {
             if (holdMs <= 0) return;
@@ -649,21 +709,14 @@ namespace TrueforceForAll.Plugin
                 {
                     Thread.Sleep(holdMs);
                     // Anything at all happened since: another pick, an edit, the
-                    // Test button, or a game started driving the bar.
+                    // Test button, or a game started driving the bar. One check
+                    // is enough now that the turn-off is a single write; the
+                    // per-step re-checks existed only to abort mid-drain.
                     if (_holdGen != gen || _owner != OwnerNone) return;
                     if (LiveBarIsLit || !_channel.IsReady) return;
 
-                    for (int lvl = _channel.StripLength - 1; lvl >= 0; lvl--)
-                    {
-                        if (_holdGen != gen || _owner != OwnerNone || LiveBarIsLit) return;
-                        _channel.SetLevel(lvl);
-                        Thread.Sleep(70);
-                    }
-                    if (_holdGen == gen && _owner == OwnerNone && !LiveBarIsLit)
-                    {
-                        _channel.TurnOff();
-                        _lastBucket = -1;
-                    }
+                    _channel.TurnOff();
+                    _lastBucket = -1;
                 }
                 catch (Exception ex) { _log($"[RPM-LED] auto-off error: {ex.Message}"); }
             });
@@ -681,12 +734,12 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Give the strip up completely and stop everything already in
         /// flight: a running preview sweep, a test sweep, a lit hold, and a pending
-        /// auto-off ramp.
+        /// auto-off.
         ///
         /// ForceOff is not enough on its own. It stands down when _testing is set,
         /// which is exactly the case while a sweep owns the strip, so a mode switch
         /// made mid-preview left that sweep writing levels for seconds afterwards
-        /// and its auto-off ramp firing up to eight seconds later, into a mode that
+        /// and its auto-off firing up to eight seconds later, into a mode that
         /// had promised to stop touching the wheel. Bumping both generations is what
         /// makes the already-queued work notice.</summary>
         public void AbandonWheel()

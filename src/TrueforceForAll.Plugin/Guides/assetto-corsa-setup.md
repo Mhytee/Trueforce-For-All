@@ -1,6 +1,4 @@
-# Assetto Corsa: the TF4ALL CSP Bridge
-
-Assetto Corsa can hand the plugin its own force feedback. The wheel feels exactly as you have tuned it, and the Dynamic OLED display and LIGHTSYNC pattern changes keep working without cutting the force. This needs Custom Shaders Patch (CSP) and a small script, the TF4ALL CSP Bridge, that the plugin installs for you.
+Assetto Corsa can hand the plugin its own force feedback. The wheel feels exactly as you have tuned it, and the Dynamic OLED display and LIGHTSYNC pattern changes keep working without cutting the force. This needs Custom Shaders Patch (CSP) and a small script, the TF4ALL CSP Bridge, that the plugin installs for you. ([What the bridge is](guide:csp-bridge).)
 
 ## Installing it
 
@@ -14,7 +12,7 @@ Close Content Manager first. It keeps its own copy of the FFB Tweaks page and wr
 
 Then restart Assetto Corsa once, since CSP only reads its scripts at startup. From then on it is automatic: whenever the script is installed the plugin uses the game's own force, and when it is not, the plugin falls back to the USB capture.
 
-Keep your in-game force feedback gain where you like it. The plugin reads the game's finished force (after your gain and every CSP FFB tweak), so your tuning carries through. Use FFBClip or your own judgement to set a gain that fills the range without clipping.
+Keep your in-game force feedback gain where you like it. The plugin reads the game's finished force (after your gain and every CSP FFB tweak), so your tuning carries through. Use FFBClip or your own judgment to set a gain that fills the range without clipping.
 
 ## If the install says a script is already selected
 
@@ -27,7 +25,7 @@ The CSP FFB tweaks themselves (understeer effect, dampers, curbs, and the rest) 
 
 ## Removing it
 
-**Remove** in the Game mods section deletes the script from Assetto Corsa and unselects it in CSP's FFB Tweaks. Your force feedback keeps working through the USB capture; you just lose the OLED and drop-free pattern changes. The script stops loading the next time the game starts.
+**Remove** in the Game mods section deletes the script from Assetto Corsa and unselects it in CSP's FFB Tweaks. Your force feedback keeps working through the USB capture. The script stops loading the next time the game starts.
 
 ## Manual install
 

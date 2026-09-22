@@ -1,7 +1,7 @@
 {
   "FfbScale": 1.0,
   "FfbInvertSign": true,
-  "FfbSmoothTimeConstantMs": 0.0,
+  "FfbSmoothTimeConstantMs": 6.0,
   "FfbSpikeTamingEnabled": false,
   "FfbSpikeMaxLsbPerMs": 2060.923,
   "FfbPeakSoftLimitLsb": 1561.78564,

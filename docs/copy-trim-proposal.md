@@ -76,9 +76,9 @@ Trim: "Set to {n} Nm. Watching again from now."
 Note: the Auto button's own tooltip carries the redo procedure. Both build sites take the same edit or the line will flicker between two wordings.
 
 **A9. Auto peak force button tooltip** (SettingsControl.xaml:2856) **(new copy)**
-Now: "The number on this button is what the plugin has watched this car actually produce, plus a margin. Drive a clean lap, then press it to put that number in the box and start watching again from scratch. Had a spin or hit a wall? Drive another clean lap and press it again. It stays greyed until it has seen enough to be worth taking. Same idea as iRacing's own auto button."
+Now: "The number on this button is what the plugin has watched this car actually produce, plus a margin. Drive a clean lap, then press it to put that number in the box and start watching again from scratch. Had a spin or hit a wall? Drive another clean lap and press it again. It stays grayed until it has seen enough to be worth taking. Same idea as iRacing's own auto button."
 Trim: no visible line changes; this item rewrites the tooltip itself.
-Tip (replacing the tooltip on IRacingAutoMaxForceBtn): "The number on this button is what the plugin has watched this car produce, plus a margin. Drive a clean lap, then press it to take that number and start watching again from scratch. It stays greyed until the reading has held steady. Same idea as iRacing's own auto button."
+Tip (replacing the tooltip on IRacingAutoMaxForceBtn): "The number on this button is what the plugin has watched this car produce, plus a margin. Drive a clean lap, then press it to take that number and start watching again from scratch. It stays grayed until the reading has held steady. Same idea as iRacing's own auto button."
 Note: 72 words of hover, two sentences of which the status line under the button already says at the moment they matter. "Clean" stays: pressing Auto after a spin bakes a bogus number into the car. Excluded from the word totals above, which count visible copy only.
 
 **A10. Car's peak force help** (SettingsControl.xaml:2859) **(new copy)**
@@ -414,7 +414,7 @@ Tip (append to the RemoteDashSpotterCheck tooltip, which describes only the bar 
 Now: "Shows the points you have taken against the limit that ends your session, turning amber and then red as you run out of room. Each new incident announces what it cost across the top of the dash and on the wheel base screen, so you know whether it was a 1x or a 4x without waiting for the replay. iRacing is the only game that publishes a count, so nothing appears anywhere else."
 Trim: "Shows the points you have taken against the limit that ends your session, turning violet and then red as you run out of room."
 Tip (on the incidents checkbox, which has none today): "Your incident count sits under the speed on the Drive tab, and a band across the top and the wheel base screen announce each new incident with what it cost (1x, 4x). iRacing is the only game that publishes a count, so nothing appears anywhere else."
-Note: the colour is a real bug, not a preference. The dash builds the three states as green, violet, red, with an explicit "VIOLET, not amber" comment; whatever survives the trim must say violet. The stale comment at make-tf4all-dash.ps1:2588 still says amber and should be fixed in the same pass.
+Note: the color is a real bug, not a preference. The dash builds the three states as green, violet, red, with an explicit "VIOLET, not amber" comment; whatever survives the trim must say violet. The stale comment at make-tf4all-dash.ps1:2588 still says amber and should be fixed in the same pass.
 
 **B29. Dash idle-card help** (SettingsControl.xaml:3827)
 Now: "With no game running the dash shows an ambient card with your name and number instead of an empty dashboard. It clears the moment a game starts, and there is an Exit button on the card itself."
@@ -499,16 +499,16 @@ Note: the second sentence is the first one again. Take it if C3 lands; the ladde
 **C5. Feel rung, Filled** (SettingsControl.xaml.cs:6444) **(new copy)**
 Now: "Fills the time between updates by continuing the force along its own trend, so it keeps moving instead of holding still and the updates stop arriving as small steps."
 My lean: "Fills the time between updates by continuing the force along its own trend, so it keeps moving instead of holding still."
-Note: one clause per rung is what makes the ladder scannable. If you would rather keep the symptom a driver recognises, cut the earlier clause instead and keep "the updates stop arriving as small steps"; either one alone is enough, but not both.
+Note: one clause per rung is what makes the ladder scannable. If you would rather keep the symptom a driver recognizes, cut the earlier clause instead and keep "the updates stop arriving as small steps"; either one alone is enough, but not both.
 
 **C6. Feel rung, Detailed** (SettingsControl.xaml.cs:6447) **(new copy)**
-Now: "Fills the gaps as above, and brings in the detail the sim solves between updates, so kerbs and surface texture reach your hands. The texture arrives a fraction later than the steering weight, where the delay cannot be felt."
-My lean: "Fills the gaps as above, and brings in the detail the sim solves between updates, so kerbs and surface texture reach your hands."
+Now: "Fills the gaps as above, and brings in the detail the sim solves between updates, so curbs and surface texture reach your hands. The texture arrives a fraction later than the steering weight, where the delay cannot be felt."
+My lean: "Fills the gaps as above, and brings in the detail the sim solves between updates, so curbs and surface texture reach your hands."
 Note: the cut sentence has nowhere to go. A tooltip that changes with the selection is a second string to keep in sync with this one in the same switch, so the reassurance is dropped rather than moved. It is the sentence that stops the timing fact reading as a drawback, so keep it visible if you would rather not lose it.
 
 **C7. Feel rung, Detailed and predicted** (SettingsControl.xaml.cs:6450) **(new copy)**
 Now: "The same detail, kept whole and in its true order rather than split from the steering weight. The force arrives a frame delayed as a result, so the plugin predicts forward to close that gap, learning how far ahead to reach for every car you drive."
-My lean: "Kerbs and texture arrive whole and in step with the steering weight, instead of split from it. The plugin predicts forward so that costs nothing."
+My lean: "Curbs and texture arrive whole and in step with the steering weight, instead of split from it. The plugin predicts forward so that costs nothing."
 Note: the longest of the four rungs, and the only one whose visible copy is pure signal-path description. The rewrite leads with what the driver feels and keeps the word "predicted" explained on screen. The per-car learning detail is dropped, for the same reason as C6.
 
 **C8. Tab intro, iRacing variant** (SettingsControl.xaml.cs:1017; 98 words)

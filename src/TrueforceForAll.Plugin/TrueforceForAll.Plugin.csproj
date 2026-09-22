@@ -65,6 +65,12 @@
       <Link>iracing-engine-layouts.json</Link>
       <LogicalName>TrueforceForAll.Plugin.iracing-engine-layouts.json</LogicalName>
     </EmbeddedResource>
+    <!-- RaceRoom firing patterns AND cylinder counts. RaceRoom publishes
+         neither, so this file is the whole answer for its roster. -->
+    <EmbeddedResource Include="..\..\builtins\raceroom-engine-layouts.json">
+      <Link>raceroom-engine-layouts.json</Link>
+      <LogicalName>TrueforceForAll.Plugin.raceroom-engine-layouts.json</LogicalName>
+    </EmbeddedResource>
     <!-- Guide text for the header's "?" list, authored as Markdown and rendered
          by MarkdownView. Embedded so a plain DLL deploy carries them and there
          is no folder to go stale. Wildcarded on purpose: adding a guide is
@@ -73,6 +79,28 @@
     <!-- The Assetto Corsa CSP bridge script, embedded so a three-DLL deploy
          carries it and InstallAcCspBridge can write it into AC's ffb-postprocess
          folder. Same reasoning as the FS telemetry mod zip. -->
+    <!-- The arcade publishing plugin: our build of FFBArcadePlugin's dinput8
+         wrapper, which decodes an arcade cabinet's force feedback and publishes
+         it to us instead of driving the wheel itself. One per bitness, chosen
+         from the TeknoParrot profile's Is64Bit.
+
+         SEPARATE PROGRAM, NOT PART OF THIS ONE. It is GPL-3.0 where this project
+         is GPL-2.0-only, so the two may be shipped together but never combined:
+         it runs inside the game's process and reaches us only through a shared
+         memory block. See gamemods/FfbArcadePlugin/README.md for the source it
+         is built from, which we are obliged to point at.
+
+         Conditioned on the file existing so a checkout without the built
+         payloads still compiles; the installer then reports the plugin as
+         missing from this build rather than failing to start. -->
+    <EmbeddedResource Include="..\..\gamemods\FfbArcadePlugin\dinput8_x86.dll"
+                      Condition="Exists('..\..\gamemods\FfbArcadePlugin\dinput8_x86.dll')">
+      <LogicalName>TrueforceForAll.Plugin.FfbArcade.dinput8_x86.dll</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\gamemods\FfbArcadePlugin\dinput8_x64.dll"
+                      Condition="Exists('..\..\gamemods\FfbArcadePlugin\dinput8_x64.dll')">
+      <LogicalName>TrueforceForAll.Plugin.FfbArcade.dinput8_x64.dll</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="..\..\gamemods\AssettoCorsaCsp\tf4all\ffb.lua">
       <LogicalName>TrueforceForAll.Plugin.AcCspBridge.ffb.lua</LogicalName>
     </EmbeddedResource>
@@ -96,6 +124,16 @@
     </Reference>
     <Reference Include="SimHub.Logging">
       <HintPath>$(SimHubPath)\SimHub.Logging.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- DirectInput, for the DAMPCAL spike (driving the wheel's native damper
+         ourselves). SimHub ships SharpDX for its own controller support. -->
+    <Reference Include="SharpDX">
+      <HintPath>$(SimHubPath)\SharpDX.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="SharpDX.DirectInput">
+      <HintPath>$(SimHubPath)\SharpDX.DirectInput.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <!-- SimHub.Logging.Current returns an ILog from log4net. -->

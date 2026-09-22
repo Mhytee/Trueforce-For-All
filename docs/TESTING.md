@@ -41,12 +41,12 @@ Include your FPS (and whether it was locked) with any force-feedback report so w
 With Telemetry Based FFB enabled, your wheel's rev lights fill and flash with the engine and honor the community redline start where one is confirmed. Check that they track the revs and light up around the right point.
 
 ### New effects
-Three new texture effects, all off by default, built for the extra per-tire detail Forza exposes: **Axle slip**, **Kerb thump**, and **Lockup judder**. Enable them in the Effects tab and see how they feel.
+Three new texture effects, all off by default, built for the extra per-tire detail Forza exposes: **Axle slip**, **Curb thump**, and **Lockup judder**. Enable them in the Effects tab and see how they feel.
 
 ### Airborne ducking and tire-load effects
 Turn the traction loss and road bumps effects on, then check these two related fixes:
 
-- **Airborne ducking (Assetto Corsa).** Turn on airborne ducking and go airborne over a kerb or crest. With it enabled, the wheel should fall quiet in the air instead of buzzing or rumbling, and pick back up when the tires land. The quieting only happens with airborne ducking on, and it essentially never fired in AC before. (Forza is already confirmed.)
+- **Airborne ducking (Assetto Corsa).** Turn on airborne ducking and go airborne over a curb or crest. With it enabled, the wheel should fall quiet in the air instead of buzzing or rumbling, and pick back up when the tires land. The quieting only happens with airborne ducking on, and it essentially never fired in AC before. (Forza is already confirmed.)
 - **Traction loss and road bumps.** These now scale with tire load, so they should feel tied to how hard each tire is working rather than buzzing at a flat level. Traction loss should swell as a loaded tire starts to slide and fade when the tire goes light; road bumps should hit harder when a tire is pressed into the road and soften as it unloads (over crests, through dips, on the inside wheel mid-corner). Drive normally and tell us how the load update feels, and whether it comes across as too strong, too subtle, or twitchy.
 
 Real wheelspin, lockups, and slides on the ground should still come through as normal.
