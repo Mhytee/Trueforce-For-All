@@ -4710,6 +4710,13 @@ namespace TrueforceForAll.Plugin
                     TimeSpan.FromMinutes(2), TimeSpan.FromHours(6));
             }
             catch { /* timer construction never fatal to boot */ }
+            // Prune the queued game-days on every start, whatever the toggle says. This
+            // is the one pruner an opted-out install ever reaches: everything else in
+            // this feature sits behind ShareUsageStats, so without it a user who turned
+            // the switch off would carry the days queued at that moment forever. Only
+            // writes when something actually went.
+            try { if (PruneUsageGameDays()) PersistSettingsCore(); }
+            catch { /* prune is housekeeping; never fatal to boot */ }
 
             // Fire-and-forget plugin-load account sync. If a session was
             // restored from Settings.AuthSession, refresh the profile so
@@ -25406,24 +25413,12 @@ namespace TrueforceForAll.Plugin
                 string gamesJson = null;
                 System.Collections.Generic.List<string> sentGameDays = null;
                 var played = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                PruneUsageGameDays();
                 lock (_carFactsLock)
                 {
                     var list = Settings.TelemetryGameDays;
                     if (list != null)
                     {
-                        // Drop entries the server can no longer accept. Its window is 60
-                        // days; anything older is refused, so it is never echoed in the
-                        // receipt, so CommitUsagePing never removes it. Left alone it is
-                        // immortal: re-serialized into every future ping and occupying a
-                        // cap slot for good. Pruned at 55 days, safely inside the window
-                        // so nothing still deliverable is thrown away.
-                        string cutoff = UsageDayKey(DateTime.UtcNow.AddDays(-55));
-                        list.RemoveAll(e =>
-                        {
-                            int b = e == null ? -1 : e.IndexOf('|');
-                            return b <= 0 || b >= e.Length - 1
-                                || string.CompareOrdinal(e.Substring(b + 1), cutoff) < 0;
-                        });
                         if (!string.IsNullOrEmpty(game))
                         {
                             string liveKey = game + "|" + today;
@@ -25814,6 +25809,51 @@ namespace TrueforceForAll.Plugin
             {
                 SimHub.Logging.Current.Info("[TF4ALL] Game preset payload build failed: " + ex.Message);
                 return null;
+            }
+        }
+
+        /// <summary>Drop queued game-days the server can no longer accept, and keep
+        /// the queue inside its cap. Returns true when anything was removed.
+        ///
+        /// Deliberately NOT gated on ShareUsageStats, and called from Init as well as
+        /// from the ping. The send path is gated, so an install that opted out would
+        /// otherwise keep whatever it had queued at that moment in its settings file
+        /// indefinitely: never sent, because sending is off, and never pruned, because
+        /// the only pruner ran behind the same gate. Holding a play history for someone
+        /// who opted out serves no purpose. Age-based rather than wholesale, so turning
+        /// the switch off and straight back on still reports the day.</summary>
+        private bool PruneUsageGameDays()
+        {
+            try
+            {
+                if (Settings == null) return false;
+                // The server accepts a 60-day window; anything older is refused, so it
+                // is never echoed in a receipt, so CommitUsagePing never removes it.
+                // Left alone such an entry is immortal: re-serialized into every future
+                // ping and occupying a cap slot for good. Cut at 55 days, safely inside
+                // the window, so nothing still deliverable is thrown away.
+                string cutoff = UsageDayKey(DateTime.UtcNow.AddDays(-55));
+                lock (_carFactsLock)
+                {
+                    var list = Settings.TelemetryGameDays;
+                    if (list == null || list.Count == 0) return false;
+                    int before = list.Count;
+                    list.RemoveAll(e =>
+                    {
+                        int b = e == null ? -1 : e.IndexOf('|');
+                        return b <= 0 || b >= e.Length - 1
+                            || string.CompareOrdinal(e.Substring(b + 1), cutoff) < 0;
+                    });
+                    // A file edited by hand, or written by an older build with a larger
+                    // cap, can still arrive over the limit; trim oldest-first.
+                    while (list.Count > UsageGameDayCap) list.RemoveAt(0);
+                    return list.Count != before;
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Info("[TF4ALL] Usage game-day prune failed: " + ex.Message);
+                return false;
             }
         }
 
