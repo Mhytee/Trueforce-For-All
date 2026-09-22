@@ -409,7 +409,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Banking game capabilities failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Banking game capabilities failed: " + ex.Message);
             }
         }
 
@@ -1173,7 +1173,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] dash light sync failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] dash light sync failed: " + ex.Message);
             }
         }
 
@@ -1926,7 +1926,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Dash Telemetry FFB action failed (" + k.Key + "): " + ex.Message);
             }
         }
@@ -3123,7 +3123,7 @@ namespace TrueforceForAll.Plugin
                     try { PersistSettings(); }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info(
+                        SimHub.Logging.Current.Warn(
                             "[TF4ALL] Persist DashLastTab failed: " + ex.Message);
                     }
                 }
@@ -3160,7 +3160,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[TF4ALL] Dash effect action failed ({f.Key}): {ex.Message}");
+                SimHub.Logging.Current.Error($"[TF4ALL] Dash effect action failed ({f.Key}): {ex.Message}");
             }
         }
 
@@ -3475,7 +3475,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Dash car save failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Dash car save failed: " + ex.Message);
                 DashToast("SAVE FAILED (see the SimHub log)");
             }
         }
@@ -3579,7 +3579,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Dash game-preset save failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Dash game-preset save failed: " + ex.Message);
                 DashToast("SAVE FAILED (see the SimHub log)");
             }
         }
@@ -3725,7 +3725,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Dash save-to-both failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Dash save-to-both failed: " + ex.Message);
                 DashToast("SAVE FAILED (see the SimHub log)");
             }
         }
@@ -3811,7 +3811,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[TF4ALL] Dash preset picker open failed ({scope}): {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Dash preset picker open failed ({scope}): {ex.Message}");
             }
         }
 
@@ -3891,7 +3891,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[TF4ALL] Dash preset apply failed ({name}): {ex.Message}");
+                SimHub.Logging.Current.Error($"[TF4ALL] Dash preset apply failed ({name}): {ex.Message}");
             }
         }
 

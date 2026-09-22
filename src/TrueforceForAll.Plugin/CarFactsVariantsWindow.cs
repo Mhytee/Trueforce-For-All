@@ -546,7 +546,7 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.CustomEngines.Add(def);
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
-            { SimHub.Logging.Current.Info("[TF4ALL] Persist new custom engine failed: " + ex.Message); }
+            { SimHub.Logging.Current.Error("[TF4ALL] Persist new custom engine failed: " + ex.Message); }
             Reload();
         }
 

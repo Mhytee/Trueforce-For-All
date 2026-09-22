@@ -542,7 +542,7 @@ namespace TrueforceForAll.Plugin
                 return;
             _pendingPersist = false;
             try { _plugin.PersistSettings(); }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
         }
 
         private void RemoveBox()

@@ -125,7 +125,7 @@ namespace TrueforceForAll.Plugin
             try { qrImage = MakeQr(url); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] QR generation failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] QR generation failed: " + ex.Message);
             }
             if (qrImage != null)
             {
@@ -210,7 +210,7 @@ namespace TrueforceForAll.Plugin
                 try { Process.Start(url); }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] Open dash in browser failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] Open dash in browser failed: " + ex.Message);
                 }
             };
             AddCloseRow(root, openBtn);

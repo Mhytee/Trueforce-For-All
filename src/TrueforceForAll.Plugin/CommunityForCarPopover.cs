@@ -306,7 +306,7 @@ namespace TrueforceForAll.Plugin
                     // The preset save+import already worked locally;
                     // only the "make it active" call failed. Tell the
                     // user instead of pretending it's set as active.
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Error(
                         "[TF4ALL] Popover switch-to-existing failed: " + ex.Message);
                     statusText.Foreground = ErrFg;
                     statusText.Text =
@@ -349,7 +349,7 @@ namespace TrueforceForAll.Plugin
                 // Import succeeded but the car-binding write failed.
                 // The preset is in the user's library; they just need
                 // to set it active manually. Don't claim full success.
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Popover switch-after-save failed: " + ex.Message);
                 statusText.Foreground = ErrFg;
                 statusText.Text =

@@ -71,6 +71,26 @@ namespace TrueforceForAll.Core
         // only a fault sets this. Cleared by StartStream(). The plugin's
         // recovery watchdog polls StreamFaulted to know a re-attach is due.
         private volatile bool _streamFaulted;
+        // The exception thrown by whatever raised _streamFaulted, kept so the
+        // plugin can say WHY the wheel died instead of only that it did. Both
+        // write-failure catches used to discard it, so a mid-session death
+        // left the log with a bare re-attach line and an unplug, a G HUB HID
+        // grab and a USB stall were indistinguishable afterwards (support
+        // reports, 2026-09-22). Volatile for the same reason _streamFaulted
+        // is: written on the 1 kHz stream thread, read on the plugin's data
+        // thread. Held as the live exception object rather than a rendered
+        // string so the plugin can hand it to SimHub's Error(message,
+        // exception) overload and get the type and stack for free; the device
+        // never formats and never logs. Null when the fault came from
+        // DebugForceStreamFault, which never had a real exception to keep.
+        private volatile Exception _lastStreamFault;
+        // Which path died, in words the plugin's log line can use verbatim.
+        // Separate from _lastStreamFault because the FAULT test hook has a
+        // site but no exception, and because a mode-command write, a sample
+        // write and the pump itself throwing look identical once the
+        // exception is all you have: the operator wants to know which one
+        // stopped.
+        private volatile string _streamFaultSite;
         // Set false by StopAcceptingSamples() to release blocked PushFloats /
         // PushInt16 callers ahead of full shutdown, lets the host drain the
         // producer without also halting the stream thread (which still needs
@@ -484,6 +504,36 @@ namespace TrueforceForAll.Core
         /// trigger a transparent re-attach.</summary>
         public bool StreamFaulted => _streamFaulted;
 
+        /// <summary>The exception that killed the stream, or null when the
+        /// fault was raised by DebugForceStreamFault (in which case nothing
+        /// actually failed). Only meaningful while StreamFaulted is true.
+        /// </summary>
+        public Exception LastStreamFault => _lastStreamFault;
+
+        /// <summary>Plain-English name of the path that died, for the
+        /// plugin's log line. The three ways this flag goes up (a mode
+        /// command write, the steady-state sample write, and the pump itself
+        /// throwing) fail for different reasons, and an operator reading
+        /// SimHub.txt wants to know which one stopped. Only meaningful while
+        /// StreamFaulted is true.</summary>
+        public string LastStreamFaultSite => _streamFaultSite;
+
+        // Record why the stream is about to die; the caller raises
+        // _streamFaulted immediately afterwards. The ordering is the point:
+        // all three fields are volatile, and a volatile write cannot be
+        // reordered past a later volatile write, so any thread that observes
+        // StreamFaulted == true is guaranteed to see the reason that belongs
+        // with it rather than a null it would have to guess at. Only ever
+        // called from a path that has already failed, so neither the string
+        // nor the reference costs anything on the 1 kHz success path. No
+        // logging here, by design: the device stays silent and the plugin
+        // decides what to say.
+        private void CaptureStreamFault(string site, Exception ex)
+        {
+            _streamFaultSite = site;
+            _lastStreamFault = ex;
+        }
+
         /// <summary>Test hook (FAULT access code): simulate an involuntary
         /// stream death (unplug / HID grab / USB stall) so the plugin's
         /// recovery watchdog re-attaches, without physically unplugging.
@@ -491,6 +541,12 @@ namespace TrueforceForAll.Core
         /// StreamLoop tears down and StreamFaulted reports true.</summary>
         public void DebugForceStreamFault()
         {
+            // Name the hook and leave the exception null. The plugin keys its
+            // log line off that null: with no exception there was no failure,
+            // so it reports a simulated fault instead of claiming the wheel
+            // stopped accepting packets. A support log must never be able to
+            // show a real-sounding hardware failure that nobody had.
+            CaptureStreamFault("the FAULT test hook", null);
             _streamFaulted = true;
             _shuttingDown  = true;
         }
@@ -503,6 +559,14 @@ namespace TrueforceForAll.Core
                 _streamRunning = true;
                 _shuttingDown = false;
                 _streamFaulted = false;
+                // Drop the previous reason along with the flag it explained,
+                // so a restarted stream can never hand the plugin a stale
+                // cause from an earlier fault on this same instance. Today
+                // the plugin always builds a fresh device rather than
+                // restarting a stopped one, so this is a guard against a
+                // future caller, not a fix for a case we have seen.
+                _lastStreamFault = null;
+                _streamFaultSite = null;
                 _paused = false;
                 _streamThread = new Thread(StreamLoop)
                 {
@@ -805,6 +869,23 @@ namespace TrueforceForAll.Core
                         nextTick = sw.ElapsedTicks + periodTicks;
                 }
             }
+            catch (Exception ex)
+            {
+                // The pump itself threw, not a packet write: anything that
+                // escapes StreamTick outside its own two try blocks, or the
+                // timer / sleep path here, lands in this catch. Until this
+                // clause existed (2026-09-22) such an exception simply killed
+                // the stream thread with _streamFaulted false, so the
+                // plugin's watchdog saw no fault to recover from, StreamStatus
+                // kept reporting a healthy stream, and the wheel stayed
+                // silently dead for the rest of the session with nothing in
+                // the log. Route it through the same capture and raise the
+                // same flags the write failures raise, so the watchdog treats
+                // it as a recoverable death and the plugin can name it.
+                CaptureStreamFault("the stream pump itself (not a packet write)", ex);
+                _streamFaulted = true;
+                _shuttingDown = true;
+            }
             finally
             {
                 // The wheel LATCHES the last cur it received when the stream
@@ -844,7 +925,18 @@ namespace TrueforceForAll.Core
                 _packetBuf[InitData.SeqOffset] = _seq++;
                 System.Threading.Interlocked.Increment(ref _ep3Writes);
                 try { _stream.Write(_packetBuf); }
-                catch { _streamFaulted = true; _shuttingDown = true; return; }
+                catch (Exception ex)
+                {
+                    // The pause / resume mode command never reached the wheel.
+                    // Capture why before raising the flag: the plugin disposes
+                    // this device a moment later and the exception goes with
+                    // it, and without the capture an unplug, a G HUB HID grab
+                    // and a USB stall all read the same in the log.
+                    CaptureStreamFault("the pause/resume mode command packet", ex);
+                    _streamFaulted = true;
+                    _shuttingDown = true;
+                    return;
+                }
                 _paused = (cmd == 0x04);
                 return;
             }
@@ -1248,11 +1340,19 @@ namespace TrueforceForAll.Core
                 _stream.Write(_packetBuf);
                 System.Threading.Interlocked.Increment(ref _packetsSent);
             }
-            catch
+            catch (Exception ex)
             {
                 // On a write failure (device unplugged etc.) tear down the
                 // loop and flag it as a fault so the plugin's watchdog can
                 // tell this apart from a clean StopStream() and re-attach.
+                // Capture the exception first: this is the last moment it
+                // exists, it is the only evidence of what killed a wheel
+                // mid-session, and this is where a real death almost always
+                // lands (the steady-state write runs 1000 times a second,
+                // the mode command only on a pause or resume). Still no
+                // logging on this thread; the plugin reports the reason once
+                // when it tears the device down.
+                CaptureStreamFault("the steady-state audio-haptic sample packet", ex);
                 _streamFaulted = true;
                 _shuttingDown = true;
             }
