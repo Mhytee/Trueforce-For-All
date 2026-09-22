@@ -625,17 +625,82 @@ namespace TrueforceForAll.Core
         public string CurrentRawPacketLogPath => _rawLogPath;
         public long RawLogBytesWritten => Interlocked.Read(ref _rawLogBytesWritten);
 
-        // Wall-clock ticks of the last periodic diagnostics emission. Emitted
-        // by the parser thread every ~5 seconds when the tap is active so the
-        // exported logs reliably contain at least one snapshot of the
-        // counters/histogram during the user's repro session.
+        // Wall-clock ticks of the next diagnostics CHECK. The parser thread
+        // checks every ~5 seconds while the tap is active, which is the floor
+        // on how often a transition can reach the log; MaybeEmitDiagnostics
+        // then decides whether that check has anything worth saying. Every
+        // capture still emits one full snapshot of the counters/histogram, so
+        // the exported logs always carry a baseline for the user's repro
+        // session.
         private long _nextDiagEmitTicks;
         private const int DiagEmitIntervalMs = 5000;
 
+        // Nothing material has changed for this long: emit one line anyway, so
+        // a long steady session still leaves dated marks in the log. Be exact
+        // about what that proves, because it is narrower than it looks: this
+        // method is only ever called from the parse loop, after the packet has
+        // been matched to our device, so a heartbeat says "packets for the
+        // wheel were still arriving at 21:14" and nothing more. It cannot
+        // report a capture that has died, because a dead capture stops calling
+        // us at all; the liveness watchdog (MaybeWatchdog) owns that case.
+        // Bounding the silence is still worth doing: without it a quiet session
+        // can run an hour on a single line, and the reader cannot tell a tap
+        // that sat idle from a log that got truncated. Ten minutes costs six
+        // lines an hour, against the 718 an hour the unconditional five-second
+        // emit used to cost. A real transition never waits for this.
+        private const int DiagHeartbeatMs = 600000;
+
+        // Diagnostics suppression state, all of it parser-thread only exactly
+        // like _nextDiagEmitTicks above: no interlocks and no volatile,
+        // because nothing else touches these.
+        //
+        // False until the first line goes out, so every capture gets one
+        // baseline reading whatever else is or is not true. ParseFromCore
+        // clears it again on each restart.
+        private bool _diagEverEmitted;
+
+        // Packed fingerprint of every material fact in the last emitted line
+        // (MaybeEmitDiagnostics documents the bit layout). One long comparison
+        // is what keeps the quiet path cheap on the capture thread.
+        private long _diagLastSig;
+
+        // Order-independent signature of the SET of (report, feature, func)
+        // tuples as of the last emitted line. Kept apart from _diagLastSig
+        // because it can only be computed under _tupleLock.
+        private long _diagLastTupleSig;
+
+        // The DI live-effect description as of the last emitted line, or null
+        // when nothing was playing (or when the payload would not have printed
+        // it). Compared ordinally: "spring=1" turning into "spring=1
+        // periodic=2" is the shape of a stacked effect and has to reach the log
+        // the moment it happens.
+        private string _diagLastDiLive;
+
+        // Environment.TickCount at the last emitted line. A suppressed stretch
+        // hides real time, so every line after the first reports how long the
+        // tap had been quiet before it.
+        private long _diagLastEmitMs;
+
+        // Device packet count at the last emitted line, so the same line can
+        // report how much traffic went by unreported during the quiet window.
+        // A suppressed interval should not be information lost.
+        private long _diagLastEmitPackets;
+
+        // Counters as of the PREVIOUS five-second check, not as of the previous
+        // emitted line. This is what turns a monotonic total into the fact
+        // worth logging: this kind of traffic is arriving right now, or it has
+        // stopped. Sampling line to line instead would let traffic stop in the
+        // middle of a ten-minute quiet stretch and still look alive, because
+        // the total does differ from ten minutes ago. -1 means no check has
+        // happened yet, so nothing is called flowing on the very first one.
+        private long _diagPrevTickSamples = -1;
+        private long _diagPrevTickEp0     = -1;
+        private long _diagPrevTickSetrep  = -1;
+
         // The FFB feature-index resolver is gated on its own fast cadence,
-        // separate from the 5 s diagnostics emit, so first FFB on a non-0x0e
+        // separate from the 5 s diagnostics check, so first FFB on a non-0x0e
         // wheel (RS50 -> 0x10) latches sub-second instead of waiting up to one
-        // diagnostics interval. Runs until _ffbIndexConfirmed (real FFB
+        // diagnostics check. Runs until _ffbIndexConfirmed (real FFB
         // actually extracted), not merely until a tentative resolve; after
         // confirmation the gate stops calling it entirely (zero steady-state
         // cost). Before confirmation it may re-switch indices, which is what
@@ -1403,6 +1468,15 @@ namespace TrueforceForAll.Core
             // Slot state describes the wheel's live FFB slots; a fresh capture
             // (first start, or a watchdog restart) knows nothing about them.
             ResetClassicState();
+            // Same reasoning for the diagnostics line: the reader loop reuses
+            // this instance across restarts, so without this a whole-bus retry
+            // or a device cycle would produce no fresh snapshot at all. The
+            // counters it reports are never reset, so the material fingerprint
+            // usually comes out identical across the restart and the next line
+            // could be up to a heartbeat away. The moment a capture comes back
+            // is exactly the moment a support case wants the numbers, so force
+            // one why=first line on the next check.
+            _diagEverEmitted = false;
             _classicResetRequested = false;
             _classicScalarResetRequested = false;
 
@@ -2920,11 +2994,190 @@ namespace TrueforceForAll.Core
             }
         }
 
+        /// <summary>Say what the FFB tap is doing, but only when it changes.
+        ///
+        /// This one line is the whole picture of the tap: which report id owns
+        /// force, which HID++ feature index we settled on, how many forces we
+        /// matched, which (report, feature, func) tuples the wheel has sent,
+        /// and what the DI engine is playing. It used to go out every five
+        /// seconds regardless, and a measured one-hour session produced 718 of
+        /// the plugin's 766 log lines that way, every one of them reading
+        /// "live=none matched=0" because nothing was happening (log audit,
+        /// 2026-09-22). A log that is 94 percent one repeated sentence is a log
+        /// nobody can search, and the sentence that repeats drowns out the one
+        /// that matters, so a quiet tap now keeps a quiet log.
+        ///
+        /// The rules, in order: the first reading of each capture always goes
+        /// out, so every capture has a baseline; after that a line goes out
+        /// only when a MATERIAL fact moves; and when nothing material has moved
+        /// for ten minutes one line goes out anyway, so a steady session still
+        /// leaves dated marks. Counters climbing by themselves are not
+        /// material: packets arriving is the wheel being plugged in, not news.
+        /// What is news is a fact an operator reasons about, and every one of
+        /// those is folded into the fingerprint below.
+        ///
+        /// Because a suppressed stretch hides real time, every line after the
+        /// first says how long the tap was quiet and how many packets went by
+        /// in that window, so the silence still carries its own measurement.
+        ///
+        /// Parser thread only, like the rest of the diagnostics state; the one
+        /// shared structure (_tupleCounts) is read under the existing lock.
+        /// </summary>
         private void MaybeEmitDiagnostics()
         {
             long now = Environment.TickCount;
             if (now < _nextDiagEmitTicks) return;
             _nextDiagEmitTicks = now + DiagEmitIntervalMs;
+
+            // Flow is measured check to check, never line to line: the useful
+            // fact is "this kind of traffic is arriving right now", which is a
+            // transition, while the running total is not.
+            //
+            // ep0 control transfers and Set_Reports get the same treatment as
+            // matched forces, and for this wheel family that pair is the
+            // important one. A tap that goes deaf on ep0 while packets keep
+            // climbing is exactly how RaceRoom's limp FFB presents, and how the
+            // LED/FFB contention cut presents: setrep and ep0ctrl stop
+            // advancing, everything else looks healthy. Both numbers were
+            // already printed on this line and neither was in the change test,
+            // which would have left the most diagnosable failure we have
+            // waiting up to ten minutes for a heartbeat.
+            long packets = PacketsForOurDevice;
+            long samples = FfbSamplesCaptured;
+            long ep0     = Ep0ControlTransfersOnOurDevice;
+            long setrep  = SetReportsOnOurDevice;
+            bool samplesFlowing = _diagPrevTickSamples >= 0 && samples != _diagPrevTickSamples;
+            bool ep0Flowing     = _diagPrevTickEp0     >= 0 && ep0     != _diagPrevTickEp0;
+            bool setrepFlowing  = _diagPrevTickSetrep  >= 0 && setrep  != _diagPrevTickSetrep;
+            _diagPrevTickSamples = samples;
+            _diagPrevTickEp0     = ep0;
+            _diagPrevTickSetrep  = setrep;
+
+            // The material fingerprint: every fact in the emitted line that an
+            // operator actually reasons about, packed into one long so the
+            // change test on the common (quiet) path is a single comparison and
+            // allocates nothing. Deliberately absent: any raw counter value. A
+            // number going up by itself is the wheel being plugged in; what
+            // matters is a number leaving zero, or traffic starting and
+            // stopping.
+            //
+            // One rule holds the whole thing together: a bit enters the
+            // fingerprint only under the same condition that makes the payload
+            // print the field it describes. Break that rule and you get a line
+            // tagged why=change whose text is identical to the line before it,
+            // which tells the reader something moved and then hides what.
+            long sig = _reportArbiter.LiveReport;           // which report id owns force
+            sig |= (long)_ffbFeatureIndex << 8;             // which HID++ feature we decode
+            if (_ffbIndexResolved)  sig |= 1L << 16;        // and how sure we are of it
+            if (_ffbIndexConfirmed) sig |= 1L << 17;
+            if (samples > 0)        sig |= 1L << 18;        // ever matched a force at all
+            if (samplesFlowing)     sig |= 1L << 19;        // forces arriving right now
+            // Bit 20 is free, and deliberately not a "capture is alive" bit.
+            // This method runs only from the parse loop, after a packet has
+            // already been matched to our device, so such a bit could only ever
+            // read true; a capture that has stopped stops calling us instead,
+            // and MaybeWatchdog is what notices that.
+            if (SpringUpdatesCaptured > 0)           sig |= 1L << 21;
+            if (SpringUpdatesCaptured > 0 && _playingSprings != null)
+                                                     sig |= 1L << 22;
+            if (ClassicConditionUpdatesCaptured > 0) sig |= 1L << 23;
+            // The DI facts ride inside the payload's dieffects branch, so they
+            // are fingerprinted inside it too (see the one rule above).
+            bool di = _hidppEffects.ParametricDownloads > 0;
+            if (di)                                              sig |= 1L << 24;
+            if (di && _hidppEffects.AnyPlaying)                  sig |= 1L << 25;
+            if (di && _hidppEffects.ReplacedStaleConditions > 0) sig |= 1L << 26;
+            if (_rawLogStream != null)       sig |= 1L << 27;   // raw trace toggled
+            if (ControlOutOnOurDevice > 0)   sig |= 1L << 28;
+            if (InterruptOutOnOurDevice > 0) sig |= 1L << 29;
+            if (BulkOutOnOurDevice > 0)      sig |= 1L << 30;
+            if (IsoOutOnOurDevice > 0)       sig |= 1L << 31;
+            // Which OUT endpoints have ever carried traffic (bits 32..47). A
+            // wheel starting to use an endpoint it has never used before is
+            // exactly the kind of thing this line exists to catch, while the
+            // per-endpoint totals climbing is not. The layout depends on
+            // _outEndpointCounts being exactly 16 entries long, which is how it
+            // is declared; widen that array past 16 and these bits silently
+            // alias the gain field below.
+            for (int i = 0; i < _outEndpointCounts.Length; i++)
+                if (_outEndpointCounts[i] > 0) sig |= 1L << (32 + i);
+            // Global gain to the whole percent (bits 48..55). The game pulling
+            // gain down is a real complaint ("the wheel went light"), and
+            // rounding to a percent stops float jitter from logging on its own.
+            // Gated on the same two conditions the payload prints gain= under,
+            // rather than moving gain= out of the dieffects branch: the payload
+            // format is the thing support workflows are trained to read, so of
+            // the two ways to stop an invisible why=change, the one that leaves
+            // the printed line byte for byte alone wins.
+            if (di && _hidppEffects.GlobalGain < 0.999f)
+            {
+                int gainPct = (int)(_hidppEffects.GlobalGain * 100f + 0.5f);
+                if (gainPct < 0) gainPct = 0; else if (gainPct > 255) gainPct = 255;
+                sig |= (long)gainPct << 48;
+            }
+            // ep0 health (bits 56 and 57), the pair described at the top.
+            if (ep0Flowing)    sig |= 1L << 56;
+            if (setrepFlowing) sig |= 1L << 57;
+
+            // The SET of (report, feature, func) tuples, not their counts: a
+            // new tuple appearing is the smoking gun, the same tuple counting
+            // higher is just traffic. Summed rather than ordered so dictionary
+            // order can never fake a change, and computed without building the
+            // histogram string, so a quiet tap allocates nothing here.
+            //
+            // Load-bearing invariant: this hash is linear (Count plus a sum of
+            // scrambled keys), so it is collision-free only because
+            // _tupleCounts is never cleared anywhere in this file. The set only
+            // ever grows, so the Count folded in at the start already differs
+            // whenever the set differs, whatever the sum does. If a future
+            // change ever clears the dictionary (on capture restart, say), that
+            // guarantee is gone and this hash has to be strengthened: fold each
+            // key in with a rotate instead of adding it, so two different sets
+            // of the same size cannot sum alike.
+            long tupleSig;
+            lock (_tupleLock)
+            {
+                tupleSig = _tupleCounts.Count;
+                foreach (var kv in _tupleCounts)
+                    tupleSig += unchecked((kv.Key + 1) * 2654435761L);
+            }
+
+            // Live inventory by type, sampled once so the whole line describes
+            // one instant rather than drifting mid-string. Part of the change
+            // test as well, because what is playing changing is the single most
+            // useful transition on this line, but only as far as the payload
+            // shows it: dilive= sits inside the dieffects branch.
+            string diLive = _hidppEffects.DescribeLive(_sw.ElapsedTicks, Stopwatch.Frequency);
+            string diLiveShown = di ? diLive : null;
+
+            long quietMs = now - _diagLastEmitMs;
+            if (quietMs < 0) quietMs = 0;   // TickCount rolled past int: report no gap rather than a negative one
+            bool changed = sig != _diagLastSig
+                        || tupleSig != _diagLastTupleSig
+                        || !string.Equals(diLiveShown, _diagLastDiLive, StringComparison.Ordinal);
+
+            string why;
+            if (!_diagEverEmitted) why = "first";
+            else if (changed) why = "change";
+            else if (quietMs >= DiagHeartbeatMs) why = "heartbeat";
+            else return;                    // nothing material moved: stay quiet
+
+            long quietPackets = packets - _diagLastEmitPackets;
+            if (quietPackets < 0) quietPackets = 0;
+            _diagLastSig = sig;
+            _diagLastTupleSig = tupleSig;
+            _diagLastDiLive = diLiveShown;
+            _diagLastEmitMs = now;
+            _diagLastEmitPackets = packets;
+            _diagEverEmitted = true;
+
+            // Why this line exists sits in front of the payload, so a reader
+            // scanning the log sees the reason before wading into the numbers.
+            // The payload itself is untouched: support workflows, and our own
+            // eyes, are trained on it.
+            string whyClause = why == "first"
+                ? "why=first "
+                : $"why={why} quiet={quietMs / 1000}s quietpkt={quietPackets} ";
 
             // Build a short top-N tuple histogram. With AC + G PRO we expect
             // a single dominant tuple (0x11, 0x0e, 0x20). Multiple tuples is
@@ -2952,11 +3205,7 @@ namespace TrueforceForAll.Core
             for (int i = 0; i < _outEndpointCounts.Length; i++)
                 if (_outEndpointCounts[i] > 0) epOut.Add($"ep{i}={_outEndpointCounts[i]}");
 
-            // Live inventory by type, sampled once so the whole line
-            // describes one instant rather than drifting mid-string.
-            string diLive = _hidppEffects.DescribeLive(_sw.ElapsedTicks, Stopwatch.Frequency);
-
-            Log($"FFB tap diag: packets={PacketsForOurDevice} " +
+            Log($"FFB tap diag: {whyClause}packets={packets} " +
                 $"out_ctrl={ControlOutOnOurDevice} out_int={InterruptOutOnOurDevice} " +
                 $"out_bulk={BulkOutOnOurDevice} out_iso={IsoOutOnOurDevice} " +
                 $"out_by_ep=[{string.Join(" ", epOut)}] " +
