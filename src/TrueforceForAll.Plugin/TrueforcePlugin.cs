@@ -4155,55 +4155,11 @@ namespace TrueforceForAll.Plugin
                 Settings.StopStreamOnPauseDefaultOffMigrated = true;
                 Settings.StopStreamOnPause = false;
             }
-            // Inertia renders accurately from 2026-09-09: force per unit
-            // ACCELERATION, and it coasts. Settings written before that carry
-            // the damping-shaped defaults, and with them an inertia gain
-            // tuned as force per unit VELOCITY. The two domains are about an
-            // order of magnitude apart on a hand-turned wheel, so carrying
-            // the number over is not honouring a preference, it is a unit
-            // error that saturates the term on every push. Reset it to the
-            // acceleration default and let the bench retune. Only when the
-            // stored mode was the damping one: anyone already rendering
-            // acceleration has a gain that means what it says.
-            if (!Settings.FfbConditionInertiaSpecMigrated)
-            {
-                Settings.FfbConditionInertiaSpecMigrated = true;
-                if (Settings.FfbConditionInertiaAsDamping)
-                {
-                    Settings.FfbConditionInertiaAsDamping = false;
-                    Settings.FfbConditionInertiaGain = new TrueforceSettings().FfbConditionInertiaGain;
-                }
-                Settings.FfbConditionInertiaCoasts = true;
-            }
-            // Condition-engine defaults, generation 1 (G PRO bench, 2026-09-19):
-            // the engine changed underneath the old numbers (the estimator's
-            // second pole, the classic types), and every effect was re-matched
-            // against the wheel's own rendering. There is one right tuning per
-            // wheel, and the bench exists to find it, not to keep a tune of
-            // one's own, so EVERY file is brought to the new numbers once,
-            // bench-tuned or not (owner, 2026-09-20: reset them all, the goal is
-            // no tuning needed or possible). A fresh install carries the new
-            // numbers already. The direction flip and the inertia mode are
-            // wheel facts, not tuning, and stay.
-            if (Settings.FfbConditionDefaultsGeneration < 1)
-            {
-                Settings.FfbConditionDefaultsGeneration = 1;
-                var fresh = new TrueforceSettings();
-                Settings.FfbConditionDamperGain    = fresh.FfbConditionDamperGain;
-                Settings.FfbConditionSpringGain    = fresh.FfbConditionSpringGain;
-                Settings.FfbConditionFrictionGain  = fresh.FfbConditionFrictionGain;
-                Settings.FfbConditionInertiaGain   = fresh.FfbConditionInertiaGain;
-                Settings.FfbConditionPeriodicGain  = fresh.FfbConditionPeriodicGain;
-                Settings.FfbConditionRampGain      = fresh.FfbConditionRampGain;
-                Settings.FfbConditionLpfHz         = fresh.FfbConditionLpfHz;
-                Settings.FfbConditionDamperLpfHz   = fresh.FfbConditionDamperLpfHz;
-                Settings.FfbConditionSpringLpfHz   = fresh.FfbConditionSpringLpfHz;
-                Settings.FfbConditionFrictionLpfHz = fresh.FfbConditionFrictionLpfHz;
-                Settings.FfbConditionInertiaLpfHz  = fresh.FfbConditionInertiaLpfHz;
-                SimHub.Logging.Current.Info(
-                    "[TF4ALL] Condition-engine tuning brought to the generation 1 defaults (damper 1.0 at 10 Hz, "
-                    + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.10, waveforms 0.9, ramp 0.5).");
-            }
+            // The condition engine's own data migrations (the inertia-spec repair and the
+            // generation reset). They live in a method rather than here because a restore or
+            // an import can land values that predate them, and the fix then has to run again
+            // outside startup. Same call, same order, same behavior as when it was inline.
+            ApplyConditionMigrations();
             // The Le Mans Ultimate full scale's first, provisional default (15
             // Nm, before the rig had measured what the cars push) was persisted
             // by the one settings file that ran that build. Move it to the
@@ -4243,6 +4199,13 @@ namespace TrueforceForAll.Plugin
                 {
                     var backupUnclassified = BackupProjection.FindUnclassifiedFields();
                     var backupDoubled      = BackupProjection.FindDoubleClassifiedFields();
+                    // The two guards below face the other way: not "is every field classified"
+                    // but "does every classification still name a real field", and the same
+                    // question for the Forza/Arcade splits. That direction had no check at all,
+                    // which is how two Portable entries came to match no property for a month
+                    // while the list implied the settings were being backed up.
+                    var backupStale        = BackupProjection.FindStaleClassifications();
+                    var partialUnclassified = BackupProjection.FindUnclassifiedPartialFields();
                     if (backupUnclassified.Count > 0)
                         SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: " + backupUnclassified.Count
                             + " unclassified TrueforceSettings field(s); add each to a BackupProjection bucket "
@@ -4250,7 +4213,14 @@ namespace TrueforceForAll.Plugin
                     if (backupDoubled.Count > 0)
                         SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: field(s) classified in more than "
                             + "one BackupProjection bucket: " + string.Join(", ", backupDoubled));
-                    if (backupUnclassified.Count == 0 && backupDoubled.Count == 0)
+                    if (backupStale.Count > 0)
+                        SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: classified name(s) that match no "
+                            + "property, so they back up nothing: " + string.Join(", ", backupStale));
+                    if (partialUnclassified.Count > 0)
+                        SimHub.Logging.Current.Warn("[TF4ALL][DEV] Backup: Forza/Arcade field(s) in neither the "
+                            + "portable nor the machine-local half of their split: " + string.Join(", ", partialUnclassified));
+                    if (backupUnclassified.Count == 0 && backupDoubled.Count == 0
+                        && backupStale.Count == 0 && partialUnclassified.Count == 0)
                         SimHub.Logging.Current.Info("[TF4ALL][DEV] Backup classification OK: all "
                             + "TrueforceSettings fields are classified for backup/sync.");
                 }
@@ -8899,20 +8869,11 @@ namespace TrueforceForAll.Plugin
 
                         // Per-car published data, when the user has turned it on
                         // and we hold some for this car. Null curve = today's
-                        // behaviour, unchanged.
-                        string gearNow = frame.Gear;
-                        // The CAR's own shift lights win where the game hands
-                        // them over (AC publishes each dash LED's switch-on RPM
-                        // through the CSP bridge). Nothing beats the data of
-                        // the car being driven. Then the published dataset,
-                        // then the plain ramp, exactly as before.
-                        var acSteps = (_telemetrySource as AcSharedMemoryTelemetrySource)?.CspAcLedStepRpms;
-                        _rpmLeds.LevelCurve =
-                              acSteps != null && acSteps.Length > 0
-                            ? (Func<double, int, int?>)((r, steps) => AcCarLevel(acSteps, r, steps))
-                            : _lovelyCar != null && LovelyLightingEnabled
-                            ? (Func<double, int, int?>)((r, steps) => LovelyLevel(gearNow, r, steps))
-                            : null;
+                        // behaviour, unchanged. The cascade itself lives in
+                        // CarFillCurve: the F8 path below has to reach the same
+                        // verdict, and a second copy of it would be a second
+                        // opinion about which source wins.
+                        _rpmLeds.LevelCurve = CarFillCurve(frame.Gear);
 
                         // The FLASH deliberately does NOT resolve its own
                         // redline here. It rides `redline`, which upstream takes
@@ -8997,7 +8958,14 @@ namespace TrueforceForAll.Plugin
                     if (ambientBar)
                         DriveG923Leds(AmbientLevelFor(ambientMode, G923LedCount) / (double)G923LedCount,
                                       false, f8AmbientGate);
-                    else DriveG923Leds(pct, redline, f8Gate);
+                    // The same per-car cascade the level channel installs as its
+                    // LevelCurve, asked directly because this path has no
+                    // controller to hang one on. Without it a G923 PS owner drove
+                    // the plain linear ramp while every other wheel lit at the
+                    // car's own switch-on points, which is the whole reason the
+                    // dataset is worth fetching.
+                    else DriveG923Leds(pct, redline, f8Gate,
+                                       CarFillCurve(frame.Gear)?.Invoke(frame.Rpms, G923LedCount));
                     // Not mirrored: this path never builds a level or a color
                     // profile, so there is nothing for the dash to follow and it
                     // should draw its own strip instead of a frozen one.
@@ -9121,7 +9089,12 @@ namespace TrueforceForAll.Plugin
         private const int G923LedCount = 5;
         private int _g923OpenState;   // 0 idle, 1 opening, 2 open, 3 failed
 
-        private void DriveG923Leds(double pct, bool redline, bool gateOpen)
+        /// <param name="carLevel">Whole steps the active car's own data asks
+        /// for, or null to fill from <paramref name="pct"/> on the plain ramp.
+        /// Takes precedence exactly as RpmLedController's LevelCurve does, and
+        /// for the same reason: a switch-on threshold is a hard edge, so there is
+        /// nothing here to interpolate.</param>
+        private void DriveG923Leds(double pct, bool redline, bool gateOpen, int? carLevel = null)
         {
             var f8 = _f8Leds;
             if (!gateOpen)
@@ -9156,6 +9129,9 @@ namespace TrueforceForAll.Plugin
             int level = redline
                 ? ((((DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond) / 185L) & 1L) == 0L
                        ? G923LedCount : 0)                              // ~2.7 Hz shift flash
+                : carLevel.HasValue
+                ? (carLevel.Value < 0 ? 0
+                   : carLevel.Value > G923LedCount ? G923LedCount : carLevel.Value)
                 : (int)Math.Floor(pct * G923LedCount + 0.5);
             try { f8.SetLevel(level, G923LedCount); } catch { }
         }
@@ -10005,6 +9981,36 @@ namespace TrueforceForAll.Plugin
         public bool LovelyLightingEnabled
             => LovelyDataEnabled && Settings?.LovelyCarDataEnabled == true;
 
+        /// <summary>A detected wheel whose rev strip has one fixed look, so there
+        /// is no pattern slot to borrow and no LIGHTSYNC tab. Both G923 variants,
+        /// and a G PRO wearing G923 compatibility mode.
+        ///
+        /// Requires a DETECTED wheel on purpose. The capability property answers
+        /// false both for "cannot" and for "no wheel found yet", and this one
+        /// turns a feature ON, so an unknown wheel must not qualify.</summary>
+        public bool WheelHasFixedLightPattern
+            => WheelDetected && !WheelHasSelectableLightPattern;
+
+        /// <summary>Whether the dataset may drive the strip's FILL TIMING: how far
+        /// up the bar the revs have got, taken from the car's own switch-on points
+        /// instead of an even spread from idle to redline.
+        ///
+        /// Split from the lighting switch because the two ask for different
+        /// things. Lighting borrows a wheel slot, which is why it is opt-in.
+        /// Filling borrows nothing: it changes a number we were already sending,
+        /// costs no extra traffic and touches nothing of the user's.
+        ///
+        /// So on a fixed-strip wheel it follows community features and the user
+        /// opts OUT. That is the only half of the feature those wheels can have,
+        /// the tab carrying the opt-in is collapsed for them, and the permission
+        /// the opt-in exists to ask for is meaningless on a strip with no slots.
+        /// A programmable wheel keeps the single opt-in, where filling and
+        /// lighting arrive together as one decision.</summary>
+        public bool LovelyFillEnabled
+            => LovelyDataEnabled
+            && (Settings?.LovelyCarDataEnabled == true
+                || (WheelHasFixedLightPattern && Settings?.LovelyFixedStripOptOut != true));
+
         /// <summary>The per-car data switch was flipped. Turning it ON adopts the
         /// active car immediately rather than waiting for the next car change;
         /// turning it OFF drops what is loaded so the lights fall back to the
@@ -10573,13 +10579,37 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>Which per-car source should fill the strip this frame, as a
+        /// curve over (rpm, steps), or null when none of them has data and the
+        /// plain ramp should stand.
+        ///
+        /// The CAR's own shift lights win where the game hands them over (AC
+        /// publishes each dash LED's switch-on RPM through the CSP bridge):
+        /// nothing beats the data of the car being driven. Then the published
+        /// dataset, then nothing.
+        ///
+        /// Shared by both wheel families on purpose. The HID++ level channel
+        /// installs the result as its LevelCurve and the G923 PS F8 path invokes
+        /// it per frame, because that path writes a bitmask straight to the wheel
+        /// and has no controller to hold a curve for it. Step count is the
+        /// caller's, so a five-step bar and a ten-step one both land correctly.</summary>
+        private Func<double, int, int?> CarFillCurve(string gear)
+        {
+            var acSteps = (_telemetrySource as AcSharedMemoryTelemetrySource)?.CspAcLedStepRpms;
+            if (acSteps != null && acSteps.Length > 0)
+                return (r, steps) => AcCarLevel(acSteps, r, steps);
+            if (_lovelyCar != null && LovelyFillEnabled)
+                return (r, steps) => LovelyLevel(gear, r, steps);
+            return null;
+        }
+
         /// <summary>The active car's fill curve, or null when we have no data for
         /// it. Runs on the telemetry thread, so it only reads already-loaded state
         /// and re-picks the gear ramp when the gear actually changes.</summary>
         private int? LovelyLevel(string gear, double rpms, int steps)
         {
             var car = _lovelyCar;
-            if (car == null || !LovelyLightingEnabled) return null;
+            if (car == null || !LovelyFillEnabled) return null;
 
             var ramp = RampFor(car, gear);
             if (ramp == null || !ramp.IsUsable) return null;
@@ -16431,9 +16461,16 @@ namespace TrueforceForAll.Plugin
             // The car's OWN dash colours first, where the game hands them to
             // us. Same ranking as the fill thresholds and for the same reason:
             // this is the car being driven, not a reading of it.
-            byte[] acCarColors = AcCarColorsForLighting();
+            // A fixed strip has no slot to put them in. StageSlot would answer
+            // that eventually, but only after a round of slot reads that cannot
+            // succeed, once per car load; and the setting that gets us here is
+            // global, so a G PRO owner who ticked the box and then plugged in a
+            // G923 (or let G HUB put their G PRO in G923 mode) arrives here on
+            // every car. Ask the wheel first.
+            byte[] acCarColors = WheelHasFixedLightPattern ? null : AcCarColorsForLighting();
             bool haveAcColors = acCarColors != null;
-            bool haveData = haveAcColors || (LovelyLightingEnabled && _lovelyCar != null);
+            bool haveData = haveAcColors
+                         || (LovelyLightingEnabled && !WheelHasFixedLightPattern && _lovelyCar != null);
 
             if (!haveData)
             {
@@ -25253,7 +25290,7 @@ namespace TrueforceForAll.Plugin
         /// <summary>Mint the analytics id if missing. Separate from the car-fact anon id
         /// so the two anonymous datasets can't be cross-linked. Random, never
         /// hardware-derived. Unlike CarFactsAnonId it deliberately does NOT travel in
-        /// backups (BackupProjection Excluded): a backup lives under the user's account,
+        /// backups (BackupProjection MachineLocal): a backup lives under the user's account,
         /// so carrying it would record account -> anon-id and make the telemetry
         /// joinable to a real identity. A second PC mints its own and counts as a second
         /// install, which is the accepted trade.</summary>
@@ -33797,6 +33834,11 @@ namespace TrueforceForAll.Plugin
         ///   user/                 (every preset, default, and metadata file
         ///                          the user owns; factory/ is intentionally
         ///                          excluded because the plugin ships with it).
+        ///   arcade/               (the two irreplaceable Initial D 8 archives:
+        ///                          the pre-write snapshot of this machine's own
+        ///                          save boards and the originals of records
+        ///                          removed from them. The TeknoParrot scrape
+        ///                          beside them is left out, being refetchable.)
         /// No customization, no per-preset metadata dialog. Conceptually
         /// different from ExportPack / ExportSinglePreset: backup is a
         /// snapshot of state, not a curated share.</summary>
@@ -33849,6 +33891,42 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
+
+                // 3) The arcade archives. These two files are the ONLY surviving copy of
+                // rows this machine's Initial D 8 save used to hold: the service snapshots
+                // a board before it writes to it, once per slot and never again, precisely
+                // because a second pass would capture the already-modified board. Losing
+                // the folder (reinstall, wiped PluginsData) loses those rows for good, so
+                // the local zip carries them. teknoparrot-id8.json is deliberately NOT
+                // here: it is a cache of a public web leaderboard that refetches itself,
+                // the same call already made for the community fact cache.
+                //
+                // Stamped with the machine that wrote them, because unlike everything else in
+                // this zip they are NOT portable. They describe one install's save file, and
+                // the restore only takes back its own (see RestoreAllFromZip). Without the
+                // stamp, carrying this zip to a second PC would hand that PC a snapshot of a
+                // save it does not have, and since the service refuses to snapshot a slot that
+                // is already keyed, that PC could then never record its own original rows.
+                string arcadeRoot = System.IO.Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-Arcade");
+                string arcadeStamp = ArcadeZipStamp();
+                foreach (var leaf in new[] { "id8-shop-board-backup.json", "id8-removed-records.json" })
+                {
+                    string src = System.IO.Path.Combine(arcadeRoot, leaf);
+                    if (!System.IO.File.Exists(src)) continue;
+                    try
+                    {
+                        var bytes = System.IO.File.ReadAllBytes(src);
+                        var entry = zip.CreateEntry("arcade/" + arcadeStamp + "/" + leaf, System.IO.Compression.CompressionLevel.Optimal);
+                        using (var ws = entry.Open())
+                            ws.Write(bytes, 0, bytes.Length);
+                        fileCount++;
+                        totalBytes += bytes.LongLength;
+                    }
+                    catch (Exception ex)
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Backup: couldn't add '{src}': {ex.Message}");
+                    }
+                }
             }
             SimHub.Logging.Current.Info($"[TF4ALL] Backup wrote {fileCount} entries ({totalBytes} bytes) to {zipPath}.");
             return (fileCount, totalBytes);
@@ -33859,7 +33937,9 @@ namespace TrueforceForAll.Plugin
         /// (after backing it up to a sibling .pre-restore-<timestamp>/ folder
         /// for safety), extracts the archive in its place, restores
         /// GeneralSettings.json into Settings, and reloads everything from
-        /// disk. Returns the number of files restored.
+        /// disk. The arcade/ archives are the one exception to "replace": they
+        /// are written back only where this machine has no copy of its own.
+        /// Returns the number of files restored.
         ///
         /// Destructive: the caller must have confirmed with the user.</summary>
         public int RestoreAllFromZip(string zipPath, bool applySettings = true)
@@ -33912,6 +33992,15 @@ namespace TrueforceForAll.Plugin
 
             int restored = 0;
             string settingsJson = null;
+            // Checked, not assumed: the arcade archives live in TrueforceForAll-Arcade, a
+            // SIBLING of the plugin root under PluginsData\Common, while the wipe above only
+            // moves UserPresets.CurrentFolder (the "user" subfolder INSIDE that root) aside.
+            // Nothing in the restore reaches this folder except the extraction below.
+            string arcadeRoot = System.IO.Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-Arcade");
+            // Arcade files this call creates, so a rollback can remove exactly those and no
+            // others. They are the one thing the restore writes outside the user folder, so
+            // they are also the one thing the wholesale rollback below cannot undo for free.
+            var arcadeWritten = new List<string>();
             try
             {
                 using (var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
@@ -33926,6 +34015,56 @@ namespace TrueforceForAll.Plugin
                             using (var es = entry.Open())
                             using (var sr = new System.IO.StreamReader(es))
                                 settingsJson = sr.ReadToEnd();
+                            continue;
+                        }
+                        if (name.StartsWith("arcade/", StringComparison.Ordinal))
+                        {
+                            // TWO rules, and the zip is the only place in this method where
+                            // "replace everything with the backup" is the wrong answer.
+                            //
+                            // ONLY THIS MACHINE'S. These files describe one install's Initial D 8
+                            // save, not a portable preference, so they are stored under the name
+                            // of the machine that wrote them and only that machine takes them
+                            // back. Handing them to a second PC would give it a snapshot of a
+                            // save it does not have, and the service refuses to snapshot a slot
+                            // that is already keyed, so that PC could never record its own rows.
+                            //
+                            // NEVER OVERWRITE. Even on the right machine, an existing file is the
+                            // only surviving record of its own original rows (the writer takes
+                            // one snapshot per slot and refuses to touch it again, for exactly
+                            // this reason), so a restore adds them back when they are missing and
+                            // otherwise leaves them entirely alone.
+                            string arel = name.Substring("arcade/".Length);
+                            int slash = arel.IndexOf('/');
+                            if (slash <= 0) continue;                       // unstamped: not ours
+                            string fromMachine = arel.Substring(0, slash);
+                            string leaf        = arel.Substring(slash + 1);
+                            if (!string.Equals(fromMachine, ArcadeZipStamp(), StringComparison.OrdinalIgnoreCase))
+                            {
+                                SimHub.Logging.Current.Info(
+                                    "[TF4ALL] Restore: skipped the arcade archive from '" + fromMachine
+                                    + "' (it records that machine's own board rows, not this one's).");
+                                continue;
+                            }
+                            if (!SafePath.IsSafeArchivePath(arcadeRoot, leaf, out string adest)) continue;
+                            if (System.IO.File.Exists(adest))
+                            {
+                                SimHub.Logging.Current.Info(
+                                    "[TF4ALL] Restore: kept this machine's own arcade archive '" + leaf
+                                    + "' (the backup's copy was not applied; these files are never overwritten).");
+                                continue;
+                            }
+                            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(adest));
+                            using (var es = entry.Open())
+                            using (var ws = System.IO.File.Create(adest))
+                                es.CopyTo(ws);
+                            // Remember what THIS call created, so the rollback below can undo it.
+                            // Everything else the restore writes lives under user/, which the
+                            // rollback replaces wholesale; these two sit in a sibling folder and
+                            // would otherwise survive a failed restore as if they were this
+                            // machine's own, permanently blocking it from recording its real ones.
+                            arcadeWritten.Add(adest);
+                            restored++;
                             continue;
                         }
                         if (name.StartsWith("user/", StringComparison.Ordinal))
@@ -33995,6 +34134,20 @@ namespace TrueforceForAll.Plugin
                 catch (Exception delEx)
                 {
                     SimHub.Logging.Current.Warn($"[TF4ALL] Restore rollback: couldn't delete partial extract: {delEx.Message}");
+                }
+                // The arcade archives sit outside the user folder, so the wipe above does not
+                // reach them. Remove only the ones THIS call created: left behind, they would
+                // look like this machine's own snapshot, and because neither the restore nor the
+                // writer ever overwrites an existing one, that would permanently stop this
+                // machine from recording its real original rows. Files that were already here
+                // were skipped rather than written, so they are not in this list.
+                foreach (var written in arcadeWritten)
+                {
+                    try { if (System.IO.File.Exists(written)) System.IO.File.Delete(written); }
+                    catch (Exception aEx)
+                    {
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Restore rollback: couldn't remove restored arcade archive '{written}': {aEx.Message}");
+                    }
                 }
                 if (movedAside && System.IO.Directory.Exists(safeDir))
                 {
@@ -34340,55 +34493,128 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        /// <summary>The condition engine's data migrations: the inertia-spec repair and the
+        /// generation reset. Called at Init, and again after a restore or import whose payload
+        /// predates them, because the VALUES they fix up are Portable while the latches that
+        /// record them are not. Idempotent: each half is latched and re-running is a no-op once
+        /// the latch is current.</summary>
+        /// <summary>The machine an arcade board archive belongs to, used as its folder inside a
+        /// backup zip. Those files record one install's own Initial D 8 save, so unlike the rest
+        /// of the zip they are not portable, and the restore takes back only entries stamped with
+        /// the current machine. Sanitized because it becomes a zip path segment; a renamed machine
+        /// simply stops matching, which degrades to the old behavior of not restoring them.</summary>
+        private static string ArcadeZipStamp()
+        {
+            string raw;
+            try { raw = Environment.MachineName ?? ""; } catch { raw = ""; }
+            var sb = new System.Text.StringBuilder(raw.Length);
+            foreach (char c in raw)
+                if (char.IsLetterOrDigit(c) || c == '-' || c == '_') sb.Append(c);
+            return sb.Length > 0 ? sb.ToString() : "this-pc";
+        }
+
+        private void ApplyConditionMigrations()
+        {
+            // Inertia renders accurately from 2026-09-09: force per unit
+            // ACCELERATION, and it coasts. Settings written before that carry
+            // the damping-shaped defaults, and with them an inertia gain
+            // tuned as force per unit VELOCITY. The two domains are about an
+            // order of magnitude apart on a hand-turned wheel, so carrying
+            // the number over is not honouring a preference, it is a unit
+            // error that saturates the term on every push. Reset it to the
+            // acceleration default and let the bench retune. Only when the
+            // stored mode was the damping one: anyone already rendering
+            // acceleration has a gain that means what it says.
+            if (!Settings.FfbConditionInertiaSpecMigrated)
+            {
+                Settings.FfbConditionInertiaSpecMigrated = true;
+                if (Settings.FfbConditionInertiaAsDamping)
+                {
+                    Settings.FfbConditionInertiaAsDamping = false;
+                    Settings.FfbConditionInertiaGain = new TrueforceSettings().FfbConditionInertiaGain;
+                }
+                Settings.FfbConditionInertiaCoasts = true;
+            }
+            // Condition-engine defaults, generation 1 (G PRO bench, 2026-09-19):
+            // the engine changed underneath the old numbers (the estimator's
+            // second pole, the classic types), and every effect was re-matched
+            // against the wheel's own rendering. There is one right tuning per
+            // wheel, and the bench exists to find it, not to keep a tune of
+            // one's own, so EVERY file is brought to the new numbers once,
+            // bench-tuned or not (owner, 2026-09-20: reset them all, the goal is
+            // no tuning needed or possible). A fresh install carries the new
+            // numbers already. The direction flip and the inertia mode are
+            // wheel facts, not tuning, and stay.
+            if (Settings.FfbConditionDefaultsGeneration < 1)
+            {
+                Settings.FfbConditionDefaultsGeneration = 1;
+                var fresh = new TrueforceSettings();
+                Settings.FfbConditionDamperGain    = fresh.FfbConditionDamperGain;
+                Settings.FfbConditionSpringGain    = fresh.FfbConditionSpringGain;
+                Settings.FfbConditionFrictionGain  = fresh.FfbConditionFrictionGain;
+                Settings.FfbConditionInertiaGain   = fresh.FfbConditionInertiaGain;
+                Settings.FfbConditionPeriodicGain  = fresh.FfbConditionPeriodicGain;
+                Settings.FfbConditionRampGain      = fresh.FfbConditionRampGain;
+                Settings.FfbConditionLpfHz         = fresh.FfbConditionLpfHz;
+                Settings.FfbConditionDamperLpfHz   = fresh.FfbConditionDamperLpfHz;
+                Settings.FfbConditionSpringLpfHz   = fresh.FfbConditionSpringLpfHz;
+                Settings.FfbConditionFrictionLpfHz = fresh.FfbConditionFrictionLpfHz;
+                Settings.FfbConditionInertiaLpfHz  = fresh.FfbConditionInertiaLpfHz;
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Condition-engine tuning brought to the generation 1 defaults (damper 1.0 at 10 Hz, "
+                    + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.10, waveforms 0.9, ramp 0.5).");
+            }
+        }
+
         /// <summary>Replace settings from a JSON file; live effects are re-derived from the new settings.</summary>
         public void ImportSettings(string path)
         {
             string json = System.IO.File.ReadAllText(path);
             var imported = Newtonsoft.Json.JsonConvert.DeserializeObject<TrueforceSettings>(json);
             if (imported == null) throw new System.IO.InvalidDataException("File did not contain valid TrueforceSettings JSON.");
+            // The FILE's wheel, read before anything can overwrite it. LastUsedWheel is
+            // MachineLocal, so the restore below puts THIS PC's wheel on the imported object,
+            // and the cross-wheel gate has to be handed what the file said or it compares this
+            // PC against itself. That is precisely why the gate never fired: see its own note.
+            string importedWheel = imported.LastUsedWheel;
             // Preserve install identity + machine-bound fields (signed-in account, per-account slots,
-            // machine paths, FFB-tap pins, per-PC sync bookkeeping, baked backend config) so a backup
-            // file can't change who's signed in, import a foreign slots dict, or desync the active-
-            // account library folder. Mirrors the cloud restore, which keeps machine-local fields.
+            // machine paths, FFB-tap pins, per-PC sync bookkeeping, usage-stats identity, the cross-
+            // wheel FFB policy, baked backend config) so a backup file can't change who's signed in,
+            // import a foreign slots dict, or desync the active-account library folder. The WHOLE
+            // MachineLocal bucket goes back reflectively, plus the machine-local HALF of the two
+            // partial objects (Forza's bind address, which names a NIC that may not exist here; the
+            // Arcade block, which carries a shelved-feature master switch and a publish-consent
+            // latch), because a settings file carries those objects whole where the cloud envelope
+            // only ever bundles their portable fields. Mirrors the cloud restore.
             var preservedMachineLocal = Settings;
-            // Per-PC state is written onto `imported` BEFORE it is published, not
-            // after. `Settings = imported` is visible to every other thread the
-            // instant it runs, and the usage-ping timer reads AnalyticsAnonId, the
-            // day stamp and the game-day queue with no coordination: a tick landing
-            // in the gap used to send the BACKUP's identity, and could persist it.
-            // Reconciling first closes that window for the cross-wheel FFB trio too.
+            // Restored onto `imported` BEFORE it is published, never after. `Settings = imported`
+            // is visible to every other thread the instant it runs, so anything reading Settings
+            // in the gap (the usage-ping timer reads the anon id, the day stamp and the game-day
+            // queue with no coordination) would see the BACKUP's identity and could persist it.
+            // Do not move this below the assignment.
             //
-            // The two collections are COPIED, not aliased. Assigning the references
-            // would leave the discarded object sharing live collections that the data
-            // thread keeps appending to, so the old graph would go on mutating the new
-            // one. Copied under _carFactsLock, since NoteTelemetryGameActivity appends
-            // to exactly these from DataUpdate.
-            imported.CrossWheelFfbMode          = preservedMachineLocal.CrossWheelFfbMode;
-            imported.PendingCrossWheelFfb       = preservedMachineLocal.PendingCrossWheelFfb;
-            imported.PendingCrossWheelFfbSource = preservedMachineLocal.PendingCrossWheelFfbSource;
-            // Usage-stats identity + bookkeeping are per-INSTALL and must never ride a
-            // settings file. The cloud path is already safe (BackupProjection filters to
-            // Portable), but a zip / settings-file restore replaces Settings wholesale,
-            // and AnalyticsAnonId is only Excluded, not MachineLocal. Without this, PC2
-            // would adopt PC1's anon id (re-linking telemetry to one identity, which is
-            // exactly what moving it to Excluded was meant to prevent), inherit its day
-            // stamp and skip its own ping, replay its undrained game-day queue, and then
-            // both machines would fight over the same (anon_id, day) row.
-            imported.AnalyticsAnonId           = preservedMachineLocal.AnalyticsAnonId;
-            imported.LastTelemetryPingDay      = preservedMachineLocal.LastTelemetryPingDay;
-            imported.LastTelemetrySettingsHash = preservedMachineLocal.LastTelemetrySettingsHash;
+            // Under _carFactsLock because TelemetryGameDays / TelemetryGamePresetHashes are
+            // MachineLocal, and NoteTelemetryGameActivity appends to exactly those from
+            // DataUpdate while the reflective pass is reading them off the live object. The pass
+            // ALIASES reference-typed fields rather than copying them, which is safe for the same
+            // reason it is safe for AuthSession / UserSlots / Performance: `preservedMachineLocal`
+            // is dropped the moment the import finishes, so exactly one live graph is left
+            // pointing at them.
             lock (_carFactsLock)
             {
-                imported.TelemetryGameDays = preservedMachineLocal.TelemetryGameDays == null
-                    ? new List<string>()
-                    : new List<string>(preservedMachineLocal.TelemetryGameDays);
-                imported.TelemetryGamePresetHashes = preservedMachineLocal.TelemetryGamePresetHashes == null
-                    ? new Dictionary<string, string>(StringComparer.Ordinal)
-                    : new Dictionary<string, string>(preservedMachineLocal.TelemetryGamePresetHashes,
-                                                     StringComparer.Ordinal);
+                PreserveMachineLocalSettings(preservedMachineLocal, imported);
+                BackupProjection.PreserveMachineLocalPartials(preservedMachineLocal, imported);
+                // The hand-written block this replaced also guaranteed these two were non-null
+                // after every import; a reflective copy just carries whatever was there, null
+                // included. NoteTelemetryGameActivity only appends when the collection exists
+                // and nothing ever re-creates it, so a null here would silently end game-activity
+                // recording for the life of the install.
+                if (imported.TelemetryGameDays == null)
+                    imported.TelemetryGameDays = new List<string>();
+                if (imported.TelemetryGamePresetHashes == null)
+                    imported.TelemetryGamePresetHashes = new Dictionary<string, string>(StringComparer.Ordinal);
             }
             Settings = imported;
-            PreserveMachineLocalSettings(preservedMachineLocal, Settings);
             // A file written before the master switch had three states carries no
             // MasterMode, so it deserializes to the C# default. Normal is also the
             // right answer, for the same reason the startup migration uses it: the
@@ -34400,8 +34626,9 @@ namespace TrueforceForAll.Plugin
                 Settings.MasterMode = TrueforceMasterMode.Normal;
                 Settings.MasterModeMigratedV1 = true;
             }
-            // (The cross-wheel FFB policy, the pending prompt and the usage-stats
-            // identity were reconciled onto `imported` above, before publication.)
+            // (The cross-wheel FFB policy, the pending prompt, the usage-stats identity
+            // and the rest of the machine-local bucket were restored onto `imported`
+            // above, before publication.)
             // The imported file replaced Settings wholesale, so PluginEnabled can flip without a
             // SetPluginEnabled transition. Reconcile the device NOW, before the throw-capable
             // remainder (cross-wheel gating, slot remount, preset migration): PluginEnabled is
@@ -34422,7 +34649,7 @@ namespace TrueforceForAll.Plugin
             BackupApplyResult crossWheelGate;
             lock (_carFactsLock)
                 crossWheelGate = BackupProjection.GateImportedCrossWheelFfb(
-                    imported, preservedMachineLocal, Settings);
+                    imported, preservedMachineLocal, Settings, importedWheel);
             StashCrossWheelFfbIfGated(crossWheelGate);
             // Re-establish active-account slot consistency (re-point its library folder + stash the
             // restored profile into the slot), exactly as the cloud restore remounts the slot.
@@ -34448,6 +34675,28 @@ namespace TrueforceForAll.Plugin
             // Rebuild the runtime cache from the (potentially updated) folders.
             RebuildPresetCacheFromFolders();
             ApplyActiveCarOverride();
+            // Re-run the condition-engine migrations against what the file just brought in.
+            // On this path the latches DO travel (they are Excluded, which the file path
+            // deliberately carries whole), so Settings already holds the file's own latch
+            // values; the only thing missing is that the migrations used to run at Init and
+            // nowhere else, so an old file's retired values survived until the next launch.
+            // Note the reset lands in SETTINGS, not on the wheel: the condition gains are read
+            // into the engine's fields at device bring-up, so what the wheel renders catches up
+            // on the restart this import already recommends.
+            //
+            // Unless the cross-wheel gate fired. The condition gains are wheel-specific now, so
+            // on a file from another wheel the gate put THIS PC's values back onto live while
+            // the file's latches stayed (they are Excluded, and Excluded travels here). That
+            // leaves a latch describing one wheel's values sitting over another wheel's, and
+            // running the migrations on that pair would reset tuning the gate just rescued. Put
+            // this PC's latches back with its values, so the pair is coherent again and the
+            // migrations become the no-op they should be.
+            if (crossWheelGate.FfbGated)
+            {
+                Settings.FfbConditionDefaultsGeneration  = preservedMachineLocal.FfbConditionDefaultsGeneration;
+                Settings.FfbConditionInertiaSpecMigrated = preservedMachineLocal.FfbConditionInertiaSpecMigrated;
+            }
+            ApplyConditionMigrations();
             // Imported settings carry the Mode B recipe too; push it live so
             // the wheel matches what the panel now shows.
             try { ApplyModeBFromSettings(); ApplyModeBFeel(); }
@@ -35018,6 +35267,12 @@ namespace TrueforceForAll.Plugin
                         {
                             ["Settings"] = baseEnv.Settings,
                             ["Forza"]    = baseEnv.Forza,
+                            // Arcade rides along for the same reason Forza does: the field-level
+                            // merge needs a common ancestor per sub-object. Without one it merges
+                            // against a permanently null baseline, which degrades to local-wins,
+                            // so every merge would silently revert the other PC's arcade edits.
+                            // That is worse than the not-syncing-at-all it replaces.
+                            ["Arcade"]   = baseEnv.Arcade,
                             ["Lib"]      = libObj,   // path -> content hash, for the 3-way merge + delete-propagation
                         }.ToString(Newtonsoft.Json.Formatting.None);
                     }
@@ -35226,6 +35481,49 @@ namespace TrueforceForAll.Plugin
         {
             var ffbGate = BackupProjection.ApplySettings(env, Settings);
             StashCrossWheelFfbIfGated(ffbGate);
+
+            // Re-arm the condition-engine migrations against what the cloud just landed. The
+            // FfbCondition* gains and filters are Portable, so they travel; the latches that
+            // say whether a migration has already run against them are not, so they stay at
+            // whatever THIS PC reached. A payload built on a PC that never ran a migration
+            // therefore lands its unmigrated values here, finds the local latch already
+            // stamped, and is never migrated by anyone. Taking the LOWER of the two latches
+            // (the source's and ours) re-arms the half the source had not run and leaves the
+            // half it had alone, then the migrations themselves decide what to touch.
+            //
+            // Nothing shipped can reach this yet: no released version puts FfbCondition names in
+            // an envelope at all. It is hardening for the next generation bump, when a mixed
+            // fleet of versions will be exchanging these values for real.
+            //
+            // THREE conditions, and each one is load-bearing:
+            //
+            //  1. The envelope carried the governed values. One built by 0.3.x has no
+            //     FfbCondition keys, so this PC's own values were never replaced and there is
+            //     nothing here to re-migrate.
+            //  2. The envelope STATES its provenance. Silence is not "generation 0": every build
+            //     that has the counter was driven to the current generation by its own Init, and
+            //     a re-run rewrites every gain to shipped defaults, so guessing low would wipe
+            //     real bench tuning out of any backup made before this provenance existed.
+            //  3. The gate actually let those values through. The condition gains are in
+            //     FfbWheelSpecific now, so a restore from a different wheel withholds all of
+            //     them and this PC keeps its own. Re-migrating there would reset the very tuning
+            //     the gate just protected, using a latch that describes someone else's values.
+            //     Whatever was withheld is in the stash, and ApplyPendingCrossWheelFfb owns it.
+            bool conditionValuesLanded =
+                Settings.CrossWheelFfbMode == CrossWheelFfbMode.Always
+                || !BackupProjection.WheelModelsDiffer(env?.SourceWheelModel, Settings.LastUsedWheel);
+            if (env?.Settings?["FfbConditionDamperGain"] != null
+                && BackupProjection.HasLatchProvenance(env)
+                && conditionValuesLanded)
+            {
+                Settings.FfbConditionDefaultsGeneration = Math.Min(
+                    Settings.FfbConditionDefaultsGeneration,
+                    BackupProjection.SourceLatch(env, "FfbConditionDefaultsGeneration",
+                                                 Settings.FfbConditionDefaultsGeneration));
+                if (BackupProjection.SourceLatch(env, "FfbConditionInertiaSpecMigrated", 1) == 0)
+                    Settings.FfbConditionInertiaSpecMigrated = false;
+                ApplyConditionMigrations();
+            }
 
             // An envelope built by a version that predates the three-state switch
             // carries PluginEnabled and no MasterMode, and ApplySettings only writes
@@ -35773,7 +36071,10 @@ namespace TrueforceForAll.Plugin
                         // merge first (cloud is the shared truth), then apply locally.
                         int changeGen = _backupChangeGen;   // detect a local edit during build+upload
                         var localEnv = await Task.Run(() => BuildEnvelopeLocked()).ConfigureAwait(false);
-                        Newtonsoft.Json.Linq.JObject baseSettings = null, baseForza = null;
+                        // Arcade needs its own ancestor exactly like Forza: merging a sub-object
+                        // against a null baseline degrades to local-wins, so leaving it out would
+                        // quietly revert the other PC's arcade edits on every merge.
+                        Newtonsoft.Json.Linq.JObject baseSettings = null, baseForza = null, baseArcade = null;
                         System.Collections.Generic.Dictionary<string, string> baseLib = null;
                         try
                         {
@@ -35783,6 +36084,7 @@ namespace TrueforceForAll.Plugin
                                 var bo = Newtonsoft.Json.Linq.JObject.Parse(bj);
                                 baseSettings = bo["Settings"] as Newtonsoft.Json.Linq.JObject;
                                 baseForza    = bo["Forza"]    as Newtonsoft.Json.Linq.JObject;
+                                baseArcade   = bo["Arcade"]   as Newtonsoft.Json.Linq.JObject;
                                 if (bo["Lib"] is Newtonsoft.Json.Linq.JObject libBase)
                                 {
                                     baseLib = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -35791,7 +36093,7 @@ namespace TrueforceForAll.Plugin
                             }
                         }
                         catch { /* missing/bad baseline: the 3-way merge degrades gracefully */ }
-                        var merged = BackupService.Merge(localEnv, cloudEnv, baseSettings, baseForza, baseLib, Environment.MachineName, DateTime.UtcNow);
+                        var merged = BackupService.Merge(localEnv, cloudEnv, baseSettings, baseForza, baseArcade, baseLib, Environment.MachineName, DateTime.UtcNow);
                         // A local edit that lands after the changeGen snapshot makes
                         // `merged` stale. Applying stale content would overwrite the
                         // newer on-disk edit with the pre-edit copy (and the uploaded

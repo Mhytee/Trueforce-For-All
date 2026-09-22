@@ -3703,6 +3703,35 @@
             <TextBlock x:Name="RevLightPatternHelp" Style="{StaticResource HelpText}" Margin="22,0,0,12" TextWrapping="Wrap"
                        Text="Picking a pattern sets the wheelbase's selection, like using the wheel's own menu: it applies now and stays. Remember for this car re-applies it whenever that car loads."/>
 
+            <!-- Fill timing from the published dataset, for a strip whose look is
+                 fixed in firmware. Those wheels never see the LIGHTSYNC tab, so
+                 the checkbox up there is out of their reach; this is the same
+                 feature minus the half they cannot have, and it rides community
+                 features alone (TrueforcePlugin.LovelyFillEnabled). Shown ONLY on
+                 those wheels: on a programmable one the LIGHTSYNC box is a single
+                 decision covering both halves, and a second control here would
+                 split it in two. Sits where the pattern row above hides itself,
+                 so the space that row leaves is the space this fills. -->
+            <StackPanel x:Name="LovelyFillBlock" Visibility="Collapsed" Margin="0,0,0,12">
+                <CheckBox x:Name="LovelyFillCheck" Content="Use the car's own rev light timing"
+                          Margin="0,0,0,2" Checked="LovelyFill_Changed" Unchecked="LovelyFill_Changed"
+                          ToolTip="Needs community features, which is where the car data comes from."/>
+                <TextBlock x:Name="LovelyFillNeedsCommunityNote" Style="{StaticResource HelpText}"
+                           Margin="22,0,0,6" TextWrapping="Wrap" Visibility="Collapsed"
+                           Text="Turn on community features in the Settings tab to use this. The car data is fetched from there."/>
+                <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
+                           Text="Your lights fill at the RPMs the real car's dash lights up at, instead of an even spread from idle to redline."/>
+                <!-- The credit is a condition of using the data rather than
+                     decoration, so it belongs wherever the data reaches a user.
+                     This is the only place a fixed-strip owner can see it. -->
+                <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,0" TextWrapping="Wrap">
+                    <Run Text="Per-car rev light timing, redlines and blink rates by "/><Hyperlink Click="LovelyCredit_Click"
+                            ToolTip="Opens the lovely-car-data project on GitHub.">Lovely Sim Racing</Hyperlink><Run Text=", CC BY-NC-SA 4.0. "/><Hyperlink
+                            Click="LovelyGuide_Click"
+                            ToolTip="What the dataset covers, and what comes from our own car facts.">What this covers</Hyperlink>
+                </TextBlock>
+            </StackPanel>
+
             <!-- What the strip does when the revs are not driving it. Two
                  occasions, one vocabulary, and deliberately OUTSIDE the pattern
                  row above, which hides itself on a G923: that wheel's look is

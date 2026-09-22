@@ -1479,6 +1479,29 @@ namespace TrueforceForAll.Plugin
                     LovelyNeedsCommunityNote.Visibility = _plugin.LovelyDataEnabled
                         ? System.Windows.Visibility.Collapsed
                         : System.Windows.Visibility.Visible;
+                // The FILL-timing switch, for a strip whose look is fixed in
+                // firmware. Shown only there: on a programmable wheel the
+                // LIGHTSYNC box already decides this, and two controls over one
+                // behaviour is the drift this block exists to avoid.
+                bool fixedStrip = _plugin.WheelHasFixedLightPattern;
+                if (LovelyFillBlock != null)
+                    LovelyFillBlock.Visibility = fixedStrip
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
+                if (fixedStrip)
+                {
+                    if (LovelyFillCheck != null)
+                    {
+                        // Stored as an opt-OUT and shown as an ordinary switch,
+                        // so ticked is the state a fresh install is already in.
+                        LovelyFillCheck.IsChecked = _plugin.Settings?.LovelyFixedStripOptOut != true;
+                        LovelyFillCheck.IsEnabled = _plugin.LovelyDataEnabled;
+                    }
+                    if (LovelyFillNeedsCommunityNote != null)
+                        LovelyFillNeedsCommunityNote.Visibility = _plugin.LovelyDataEnabled
+                            ? System.Windows.Visibility.Collapsed
+                            : System.Windows.Visibility.Visible;
+                }
                 if (AlwaysRememberPatternCheck != null)
                     AlwaysRememberPatternCheck.IsChecked = _plugin.Settings?.AlwaysRememberCarPattern == true;
                 RefreshLightsyncCycleHint();
@@ -7805,6 +7828,23 @@ namespace TrueforceForAll.Plugin
             // part that writes a slot.
             _plugin.Settings.LovelyCarDataEnabled = LovelyCarDataCheck?.IsChecked == true;
             _plugin.PersistSettings();
+            _plugin.OnLovelyEnabledChanged();
+        }
+
+        /// <summary>The fill-timing switch on a wheel whose strip has one fixed
+        /// look. Stored inverted (an opt-out), because on those wheels the
+        /// feature is on as soon as community features are: see
+        /// TrueforceSettings.LovelyFixedStripOptOut for why that is a second
+        /// field rather than a new default on the first one.</summary>
+        private void LovelyFill_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.Settings.LovelyFixedStripOptOut = LovelyFillCheck?.IsChecked != true;
+            _plugin.PersistSettings();
+            // The same hand-back the lighting switch does. Nothing is owed on a
+            // fixed strip, so this only drops the loaded ramp; the point is that
+            // the bar is back on the plain fill this frame rather than at the
+            // next car change.
             _plugin.OnLovelyEnabledChanged();
         }
 

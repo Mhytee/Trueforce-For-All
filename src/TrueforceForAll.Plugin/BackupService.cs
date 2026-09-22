@@ -58,7 +58,15 @@ namespace TrueforceForAll.Plugin
         /// <summary>Compose a merged envelope from this PC's current setup and the cloud
         /// envelope. Preset libraries union with newest-wins on a same-path clash; the
         /// scalar settings (which can't field-merge) take one whole side: this PC's by
-        /// default, or the cloud's when <paramref name="keepCloudSettings"/>.</summary>
+        /// default, or the cloud's when <paramref name="keepCloudSettings"/>.
+        ///
+        /// The settings block travels WITH ITS PROVENANCE. SourceWheelModel and SourceLatches
+        /// describe the settings they were built beside, so taking one side's settings means
+        /// taking that side's stamps; dropping them (which this did) leaves a merged envelope
+        /// that claims no wheel, and an envelope that claims no wheel is never gated by
+        /// ApplySettings. Every merge therefore used to disarm the cross-wheel FFB gate, on
+        /// this PC and on the other one, for as long as the merged copy stayed in the
+        /// cloud.</summary>
         public static BackupEnvelope Merge(BackupEnvelope local, BackupEnvelope cloud,
             bool keepCloudSettings, string deviceLabel, DateTime utcNow)
         {
@@ -69,12 +77,15 @@ namespace TrueforceForAll.Plugin
                 settingsSide = (settingsSide == cloud) ? local : cloud;
             return new BackupEnvelope
             {
-                SchemaVersion = BackupProjection.SchemaVersion,
-                CreatedUtc    = utcNow.ToString("o"),
-                DeviceLabel   = deviceLabel ?? string.Empty,
-                Settings      = settingsSide?.Settings,
-                Forza         = settingsSide?.Forza,
-                Library       = BackupLibrary.MergeNewestWins(local?.Library, cloud?.Library),
+                SchemaVersion    = BackupProjection.SchemaVersion,
+                CreatedUtc       = utcNow.ToString("o"),
+                DeviceLabel      = deviceLabel ?? string.Empty,
+                SourceWheelModel = settingsSide?.SourceWheelModel,
+                SourceLatches    = settingsSide?.SourceLatches,
+                Settings         = settingsSide?.Settings,
+                Forza            = settingsSide?.Forza,
+                Arcade           = settingsSide?.Arcade,
+                Library          = BackupLibrary.MergeNewestWins(local?.Library, cloud?.Library),
             };
         }
 
@@ -86,18 +97,102 @@ namespace TrueforceForAll.Plugin
         /// doing the merge). Baselines may be null when none is stored yet (degrades to: equal -&gt;
         /// keep; present on one side -&gt; keep; both present + different -&gt; recurse / local wins).</summary>
         public static BackupEnvelope Merge(BackupEnvelope local, BackupEnvelope cloud,
-            JObject baselineSettings, JObject baselineForza,
+            JObject baselineSettings, JObject baselineForza, JObject baselineArcade,
             IDictionary<string, string> baselineLibraryHashes, string deviceLabel, DateTime utcNow)
         {
+            var settings = MergeObject(baselineSettings, local?.Settings, cloud?.Settings);
+
+            // CROSS-WHEEL: a field-level merge will happily take ModeBSatGain from one wheel
+            // and ModeBDamper from another, and the result is not a tuning for either of
+            // them. Worse, that blend becomes the shared cloud truth, and the next ordinary
+            // push from either PC re-stamps it with THAT PC's wheel via Build - after which
+            // the gate reports "same wheel" forever and the foreign numbers are laundered as
+            // native. So the decision has to happen HERE, not as a stamp on the output: when
+            // the two envelopes were built on different wheels, every wheel-specific key
+            // resolves to the local side, and the merged envelope is then honestly one
+            // wheel's tuning and can be stamped as such.
+            //
+            // This is deliberately not conditioned on the CrossWheelFfbMode policy. The
+            // policy answers "should THIS PC adopt another wheel's feel", which ApplySettings
+            // asks using the stamp; it does not license writing a two-wheel hybrid into the
+            // shared copy that both PCs then inherit.
+            bool wheelsDiffer = BackupProjection.WheelModelsDiffer(
+                local?.SourceWheelModel, cloud?.SourceWheelModel);
+            if (wheelsDiffer && settings != null)
+                ResolveToLocal(settings, local?.Settings, BackupProjection.FfbWheelSpecific);
+
             return new BackupEnvelope
             {
-                SchemaVersion = BackupProjection.SchemaVersion,
-                CreatedUtc    = utcNow.ToString("o"),
-                DeviceLabel   = deviceLabel ?? string.Empty,
-                Settings      = MergeObject(baselineSettings, local?.Settings, cloud?.Settings),
-                Forza         = MergeObject(baselineForza, local?.Forza, cloud?.Forza),
-                Library       = MergeLibrary3Way(baselineLibraryHashes, local?.Library, cloud?.Library),
+                SchemaVersion    = BackupProjection.SchemaVersion,
+                CreatedUtc       = utcNow.ToString("o"),
+                DeviceLabel      = deviceLabel ?? string.Empty,
+                // Honest only because of the resolution above: with the wheel-specific keys
+                // all taken from local, local's label describes the whole FFB block. Falls
+                // back to cloud's when this device has no wheel known, so a merge never
+                // downgrades a known stamp to null and re-disarms the gate.
+                SourceWheelModel = local?.SourceWheelModel ?? cloud?.SourceWheelModel,
+                // Latches take the LOWER of the two sides: the merged settings can contain a
+                // field from either, so the payload is only as migrated as its least-migrated
+                // contributor. Reading low can only cause a harmless re-run; reading high
+                // would strand unmigrated values behind a stamped latch, which is the whole
+                // failure this provenance exists to prevent.
+                SourceLatches    = MergeLatchesLowest(local?.SourceLatches, cloud?.SourceLatches),
+                Settings         = settings,
+                Forza            = MergeObject(baselineForza, local?.Forza, cloud?.Forza),
+                Arcade           = MergeObject(baselineArcade, local?.Arcade, cloud?.Arcade),
+                Library          = MergeLibrary3Way(baselineLibraryHashes, local?.Library, cloud?.Library),
             };
+        }
+
+        /// <summary>Force <paramref name="keys"/> in <paramref name="merged"/> back to the
+        /// local side's values (removing any the local side does not carry), so a field-level
+        /// merge cannot produce a block sourced from two different wheels.</summary>
+        private static void ResolveToLocal(JObject merged, JObject localSettings, IEnumerable<string> keys)
+        {
+            foreach (var key in keys)
+            {
+                var localTok = localSettings?[key];
+                if (localTok != null) merged[key] = localTok;
+                else merged.Remove(key);
+            }
+        }
+
+        /// <summary>Per-name minimum of two latch-provenance blocks: the merged settings can take
+        /// a field from either side, so the payload is only as migrated as its least-migrated
+        /// contributor. Booleans read as 0/1 so "one side had not run it" wins, matching the int
+        /// case.
+        ///
+        /// ABSENT MEANS UNKNOWN, everywhere. If either side states no provenance, or states it
+        /// for a name the other omits, the merged envelope says nothing about that latch rather
+        /// than inheriting the side that happened to speak. Adopting one side's stamps would let
+        /// an old envelope's silence be reported as a confident low generation, and acting on a
+        /// low generation rewrites real bench tuning to defaults. Silence costs a re-migration
+        /// that may be skipped; a confident wrong answer costs the user their tuning.</summary>
+        private static JObject MergeLatchesLowest(JObject a, JObject b)
+        {
+            if (a == null || b == null) return null;   // unknown on either side: claim nothing
+            var outp = new JObject();
+            foreach (var p in a.Properties())
+            {
+                var other = b[p.Name];
+                if (other == null) continue;           // stated on one side only: still unknown
+                int av = LatchValue(p.Value, int.MaxValue);
+                int bv = LatchValue(other, int.MaxValue);
+                int lo = Math.Min(av, bv);
+                if (lo != int.MaxValue) outp[p.Name] = lo;
+            }
+            return outp.Count > 0 ? outp : null;
+        }
+
+        private static int LatchValue(JToken tok, int whenAbsent)
+        {
+            if (tok == null) return whenAbsent;
+            try
+            {
+                if (tok.Type == JTokenType.Boolean) return tok.Value<bool>() ? 1 : 0;
+                return tok.Value<int>();
+            }
+            catch { return whenAbsent; }
         }
 
         /// <summary>3-way library merge for auto-sync: union additions, newest-wins on concurrent

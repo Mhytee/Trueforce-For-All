@@ -644,7 +644,7 @@ namespace TrueforceForAll.Plugin
         // two anonymous datasets cannot be cross-linked). Sent as the
         // telemetry_ping p_anon_id (migration 0127) so unique installs / DAU / MAU
         // can be counted without an account. Deliberately does NOT travel in
-        // backups (BackupProjection Excluded): a backup is stored under the user's
+        // backups (BackupProjection MachineLocal): a backup is stored under the user's
         // account, so carrying this id would put account -> anon-id in the backend
         // and make the telemetry joinable to a real identity. A second PC mints its
         // own and counts as a second install, which is the right trade.
@@ -1876,6 +1876,20 @@ namespace TrueforceForAll.Plugin
         // ship on, so folding the two together would start writing to the wheel
         // of everyone who upgrades.
         public bool LovelyCarDataEnabled { get; set; } = false;
+
+        // The same idea for a wheel whose strip has ONE FIXED LOOK (both G923
+        // variants today). There the switch above is not merely unreachable, it
+        // is answering a question that wheel cannot be asked: its pattern is in
+        // firmware, so there is no slot to borrow and nothing of the user's to
+        // put back. The only half that applies is the fill TIMING, which costs
+        // them nothing and is what the dataset is for.
+        //
+        // So it runs on community features alone, and this is the way OUT rather
+        // than the way in. An opt-out instead of flipping the default above,
+        // because that field is shipped false for everyone: on a programmable
+        // wheel that false is a real answer, while on a fixed strip it is only
+        // ever the default nobody could reach, and one field cannot mean both.
+        public bool LovelyFixedStripOptOut { get; set; } = false;
 
         // Which LIGHTSYNC custom slot the plugin borrows: 0..4 to pin CUSTOM 1..5,
         // or -1 (the default) to work it out itself.
