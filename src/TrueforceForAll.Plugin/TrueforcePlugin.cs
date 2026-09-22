@@ -1706,7 +1706,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] iRacing notice failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] iRacing notice failed: " + ex.Message);
                     _iracingNoticeShownThisSession = false;
                 }
                 finally { _iracingNoticeShowing = false; }
@@ -1783,7 +1783,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] RaceRoom notice failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] RaceRoom notice failed: " + ex.Message);
                     _r3eNoticeShownThisSession = false;   // it was not shown; the next edge may try again
                 }
                 finally { _r3eNoticeShowing = false; }
@@ -1857,7 +1857,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] Le Mans Ultimate notice failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] Le Mans Ultimate notice failed: " + ex.Message);
                     _lmuNoticeShownThisSession = false;   // it was not shown; the next edge may try again
                 }
                 finally { _lmuNoticeShowing = false; }
@@ -4750,7 +4750,7 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info(
+                        SimHub.Logging.Current.Warn(
                             "[TF4ALL] Plugin-load profile sync failed: " + ex.Message);
                     }
                 });
@@ -4828,7 +4828,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info($"[TF4ALL] Update check task crashed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Update check task crashed: {ex.Message}");
                 }
             });
             // Arm the background re-check: the startup poll above is one-shot.
@@ -4995,7 +4995,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[TF4ALL] AddInputMapping (master gain) failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] AddInputMapping (master gain) failed: {ex.Message}");
             }
 
             // Dash remote bridge (TrueforcePlugin.DashRemote.cs): properties +
@@ -5004,7 +5004,7 @@ namespace TrueforceForAll.Plugin
             try { InitDashRemote(pluginManager); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[TF4ALL] Dash remote bridge init failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Dash remote bridge init failed: {ex.Message}");
             }
         }
 
@@ -5054,7 +5054,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Warn(
                     $"[TF4ALL] PC-mode switch failed: {ex.GetType().Name}: {ex.Message}");
             }
         }
@@ -5100,7 +5100,7 @@ namespace TrueforceForAll.Plugin
             try { RefreshArcadeWheelSelection(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[TF4ALL] Arcade wheel re-point failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Arcade wheel re-point failed: {ex.Message}");
             }
 
             // Wheels with a selectable rev-light pattern (G PRO and RS50) get
@@ -5337,7 +5337,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info($"[TF4ALL] Blind-capture probe error: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Blind-capture probe error: {ex.Message}");
                 }
                 finally
                 {
@@ -6084,7 +6084,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] owed-slot restore at launch failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] owed-slot restore at launch failed: " + ex.Message);
                 }
             });
 
@@ -6298,7 +6298,7 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info($"[TF4ALL] Periodic update check crashed: {ex.Message}");
+                        SimHub.Logging.Current.Warn($"[TF4ALL] Periodic update check crashed: {ex.Message}");
                     }
                 });
             }
@@ -6886,7 +6886,7 @@ namespace TrueforceForAll.Plugin
                 StopDiDamperSpike();
                 StopWheelMotion();
             }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] bench teardown on exit: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] bench teardown on exit: " + ex.Message); }
 
             // Give back any borrowed light slot FIRST, while the HID++ channel is
             // still up. A slot write persists on the wheel, so leaving one held
@@ -6903,7 +6903,7 @@ namespace TrueforceForAll.Plugin
                 // the wheel is stuck.
                 try { _rpmLeds?.Channel?.Clear(); } catch { }
             }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] slot restore on exit failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] slot restore on exit failed: " + ex.Message); }
 
             _shuttingDown = true;
 
@@ -7707,7 +7707,7 @@ namespace TrueforceForAll.Plugin
                     try { RefreshDashTabSlots(); }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info(
+                        SimHub.Logging.Current.Warn(
                             "[TF4ALL] Per-game Drive layout refresh failed: " + ex.Message);
                     }
                 }
@@ -7717,7 +7717,7 @@ namespace TrueforceForAll.Plugin
                 try { RecomputeDashUnsupported(); }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Warn(
                         "[TF4ALL] Game capability refresh failed: " + ex.Message);
                 }
                 // A count belongs to the session that produced it. Leaving one
@@ -10089,7 +10089,7 @@ namespace TrueforceForAll.Plugin
                 try { ApplyStickyPattern(); }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] sticky pattern restore failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] sticky pattern restore failed: " + ex.Message);
                 }
             }
 
@@ -10102,7 +10102,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] slot restore on disable failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] slot restore on disable failed: " + ex.Message);
                 }
             });
         }
@@ -10490,7 +10490,7 @@ namespace TrueforceForAll.Plugin
                     {
                         try { ApplyCarLightsForActiveCar(ffbQuietProven: now == TrueforceMasterMode.LightsyncOnly); }
                         catch (Exception ex)
-                        { SimHub.Logging.Current.Info("[TF4ALL] car lights on mode change failed: " + ex.Message); }
+                        { SimHub.Logging.Current.Warn("[TF4ALL] car lights on mode change failed: " + ex.Message); }
                     });
                 }
 
@@ -10513,13 +10513,13 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info("[TF4ALL] slot restore on switch-off failed: " + ex.Message);
+                        SimHub.Logging.Current.Warn("[TF4ALL] slot restore on switch-off failed: " + ex.Message);
                     }
                 });
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] light reconcile failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] light reconcile failed: " + ex.Message);
             }
         }
 
@@ -10607,13 +10607,13 @@ namespace TrueforceForAll.Plugin
                     }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info("[TF4ALL] lovely refresh failed: " + ex.Message);
+                        SimHub.Logging.Current.Warn("[TF4ALL] lovely refresh failed: " + ex.Message);
                     }
                 });
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] lovely lookup failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] lovely lookup failed: " + ex.Message);
             }
         }
 
@@ -15976,7 +15976,7 @@ namespace TrueforceForAll.Plugin
                 else if (effect >= 1 && effect <= 9) RememberPatternForActiveCar(effect);
             }
             catch (Exception ex)
-            { SimHub.Logging.Current.Info("[TF4ALL] auto-remember failed: " + ex.Message); }
+            { SimHub.Logging.Current.Warn("[TF4ALL] auto-remember failed: " + ex.Message); }
         }
 
         /// <summary>Forget the active car's remembered pattern. The wheel's
@@ -16432,7 +16432,7 @@ namespace TrueforceForAll.Plugin
                     // a user editing it at the exact moment this fires can throw.
                     // Re-arm and let the next attempt pick it up.
                     _slotSyncRetryAtMs = unchecked(Environment.TickCount + SlotSyncRetryDelayMs);
-                    SimHub.Logging.Current.Info("[TF4ALL] slot-sync retry failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] slot-sync retry failed: " + ex.Message);
                 }
                 finally
                 {
@@ -16646,7 +16646,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] car-color apply failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] car-color apply failed: " + ex.Message);
                 }
             });
         }
@@ -17346,7 +17346,7 @@ namespace TrueforceForAll.Plugin
             try { return ch.OpenAndResolve(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] LED channel open failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] LED channel open failed: " + ex.Message);
                 return false;
             }
         }
@@ -17872,7 +17872,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] owed-slot restore failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] owed-slot restore failed: " + ex.Message);
                 return null;
             }
         }
@@ -18034,7 +18034,7 @@ namespace TrueforceForAll.Plugin
                 Task.Run(async () =>
                 {
                     try { await _arcadeBoards.FillAllAsync(CancellationToken.None).ConfigureAwait(false); }
-                    catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade board fill failed: " + ex.Message); }
+                    catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Arcade board fill failed: " + ex.Message); }
                     finally { Interlocked.Exchange(ref _arcadeBoardBusy, 0); }
                 });
             }
@@ -18082,7 +18082,7 @@ namespace TrueforceForAll.Plugin
                 Task.Run(async () =>
                 {
                     try { await _arcadeBoards.SubmitAsync(toSend, CancellationToken.None).ConfigureAwait(false); }
-                    catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade submit failed: " + ex.Message); }
+                    catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Arcade submit failed: " + ex.Message); }
                 });
             }
         }
@@ -18093,7 +18093,7 @@ namespace TrueforceForAll.Plugin
         public void RestoreArcadeBoards()
         {
             try { _arcadeBoards?.RestoreShopBoards(); }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade restore failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Arcade restore failed: " + ex.Message); }
         }
 
         /// <summary>Rewrite the boards for the course that is up now.
@@ -18115,7 +18115,7 @@ namespace TrueforceForAll.Plugin
                     // once-per-attach latch has to be overridden rather than worked around.
                     await boards.FillAllAsync(CancellationToken.None, force: true).ConfigureAwait(false);
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Arcade refill failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Arcade refill failed: " + ex.Message); }
             });
         }
 
@@ -19393,7 +19393,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Warn(
                         $"[TF4ALL] Arcade: the switch to the publishing plugin's block failed "
                         + $"({ex.GetType().Name}): {ex.Message}. Staying on the IO-block decode.");
                 }
@@ -20001,7 +20001,7 @@ namespace TrueforceForAll.Plugin
                     try { ac.Dispose(); } catch { }
                     if (!silent)
                     {
-                        SimHub.Logging.Current.Info(
+                        SimHub.Logging.Current.Warn(
                             $"[TF4ALL] AC enhanced source unavailable ({ex.GetType().Name}): {ex.Message}; falling back to SimHub.");
                     }
                 }
@@ -20035,7 +20035,7 @@ namespace TrueforceForAll.Plugin
                     {
                         if (!silent)
                         {
-                            SimHub.Logging.Current.Info(
+                            SimHub.Logging.Current.Warn(
                                 $"[TF4ALL] Forza UDP source unavailable on port {Settings.Forza.Port} " +
                                 $"({ex.GetType().Name}): {ex.Message}; falling back to SimHub. " +
                                 "If another listener (SimHub itself, Sim Racing Studio) holds the port, change Trueforce's port to a free one and re-point Forza's Data Out to it.");
@@ -20070,7 +20070,7 @@ namespace TrueforceForAll.Plugin
                     catch (Exception ex)
                     {
                         if (!silent)
-                            SimHub.Logging.Current.Info(
+                            SimHub.Logging.Current.Warn(
                                 $"[TF4ALL] Farming Simulator enhanced source unavailable ({ex.GetType().Name}): {ex.Message}; falling back to SimHub.");
                     }
                 }
@@ -20139,7 +20139,7 @@ namespace TrueforceForAll.Plugin
                     catch (Exception ex)
                     {
                         if (!silent)
-                            SimHub.Logging.Current.Info(
+                            SimHub.Logging.Current.Warn(
                                 $"[TF4ALL] Arcade source unavailable ({ex.GetType().Name}): {ex.Message}.");
                     }
                 }
@@ -20392,7 +20392,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info($"[TF4ALL] Port discovery error: {ex.GetType().Name}: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Port discovery error: {ex.GetType().Name}: {ex.Message}");
                 }
                 finally
                 {
@@ -23217,7 +23217,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Warn(
                     $"[TF4ALL] BackfillGameNameForActiveCar('{_activeCarId}', '{_activeGame}') failed: {ex.Message}");
             }
         }
@@ -23277,7 +23277,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Warn(
                     $"[TF4ALL] BackfillDisplayNameForActiveCar('{_activeCarId}') failed: {ex.Message}");
             }
         }
@@ -25331,7 +25331,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info($"[TF4ALL] Headless community refresh failed: {ex.Message}");
+                    SimHub.Logging.Current.Warn($"[TF4ALL] Headless community refresh failed: {ex.Message}");
                 }
                 // The live key may have moved on while this fetch ran
                 // (signature warm-up, another car change): run one more pass
@@ -25465,7 +25465,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Usage snapshot build failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Usage snapshot build failed: " + ex.Message);
                 return null;
             }
         }
@@ -25597,7 +25597,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Usage ping error: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Usage ping error: " + ex.Message);
             }
             finally
             {
@@ -25915,7 +25915,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Game preset payload build failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Game preset payload build failed: " + ex.Message);
                 return null;
             }
         }
@@ -26059,7 +26059,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Usage ping commit failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Usage ping commit failed: " + ex.Message);
             }
         }
 
@@ -27574,12 +27574,12 @@ namespace TrueforceForAll.Plugin
             try { OnLovelyDataAvailabilityChanged(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Lovely reload on community toggle failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Lovely reload on community toggle failed: " + ex.Message);
             }
             try { CommunityEnabledChanged?.Invoke(on); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] CommunityEnabledChanged subscriber threw: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] CommunityEnabledChanged subscriber threw: " + ex.Message);
             }
         }
 
@@ -27913,7 +27913,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] Community game-list prefetch failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] Community game-list prefetch failed: " + ex.Message);
                 }
                 finally { Interlocked.Exchange(ref _communityGamesFetchInFlight, 0); }
             });
@@ -28427,7 +28427,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[TF4ALL] Background preset auto-update failed: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Background preset auto-update failed: {ex.Message}");
             }
             finally { _presetSweepInFlight = false; }
         }
@@ -28627,7 +28627,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Warn(
                         "[TF4ALL] Auto-update failed for " + server.Id + ": " + ex.Message);
                 }
                 if (!applied) residual.Add(pair);
@@ -28957,7 +28957,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     // A broken prompt must not decide FOR replacing live tuning.
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Warn(
                         "[TF4ALL] Account-switch prompt failed (" + ex.GetType().Name + "); keeping current tuning.");
                     profileChoice = ProfileApplyChoice.KeepCurrent;
                 }
@@ -28965,7 +28965,7 @@ namespace TrueforceForAll.Plugin
             try { MountUserSlot(newKey, profileChoice); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Slot remount failed: " + ex.Message);
             }
             // Drop any per-car community consensus the previous
@@ -28991,7 +28991,7 @@ namespace TrueforceForAll.Plugin
             try { AuthIdentityChanged?.Invoke(newKey ?? ""); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Warn(
                     "[TF4ALL] AuthIdentityChanged subscriber threw: " + ex.Message);
             }
             // Re-arm both timers for the new identity (both stop cleanly once signed out).
@@ -29303,7 +29303,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     // F24: log exception type only; ex.Message can include file paths.
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Error(
                         "[TF4ALL] Game-default re-derive on slot mount failed: " + ex.GetType().Name);
                 }
                 // On a REAL account switch, discard the prior account's in-memory per-car overrides
@@ -29320,7 +29320,7 @@ namespace TrueforceForAll.Plugin
                 try { LoadAndMigrateCarPresets(); }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Error(
                         "[TF4ALL] Car-default re-derive on slot mount failed: " + ex.GetType().Name);
                 }
                 // The active car's effective override may have changed;
@@ -29330,7 +29330,7 @@ namespace TrueforceForAll.Plugin
                     try { ReloadActiveCarOverrideFromStore(); }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info(
+                        SimHub.Logging.Current.Error(
                             "[TF4ALL] Re-apply active car override on slot mount failed: " + ex.GetType().Name);
                     }
                 }
@@ -29345,13 +29345,13 @@ namespace TrueforceForAll.Plugin
                 // SetPluginEnabled transition; reconcile the device's pause state to the new value.
                 SyncDeviceToPluginEnabled("Account switch");
                 try { ApplyActiveCarOverride(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Effect re-apply on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Effect re-apply on slot mount failed: " + ex.GetType().Name); }
                 try { ApplyForzaSettings(onlyIfChanged: true); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Telemetry re-apply on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Telemetry re-apply on slot mount failed: " + ex.GetType().Name); }
                 try { LibraryReloaded?.Invoke(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Library-reloaded notify on slot mount failed: " + ex.GetType().Name); }
                 try { UpdateAutoPullTimer(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Auto-pull timer refresh on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Auto-pull timer refresh on slot mount failed: " + ex.GetType().Name); }
                 // The incoming profile carries the whole Mode B recipe, and
                 // ApplyGlobalFfbToLive covers only master gain + the FFB
                 // scalars. Without these the settings and the panel show the
@@ -29359,7 +29359,7 @@ namespace TrueforceForAll.Plugin
                 // PREVIOUS feel until something else re-applies (the same
                 // pairing ApplyPendingCrossWheelFfb already does).
                 try { ApplyModeBFromSettings(); ApplyModeBFeel(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Mode B re-apply on slot mount failed: " + ex.GetType().Name); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Mode B re-apply on slot mount failed: " + ex.GetType().Name); }
                 // The profile carries DashTabOrder/DashTabsDisabled (Portable);
                 // rebuild the dash's slot map so the phone follows the new
                 // layout without a restart.
@@ -29369,7 +29369,7 @@ namespace TrueforceForAll.Plugin
             try { PersistSettingsCore(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist after slot mount failed: " + ex.GetType().Name);
             }
         }
@@ -29488,7 +29488,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Profile stash failed: " + ex.GetType().Name);
+                SimHub.Logging.Current.Error("[TF4ALL] Profile stash failed: " + ex.GetType().Name);
                 return false;
             }
         }
@@ -29541,13 +29541,13 @@ namespace TrueforceForAll.Plugin
                     try { OnLovelyDataAvailabilityChanged(); }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info("[TF4ALL] Lovely re-apply after profile swap failed: " + ex.Message);
+                        SimHub.Logging.Current.Warn("[TF4ALL] Lovely re-apply after profile swap failed: " + ex.Message);
                     }
                 }
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Profile apply failed: " + ex.GetType().Name);
+                SimHub.Logging.Current.Error("[TF4ALL] Profile apply failed: " + ex.GetType().Name);
             }
             Settings.AutoSyncBackupEnabled        = slot.AutoSyncBackupEnabled;
             Settings.BackupLastSyncedRevision     = slot.BackupLastSyncedRevision ?? "";
@@ -29678,7 +29678,7 @@ namespace TrueforceForAll.Plugin
                     _device.FfbSpikeTransientThresholdLsb = Settings.EffectiveSpikeTransientThresholdLsb;
                 }
             }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Global FFB re-apply on slot mount failed: " + ex.GetType().Name); }
+            catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Global FFB re-apply on slot mount failed: " + ex.GetType().Name); }
         }
 
         // Init-side welcome path: same modal SettingsControl pops, but
@@ -29747,7 +29747,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Warn(
                         "[TF4ALL] Init sign-in failed: " + ex.Message);
                 }
             }
@@ -34833,7 +34833,7 @@ namespace TrueforceForAll.Plugin
                 catch (DiscordOAuthException ex)   { return new DiscordLinkResult { Ok = false, Message = ex.Message }; }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] Discord authorize error: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] Discord authorize error: " + ex.Message);
                     return new DiscordLinkResult { Ok = false, Message = "Couldn't start Discord linking." };
                 }
 
@@ -34997,7 +34997,7 @@ namespace TrueforceForAll.Plugin
                 catch (PatreonOAuthException ex)   { return new PatreonLinkResult { Ok = false, Message = ex.Message }; }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] Patreon authorize error: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] Patreon authorize error: " + ex.Message);
                     return new PatreonLinkResult { Ok = false, Message = "Couldn't start Patreon linking." };
                 }
 
@@ -35358,7 +35358,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Backup: revision stamp failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Backup: revision stamp failed: " + ex.Message);
             }
         }
 
@@ -35462,7 +35462,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Cross-wheel FFB stash failed: " + ex.GetType().Name);
+                SimHub.Logging.Current.Warn("[TF4ALL] Cross-wheel FFB stash failed: " + ex.GetType().Name);
             }
         }
 
@@ -35623,7 +35623,7 @@ namespace TrueforceForAll.Plugin
             try { OnLovelyDataAvailabilityChanged(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Lovely re-apply after restore failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Lovely re-apply after restore failed: " + ex.Message);
             }
 
             // PluginEnabled is Portable and just landed without a SetPluginEnabled
@@ -35783,7 +35783,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] Auto-sync error: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] Auto-sync error: " + ex.Message);
                     ArmAutoSyncBackoff();   // unexpected error mid-push: capped exponential backoff, don't wait for the next edit
                 }
                 finally { _backupOp.Release(); }
@@ -35870,7 +35870,7 @@ namespace TrueforceForAll.Plugin
                 if (sessions == null) return;   // unreachable / not configured: leave the gate as-is
                 ApplySessionsForPresence(sessions);
             }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Presence probe error: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Presence probe error: " + ex.Message); }
             finally { System.Threading.Interlocked.Exchange(ref _presenceBusy, 0); }
         }
 
@@ -35949,7 +35949,7 @@ namespace TrueforceForAll.Plugin
                         RunAutoPull(ignoreActivity);
                     }
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Sync reconcile error: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Sync reconcile error: " + ex.Message); }
             });
         }
 
@@ -36073,7 +36073,7 @@ namespace TrueforceForAll.Plugin
                         _auth.SignOut();
                     }
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Session heartbeat error: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Session heartbeat error: " + ex.Message); }
                 finally { System.Threading.Interlocked.Exchange(ref _sessionHeartbeatBusy, 0); }
             });
         }
@@ -36184,7 +36184,7 @@ namespace TrueforceForAll.Plugin
                     }
                     changed = true;   // a newer cloud revision was pulled/merged
                 }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Auto-pull error: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Auto-pull error: " + ex.Message); }
                 finally
                 {
                     _backupOp.Release();
@@ -36231,7 +36231,7 @@ namespace TrueforceForAll.Plugin
         private BackupEnvelope SafeParse(string json)
         {
             try { return BackupService.Parse(json); }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Backup envelope parse failed: " + ex.Message); return null; }
+            catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Backup envelope parse failed: " + ex.Message); return null; }
         }
         private static BackupOutcome FromTransfer(BackupTransfer t, string ctx)
         {
@@ -36370,7 +36370,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info($"[TF4ALL] Could not read CustomGames.json: {ex.Message}");
+                SimHub.Logging.Current.Warn($"[TF4ALL] Could not read CustomGames.json: {ex.Message}");
             }
             _customGamesCache = newCache;
             _customGamesCacheLoadedAt = DateTime.UtcNow;
@@ -36920,7 +36920,7 @@ namespace TrueforceForAll.Plugin
                             "[TF4ALL] Wheel detected; the lighting controls are available now.");
                 }
                 catch (Exception ex)
-                { SimHub.Logging.Current.Info("[TF4ALL] wheel rediscovery failed: " + ex.Message); }
+                { SimHub.Logging.Current.Warn("[TF4ALL] wheel rediscovery failed: " + ex.Message); }
                 finally { System.Threading.Volatile.Write(ref _recoveryInProgress, 0); }
             });
         }
@@ -37435,7 +37435,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] CSP bridge update check failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] CSP bridge update check failed: " + ex.Message);
             }
         }
 
@@ -37540,7 +37540,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] AC CSP notice failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] AC CSP notice failed: " + ex.Message);
                 }
                 finally { _acCspNoticeShowing = false; }
             }), System.Windows.Threading.DispatcherPriority.Background);
@@ -37861,7 +37861,7 @@ namespace TrueforceForAll.Plugin
             // put it back. Recorded before the rewrite and persisted with the
             // install so it survives to whichever session does the removal.
             try { RecordDisplacedAcPostProcessSection(); }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Could not record the displaced FFB Tweaks section: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Could not record the displaced FFB Tweaks section: " + ex.Message); }
             // Persisted BEFORE the rewrite: a record with an untouched slot is
             // harmless (the restore clears it when the slot is not ours), but a
             // rewritten slot with no record is the bug this exists to fix.
@@ -38605,7 +38605,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] DirectInput wheel reader failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] DirectInput wheel reader failed: " + ex.Message);
                 w.Dispose();
                 return null;
             }

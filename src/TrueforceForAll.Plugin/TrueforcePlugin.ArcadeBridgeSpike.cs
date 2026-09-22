@@ -635,7 +635,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Warn(
                         "[TF4ALL] ID8 bridge spike: NewData was null and could not be built: " + ex.Message);
                     return;
                 }

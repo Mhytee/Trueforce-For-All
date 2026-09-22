@@ -3996,7 +3996,7 @@ namespace TrueforceForAll.Plugin
                 // async-void event handler: an uncaught exception here
                 // would propagate to the WPF dispatcher and crash the
                 // plugin. Show the user a recoverable error instead.
-                SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Share preset failed: " + ex.Message);
                 var owner = Window.GetWindow(this);
                 TrueforceDialog.ShowError(owner,
                     "Couldn't share that preset. Check your connection and try again.",
@@ -4169,7 +4169,7 @@ namespace TrueforceForAll.Plugin
             {
                 // async-void handler: any uncaught throw would crash
                 // the WPF dispatcher. Show a recoverable error instead.
-                SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Share preset failed: " + ex.Message);
                 var ownerWnd = Window.GetWindow(this);
                 TrueforceDialog.ShowError(ownerWnd,
                     "Couldn't share that preset. Check your connection and try again.",
@@ -4874,7 +4874,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 ok = false;
-                SimHub.Logging.Current.Info("[TF4ALL] Active-card vote failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Active-card vote failed: " + ex.Message);
             }
             finally { _activeCardVoteInFlight = false; }
 
@@ -8937,7 +8937,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist AutoUpdateDownloadedPresets failed: " + ex.Message);
             }
             if (newOn) _communityUpdatesCheckedThisSession = false;
@@ -8955,7 +8955,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist UpdateCheckIntervalHours failed: " + ex.Message);
             }
         }
@@ -8974,7 +8974,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist DashRevStripOutsideIn failed: " + ex.Message);
             }
         }
@@ -8993,7 +8993,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist DashRememberLastTab failed: " + ex.Message);
             }
         }
@@ -9007,7 +9007,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist DashDefaultTab failed: " + ex.Message);
             }
         }
@@ -9153,7 +9153,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Persist DashDrivePedals failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Persist DashDrivePedals failed: " + ex.Message);
             }
         }
 
@@ -9164,7 +9164,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Persist DashRevStripCentered failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Persist DashRevStripCentered failed: " + ex.Message);
             }
         }
 
@@ -9302,7 +9302,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Persist idle settings failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Persist idle settings failed: " + ex.Message);
             }
         }
 
@@ -9313,7 +9313,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist DashFlagsEnabled failed: " + ex.Message);
             }
         }
@@ -9352,7 +9352,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist Drive tab layout failed: " + ex.Message);
             }
             // Republish the cached slot map so the dash follows immediately.
@@ -9399,7 +9399,7 @@ namespace TrueforceForAll.Plugin
                     try { _plugin.PersistSettings(); }
                     catch (Exception ex)
                     {
-                        SimHub.Logging.Current.Info(
+                        SimHub.Logging.Current.Warn(
                             "[TF4ALL] Persist DashDefaultTab failed: " + ex.Message);
                     }
                 }
@@ -9551,7 +9551,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist dash tab layout failed: " + ex.Message);
             }
             _plugin.RefreshDashTabSlots();
@@ -9572,7 +9572,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Warn(
                     "[TF4ALL] Dash phone-access window failed: " + ex.Message);
             }
         }
@@ -9604,7 +9604,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info(
+                SimHub.Logging.Current.Error(
                     "[TF4ALL] Persist AutoSubmitCarFacts failed: " + ex.Message);
             }
         }
@@ -9619,7 +9619,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Persist AutoSyncBackup failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Persist AutoSyncBackup failed: " + ex.Message);
             }
             _plugin.UpdateAutoPullTimer();   // start/stop the cloud poll to match the toggle
         }
@@ -9637,7 +9637,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Persist CrossWheelFfbMode failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Persist CrossWheelFfbMode failed: " + ex.Message);
             }
         }
 
@@ -10011,7 +10011,7 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Persist BetaUpdatesEnabled failed: " + ex.Message);
+                SimHub.Logging.Current.Error("[TF4ALL] Persist BetaUpdatesEnabled failed: " + ex.Message);
             }
             _plugin.ApplyUpdateChannel();
             RefreshBetaUpdateNote();
@@ -11067,7 +11067,7 @@ namespace TrueforceForAll.Plugin
             {
                 _plugin.Settings.SharingAuthor = picker.ChosenUsername;
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
                 RefreshAccountRow();
@@ -11173,7 +11173,7 @@ namespace TrueforceForAll.Plugin
                 // Server has a username; make local Author match.
                 _plugin.Settings.SharingAuthor = username;
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = username;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = username;
                 // Repaint the visible Account label + header chip, which read
@@ -11202,7 +11202,7 @@ namespace TrueforceForAll.Plugin
             {
                 _plugin.Settings.SharingAuthor = "";
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
                 RefreshAccountRow();
@@ -11241,7 +11241,7 @@ namespace TrueforceForAll.Plugin
             {
                 _plugin.Settings.SharingAuthor = picker.ChosenUsername;
                 try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = picker.ChosenUsername;
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = picker.ChosenUsername;
                 // Repaint the visible Account label + header chip (see the
@@ -11326,7 +11326,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     persisted = false;
-                    SimHub.Logging.Current.Info("[TF4ALL] Persist username failed: " + ex.Message);
+                    SimHub.Logging.Current.Error("[TF4ALL] Persist username failed: " + ex.Message);
                 }
                 if (AuthorNameBox != null) AuthorNameBox.Text = newAuthor;
                 if (AccountAuthorStatus != null)
@@ -11364,7 +11364,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] AccountAuthor_Changed failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] AccountAuthor_Changed failed: " + ex.Message);
                 if (AccountAuthorStatus != null)
                 {
                     AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
@@ -11560,7 +11560,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] RefreshAccountStats failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] RefreshAccountStats failed: " + ex.Message);
                 if (AccountStatsCreated != null) AccountStatsCreated.Text = "Could not load stats.";
             }
         }
@@ -11615,7 +11615,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] RefreshAccountSessions failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] RefreshAccountSessions failed: " + ex.Message);
                 SetSessionsStatus("Couldn't load your sessions.");
             }
         }
@@ -11766,7 +11766,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Revoke session failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Revoke session failed: " + ex.Message);
                 // Don't leave the button stuck on "Revoking..."; restore it and
                 // tell the user it didn't go through. (btn is scoped to the try,
                 // so re-derive it from sender here.)
@@ -11800,7 +11800,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Sign-out-others failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Sign-out-others failed: " + ex.Message);
                 if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = "Sign out everywhere else"; }
                 SetSessionsStatus("Couldn't sign out the other devices. Check your connection and try again.");
             }
@@ -11917,7 +11917,7 @@ namespace TrueforceForAll.Plugin
                 {
                     _plugin.Settings.SharingAuthor = "";
                     try { _plugin.PersistSettings(); }
-                    catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                    catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
                 }
                 if (AuthorNameBox    != null) AuthorNameBox.Text    = "";
                 if (AccountAuthorBox != null) AccountAuthorBox.Text = "";
@@ -11959,7 +11959,7 @@ namespace TrueforceForAll.Plugin
             try { updates = await _plugin.FindCommunityPresetUpdatesAsync(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Update check failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Update check failed: " + ex.Message);
                 _presetManager?.RefreshUpdatesChip(0);
                 return;
             }
@@ -11976,7 +11976,7 @@ namespace TrueforceForAll.Plugin
             try { updates = await _plugin.AutoApplyCommunityPresetUpdatesAsync(updates); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Auto-apply update sweep failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Auto-apply update sweep failed: " + ex.Message);
             }
             autoApplied -= updates?.Count ?? 0;
             _presetManager?.RefreshUpdatesChip(updates?.Count ?? 0);
@@ -12016,7 +12016,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Warn(
                         "[TF4ALL] Apply update failed for " + o.Id + ": " + ex.Message);
                 }
             }
@@ -12047,7 +12047,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Updates chip refresh failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Updates chip refresh failed: " + ex.Message);
             }
         }
 
@@ -12062,7 +12062,7 @@ namespace TrueforceForAll.Plugin
             try { updates = await _plugin.FindCommunityPresetUpdatesAsync(); }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Updates chip check failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Updates chip check failed: " + ex.Message);
                 _presetManager?.RefreshUpdatesChip(0);
                 return;
             }
@@ -12073,7 +12073,7 @@ namespace TrueforceForAll.Plugin
                 try { updates = await _plugin.AutoApplyCommunityPresetUpdatesAsync(updates); }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] Auto-apply update sweep failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] Auto-apply update sweep failed: " + ex.Message);
                 }
                 autoApplied = before - (updates?.Count ?? 0);
             }
@@ -12106,7 +12106,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info(
+                    SimHub.Logging.Current.Warn(
                         "[TF4ALL] Apply update failed for " + o.Id + ": " + ex.Message);
                 }
             }
@@ -12381,7 +12381,7 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.CarFactsConsentAsked = true;
             _plugin.EnsureCarFactsAnonId();
             try { _plugin.PersistSettings(); }
-            catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+            catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
             RefreshAccountRow();
 
             // Optional account: run sign-in AFTER the proceed commit, so a
@@ -13626,7 +13626,7 @@ namespace TrueforceForAll.Plugin
             }
             _plugin.Settings.SharingAuthor = newAuthor;
             try { _plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
 
             // Blank-to-set transition: offer to backfill existing local
             // presets the user authored before setting the name. Stays
@@ -15892,7 +15892,7 @@ namespace TrueforceForAll.Plugin
             {
                 try { EnsurePatternUi(); }
                 catch (Exception ex)
-                { SimHub.Logging.Current.Info("[TF4ALL] pattern UI init failed: " + ex.Message); }
+                { SimHub.Logging.Current.Error("[TF4ALL] pattern UI init failed: " + ex.Message); }
             }
         }
 
@@ -17422,7 +17422,7 @@ namespace TrueforceForAll.Plugin
             {
                 plugin.Settings.SharingAuthor = newAuthor;
                 try { plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Persist settings failed: " + ex.Message); }
             }
             return true;
         }
@@ -18421,7 +18421,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
-                SimHub.Logging.Current.Info("[TF4ALL] Open Patreon failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Open Patreon failed: " + ex.Message);
                 TrueforceDialog.Show(null, "Trueforce For All",
                     $"Couldn't open your browser. Copy this link into it instead:\n\n{PatreonUrl}",
                     DialogKind.Error);
@@ -18442,7 +18442,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
-                SimHub.Logging.Current.Info("[TF4ALL] Open Ko-fi failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Open Ko-fi failed: " + ex.Message);
                 TrueforceDialog.Show(null, "Trueforce For All",
                                 $"Couldn't open your browser. Copy this link into it instead:\n\n{DonateUrl}",
                                 DialogKind.Error);
@@ -18460,7 +18460,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
-                SimHub.Logging.Current.Info("[TF4ALL] Open PayPal failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Open PayPal failed: " + ex.Message);
                 TrueforceDialog.Show(null, "Trueforce For All",
                     $"Couldn't open your browser. Copy this link into it instead:\n\n{PayPalUrl}",
                     DialogKind.Error);

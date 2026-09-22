@@ -309,7 +309,7 @@ namespace TrueforceForAll.Plugin
             {
                 plugin.Settings.SharingAuthor = username;
                 try { plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
                 return;
             }
 
@@ -323,7 +323,7 @@ namespace TrueforceForAll.Plugin
             {
                 plugin.Settings.SharingAuthor = "";
                 try { plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
             }
 
             // No username yet - seed the picker with the email prefix.
@@ -337,7 +337,7 @@ namespace TrueforceForAll.Plugin
             {
                 plugin.Settings.SharingAuthor = picker.ChosenUsername;
                 try { plugin.PersistSettings(); }
-                catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
+                catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
             }
         }
     }

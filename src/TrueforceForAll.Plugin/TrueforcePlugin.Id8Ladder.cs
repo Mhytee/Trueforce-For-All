@@ -183,7 +183,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    SimHub.Logging.Current.Info("[TF4ALL] Arcade ladder layout failed: " + ex.Message);
+                    SimHub.Logging.Current.Warn("[TF4ALL] Arcade ladder layout failed: " + ex.Message);
                 }
                 finally { Interlocked.Exchange(ref _arcadeLadderBusy, 0); }
             });

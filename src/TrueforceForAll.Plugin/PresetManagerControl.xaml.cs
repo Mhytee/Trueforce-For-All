@@ -707,7 +707,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Create pack failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Create pack failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
                     "Couldn't upload. Check your connection and try again.", ex);
             }
@@ -3015,7 +3015,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Share game preset failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Share game preset failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
                     "Couldn't share that preset. Check your connection and try again.", ex);
             }
@@ -3287,7 +3287,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Share pack (car bulk) failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Share pack (car bulk) failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
                     "Couldn't share that pack. Check your connection and try again.", ex);
             }
@@ -3318,7 +3318,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Share pack (game bulk) failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Share pack (game bulk) failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
                     "Couldn't share that pack. Check your connection and try again.", ex);
             }
@@ -3463,7 +3463,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Share preset failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Share preset failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
                     "Couldn't share that preset. Check your connection and try again.", ex);
             }
@@ -3899,7 +3899,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Share custom engine failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Share custom engine failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
                     "Couldn't share that custom engine. Check your connection and try again.", ex);
             }
@@ -5218,7 +5218,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] CommunityEdit failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] CommunityEdit failed: " + ex.Message);
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Couldn't save your changes. Check your connection and try again.";
                 TrueforceDialog.LogError("Community edit", ex);
@@ -5315,7 +5315,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Delete post-processing failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Delete post-processing failed: " + ex.Message);
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Deleted, but the local list may be stale. Refresh to resync.";
             }
@@ -5403,7 +5403,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 ok = false;
-                SimHub.Logging.Current.Info("[TF4ALL] Vote failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Vote failed: " + ex.Message);
             }
 
             if (!ok)
@@ -5434,7 +5434,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Info("[TF4ALL] Vote post-processing failed: " + ex.Message);
+                SimHub.Logging.Current.Warn("[TF4ALL] Vote post-processing failed: " + ex.Message);
                 if (CommunityStatusLabel != null)
                     CommunityStatusLabel.Text = "Vote hit a local error. Refresh to resync the list.";
             }
@@ -5774,7 +5774,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                             if (!entrySaved)
                             {
                                 errors++;
-                                SimHub.Logging.Current.Info(
+                                SimHub.Logging.Current.Warn(
                                     $"[TF4ALL] Pack entry (game) persist failed for '{useName}'.");
                                 continue;
                             }
@@ -5799,7 +5799,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         catch (Exception ex)
                         {
                             errors++;
-                            SimHub.Logging.Current.Info($"[TF4ALL] Pack entry (game) import failed: {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Pack entry (game) import failed: {ex.Message}");
                         }
                     }
                 }
@@ -5873,7 +5873,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         catch (Exception ex)
                         {
                             errors++;
-                            SimHub.Logging.Current.Info($"[TF4ALL] Pack entry (car) import failed: {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Pack entry (car) import failed: {ex.Message}");
                         }
                     }
                 }
@@ -5952,7 +5952,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         catch (Exception ex)
                         {
                             errors++;
-                            SimHub.Logging.Current.Info($"[TF4ALL] Pack entry (engine) import failed: {ex.Message}");
+                            SimHub.Logging.Current.Warn($"[TF4ALL] Pack entry (engine) import failed: {ex.Message}");
                         }
                     }
                 }
