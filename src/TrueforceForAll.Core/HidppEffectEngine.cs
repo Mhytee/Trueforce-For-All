@@ -245,6 +245,41 @@ namespace TrueforceForAll.Core
             return false;
         }
 
+        /// <summary>Inventory of what is live RIGHT NOW, by type, as
+        /// space-separated "name=count" pairs ("spring=1 damper=2"); null
+        /// when nothing is live. For the tap's diagnostic line: a count above
+        /// one is the shape of a missed destroy, and the count is the only
+        /// thing in a log that tells a STACKED effect apart from a merely
+        /// strong one. <see cref="ReplacedStaleConditions"/> says how many
+        /// duplicates were retired, which is not the same question: the HID++
+        /// pool keeps one copy per condition type, but the external (classic)
+        /// region and every periodic are exempt by design and can legitimately
+        /// sum, so those are where a real stack would show up. Reads the
+        /// published snapshot, so it is safe from any thread.</summary>
+        public string DescribeLive(long nowTicks, double ticksPerSecond)
+        {
+            var p = _playing;
+            if (p == null) return null;
+            var counts = new int[TypeTrapezoid + 1];
+            int live = 0;
+            for (int i = 0; i < p.Length; i++)
+            {
+                byte t = p[i].Type;
+                if (t >= counts.Length) continue;
+                if (!IsLiveAt(p[i], nowTicks, ticksPerSecond)) continue;
+                counts[t]++;
+                live++;
+            }
+            if (live == 0) return null;
+            string s = null;
+            for (int t = 0; t < counts.Length; t++)
+            {
+                if (counts[t] == 0) continue;
+                s = (s == null ? "" : s + " ") + TypeName((byte)t) + "=" + counts[t];
+            }
+            return s;
+        }
+
         private static bool IsLiveAt(Fx fx, long nowTicks, double ticksPerSecond)
         {
             if (fx.LengthMs <= 0) return true;   // infinite

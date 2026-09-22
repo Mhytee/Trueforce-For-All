@@ -736,6 +736,48 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(0, e.ReplacedStaleConditions);
         }
 
+        // The diagnostic line's live inventory. ReplacedStaleConditions counts
+        // duplicates ALREADY retired, so it cannot say what is summing right
+        // now; this can, which is the difference between reading a log and
+        // guessing at one.
+        [Fact]
+        public void DescribeLive_IsNullWhenNothingIsLive()
+        {
+            var e = new HidppEffectEngine();
+            Assert.Null(e.DescribeLive(0, TicksPerSec));
+            e.HandleDownload(AcDamper, 0, AcDamper.Length, 0);
+            e.HandleDestroy(2);
+            Assert.Null(e.DescribeLive(10, TicksPerSec));
+        }
+
+        [Fact]
+        public void DescribeLive_CountsEachTypeSeparately()
+        {
+            var e = new HidppEffectEngine { ConditionOutputCutoffHz = 0f };
+            var block = ConditionBlock(0x7fff, 0x4000, 0, 0, 0x4000, 0x7fff);
+            var spring = Download(1, (byte)(HidppEffectEngine.TypeSpring | 0x80), 0, 0, block);
+            e.HandleDownload(spring, 0, spring.Length, 0);
+            e.HandleDownload(AcDamper, 0, AcDamper.Length, 0);
+            Assert.Equal("spring=1 damper=1", e.DescribeLive(10, TicksPerSec));
+
+            // The external region legitimately sums, so a count above one
+            // there is not a bug; it is exactly what the line has to show.
+            Ext(e, 0, 0.5f, true);
+            Ext(e, 1, 0.5f, true);
+            Assert.Equal("spring=1 damper=3", e.DescribeLive(10, TicksPerSec));
+        }
+
+        [Fact]
+        public void DescribeLive_IgnoresAnExpiredEffect()
+        {
+            var e = new HidppEffectEngine();
+            var block = ConditionBlock(0x7fff, 0x4000, 0, 0, 0x4000, 0x7fff);
+            var dl = Download(1, (byte)(HidppEffectEngine.TypeDamper | 0x80), 50, 0, block);
+            e.HandleDownload(dl, 0, dl.Length, 0);
+            Assert.Equal("damper=1", e.DescribeLive(10, TicksPerSec));
+            Assert.Null(e.DescribeLive(100, TicksPerSec));
+        }
+
         [Fact]
         public void HidppAndExternalDampers_DoNotRetireEachOther()
         {

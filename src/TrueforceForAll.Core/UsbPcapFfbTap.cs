@@ -1911,6 +1911,16 @@ namespace TrueforceForAll.Core
         /// missed and effects would otherwise have accumulated.</summary>
         public int HidppReplacedStaleConditions => _hidppEffects.ReplacedStaleConditions;
 
+        /// <summary>What is live right now, by type ("spring=1 damper=2"), or
+        /// null when nothing is. Answers the question the counters cannot: a
+        /// damper that FEELS like it grew with every pit reset is either one
+        /// strong damper or several summed ones, and only this tells them
+        /// apart in a log after the fact.</summary>
+        public string HidppLiveConditions
+            => _parametricArmed && !SimulateNoFfbCapture
+             ? _hidppEffects.DescribeLive(_sw.ElapsedTicks, Stopwatch.Frequency)
+             : null;
+
         public bool AnyHidppParametricPlaying
             => _parametricArmed && !SimulateNoFfbCapture
                && _hidppEffects.AnyPlayingAt(_sw.ElapsedTicks, Stopwatch.Frequency);
@@ -2942,6 +2952,10 @@ namespace TrueforceForAll.Core
             for (int i = 0; i < _outEndpointCounts.Length; i++)
                 if (_outEndpointCounts[i] > 0) epOut.Add($"ep{i}={_outEndpointCounts[i]}");
 
+            // Live inventory by type, sampled once so the whole line
+            // describes one instant rather than drifting mid-string.
+            string diLive = _hidppEffects.DescribeLive(_sw.ElapsedTicks, Stopwatch.Frequency);
+
             Log($"FFB tap diag: packets={PacketsForOurDevice} " +
                 $"out_ctrl={ControlOutOnOurDevice} out_int={InterruptOutOnOurDevice} " +
                 $"out_bulk={BulkOutOnOurDevice} out_iso={IsoOutOnOurDevice} " +
@@ -2958,6 +2972,7 @@ namespace TrueforceForAll.Core
                     : "") +
                 (_hidppEffects.ParametricDownloads > 0
                     ? $" dieffects={_hidppEffects.ParametricDownloads}{(_hidppEffects.AnyPlaying ? " (playing)" : "")}" +
+                      (diLive != null ? $" dilive=[{diLive}]" : "") +
                       (_hidppEffects.GlobalGain < 0.999f ? $" gain={_hidppEffects.GlobalGain:P0}" : "") +
                       (_hidppEffects.ReplacedStaleConditions > 0
                           ? $" restacked={_hidppEffects.ReplacedStaleConditions}" : "")
