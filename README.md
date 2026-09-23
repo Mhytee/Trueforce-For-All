@@ -3,13 +3,12 @@
 **Unlock everything your Logitech wheel can do, and more.**
 Trueforce haptics in any game, rev lights, the Dynamic OLED screen.
 
-> **You are on the beta branch.** This branch carries the next release
-> while it gets tested in the open. Builds from here ship as pre-releases on the
-> [releases page][releases]; anyone can install them and receive
-> future betas through the in-app updater. The stable channel lives on the
-> [`main` branch](https://github.com/Mhytee/Trueforce-For-All/tree/main).
-> Something broken in a beta build? Please [open an issue][issues] or
-> say so in the [Discord][discord].
+> **This is the stable branch.** Builds from here are the releases marked
+> "Latest" on the [releases page][releases]. The beta channel runs ahead of
+> stable and is open to anyone: install the newest build marked
+> "Pre-release" and the in-app updater keeps you on that channel.
+> Something not working? Please [open an issue][issues] or say so in the
+> [Discord][discord].
 
 Official Trueforce support keeps growing, but many major titles are still
 waiting and some will never get it. This plugin brings Trueforce to any
@@ -28,9 +27,10 @@ and me. No Logitech source, firmware or assets are used or redistributed.
 
 > The plugin can add rev light support and control the Dynamic OLED screen
 > in games with [Telemetry Based FFB](#telemetry-based-ffb), in
-> [iRacing](#iracing), and in [Assetto Corsa](#assetto-corsa) with the CSP
-> Bridge. LIGHTSYNC car pattern matching works in every game the pattern
-> data covers.
+> [iRacing](#iracing), [RaceRoom](#raceroom) and
+> [Le Mans Ultimate](#le-mans-ultimate), and in
+> [Assetto Corsa](#assetto-corsa) with the CSP Bridge. LIGHTSYNC car
+> pattern matching works in every game the pattern data covers.
 
 ## What it does
 
@@ -43,15 +43,16 @@ three places:
   signal off the USB bus and folds it back into the Trueforce stream. Your
   real cornering load, weight transfer and curb forces keep coming through
   underneath every effect, in any game whose force feedback uses standard
-  HID++ (effectively all of them on these wheels).
-- **Handed over directly.** [iRacing](#iracing), RaceRoom, Le Mans
-  Ultimate, and [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge,
-  give the plugin their force feedback with no capture involved. RaceRoom
-  needs its own force feedback disabled and its intensity set to 0, plus the
-  FFB tab's "Take over force feedback for RaceRoom" ticked. Le Mans Ultimate
-  needs its Vendor Specific Force Feedback (its Trueforce) and Use LEDs
-  switched off, plus the same box ticked for it. The in-app setup guides
-  have the detail.
+  HID++ (effectively all of them on these wheels). The capture reads the
+  game's other effects as well, the springs, dampers, friction, inertia and
+  waveforms it sends, and renders those into the stream beside the steering
+  force rather than dropping them.
+- **Handed over directly.** [iRacing](#iracing), [RaceRoom](#raceroom),
+  [Le Mans Ultimate](#le-mans-ultimate), and
+  [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge give the
+  plugin their force feedback with no capture involved. Each takes a
+  switch or two in the game first, and one tick on the FFB tab; the in-app
+  setup guides walk through them.
 - **Built from telemetry.** In some games the plugin can fully replace the
   game's force feedback using telemetry
   ([Telemetry Based FFB](#telemetry-based-ffb)). Currently supported:
@@ -235,8 +236,9 @@ it is **off by default**. Farming Simulator is the other way round: there it
 is the only thing making real force feedback, so it **arms itself** as
 soon as the game is running.
 
-Like [iRacing](#iracing) and [Assetto Corsa](#assetto-corsa) with the
-bridge, it also unlocks the wheel's rev lights and screen: the rev lights
+Like [iRacing](#iracing), [RaceRoom](#raceroom),
+[Le Mans Ultimate](#le-mans-ultimate) and [Assetto Corsa](#assetto-corsa)
+with the bridge, it also unlocks the wheel's rev lights and screen: the rev lights
 fill and flash with the engine, honoring the car's real redline where the
 community has confirmed one.
 
@@ -282,6 +284,42 @@ restart of the game, and Content Manager closed while it installs.
 - **No USB capture needed.** With the bridge installed, Assetto Corsa no
   longer depends on USBPcap. Without it, everything keeps working through
   the capture as before; there is no setting to manage.
+
+## RaceRoom
+
+RaceRoom publishes the steering force its physics computes, and the plugin
+reads that straight from the sim's shared memory rather than through
+SimHub. The force you feel is RaceRoom's own, with the plugin's effects on
+top, and the rev lights and the wheel's screen come with it.
+
+- **Each car keeps its own strength.** Drive a couple of clean laps, and
+  once the reading holds steady one press takes it. Nudge any car heavier
+  or lighter from there.
+- **A parked wheel still has weight.** The handover drops the resistance
+  RaceRoom bakes into its own output, so the plugin adds its own: firm when
+  parked, gone as you gain speed.
+- **Engine data for every car in the game.** A shipped table covers all 356
+  with their real cylinder count and crank layout, so a V8 pulses like one.
+
+Turning it on is two switches, walked through by the in-app RaceRoom
+guide.
+
+## Le Mans Ultimate
+
+Le Mans Ultimate publishes the torque on the steering shaft, and the plugin
+reads it from the sim's official shared memory at 100 Hz, carrying it to
+the wheel with the effects on top.
+
+- **Each car keeps its own peak force, in Nm.** The plugin watches what a
+  car really pushes; drive a clean lap or two and one press takes that
+  number, the same gesture iRacing uses.
+- **Soft lock, stationary friction and the stationary spring** work here as
+  they do in RaceRoom. The sim does not report the wheel's rotation, so
+  where the car's lock falls on it is measured over the first seconds of
+  cornering.
+
+The game's own Trueforce has to come off first, which is one setting; the
+in-app Le Mans Ultimate guide walks through that and the rest.
 
 ## Farming Simulator
 
@@ -414,6 +452,11 @@ curb-strike and collision effects, and feeds
 telemetry once per rendered frame, so it tracks your frame rate, often
 well above 60 Hz. All four are auto-detected from SimHub's game profile.
 
+**RaceRoom** is read from its own shared memory, far above SimHub's 60 Hz.
+That is what carries the steering force on the handover, along with the
+sim's session state. **Le Mans Ultimate** is read the same way, from the
+official shared memory its SDK documents, at 100 Hz.
+
 **Farming Simulator 22 and 25** are read through the TF4ALL Enhanced
 Telemetry mod the plugin installs for you, at up to 100 Hz. The game
 publishes almost nothing on its own, so the mod is what makes
@@ -511,7 +554,8 @@ says so in its status and stands down.
   feedback, and writing to them while the game's force passes through the
   USB capture cuts that force. So the plugin only adds rev lights and
   drives the screen where it carries the force itself: Telemetry Based
-  FFB, iRacing, and Assetto Corsa with the CSP Bridge. For the same
+  FFB, iRacing, RaceRoom, Le Mans Ultimate, and Assetto Corsa with the CSP
+  Bridge. For the same
   reason, changing a LIGHTSYNC pattern in a pass-through game interrupts
   the force for a moment, so it is best done parked. A custom driver that
   lifts this is in development.
@@ -527,18 +571,18 @@ says so in its status and stands down.
 The audio-derived effects work in any game at all, since the plugin captures
 the game's audio directly with no SimHub support needed. Games that SimHub
 supports additionally get the telemetry-derived effects (engine pulse, gear
-shifts, ABS, and so on). Assetto Corsa, iRacing, Forza Motorsport, the
-Forza Horizon games and Farming Simulator go further with a higher-fidelity
-direct path (see Per-game enhancements).
+shifts, ABS, and so on). Assetto Corsa, iRacing, RaceRoom, Le Mans
+Ultimate, Forza Motorsport, the Forza Horizon games and Farming Simulator
+go further with a higher-fidelity direct path (see Per-game enhancements).
 
 **Do I need to pay for SimHub?**
 SimHub itself is free, and the plugin works without a SimHub license. The
 difference is the telemetry rate: unlicensed, games the plugin doesn't read
 directly run at only 10 Hz, which makes the effects feel coarse. A licensed
 copy lifts that to 60 Hz, which is a big step up in feel. SimHub is cheap and
-well worth it. (Assetto Corsa, iRacing, the Forza titles and Farming
-Simulator are read directly, so they run at their full rate regardless of
-license.)
+well worth it. (Assetto Corsa, iRacing, RaceRoom, Le Mans Ultimate, the
+Forza titles and Farming Simulator are read directly, so they run at their
+full rate regardless of license.)
 
 **Is this anti-cheat safe?**
 Yes. The plugin operates entirely outside the game. It never injects code,
