@@ -3,15 +3,15 @@
 **Unlock everything your Logitech wheel can do, and more.**
 Trueforce haptics in any game, rev lights, the Dynamic OLED screen.
 
-> Something not working? Please [open an issue][issues] or say so in the
-> [Discord][discord].
-
 Official Trueforce support keeps growing, but many major titles are still
 waiting and some will never get it. This plugin brings Trueforce to any
 game, building the haptics from telemetry or from the game's own audio.
 
 Original Windows code, built on protocols reverse-engineered by the community
 and me. No Logitech source, firmware or assets are used or redistributed.
+
+> Something not working? Please [open an issue][issues] or say so in the
+> [Discord][discord].
 
 ## Supported wheels
 
