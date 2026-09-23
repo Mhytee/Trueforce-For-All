@@ -402,8 +402,6 @@ plugin and the achievements you earn for contributing (sharing presets,
 getting downloads, submitting car facts other drivers end up using)
 grant matching roles in the server.
 
-Feedback is welcome there, or on [GitHub issues][issues].
-
 ## Install
 
 The easiest path is the bundled installer:
