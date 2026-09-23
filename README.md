@@ -1,7 +1,8 @@
 # Trueforce For All
 
-**Unlock everything your Logitech wheel can do, and more.**
-Trueforce haptics in any game, rev lights, the Dynamic OLED screen.
+**The ultimate companion for a Trueforce-enabled Logitech wheel.**
+Trueforce haptics in any game, rev lights, the Dynamic OLED screen, and a
+dash for your phone.
 
 Official Trueforce support keeps growing, but many major titles are still
 waiting and some will never get it. This plugin brings Trueforce to any
@@ -32,10 +33,8 @@ in real time. The steering force underneath the effects comes from one of
 three places:
 
 - **FFB pass-through (most games).** The plugin taps the force feedback the
-  game sends down the wire, springs, dampers, friction and waveforms
-  included, and layers the Trueforce haptics on top. Your cornering load and
-  curb forces keep coming through underneath, in effectively any game on
-  these wheels.
+  game sends down the wire and layers the Trueforce haptics on top. Your
+  cornering load and curb forces keep coming through underneath.
 - **Handed over directly.** [iRacing](#per-game-enhancements), [RaceRoom](#per-game-enhancements),
   [Le Mans Ultimate](#per-game-enhancements), and
   [Assetto Corsa](#per-game-enhancements) with the TF4ALL CSP Bridge give the
