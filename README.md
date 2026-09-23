@@ -109,10 +109,8 @@ instead of passing the game's own force feedback through. Today that means
 the Forza titles (Forza Motorsport and Forza Horizon 4, 5, and 6) and
 Farming Simulator 22 and 25.
 
-Like iRacing, RaceRoom, Le Mans Ultimate and Assetto Corsa with the
-bridge, it also unlocks the wheel's rev lights and screen: the rev lights
-fill and flash with the engine, honoring the car's real redline where the
-community has confirmed one.
+It also unlocks the wheel's rev lights and screen, with the lights filling
+and flashing with the engine.
 
 ## FFB spike reduction
 
