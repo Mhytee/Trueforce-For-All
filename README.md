@@ -1,8 +1,8 @@
 # Trueforce For All
 
 **The ultimate companion for a Trueforce-enabled Logitech wheel.**
-Trueforce haptics in any game, rev lights, the Dynamic OLED screen, and a
-dash for your phone.
+Trueforce haptics in any game, rev lights, the Dynamic OLED screen, a dash
+for your phone, and a community library of presets.
 
 Official Trueforce support keeps growing, but many major titles are still
 waiting and some will never get it. This plugin brings Trueforce to any
@@ -17,14 +17,13 @@ game, building the haptics from telemetry or from the game's own audio.
 |---|---|---|---|
 | Logitech G PRO Racing Wheel (Xbox/PC and PS/PC) | Yes | Yes | Yes |
 | Logitech RS50 | Yes | Yes | Yes |
-| Logitech G923 (Xbox/PC and PS/PC) | Yes | Yes | No screen |
+| Logitech G923 (Xbox/PC and PS/PC) | Yes | Yes | None |
 
 > The plugin can add rev light support and control the Dynamic OLED screen
-> in games with [Telemetry Based FFB](#telemetry-based-ffb), in
-> [iRacing](#per-game-enhancements), [RaceRoom](#per-game-enhancements) and
-> [Le Mans Ultimate](#per-game-enhancements), and in
-> [Assetto Corsa](#per-game-enhancements) with the CSP Bridge. LIGHTSYNC car
-> pattern matching works in every game the pattern data covers.
+> in games with [Telemetry Based FFB](#telemetry-based-ffb), in iRacing,
+> RaceRoom and Le Mans Ultimate, and in Assetto Corsa with the CSP Bridge.
+> LIGHTSYNC car pattern matching works in every game the pattern data
+> covers.
 
 ## FFB and Trueforce Effects
 
@@ -35,12 +34,11 @@ three places:
 - **FFB pass-through (most games).** The plugin taps the force feedback the
   game sends down the wire and layers the Trueforce haptics on top. Your
   cornering load and curb forces keep coming through underneath.
-- **Handed over directly.** [iRacing](#per-game-enhancements), [RaceRoom](#per-game-enhancements),
-  [Le Mans Ultimate](#per-game-enhancements), and
-  [Assetto Corsa](#per-game-enhancements) with the TF4ALL CSP Bridge give the
-  plugin their force feedback with no capture involved. Each takes a
-  switch or two in the game first, and one tick on the FFB tab; the
-  [setup guides](guides/README.md) walk through them.
+- **Handed over directly.** iRacing, RaceRoom, Le Mans Ultimate, and
+  Assetto Corsa with the TF4ALL CSP Bridge give the plugin their force
+  feedback with no capture involved. Each takes a switch or two in the game
+  first, and one tick on the FFB tab; the [setup guides](guides/README.md)
+  walk through them.
 - **Built from telemetry.** In some games the plugin can fully replace the
   game's force feedback using telemetry
   ([Telemetry Based FFB](#telemetry-based-ffb)). Currently supported:
@@ -111,22 +109,8 @@ instead of passing the game's own force feedback through. Today that means
 the Forza titles (Forza Motorsport and Forza Horizon 4, 5, and 6) and
 Farming Simulator 22 and 25.
 
-In Forza you get a real sense of the grip limit: the wheel goes light as
-the front washes wide, loads up through a corner, and pulls into a
-countersteer as the rear steps out. Farming Simulator gets a model built
-for heavy machinery instead: see [Farming Simulator](#per-game-enhancements).
-
-It tunes itself as you drive, and the optional **Auto strength** levels
-cars out so you stop retuning at every swap. (Forza only.)
-
-In the Forza titles it can replace the game's force feedback wholesale, so
-it is **off by default**. Farming Simulator is the other way round: there it
-is the only thing making real force feedback, so it **arms itself** as
-soon as the game is running.
-
-Like [iRacing](#per-game-enhancements), [RaceRoom](#per-game-enhancements),
-[Le Mans Ultimate](#per-game-enhancements) and [Assetto Corsa](#per-game-enhancements)
-with the bridge, it also unlocks the wheel's rev lights and screen: the rev lights
+Like iRacing, RaceRoom, Le Mans Ultimate and Assetto Corsa with the
+bridge, it also unlocks the wheel's rev lights and screen: the rev lights
 fill and flash with the engine, honoring the car's real redline where the
 community has confirmed one.
 
