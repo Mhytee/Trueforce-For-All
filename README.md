@@ -20,9 +20,9 @@ game, building the haptics from telemetry or from the game's own audio.
 
 > The plugin can add rev light support and control the Dynamic OLED screen
 > in games with [Telemetry Based FFB](#telemetry-based-ffb), in
-> [iRacing](#iracing), [RaceRoom](#raceroom) and
-> [Le Mans Ultimate](#le-mans-ultimate), and in
-> [Assetto Corsa](#assetto-corsa) with the CSP Bridge. LIGHTSYNC car
+> [iRacing](#per-game-enhancements), [RaceRoom](#per-game-enhancements) and
+> [Le Mans Ultimate](#per-game-enhancements), and in
+> [Assetto Corsa](#per-game-enhancements) with the CSP Bridge. LIGHTSYNC car
 > pattern matching works in every game the pattern data covers.
 
 ## What it does
@@ -36,9 +36,9 @@ three places:
   included, and layers the Trueforce haptics on top. Your cornering load and
   curb forces keep coming through underneath, in effectively any game on
   these wheels.
-- **Handed over directly.** [iRacing](#iracing), [RaceRoom](#raceroom),
-  [Le Mans Ultimate](#le-mans-ultimate), and
-  [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge give the
+- **Handed over directly.** [iRacing](#per-game-enhancements), [RaceRoom](#per-game-enhancements),
+  [Le Mans Ultimate](#per-game-enhancements), and
+  [Assetto Corsa](#per-game-enhancements) with the TF4ALL CSP Bridge give the
   plugin their force feedback with no capture involved. Each takes a
   switch or two in the game first, and one tick on the FFB tab; the
   [setup guides](guides/README.md) walk through them.
@@ -216,7 +216,7 @@ Farming Simulator 22 and 25.
 In Forza you get a real sense of the grip limit: the wheel goes light as
 the front washes wide, loads up through a corner, and pulls into a
 countersteer as the rear steps out. Farming Simulator gets a model built
-for heavy machinery instead: see [Farming Simulator](#farming-simulator).
+for heavy machinery instead: see [Farming Simulator](#per-game-enhancements).
 
 It tunes itself as you drive, and the optional **Auto strength** levels
 cars out so you stop retuning at every swap. (Forza only.)
@@ -226,118 +226,11 @@ it is **off by default**. Farming Simulator is the other way round: there it
 is the only thing making real force feedback, so it **arms itself** as
 soon as the game is running.
 
-Like [iRacing](#iracing), [RaceRoom](#raceroom),
-[Le Mans Ultimate](#le-mans-ultimate) and [Assetto Corsa](#assetto-corsa)
+Like [iRacing](#per-game-enhancements), [RaceRoom](#per-game-enhancements),
+[Le Mans Ultimate](#per-game-enhancements) and [Assetto Corsa](#per-game-enhancements)
 with the bridge, it also unlocks the wheel's rev lights and screen: the rev lights
 fill and flash with the engine, honoring the car's real redline where the
 community has confirmed one.
-
-## Per-game enhancements
-
-Some games get enhancements of their own, whether that is a faster telemetry
-stream, sharper effects, a force feedback overhaul, or the sim handing its
-forces straight to the plugin. None of it needs a SimHub license.
-
-### iRacing
-
-Reads the sim's telemetry at 1 kHz. iRacing keeps publishing the
-steering torque it wants the wheel to hold even with its own force feedback
-off, so the plugin carries that to the wheel with its effects on top, and
-the rev lights and the wheel's screen come with it.
-
-- **Each car's max force, learned.** The plugin watches what a car really
-  pushes; drive a clean lap, and once the reading holds steady, one press
-  takes it. Nudge any car heavier or lighter from there.
-- **Incident points, announced.** The dash shows your count against the
-  session's limit, and the wheel's screen flashes what each new one cost.
-- **Engines sound like themselves.** iRacing states each car's cylinder
-  count, and a shipped table adds the crank layout, so a cross-plane V8
-  pulses like one.
-
-Setup instructions show in the plugin on first launch, or
-[here](guides/iracing-setup.md).
-
-### Assetto Corsa
-
-Shared memory read at the game's own 333 Hz physics rate, which makes curb
-collisions, road bumps and traction loss noticeably sharper than a 60 Hz
-feed can deliver.
-
-- **The TF4ALL CSP Bridge hands the force over.** A small CSP script the
-  plugin offers to install, after which your rev lights and the wheel's
-  screen run, light patterns can be changed mid-session, and Assetto Corsa
-  needs no USB capture at all.
-
-Setup instructions show in the plugin when it first sees the game, or
-[here](guides/csp-bridge.md).
-
-### RaceRoom
-
-Telemetry read from the game's shared memory, far above SimHub's 60 Hz
-max, carries the steering force RaceRoom computes to the wheel with the
-plugin's effects on top, and the rev lights and the wheel's screen come
-with it.
-
-- **Each car's strength, learned.** Drive a couple of clean laps, and once
-  the reading holds steady one press takes it.
-- **Engine data for every car in the game.** A shipped table covers all 356
-  with their real cylinder count and crank layout, so a V8 pulses like one.
-
-Setup instructions show in the plugin when it first sees the game, or
-[here](guides/raceroom-setup.md).
-
-### Le Mans Ultimate
-
-The official shared memory its SDK documents, read at 100 Hz, carries the
-torque on the steering shaft to the wheel with the effects on top, and the
-rev lights and the wheel's screen come with it.
-
-- **Each car's peak force in Nm, learned**, and taken with one press, the
-  same gesture iRacing uses.
-
-Setup instructions show in the plugin when it first sees the game, or
-[here](guides/lmu-setup.md).
-
-### Forza
-
-Telemetry read straight from the game over UDP, output at the game's frame
-rate, which is often much higher than SimHub's 60 Hz cap.
-
-- **Per-tire data.** SimHub leaves this out, so reading it from the game
-  directly is what lets us enhance the surface texture effect, curb strikes
-  and collisions.
-- **[Telemetry Based FFB](#telemetry-based-ffb)**, which can replace
-  Forza's own force feedback outright.
-- **SimHub still gets its copy**, so dashboards and bass shakers keep
-  working.
-
-Setup instructions show in the plugin when it first sees the game, or
-[here](guides/forza-setup.md) and [here](guides/forza-forward.md).
-
-### Farming Simulator
-
-Force feedback in Farming Simulator is notoriously basic. The game gives
-the wheel a centering spring and little else, so
-[Telemetry Based FFB](#telemetry-based-ffb) replaces it with a force of its
-own, built from the ground under the tires, the weight of the machine as it
-turns and an implement dragging harder as it fills.
-
-- **The TF4ALL Enhanced Telemetry mod comes with it**, adding ground
-  texture through the wheel, the thud as an implement drops into work, and
-  the cut while your wheels are off the ground. The game publishes too
-  little on its own, so the mod sends it, at up to 100 Hz.
-- **Baked-in engine data for all 153 Farming Simulator 25 base-game
-  vehicles**, so the engine effects know what they are driving without
-  being told.
-
-Setup instructions show in the plugin when it first sees the game, or
-[here](guides/farming-sim.md).
-
-Every other SimHub-supported game runs through SimHub's universal telemetry
-feed instead. The plugin works there without a SimHub license, but
-unlicensed that feed is capped at 10 Hz, which makes the effects feel coarse.
-A licensed copy of SimHub (a small one-time payment) lifts it to 60 Hz, a
-big step up in feel.
 
 ## FFB spike reduction
 
@@ -425,6 +318,131 @@ getting downloads, submitting car facts other drivers end up using)
 grant matching roles in the server.
 
 Feedback is welcome there, or on [GitHub issues][issues].
+
+## Per-game enhancements
+
+Some games get enhancements of their own, whether that is a faster telemetry
+stream, sharper effects, a force feedback overhaul, or the sim handing its
+forces straight to the plugin. None of it needs a SimHub license.
+
+<details>
+<summary><b>iRacing</b></summary>
+
+Reads the sim's telemetry at 1 kHz. iRacing keeps publishing the
+steering torque it wants the wheel to hold even with its own force feedback
+off, so the plugin carries that to the wheel with its effects on top, and
+the rev lights and the wheel's screen come with it.
+
+- **Each car's max force, learned.** The plugin watches what a car really
+  pushes; drive a clean lap, and once the reading holds steady, one press
+  takes it. Nudge any car heavier or lighter from there.
+- **Incident points, announced.** The dash shows your count against the
+  session's limit, and the wheel's screen flashes what each new one cost.
+- **Engines sound like themselves.** iRacing states each car's cylinder
+  count, and a shipped table adds the crank layout, so a cross-plane V8
+  pulses like one.
+
+Setup instructions show in the plugin on first launch, or
+[here](guides/iracing-setup.md).
+
+</details>
+
+<details>
+<summary><b>Assetto Corsa</b></summary>
+
+Shared memory read at the game's own 333 Hz physics rate, which makes curb
+collisions, road bumps and traction loss noticeably sharper than a 60 Hz
+feed can deliver.
+
+- **The TF4ALL CSP Bridge hands the force over.** A small CSP script the
+  plugin offers to install, after which your rev lights and the wheel's
+  screen run, light patterns can be changed mid-session, and Assetto Corsa
+  needs no USB capture at all.
+
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/csp-bridge.md).
+
+</details>
+
+<details>
+<summary><b>RaceRoom</b></summary>
+
+Telemetry read from the game's shared memory, far above SimHub's 60 Hz
+max, carries the steering force RaceRoom computes to the wheel with the
+plugin's effects on top, and the rev lights and the wheel's screen come
+with it.
+
+- **Each car's strength, learned.** Drive a couple of clean laps, and once
+  the reading holds steady one press takes it.
+- **Engine data for every car in the game.** A shipped table covers all 356
+  with their real cylinder count and crank layout, so a V8 pulses like one.
+
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/raceroom-setup.md).
+
+</details>
+
+<details>
+<summary><b>Le Mans Ultimate</b></summary>
+
+The official shared memory its SDK documents, read at 100 Hz, carries the
+torque on the steering shaft to the wheel with the effects on top, and the
+rev lights and the wheel's screen come with it.
+
+- **Each car's peak force in Nm, learned**, and taken with one press, the
+  same gesture iRacing uses.
+
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/lmu-setup.md).
+
+</details>
+
+<details>
+<summary><b>Forza</b></summary>
+
+Telemetry read straight from the game over UDP, output at the game's frame
+rate, which is often much higher than SimHub's 60 Hz cap.
+
+- **Per-tire data.** SimHub leaves this out, so reading it from the game
+  directly is what lets us enhance the surface texture effect, curb strikes
+  and collisions.
+- **[Telemetry Based FFB](#telemetry-based-ffb)**, which can replace
+  Forza's own force feedback outright.
+- **SimHub still gets its copy**, so dashboards and bass shakers keep
+  working.
+
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/forza-setup.md) and [here](guides/forza-forward.md).
+
+</details>
+
+<details>
+<summary><b>Farming Simulator</b></summary>
+
+Force feedback in Farming Simulator is notoriously basic. The game gives
+the wheel a centering spring and little else, so
+[Telemetry Based FFB](#telemetry-based-ffb) replaces it with a force of its
+own, built from the ground under the tires, the weight of the machine as it
+turns and an implement dragging harder as it fills.
+
+- **The TF4ALL Enhanced Telemetry mod comes with it**, adding ground
+  texture through the wheel, the thud as an implement drops into work, and
+  the cut while your wheels are off the ground. The game publishes too
+  little on its own, so the mod sends it, at up to 100 Hz.
+- **Baked-in engine data for all 153 Farming Simulator 25 base-game
+  vehicles**, so the engine effects know what they are driving without
+  being told.
+
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/farming-sim.md).
+
+</details>
+
+Every other SimHub-supported game runs through SimHub's universal telemetry
+feed instead. The plugin works there without a SimHub license, but
+unlicensed that feed is capped at 10 Hz, which makes the effects feel coarse.
+A licensed copy of SimHub (a small one-time payment) lifts it to 60 Hz, a
+big step up in feel.
 
 ## Games with native Trueforce
 
