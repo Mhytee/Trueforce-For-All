@@ -535,15 +535,22 @@ says so in its status and stands down.
 
 ## FAQ
 
-**Which games does it work with?**
+<details>
+<summary><b>Which games does it work with?</b></summary>
+
 The audio-derived effects work in any game at all, since the plugin captures
 the game's audio directly with no SimHub support needed. Games that SimHub
 supports additionally get the telemetry-derived effects (engine pulse, gear
 shifts, ABS, and so on). Assetto Corsa, iRacing, RaceRoom, Le Mans
 Ultimate, Forza Motorsport, the Forza Horizon games and Farming Simulator
-go further with a higher-fidelity direct path (see Per-game enhancements).
+go further with a higher-fidelity direct path (see
+[Per-game enhancements](#per-game-enhancements)).
 
-**Do I need to pay for SimHub?**
+</details>
+
+<details>
+<summary><b>Do I need to pay for SimHub?</b></summary>
+
 SimHub itself is free, and the plugin works without a SimHub license. The
 difference is the telemetry rate: unlicensed, games the plugin doesn't read
 directly run at only 10 Hz, which makes the effects feel coarse. A licensed
@@ -552,7 +559,11 @@ well worth it. (Assetto Corsa, iRacing, RaceRoom, Le Mans Ultimate, the
 Forza titles and Farming Simulator are read directly, so they run at their
 full rate regardless of license.)
 
-**Is this anti-cheat safe?**
+</details>
+
+<details>
+<summary><b>Is this anti-cheat safe?</b></summary>
+
 Yes. The plugin operates entirely outside the game. It never injects code,
 reads or modifies game memory, or hooks the game in any way. It only talks
 to the wheel over USB (via USBPcap), reads telemetry the game already
@@ -561,7 +572,11 @@ Windows' own loopback. Switching off a game's native Trueforce is done by
 editing a config file or flipping an in-game setting before launch, never by
 touching the running game.
 
-**Will it change or replace my normal force feedback?**
+</details>
+
+<details>
+<summary><b>Will it change or replace my normal force feedback?</b></summary>
+
 Not unless you ask it to. By default the plugin preserves your existing
 force feedback and layers haptic effects on top of it; your wheelbase's own
 FFB still comes through, with all your usual settings intact. The exception
@@ -569,45 +584,66 @@ is [Telemetry Based FFB](#telemetry-based-ffb), which deliberately builds
 the steering force from telemetry instead. In the Forza titles that is
 opt-in and stays off until you turn it on. In Farming Simulator it runs
 automatically, because the centering spring it replaces is all the game
-offers. In iRacing, and in Assetto Corsa with the bridge, the force is the
-sim's own, carried by the plugin, so it feels exactly as you tuned it.
+offers. In iRacing, RaceRoom and Le Mans Ultimate, and in Assetto Corsa
+with the bridge, the force is the sim's own, carried by the plugin, so it
+feels exactly as you tuned it.
 
-**Why does it need USBPcap, and is that safe?**
+</details>
+
+<details>
+<summary><b>Why does it need USBPcap, and is that safe?</b></summary>
+
 USBPcap is an open-source USB capture driver. The plugin uses it to read the
 wheel's own force-feedback traffic off the USB bus so it can mirror that into
 the Trueforce stream (this is the FFB pass-through that keeps your normal
 force feedback alive). It only looks at the wheel's traffic, it's widely used
 and bundled with our installer, and you can uninstall it separately at any
-time.
+time. Games that hand their force over (iRacing, RaceRoom, Le Mans Ultimate,
+and Assetto Corsa with the bridge) and games running Telemetry Based FFB
+need no capture at all.
 
-**Do I need Logitech G HUB?**
-Some wheels need G HUB launched once to switch into PC mode and expose their
-full HID interfaces. If the wheel isn't detected, open G HUB once, let it
-recognize the wheel, then close it completely before launching SimHub. G HUB
-claims the wheel's HID interface, so it must stay closed while you play. The
-wheel can drop out of PC mode after a PC restart or when you unplug it, so
-you may need to repeat the open-once-then-close step after each reboot.
+</details>
 
-**My normal force feedback disappeared, or the plugin says pass-through
-is not running.**
-Check that SimHub is running as administrator. Reading the wheel's USB
-traffic needs it, and without it the pass-through cannot start. Use
-SimHub's own Run as administrator setting rather than right-clicking the
-exe, then restart SimHub.
+<details>
+<summary><b>Do I need Logitech G HUB?</b></summary>
 
-**The effects feel weak or light.**
+No, and it has to stay closed while you play: G HUB claims the wheel's HID
+interface, which stops the plugin talking to it.
+
+</details>
+
+<details>
+<summary><b>My normal force feedback disappeared, or the plugin says pass-through is not running.</b></summary>
+
+Run the self-test in the Settings tab's Diagnostics section. It checks the
+whole chain and names the part that is missing, USBPcap's capture driver
+included. The usual cause is SimHub not running as administrator: reading
+the wheel's USB traffic needs it, and without it the pass-through cannot
+start. Use SimHub's own Run as administrator setting rather than
+right-clicking the exe, then restart SimHub.
+
+</details>
+
+<details>
+<summary><b>The effects feel weak or light.</b></summary>
+
 Raise Master Gain and the per-effect Gain in the plugin settings. The
 Trueforce dial on the wheel itself does nothing while the plugin is running,
-so all intensity is set in the plugin. The G923 is a quieter gear-driven
-wheel and usually needs more gain than the G PRO or RS50.
+so all intensity is set in the plugin.
 
-**Can I use this in games that already support Trueforce?**
+</details>
+
+<details>
+<summary><b>Can I use this in games that already support Trueforce?</b></summary>
+
 By default the plugin starts on Lightsync only for native-Trueforce titles,
 since the game already provides it, and if both end up streaming at once it
 steps aside by itself. But you can switch off the game's native Trueforce
 and run the plugin instead, which lets you tune the feel yourself. See
 [Games with native Trueforce](#games-with-native-trueforce) for which titles
 allow this and how.
+
+</details>
 
 ## Supporting the project
 
